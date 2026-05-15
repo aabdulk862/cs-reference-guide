@@ -1,0 +1,417 @@
+{
+  "id": "producers-producers",
+  "slug": "producers",
+  "title": "Producers",
+  "category": "Messaging",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A Kafka producer is a client application that publishes (writes) events to a Kafka cluster.",
+            "These events, also known as messages, are organized into topics, which are essentially categories or streams of data.",
+            "Producers use the Kafka Producer API to send messages to Kafka brokers, which then store and manage the data."
+          ]
+        }
+      ],
+      "wordCount": 52,
+      "subsections": []
+    },
+    {
+      "id": "creating-a-kafka-topic",
+      "heading": "Creating a Kafka Topic",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Definition:"
+        },
+        {
+          "type": "paragraph",
+          "text": "A Kafka topic is a logical channel to which data is published and from which consumers read."
+        },
+        {
+          "type": "paragraph",
+          "text": "Command:"
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic YouBuyyClickStreamData",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "replication-factor: Number of copies of data for fault tolerance.",
+            "partitions: Determines parallelism; more partitions mean more concurrent processing."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Example Output:"
+        },
+        {
+          "type": "blockquote",
+          "text": "Created topic YouBuyyClickStreamData."
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    },
+    {
+      "id": "publishing-messages-using-kafka-console-producer",
+      "heading": "Publishing Messages Using Kafka Console Producer",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Definition:"
+        },
+        {
+          "type": "paragraph",
+          "text": "Kafka provides a command-line tool (kafka-console-producer.sh) to manually publish messages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Command:"
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "bin/kafka-console-producer.sh --broker-list localhost:9092 --topic YouBuyyClickStreamData",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Connects to the Kafka broker and sends typed input messages to the topic."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Note:"
+        },
+        {
+          "type": "paragraph",
+          "text": "For production use, a custom producer is preferred to automate and structure publishing."
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    },
+    {
+      "id": "writing-a-custom-kafka-producer-in-java",
+      "heading": "Writing a Custom Kafka Producer in Java",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "required-dependencies-in-pomxml",
+          "heading": "Required Dependencies (in pom.xml):",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependencies>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-clients</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-streams</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n</dependencies>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "key-configuration-properties",
+          "heading": "Key Configuration Properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Producers/Producers/image.png",
+              "alt": "image.png",
+              "originalPath": "Producers/image.png"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "java-code-custom-producer",
+      "heading": "Java Code: Custom Producer",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "package com.project.kafka.ProducerPackage;\nimport java.io.File;\nimport java.io.FileNotFoundException;\nimport java.util.Properties;\nimport java.util.Scanner;\nimport java.util.regex.Pattern;\nimport org.apache.kafka.clients.producer.KafkaProducer;\nimport org.apache.kafka.clients.producer.ProducerConfig;\nimport org.apache.kafka.clients.producer.ProducerRecord;\nimport org.apache.kafka.common.serialization.StringSerializer;\npublic class Producer {\n//List of brokers in Kafka cluster\nprivate final static String BOOTSTRAP_SERVERS = \"localhost:9092\";\n    \n    //Method to create producer object\n    private static KafkaProducer<String, String> createProducer()\n    {\n        //Create Configuration properties object.\n        Properties propsClickStream = new Properties();\n        \n        //Kafka broker topic details.\n        propsClickStream.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);\n        \n        propsClickStream.put(ProducerConfig.CLIENT_ID_CONFIG, \"ClickStreamProducer\");\n        \n        //Serialization class details.\n        propsClickStream.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());                \n        propsClickStream.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,StringSerializer.class.getName());\n                \n        return new KafkaProducer<String, String>(propsClickStream);\n    }\n    \n    public static void main(String[] args) throws InterruptedException, FileNotFoundException\n    {\n    \n        final KafkaProducer<String, String> clickStreamProducer = createProducer();\n        \n        //Read the messages from a file\n        Scanner streamInput = new Scanner(new File(args[0]));\n        \n        //Read the records from a file and publish to Kafka topic.\n        while (streamInput.hasNextLine()) {\n            \n            String Record = streamInput.nextLine();\n        \n            String[] columns = Record.split(Pattern.quote(\",\"));\n            \n            //message written to kafka partition will be typically in <key, Value> structure.\n            //args[1] - Topic name.\n            //columns[0] - first field <CustomerID> is used as Key.\n            //Record - complete record as value.\n            final ProducerRecord<String, String> record = new ProducerRecord<String, String>(\n                    args[1], columns[0], Record);\n            \n            clickStreamProducer.send(record);\n                        \n    }\n        System.out.println(\"Completed producing records\");\n        }\n    }\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Key-Value Format:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Key: CustomerID (for partitioning logic)",
+            "Value: Complete log line"
+          ]
+        }
+      ],
+      "wordCount": 11,
+      "subsections": []
+    },
+    {
+      "id": "building-and-running-the-producer",
+      "heading": "Building and Running the Producer",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "build-steps",
+          "heading": "Build Steps:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Create a Maven project (Group ID: com.project.kafka, Artifact ID: YouBuyyProducerApp)",
+                "Add dependencies and maven-assembly-plugin to create an executable JAR",
+                "Build with:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "mvn clean compile assembly:single",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "run-the-jar",
+          "heading": "Run the Jar:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "java -jar YouBuyyProducerApp.jar /path/to/logfile.txt YouBuyyClickStreamData",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "attendance-data-producer-real-world-problem",
+      "heading": "Attendance Data Producer – Real-World Problem",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Scenario:"
+        },
+        {
+          "type": "paragraph",
+          "text": "A large organization tracks employee attendance via swipe sensor data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Sample Dataset:"
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Producers/Producers/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Producers/image%201.png"
+        }
+      ],
+      "wordCount": 13,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Create topic: AttendanceData",
+                "Write Java Producer to: "
+              ]
+            }
+          ],
+          "wordCount": 7,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "important-kafka-concepts-extended-prompts",
+      "heading": "Important Kafka Concepts (Extended Prompts)",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "real-time-replication-in-kafka",
+          "heading": "Real-Time Replication in Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Kafka replicates topic partitions across brokers.",
+                "Ensures fault tolerance and high availability using replication factor.",
+                "Each partition has a leader and followers."
+              ]
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        },
+        {
+          "id": "topic-retention-policy",
+          "heading": "Topic Retention Policy",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "retention.ms: How long Kafka retains data (e.g., 7 days)",
+                "Can also configure by size using retention.bytes"
+              ]
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        },
+        {
+          "id": "migrating-data-to-kafka",
+          "heading": "Migrating Data to Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "From RDBMS:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Use Kafka Connect + JDBC Source Connector.",
+                "Example: Sync employee table to EmployeeTopic."
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "From NoSQL:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Use MongoDB Kafka Connector to capture change streams and send to Kafka."
+              ]
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Kafka installed and running (Zookeeper + Broker)",
+            "Topic created with correct config",
+            "Console producer works",
+            "Custom Java producer built and tested",
+            "Real-world dataset handled (AttendanceData)"
+          ]
+        }
+      ],
+      "wordCount": 25,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Producers/Producers/image.png",
+      "alt": "image.png",
+      "originalPath": "Producers/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Producers/Producers/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Producers/image%201.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic YouBuyyClickStreamData",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "bin/kafka-console-producer.sh --broker-list localhost:9092 --topic YouBuyyClickStreamData",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependencies>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-clients</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-streams</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n</dependencies>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.project.kafka.ProducerPackage;\nimport java.io.File;\nimport java.io.FileNotFoundException;\nimport java.util.Properties;\nimport java.util.Scanner;\nimport java.util.regex.Pattern;\nimport org.apache.kafka.clients.producer.KafkaProducer;\nimport org.apache.kafka.clients.producer.ProducerConfig;\nimport org.apache.kafka.clients.producer.ProducerRecord;\nimport org.apache.kafka.common.serialization.StringSerializer;\npublic class Producer {\n//List of brokers in Kafka cluster\nprivate final static String BOOTSTRAP_SERVERS = \"localhost:9092\";\n    \n    //Method to create producer object\n    private static KafkaProducer<String, String> createProducer()\n    {\n        //Create Configuration properties object.\n        Properties propsClickStream = new Properties();\n        \n        //Kafka broker topic details.\n        propsClickStream.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);\n        \n        propsClickStream.put(ProducerConfig.CLIENT_ID_CONFIG, \"ClickStreamProducer\");\n        \n        //Serialization class details.\n        propsClickStream.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());                \n        propsClickStream.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,StringSerializer.class.getName());\n                \n        return new KafkaProducer<String, String>(propsClickStream);\n    }\n    \n    public static void main(String[] args) throws InterruptedException, FileNotFoundException\n    {\n    \n        final KafkaProducer<String, String> clickStreamProducer = createProducer();\n        \n        //Read the messages from a file\n        Scanner streamInput = new Scanner(new File(args[0]));\n        \n        //Read the records from a file and publish to Kafka topic.\n        while (streamInput.hasNextLine()) {\n            \n            String Record = streamInput.nextLine();\n        \n            String[] columns = Record.split(Pattern.quote(\",\"));\n            \n            //message written to kafka partition will be typically in <key, Value> structure.\n            //args[1] - Topic name.\n            //columns[0] - first field <CustomerID> is used as Key.\n            //Record - complete record as value.\n            final ProducerRecord<String, String> record = new ProducerRecord<String, String>(\n                    args[1], columns[0], Record);\n            \n            clickStreamProducer.send(record);\n                        \n    }\n        System.out.println(\"Completed producing records\");\n        }\n    }\n",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "mvn clean compile assembly:single",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "java -jar YouBuyyProducerApp.jar /path/to/logfile.txt YouBuyyClickStreamData",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Producers/Producers.md",
+    "wordCount": 277,
+    "sectionCount": 17
+  }
+}

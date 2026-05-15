@@ -1,0 +1,285 @@
+{
+  "id": "git-git-branching",
+  "slug": "git-branching",
+  "title": "Git Branching",
+  "category": "Git",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "git branch — list all local branches",
+            "git branch <name> — create a new branch at current commit",
+            "git switch <branch> — switch to an existing branch",
+            "git switch -c <branch> — create and switch to a new branch",
+            "git branch -d <branch> — delete a merged branch",
+            "git branch -D <branch> — force delete an unmerged branch",
+            "git merge <branch> — merge branch into current branch",
+            "git rebase <branch> — replay commits on top of another branch",
+            "Branches are lightweight pointers to commits (just 41 bytes each)",
+            "HEAD points to the current branch, which points to the latest commit",
+            "Common naming conventions: feature/, bugfix/, hotfix/, release/"
+          ]
+        }
+      ],
+      "wordCount": 107,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Branching is fundamental to every Git workflow and should be used whenever you start working on something new. Create a feature branch when implementing a new feature, a bugfix branch when addressing a reported issue, and a hotfix branch when patching a critical production problem. Branches isolate your work from the main codebase, allowing you to experiment freely without risking the stability of shared code. Use branches when collaborating with a team so that multiple developers can work in parallel without stepping on each other's changes. Branching is also essential for release management, where you maintain separate branches for different release versions. Even for solo projects, branching provides a clean way to context-switch between tasks. The only time you might skip branching is for trivial one-line fixes in a solo project, though even then a branch provides a safety net."
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "creating-and-managing-branches",
+          "heading": "Creating and Managing Branches",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# List all local branches (current branch marked with *)\ngit branch\n\n# List all branches including remote-tracking branches\ngit branch -a\n\n# Create a new branch from current HEAD\ngit branch feature/user-authentication\n\n# Switch to the new branch\ngit switch feature/user-authentication\n\n# Create and switch in one command\ngit switch -c feature/payment-gateway\n\n# Rename the current branch\ngit branch -m new-branch-name\n\n# Delete a branch that has been merged\ngit branch -d feature/completed-work\n\n# Force delete an unmerged branch (use with caution)\ngit branch -D feature/abandoned-experiment",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "merging-branches",
+          "heading": "Merging Branches",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Switch to the target branch first\ngit switch main\n\n# Merge feature branch into main (fast-forward if possible)\ngit merge feature/user-authentication\n\n# Merge with explicit merge commit (preserves branch topology)\ngit merge --no-ff feature/user-authentication\n\n# Abort a merge that has conflicts\ngit merge --abort\n\n# Squash all commits from a branch into one (does not auto-commit)\ngit merge --squash feature/messy-history\ngit commit -m \"Add user authentication feature\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "rebasing",
+          "heading": "Rebasing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Rebase current branch onto main (linear history)\ngit switch feature/my-work\ngit rebase main\n\n# Interactive rebase to clean up last 5 commits\ngit rebase -i HEAD~5\n# In the editor: pick, squash, reword, edit, drop\n\n# Continue after resolving rebase conflicts\ngit rebase --continue\n\n# Abort a rebase in progress\ngit rebase --abort",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "branching-strategies",
+      "heading": "Branching Strategies",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "gitGraph\n    commit id: \"Initial\"\n    commit id: \"v1.0 release\"\n    branch develop\n    commit id: \"Start development\"\n    branch feature/login\n    commit id: \"Add login form\"\n    commit id: \"Add validation\"\n    checkout develop\n    branch feature/dashboard\n    commit id: \"Add dashboard layout\"\n    checkout develop\n    merge feature/login id: \"Merge login\"\n    merge feature/dashboard id: \"Merge dashboard\"\n    checkout main\n    branch release/1.1\n    checkout release/1.1\n    commit id: \"Bump version\"\n    checkout main\n    merge release/1.1 id: \"Release v1.1\"\n    checkout develop\n    merge release/1.1 id: \"Sync release\""
+        }
+      ],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "git-flow",
+          "heading": "Git Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Git Flow is a structured branching model designed for projects with scheduled releases. It uses long-lived branches (main and develop) alongside short-lived support branches. The main branch always reflects production-ready code, while develop is the integration branch for features. Feature branches are created from develop and merged back when complete. Release branches are cut from develop when preparing a release, allowing final bug fixes without blocking new feature development. Hotfix branches are created from main for critical production patches and merged back into both main and develop."
+            },
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Git Flow\"\n        M[main] --> D[develop]\n        D --> F1[feature/login]\n        D --> F2[feature/dashboard]\n        F1 -->|merge| D\n        F2 -->|merge| D\n        D --> R[release/1.0]\n        R -->|merge| M\n        R -->|merge| D\n        M --> H[hotfix/critical-bug]\n        H -->|merge| M\n        H -->|merge| D\n    end"
+            }
+          ],
+          "wordCount": 87,
+          "subsections": []
+        },
+        {
+          "id": "github-flow",
+          "heading": "GitHub Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "GitHub Flow is a simpler model suited for continuous deployment. There is only one long-lived branch (main) which is always deployable. Developers create feature branches from main, open pull requests for review, and merge back to main after approval. Deployments happen directly from main after each merge. This model works well for web applications and SaaS products where you deploy frequently and do not maintain multiple release versions."
+            }
+          ],
+          "wordCount": 68,
+          "subsections": []
+        },
+        {
+          "id": "trunk-based-development",
+          "heading": "Trunk-Based Development",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Trunk-Based Development minimizes branch lifetime. Developers commit directly to main (the trunk) or use extremely short-lived branches (less than a day). Feature flags control the visibility of incomplete work in production. This approach reduces merge conflicts, encourages small incremental changes, and pairs well with continuous integration. It requires strong CI/CD pipelines and comprehensive automated testing to maintain stability."
+            }
+          ],
+          "wordCount": 58,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "branch-lifecycle",
+      "heading": "Branch Lifecycle",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "stateDiagram-v2\n    [*] --> Created: git branch / git switch -c\n    Created --> Active: developer starts work\n    Active --> Active: commits, pushes\n    Active --> InReview: pull request opened\n    InReview --> Active: changes requested\n    InReview --> Merged: PR approved & merged\n    Merged --> Deleted: git branch -d\n    Deleted --> [*]\n    Active --> Stale: no activity > 30 days\n    Stale --> Deleted: cleanup\n    Stale --> Active: resumed work"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Long-lived feature branches: Branches that live for weeks or months diverge significantly from main, leading to painful merge conflicts. Keep branches short-lived (ideally 1-3 days) and merge frequently.",
+            "Rebasing shared branches: Running git rebase on a branch that others have pulled rewrites commit history, causing duplicate commits and confusion. Only rebase local, unpushed commits.",
+            "Not updating feature branches: Working on a feature branch without periodically merging or rebasing from main means you are building on stale code. Regularly sync with git pull --rebase origin main.",
+            "Deleting branches before merging: Force-deleting a branch with git branch -D before its changes are merged elsewhere means those commits become unreachable (though recoverable via reflog temporarily).",
+            "Inconsistent naming conventions: Without agreed-upon branch naming (e.g., feature/, bugfix/, hotfix/), repositories become cluttered and it is difficult to understand what each branch represents.",
+            "Merge commit pollution: Using git merge without --no-ff on trivial branches creates unnecessary merge commits. Conversely, always fast-forwarding loses the context of feature branch boundaries. Choose a strategy and be consistent."
+          ]
+        }
+      ],
+      "wordCount": 167,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q1: What is the difference between git merge and git rebase?\ngit merge creates a new merge commit that combines two branch histories, preserving the complete topology of parallel development. git rebase replays your branch's commits on top of the target branch, creating a linear history without merge commits. Merge is safer for shared branches; rebase is preferred for cleaning up local feature branch history before merging."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q2: Explain fast-forward merge vs three-way merge.\nA fast-forward merge occurs when the target branch has no new commits since the feature branch was created — Git simply moves the branch pointer forward. A three-way merge is needed when both branches have diverged with new commits, requiring Git to create a merge commit that reconciles changes from both branches using their common ancestor as a base."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q3: What branching strategy would you recommend for a team practicing continuous deployment?\nGitHub Flow or Trunk-Based Development. Both keep the main branch always deployable. GitHub Flow uses short-lived feature branches with pull requests for review. Trunk-Based Development goes further by committing directly to main with feature flags. Both require strong CI/CD and automated testing. Git Flow is better suited for projects with scheduled releases."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q4: How do you resolve a situation where a feature branch is far behind main?\nFirst, fetch the latest main: git fetch origin main. Then either rebase your feature branch onto main (git rebase origin/main) for a clean linear history, or merge main into your feature branch (git merge origin/main) to preserve history. Resolve any conflicts, run tests, and force-push if you rebased (git push --force-with-lease)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q5: What is git cherry-pick and when would you use it?\ngit cherry-pick <commit-hash> applies a specific commit from one branch onto your current branch without merging the entire branch. Use it when you need a specific bug fix from another branch, when you accidentally committed to the wrong branch, or when backporting a fix to a release branch."
+        }
+      ],
+      "wordCount": 323,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enforce branch protection rules: Configure your Git platform to require pull request reviews, passing CI checks, and up-to-date branches before merging to main. This prevents accidental direct pushes and ensures code quality.",
+            "Automate stale branch cleanup: Set up automation (GitHub Actions, GitLab schedules) to identify and notify owners of branches with no activity for 30+ days. Stale branches clutter the repository and indicate abandoned work.",
+            "Use merge queues for high-traffic repositories: Platforms like GitHub offer merge queues that automatically rebase and test PRs in sequence, preventing broken builds from concurrent merges that individually pass CI but conflict together.",
+            "Tag releases from main after merge: After merging a release branch, immediately tag the merge commit (git tag -a v1.2.0 -m \"Release 1.2.0\"). This creates an immutable reference point for deployments and rollbacks.",
+            "Monitor branch count as a health metric: A repository with dozens of active branches may indicate process issues — work not being completed, PRs not being reviewed, or scope creep. Track branch count over time as a team health indicator."
+          ]
+        }
+      ],
+      "wordCount": 171,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Git Commands — complete reference for branching and merging commands",
+            "Pull Requests — code review workflows that depend on branching",
+            "Merge Conflicts — resolving conflicts that arise when merging branches",
+            "Local vs Remote — how branches sync between local and remote repositories"
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "# List all local branches (current branch marked with *)\ngit branch\n\n# List all branches including remote-tracking branches\ngit branch -a\n\n# Create a new branch from current HEAD\ngit branch feature/user-authentication\n\n# Switch to the new branch\ngit switch feature/user-authentication\n\n# Create and switch in one command\ngit switch -c feature/payment-gateway\n\n# Rename the current branch\ngit branch -m new-branch-name\n\n# Delete a branch that has been merged\ngit branch -d feature/completed-work\n\n# Force delete an unmerged branch (use with caution)\ngit branch -D feature/abandoned-experiment",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Switch to the target branch first\ngit switch main\n\n# Merge feature branch into main (fast-forward if possible)\ngit merge feature/user-authentication\n\n# Merge with explicit merge commit (preserves branch topology)\ngit merge --no-ff feature/user-authentication\n\n# Abort a merge that has conflicts\ngit merge --abort\n\n# Squash all commits from a branch into one (does not auto-commit)\ngit merge --squash feature/messy-history\ngit commit -m \"Add user authentication feature\"",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Rebase current branch onto main (linear history)\ngit switch feature/my-work\ngit rebase main\n\n# Interactive rebase to clean up last 5 commits\ngit rebase -i HEAD~5\n# In the editor: pick, squash, reword, edit, drop\n\n# Continue after resolving rebase conflicts\ngit rebase --continue\n\n# Abort a rebase in progress\ngit rebase --abort",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/git/git-branching.md",
+    "wordCount": 1163,
+    "sectionCount": 15
+  }
+}

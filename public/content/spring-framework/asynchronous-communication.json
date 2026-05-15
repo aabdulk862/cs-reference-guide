@@ -1,0 +1,442 @@
+{
+  "id": "spring-rest-asynchronous-communication",
+  "slug": "asynchronous-communication",
+  "title": "Asynchronous Communication",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definition",
+          "heading": "Definition:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Asynchronous programming is a programming paradigm that allows a program to initiate a task and continue executing other operations without waiting for the task to complete."
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "why-asynchronous-programming-in-web-applications",
+      "heading": "Why Asynchronous Programming in Web Applications?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "In traditional synchronous systems, a user's request (like a form submission) blocks the thread until all operations (e.g., sending emails, DB updates) complete. This causes:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Slow response times",
+            "Inefficient resource usage",
+            "Poor scalability"
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": [
+        {
+          "id": "asynchronous-programming-solves-these-issues-by",
+          "heading": "Asynchronous programming solves these issues by:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Running long tasks in the background",
+                "Allowing the main thread to handle new requests",
+                "Improving performance and responsiveness"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "when-to-use-async-in-spring-boot",
+          "heading": "When to Use Async in Spring Boot?",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Scenario",
+                "Use Async?",
+                "Why"
+              ],
+              "rows": [
+                [
+                  "Sending confirmation/mass emails",
+                  "✅",
+                  "Offload long-running I/O"
+                ],
+                [
+                  "Processing large datasets",
+                  "✅",
+                  "Avoid UI block"
+                ],
+                [
+                  "Long external API calls",
+                  "✅",
+                  "Don't block main thread"
+                ],
+                [
+                  "Real-time data reporting",
+                  "✅",
+                  "Improve concurrency"
+                ],
+                [
+                  "Simple CRUD",
+                  "❌",
+                  "Overhead not justified"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 39,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "enabling-async-in-spring-boot",
+      "heading": "Enabling Async in Spring Boot",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "required-annotations",
+          "heading": "Required Annotations:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "@EnableAsync  @SpringBootApplication\n@EnableAsync\npublic class MyApp {}",
+                "@Async  @Async\npublic void sendEmail(String to) {\n    // Email logic here\n}"
+              ]
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "asynchronous-method-return-types",
+          "heading": "Asynchronous Method Return Types",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Return Type",
+                "Description",
+                "Use Case"
+              ],
+              "rows": [
+                [
+                  "void",
+                  "Fire-and-forget",
+                  "Email sending, logging"
+                ],
+                [
+                  "Future<T>",
+                  "Basic async result",
+                  "Delay-based logic"
+                ],
+                [
+                  "CompletableFuture<T>",
+                  "Advanced handling + chaining",
+                  "Parallel tasks"
+                ],
+                [
+                  "Custom Callback Interface",
+                  "Full control",
+                  "Complex callbacks"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "examples",
+      "heading": "Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-1-void",
+          "heading": "Example 1: void",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Async\npublic void sendWelcomeEmail(String email) {\n    // Send email logic\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Use case: No return expected, just side-effect execution."
+            }
+          ],
+          "wordCount": 8,
+          "subsections": []
+        },
+        {
+          "id": "example-2-futuret",
+          "heading": "Example 2: Future<T>",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Async\npublic Future<Integer> multiply(int a, int b) {\n    return new AsyncResult<>(a * b);\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "Future<Integer> result = service.multiply(4, 5);\nInteger val = result.get(); // blocks until done",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-3-completablefuturet",
+          "heading": "Example 3: CompletableFuture<T>",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Async\npublic CompletableFuture<String> downloadFile(String url) {\n    return CompletableFuture.supplyAsync(() -> {\n        return download(url);\n    }).thenApply(content -> compress(content));\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-4-custom-callback",
+          "heading": "Example 4: Custom Callback",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface TaskCallback {\n    void onSuccess(String result);\n    void onFailure(Throwable t);\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Async\npublic void runTask(TaskCallback callback) {\n    try {\n        // task logic\n        callback.onSuccess(\"Done\");\n    } catch (Exception e) {\n        callback.onFailure(e);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "where-to-place-async",
+      "heading": "Where to Place @Async?",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Layer",
+            "Recommendation",
+            "Reason"
+          ],
+          "rows": [
+            [
+              "Controller",
+              "❌ Not recommended",
+              "Thread management issues, difficult error handling"
+            ],
+            [
+              "Service",
+              "✅ Recommended",
+              "Clean separation of concerns, better control"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 22,
+      "subsections": []
+    },
+    {
+      "id": "limitations-of-async-programming",
+      "heading": "Limitations of Async Programming",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Limitation",
+            "Description"
+          ],
+          "rows": [
+            [
+              "🔁 Thread Management",
+              "Requires thread pool config for scalability"
+            ],
+            [
+              "💾 Data Consistency",
+              "Risks if not handled properly (transactions, shared state)"
+            ],
+            [
+              "🐞 Debugging Complexity",
+              "Stack traces harder to trace"
+            ],
+            [
+              "📉 Not for Simple Tasks",
+              "Adds unnecessary complexity"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 38,
+      "subsections": []
+    },
+    {
+      "id": "why-not-in-productionall-scenarios",
+      "heading": "Why Not in Production/All Scenarios?",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "For production, async tasks should not affect consistency, stability, or data integrity.",
+            "Don’t overuse async for operations where immediate feedback or strict consistency is critical.",
+            "For time-sensitive tasks (like payments), blocking/synchronous design is safer."
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Benefit"
+          ],
+          "rows": [
+            [
+              "@EnableAsync",
+              "Activates async processing"
+            ],
+            [
+              "@Async",
+              "Runs method in a separate thread"
+            ],
+            [
+              "Return Types",
+              "Flexible handling of async results"
+            ],
+            [
+              "Ideal Use",
+              "Background jobs, external APIs, long processing"
+            ],
+            [
+              "Avoid",
+              "Simple methods, controller methods, tightly-coupled logic"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    },
+    {
+      "id": "final-notes",
+      "heading": "Final Notes",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Combine @Async with a properly configured Executor bean for better control over thread pool size.",
+            "Always monitor thread pool size in production to avoid memory and CPU exhaustion.",
+            "Use proper logging and exception handling inside async methods."
+          ]
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Async\npublic void sendWelcomeEmail(String email) {\n    // Send email logic\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Async\npublic Future<Integer> multiply(int a, int b) {\n    return new AsyncResult<>(a * b);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Future<Integer> result = service.multiply(4, 5);\nInteger val = result.get(); // blocks until done",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Async\npublic CompletableFuture<String> downloadFile(String url) {\n    return CompletableFuture.supplyAsync(() -> {\n        return download(url);\n    }).thenApply(content -> compress(content));\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface TaskCallback {\n    void onSuccess(String result);\n    void onFailure(Throwable t);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Async\npublic void runTask(TaskCallback callback) {\n    try {\n        // task logic\n        callback.onSuccess(\"Done\");\n    } catch (Exception e) {\n        callback.onFailure(e);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Asynchronous Communication.md",
+    "wordCount": 339,
+    "sectionCount": 18
+  }
+}

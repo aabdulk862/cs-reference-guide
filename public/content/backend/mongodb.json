@@ -1,0 +1,241 @@
+{
+  "id": "backend-mongodb",
+  "slug": "mongodb",
+  "title": "MongoDB",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MongoDB is a document-oriented NoSQL database storing data as flexible BSON (Binary JSON) documents",
+            "Collections are analogous to tables; documents are analogous to rows but with dynamic schemas",
+            "CRUD operations: insertOne/insertMany, find/findOne, updateOne/updateMany, deleteOne/deleteMany",
+            "Query operators: $eq, $gt, $lt, $in, $and, $or, $regex, $exists",
+            "Aggregation pipeline stages: $match, $group, $sort, $project, $lookup, $unwind",
+            "Index types: Single field, compound, multikey, text, geospatial, hashed",
+            "Replication via replica sets (primary + secondaries); sharding for horizontal scaling"
+          ]
+        }
+      ],
+      "wordCount": 73,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "MongoDB is ideal for applications with evolving schemas, hierarchical data, or document-centric access patterns. Choose MongoDB when your data naturally fits a document model (e.g., product catalogs, content management, user profiles), when you need flexible schemas that can evolve without migrations, or when your read patterns align with document boundaries. MongoDB excels at horizontal scaling through sharding for write-heavy workloads and geographically distributed deployments. It is particularly strong for rapid prototyping, real-time analytics with the aggregation framework, and applications requiring low-latency reads with embedded documents that eliminate joins. MongoDB Atlas provides a fully managed cloud offering with automated backups, monitoring, and scaling, making it accessible for teams without dedicated database administrators. The document model maps naturally to object-oriented programming, eliminating the impedance mismatch between application objects and database rows that plagues relational ORMs."
+        }
+      ],
+      "wordCount": 133,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "crud-operations",
+          "heading": "CRUD Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Insert documents\ndb.orders.insertMany([\n  {\n    customerId: ObjectId(\"64a7b2c3d4e5f6a7b8c9d0e1\"),\n    items: [\n      { productId: \"SKU-001\", name: \"Laptop\", quantity: 1, price: 999.99 },\n      { productId: \"SKU-042\", name: \"Mouse\", quantity: 2, price: 29.99 }\n    ],\n    status: \"pending\",\n    totalAmount: 1059.97,\n    createdAt: new Date(),\n    shippingAddress: {\n      street: \"123 Main St\",\n      city: \"Seattle\",\n      state: \"WA\",\n      zip: \"98101\"\n    }\n  }\n]);\n\n// Query with filters and projection\ndb.orders.find(\n  {\n    status: \"pending\",\n    totalAmount: { $gte: 100 },\n    \"shippingAddress.state\": \"WA\"\n  },\n  {\n    customerId: 1,\n    totalAmount: 1,\n    status: 1,\n    _id: 0\n  }\n).sort({ createdAt: -1 }).limit(10);\n\n// Update with operators\ndb.orders.updateOne(\n  { _id: ObjectId(\"64a7b2c3d4e5f6a7b8c9d0e1\") },\n  {\n    $set: { status: \"shipped\", shippedAt: new Date() },\n    $push: {\n      statusHistory: {\n        status: \"shipped\",\n        timestamp: new Date(),\n        updatedBy: \"system\"\n      }\n    }\n  }\n);\n\n// Delete with filter\ndb.orders.deleteMany({\n  status: \"cancelled\",\n  createdAt: { $lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }\n});",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "aggregation-pipeline",
+          "heading": "Aggregation Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Revenue analysis by product category\ndb.orders.aggregate([\n  { $match: { status: \"completed\", createdAt: { $gte: ISODate(\"2024-01-01\") } } },\n  { $unwind: \"$items\" },\n  {\n    $lookup: {\n      from: \"products\",\n      localField: \"items.productId\",\n      foreignField: \"sku\",\n      as: \"productDetails\"\n    }\n  },\n  { $unwind: \"$productDetails\" },\n  {\n    $group: {\n      _id: \"$productDetails.category\",\n      totalRevenue: { $sum: { $multiply: [\"$items.price\", \"$items.quantity\"] } },\n      orderCount: { $sum: 1 },\n      avgOrderValue: { $avg: { $multiply: [\"$items.price\", \"$items.quantity\"] } }\n    }\n  },\n  { $sort: { totalRevenue: -1 } },\n  {\n    $project: {\n      category: \"$_id\",\n      totalRevenue: { $round: [\"$totalRevenue\", 2] },\n      orderCount: 1,\n      avgOrderValue: { $round: [\"$avgOrderValue\", 2] },\n      _id: 0\n    }\n  }\n]);",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "indexing-strategies",
+          "heading": "Indexing Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Compound index for common query patterns\ndb.orders.createIndex(\n  { customerId: 1, status: 1, createdAt: -1 },\n  { name: \"customer_status_date_idx\" }\n);\n\n// Partial index for active orders only\ndb.orders.createIndex(\n  { createdAt: -1 },\n  {\n    partialFilterExpression: { status: { $in: [\"pending\", \"processing\"] } },\n    name: \"active_orders_idx\"\n  }\n);\n\n// TTL index for automatic document expiration\ndb.sessions.createIndex(\n  { lastAccessedAt: 1 },\n  { expireAfterSeconds: 3600, name: \"session_ttl_idx\" }\n);\n\n// Text index for full-text search\ndb.products.createIndex(\n  { name: \"text\", description: \"text\", tags: \"text\" },\n  { weights: { name: 10, tags: 5, description: 1 } }\n);",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"MongoDB Replica Set\"\n        PRIMARY[Primary Node<br/>Reads + Writes]\n        SEC1[Secondary 1<br/>Replication]\n        SEC2[Secondary 2<br/>Replication]\n        ARB[Arbiter<br/>Voting Only]\n        \n        PRIMARY -->|Oplog Replication| SEC1\n        PRIMARY -->|Oplog Replication| SEC2\n        PRIMARY -.->|Heartbeat| ARB\n        SEC1 -.->|Heartbeat| ARB\n        SEC2 -.->|Heartbeat| ARB\n    end\n    \n    subgraph \"Client Application\"\n        DRIVER[MongoDB Driver]\n        DRIVER -->|Write Concern: majority| PRIMARY\n        DRIVER -->|Read Preference: secondaryPreferred| SEC1\n    end\n    \n    subgraph \"Sharded Cluster\"\n        MONGOS[mongos Router]\n        CONFIG[Config Servers<br/>Metadata]\n        SHARD1[Shard 1<br/>Replica Set]\n        SHARD2[Shard 2<br/>Replica Set]\n        \n        MONGOS --> CONFIG\n        MONGOS --> SHARD1\n        MONGOS --> SHARD2\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Aggregation Pipeline\"\n        MATCH[$match<br/>Filter Documents] --> UNWIND[$unwind<br/>Flatten Arrays]\n        UNWIND --> GROUP[$group<br/>Aggregate Values]\n        GROUP --> SORT[$sort<br/>Order Results]\n        SORT --> PROJECT[$project<br/>Shape Output]\n        PROJECT --> OUT[$out<br/>Write Results]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Unbounded document growth: Using $push without limits causes documents to exceed the 16MB BSON limit. Use the bucket pattern or capped arrays with $slice to prevent unbounded growth in arrays.",
+            "Missing indexes on query fields: Full collection scans on large collections cause severe performance degradation. Use explain(\"executionStats\") to verify queries use indexes and check for COLLSCAN stages.",
+            "Over-embedding vs. over-referencing: Embedding everything creates large documents with wasted bandwidth. Referencing everything requires multiple queries (no joins in MongoDB). Design based on access patterns: embed data that is always accessed together, reference data accessed independently.",
+            "Write concern too low: Using w: 0 or w: 1 without j: true risks data loss during primary failover. For critical data, use w: \"majority\" with j: true to ensure writes survive replica set elections.",
+            "Schema design without considering queries: Designing schemas based on data relationships (like relational modeling) rather than query patterns leads to poor performance. Always design your schema around your most common read and write operations."
+          ]
+        }
+      ],
+      "wordCount": 162,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Content management systems: MongoDB's flexible schema handles diverse content types (articles, videos, podcasts) with varying metadata fields without requiring schema migrations as content types evolve. Publishers like Forbes and The New York Times use MongoDB to manage millions of content documents with complex taxonomies and real-time personalization.",
+            "Real-time analytics: The aggregation framework with change streams enables real-time dashboards that react to data changes, computing metrics like active users, conversion rates, and revenue in near real-time. Change streams provide a reliable event-driven interface for triggering downstream processing without polling.",
+            "IoT and time-series data: MongoDB's time-series collections (5.0+) with automatic bucketing efficiently store and query sensor data, telemetry, and event logs with built-in compression and expiration. The columnar compression achieves up to 90% storage reduction compared to regular collections for time-series workloads.",
+            "E-commerce product catalogs: Products with vastly different attributes (electronics vs. clothing vs. books) fit naturally into MongoDB's document model without sparse columns or entity-attribute-value anti-patterns. Faceted search and dynamic filtering are straightforward with compound indexes and the aggregation framework."
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose MongoDB over a relational database?\nA: Choose MongoDB when your data has a natural document structure, schemas need to evolve frequently without downtime, you need horizontal scaling for write-heavy workloads, or your access patterns align with document boundaries. Relational databases are better when you need complex multi-table transactions, strict referential integrity, or your data is highly normalized with many relationships."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between embedding and referencing in MongoDB schema design.\nA: Embedding stores related data within a single document, providing atomic operations and single-query reads but increasing document size. Referencing stores related data in separate collections with ObjectId links, reducing duplication but requiring multiple queries or $lookup. Embed for one-to-few relationships accessed together; reference for one-to-many relationships, frequently updated subdocuments, or data exceeding 16MB limits."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does MongoDB ensure high availability?\nA: MongoDB uses replica sets with automatic failover. A replica set has one primary (handles writes) and multiple secondaries (replicate via the oplog). If the primary fails, secondaries hold an election using the Raft-like protocol to choose a new primary, typically completing failover within 10-12 seconds. Write concern majority ensures acknowledged writes survive failover."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the aggregation pipeline and when would you use it over simple queries?\nA: The aggregation pipeline processes documents through sequential stages (match, group, sort, project, lookup, etc.) for complex data transformations. Use it for analytics (grouping, counting, averaging), data reshaping, joining collections via $lookup, or computing derived fields. Simple find() queries suffice for basic filtering and projection without transformation."
+        }
+      ],
+      "wordCount": 255,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Connection pooling: Configure maxPoolSize based on your application's concurrency. The default (100) is often too high for small services. Monitor connections.current and connections.available server metrics. Set minPoolSize to avoid cold-start latency for connection establishment during traffic spikes.",
+            "Read preference strategy: Use primaryPreferred for consistency-critical reads, secondaryPreferred for analytics queries to offload the primary, and nearest for geographically distributed deployments to minimize latency. Configure maxStalenessSeconds to prevent reading from severely lagging secondaries that could return stale data.",
+            "Index maintenance: Regularly review indexes with db.collection.getIndexes() and remove unused ones (they consume RAM and slow writes). Use the $indexStats aggregation stage to identify indexes with zero usage. Build indexes in the background on secondaries first, then step down the primary to minimize production impact.",
+            "Monitoring essentials: Track opcounters (operations/sec), repl.lag (replication delay), wiredTiger.cache.bytes currently in the cache vs. configured cache size, and globalLock.currentQueue for lock contention. Set up alerts for replication lag exceeding 10 seconds and cache utilization above 80%.",
+            "Schema versioning: Use a schemaVersion field in documents to handle schema evolution gracefully. Implement lazy migration patterns where documents are upgraded to the latest schema version on read, avoiding expensive bulk migrations that lock collections during updates."
+          ]
+        }
+      ],
+      "wordCount": 194,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Framework - Spring Data MongoDB provides repository abstractions for MongoDB",
+            "Apache Kafka - MongoDB Kafka Connector enables change data capture to Kafka topics",
+            "Java - MongoDB Java Driver for application integration"
+          ]
+        }
+      ],
+      "wordCount": 32,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// Insert documents\ndb.orders.insertMany([\n  {\n    customerId: ObjectId(\"64a7b2c3d4e5f6a7b8c9d0e1\"),\n    items: [\n      { productId: \"SKU-001\", name: \"Laptop\", quantity: 1, price: 999.99 },\n      { productId: \"SKU-042\", name: \"Mouse\", quantity: 2, price: 29.99 }\n    ],\n    status: \"pending\",\n    totalAmount: 1059.97,\n    createdAt: new Date(),\n    shippingAddress: {\n      street: \"123 Main St\",\n      city: \"Seattle\",\n      state: \"WA\",\n      zip: \"98101\"\n    }\n  }\n]);\n\n// Query with filters and projection\ndb.orders.find(\n  {\n    status: \"pending\",\n    totalAmount: { $gte: 100 },\n    \"shippingAddress.state\": \"WA\"\n  },\n  {\n    customerId: 1,\n    totalAmount: 1,\n    status: 1,\n    _id: 0\n  }\n).sort({ createdAt: -1 }).limit(10);\n\n// Update with operators\ndb.orders.updateOne(\n  { _id: ObjectId(\"64a7b2c3d4e5f6a7b8c9d0e1\") },\n  {\n    $set: { status: \"shipped\", shippedAt: new Date() },\n    $push: {\n      statusHistory: {\n        status: \"shipped\",\n        timestamp: new Date(),\n        updatedBy: \"system\"\n      }\n    }\n  }\n);\n\n// Delete with filter\ndb.orders.deleteMany({\n  status: \"cancelled\",\n  createdAt: { $lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }\n});",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Revenue analysis by product category\ndb.orders.aggregate([\n  { $match: { status: \"completed\", createdAt: { $gte: ISODate(\"2024-01-01\") } } },\n  { $unwind: \"$items\" },\n  {\n    $lookup: {\n      from: \"products\",\n      localField: \"items.productId\",\n      foreignField: \"sku\",\n      as: \"productDetails\"\n    }\n  },\n  { $unwind: \"$productDetails\" },\n  {\n    $group: {\n      _id: \"$productDetails.category\",\n      totalRevenue: { $sum: { $multiply: [\"$items.price\", \"$items.quantity\"] } },\n      orderCount: { $sum: 1 },\n      avgOrderValue: { $avg: { $multiply: [\"$items.price\", \"$items.quantity\"] } }\n    }\n  },\n  { $sort: { totalRevenue: -1 } },\n  {\n    $project: {\n      category: \"$_id\",\n      totalRevenue: { $round: [\"$totalRevenue\", 2] },\n      orderCount: 1,\n      avgOrderValue: { $round: [\"$avgOrderValue\", 2] },\n      _id: 0\n    }\n  }\n]);",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Compound index for common query patterns\ndb.orders.createIndex(\n  { customerId: 1, status: 1, createdAt: -1 },\n  { name: \"customer_status_date_idx\" }\n);\n\n// Partial index for active orders only\ndb.orders.createIndex(\n  { createdAt: -1 },\n  {\n    partialFilterExpression: { status: { $in: [\"pending\", \"processing\"] } },\n    name: \"active_orders_idx\"\n  }\n);\n\n// TTL index for automatic document expiration\ndb.sessions.createIndex(\n  { lastAccessedAt: 1 },\n  { expireAfterSeconds: 3600, name: \"session_ttl_idx\" }\n);\n\n// Text index for full-text search\ndb.products.createIndex(\n  { name: \"text\", description: \"text\", tags: \"text\" },\n  { weights: { name: 10, tags: 5, description: 1 } }\n);",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/backend/mongodb.md",
+    "wordCount": 1018,
+    "sectionCount": 12
+  }
+}

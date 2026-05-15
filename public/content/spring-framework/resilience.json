@@ -1,0 +1,546 @@
+{
+  "id": "resilience-resilience",
+  "slug": "resilience",
+  "title": "Resilience",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "fault-tolerance-in-microservices",
+      "heading": "Fault Tolerance in Microservices",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "problem-scenario",
+      "heading": "Problem Scenario",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Imagine CustomerController in the CustomerMS microservice trying to contact FriendFamilyMS. Due to:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Network failure",
+            "Service slowness",
+            "Service downtime",
+            "Other runtime errors"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "…the CustomerController cannot receive a response."
+        }
+      ],
+      "wordCount": 27,
+      "subsections": [
+        {
+          "id": "what-should-the-application-do",
+          "heading": "What Should the Application Do?",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Continuously retrying is inefficient and harmful — similar to trying to start a broken vehicle indefinitely."
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-life-analogy",
+      "heading": "Real-Life Analogy",
+      "level": 2,
+      "content": [
+        {
+          "type": "blockquote",
+          "text": "Scenario: You're late to work. Your vehicle won't start."
+        }
+      ],
+      "wordCount": 9,
+      "subsections": [
+        {
+          "id": "possible-actions",
+          "heading": "Possible actions:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Keep trying until it works → ⛔ Miss your meeting → ⛔ Performance drops → ⛔ Miss promotion.",
+                "Try a few times, stop, retry later → ✅ Better control, avoids cascading damage.",
+                "Try a few times, use alternate transport → ✅ Pragmatic fallback."
+              ]
+            },
+            {
+              "type": "blockquote",
+              "text": "Lesson: Walk away or find alternatives before a failure snowballs."
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "cascading-failures-in-microservices",
+      "heading": "Cascading Failures in Microservices",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-scenario",
+          "heading": "Example Scenario:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Let us say that Service 4 has become slow. Thus, the requests to service 4 start queuing up. ",
+                "Because of this latency, the requests start queuing up in all the related services slowing everything down. This is a cascading failure. ",
+                "The better approach would be that if a particular service is taking more time than usual, then don’t send any more requests to that service. Stop requests to that service. This prevents an increase in the slowing down of other services. "
+              ]
+            }
+          ],
+          "wordCount": 81,
+          "subsections": []
+        },
+        {
+          "id": "analogy",
+          "heading": "Analogy:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "In an electric circuit, a fuse blows on high voltage to protect other devices.",
+                "Similarly, block further requests to a failing service to protect the system. "
+              ]
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "resilience-patterns",
+      "heading": "Resilience Patterns",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-circuit-breaker-pattern",
+          "heading": "1. Circuit Breaker Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Definition:"
+            },
+            {
+              "type": "paragraph",
+              "text": "Temporarily stops requests to a failing service when errors exceed a threshold."
+            },
+            {
+              "type": "paragraph",
+              "text": "States:"
+            },
+            {
+              "type": "table",
+              "headers": [
+                "State",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "Closed",
+                  "Normal operation. Requests go through. Errors are counted."
+                ],
+                [
+                  "Open",
+                  "Requests are blocked. After sleep time, transition to Half-Open."
+                ],
+                [
+                  "Half-Open",
+                  "Send a limited test request. If it succeeds, close circuit. Else, reopen."
+                ]
+              ]
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        },
+        {
+          "id": "2-fallback-pattern",
+          "heading": "2. Fallback Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Definition:"
+            },
+            {
+              "type": "paragraph",
+              "text": "Provide an alternative response or behavior when the main service fails."
+            },
+            {
+              "type": "blockquote",
+              "text": "Example: If FriendFamilyMS fails, return an empty friend list instead of failing the whole app."
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "implementing-resilience-using-hystrix",
+      "heading": "Implementing Resilience Using Hystrix",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "step-1-add-dependency",
+          "heading": "Step 1: Add Dependency",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In infytel-customer's pom.xml:"
+            },
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 3,
+          "subsections": []
+        },
+        {
+          "id": "step-2-enable-circuit-breaker",
+          "heading": "Step 2: Enable Circuit Breaker",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In your main class:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@EnableCircuitBreaker\n@SpringBootApplication\npublic class CustomerApplication { ... }",
+              "runnable": false
+            }
+          ],
+          "wordCount": 4,
+          "subsections": []
+        },
+        {
+          "id": "step-3-annotate-controller-method",
+          "heading": "Step 3: Annotate Controller Method",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@HystrixCommand(fallbackMethod = \"getCustomerProfileFallback\")\n@GetMapping(\"/customers/{phoneNo}\")\npublic CustomerDTO getCustomerProfile(@PathVariable Long phoneNo) {\n    CustomerDTO custDTO = custService.getCustomerProfile(phoneNo);\n\n    PlanDTO planDTO = template.getForObject(\"http://PLANMS/plans/\" + custDTO.getCurrentPlan().getPlanId(), PlanDTO.class);\n    custDTO.setCurrentPlan(planDTO);\n\n    List<Long> friends = template.getForObject(\"http://FRIENDFAMILYMS/customers/\" + phoneNo + \"/friends\", List.class);\n    custDTO.setFriendAndFamily(friends);\n\n    return custDTO;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "step-4-create-fallback-method",
+          "heading": "Step 4: Create Fallback Method",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public CustomerDTO getCustomerProfileFallback(Long phoneNo) {\n    return new CustomerDTO(); // Returns minimal/empty fallback data\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "step-5-configure-hystrix-properties",
+          "heading": "Step 5: Configure Hystrix Properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Add in application.properties:"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "hystrix.command.default.circuitBreaker.requestVolumeThreshold=10\nhystrix.command.default.metrics.rollingStats.timeInMilliseconds=10000\nhystrix.command.default.circuitBreaker.errorThresholdPercentage=50\nhystrix.command.default.circuitBreaker.sleepWindowInMilliseconds=10000",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Definitions:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "requestVolumeThreshold – Minimum # of requests in window before tripping circuit.",
+                "rollingStats.timeInMilliseconds – Stats window duration.",
+                "errorThresholdPercentage – Error % to trip circuit.",
+                "sleepWindowInMilliseconds – Wait time before retrying a request."
+              ]
+            }
+          ],
+          "wordCount": 35,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "optional-ignore-certain-exceptions",
+      "heading": "Optional: Ignore Certain Exceptions",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@HystrixCommand(fallbackMethod=\"getCustomerProfileFallback\", ignoreExceptions=TypeMismatchException.class)\npublic CustomerDTO getCustomerProfile(@PathVariable Long phoneNo) {\n    // ...\n}",
+          "runnable": false
+        },
+        {
+          "type": "blockquote",
+          "text": "Hystrix will not trigger fallback on TypeMismatchException, rethrowing it directly."
+        },
+        {
+          "type": "paragraph",
+          "text": "You can specify multiple exceptions:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ignoreExceptions = {TypeMismatchException.class, IllegalStateException.class}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 15,
+      "subsections": []
+    },
+    {
+      "id": "asynchronous-execution-with-hystrix",
+      "heading": "Asynchronous Execution with Hystrix",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "why-use-async",
+          "heading": "Why Use Async?",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Synchronous calls block the thread until response.",
+                "If two services are independent, we can parallelize using async calls."
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "async-hystrix-example",
+          "heading": "Async Hystrix Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public Future<PlanDTO> getSpecificPlans(int planId) {\n    return new AsyncResult<PlanDTO>() {\n        @Override\n        public PlanDTO invoke() {\n            return template.getForObject(\"http://PLANMS/plans/\" + planId, PlanDTO.class);\n        }\n    };\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Returns a Future<PlanDTO>.",
+                "Executes in a separate thread."
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "In the controller:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "Future<PlanDTO> planDTOFuture = hystService.getSpecificPlans(custDTO.getCurrentPlan().getPlanId());\ncustDTO.setCurrentPlan(planDTOFuture.get()); // Blocking call to get result",
+              "runnable": false
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Concept",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Circuit Breaker",
+              "Prevents cascading failures by blocking calls after repeated failures."
+            ],
+            [
+              "Fallback",
+              "Provides alternate logic when the service call fails."
+            ],
+            [
+              "Hystrix",
+              "Java library to implement circuit breaker, fallback, timeouts, async execution."
+            ],
+            [
+              "Asynchronous Execution",
+              "Allows independent services to run in parallel."
+            ],
+            [
+              "Fail Fast",
+              "Quickly fail instead of waiting for long, failing operations."
+            ],
+            [
+              "Fail Silent",
+              "Fail gracefully using fallback responses."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 60,
+      "subsections": []
+    },
+    {
+      "id": "analogy-mapping",
+      "heading": "Analogy Mapping",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Microservices Term",
+            "Real-World Analogy"
+          ],
+          "rows": [
+            [
+              "Circuit Breaker",
+              "Electrical fuse"
+            ],
+            [
+              "Fallback",
+              "Alternate transport when car breaks down"
+            ],
+            [
+              "Cascading Failure",
+              "Chain reaction of slow devices"
+            ],
+            [
+              "Retry endlessly",
+              "Trying to start a dead car repeatedly"
+            ],
+            [
+              "Resilience",
+              "Finding alternatives & recovering"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@EnableCircuitBreaker\n@SpringBootApplication\npublic class CustomerApplication { ... }",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@HystrixCommand(fallbackMethod = \"getCustomerProfileFallback\")\n@GetMapping(\"/customers/{phoneNo}\")\npublic CustomerDTO getCustomerProfile(@PathVariable Long phoneNo) {\n    CustomerDTO custDTO = custService.getCustomerProfile(phoneNo);\n\n    PlanDTO planDTO = template.getForObject(\"http://PLANMS/plans/\" + custDTO.getCurrentPlan().getPlanId(), PlanDTO.class);\n    custDTO.setCurrentPlan(planDTO);\n\n    List<Long> friends = template.getForObject(\"http://FRIENDFAMILYMS/customers/\" + phoneNo + \"/friends\", List.class);\n    custDTO.setFriendAndFamily(friends);\n\n    return custDTO;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public CustomerDTO getCustomerProfileFallback(Long phoneNo) {\n    return new CustomerDTO(); // Returns minimal/empty fallback data\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "hystrix.command.default.circuitBreaker.requestVolumeThreshold=10\nhystrix.command.default.metrics.rollingStats.timeInMilliseconds=10000\nhystrix.command.default.circuitBreaker.errorThresholdPercentage=50\nhystrix.command.default.circuitBreaker.sleepWindowInMilliseconds=10000",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@HystrixCommand(fallbackMethod=\"getCustomerProfileFallback\", ignoreExceptions=TypeMismatchException.class)\npublic CustomerDTO getCustomerProfile(@PathVariable Long phoneNo) {\n    // ...\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ignoreExceptions = {TypeMismatchException.class, IllegalStateException.class}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public Future<PlanDTO> getSpecificPlans(int planId) {\n    return new AsyncResult<PlanDTO>() {\n        @Override\n        public PlanDTO invoke() {\n            return template.getForObject(\"http://PLANMS/plans/\" + planId, PlanDTO.class);\n        }\n    };\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Future<PlanDTO> planDTOFuture = hystService.getSpecificPlans(custDTO.getCurrentPlan().getPlanId());\ncustDTO.setCurrentPlan(planDTOFuture.get()); // Blocking call to get result",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Resilience/Resilience.md",
+    "wordCount": 470,
+    "sectionCount": 23
+  }
+}

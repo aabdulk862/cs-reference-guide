@@ -1,0 +1,310 @@
+{
+  "id": "spring-batch-job-examples",
+  "slug": "job-examples",
+  "title": "Job Examples",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A Job in Spring Batch represents a complete batch process that can be executed from start to finish. Each job consists of one or more steps, and each step can be Tasklet-based or Chunk-oriented."
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "1-file-processing-job-csv-database",
+      "heading": "1. File Processing Job (CSV → Database)",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: Import employee records from a CSV file and save them into a database."
+        }
+      ],
+      "wordCount": 15,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Read CSV file (FlatFileItemReader)",
+                "Process each record (ItemProcessor – optional, e.g., validate or transform)",
+                "Write to database (JdbcBatchItemWriter)"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "job-configuration",
+          "heading": "Job Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic Job importEmployeeJob(JobBuilderFactory jobBuilderFactory,\n                             Step importEmployeeStep) {\n    return jobBuilderFactory.get(\"importEmployeeJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(importEmployeeStep)\n            .build();\n}\n\n@Bean\npublic Step importEmployeeStep(StepBuilderFactory stepBuilderFactory,\n                               FlatFileItemReader<Employee> reader,\n                               ItemProcessor<Employee, Employee> processor,\n                               JdbcBatchItemWriter<Employee> writer) {\n    return stepBuilderFactory.get(\"importEmployeeStep\")\n            .<Employee, Employee>chunk(100)\n            .reader(reader)\n            .processor(processor)\n            .writer(writer)\n            .build();\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Chunk size 100 → 100 records are processed and written in a single transaction.",
+                "RunIdIncrementer allows multiple executions with the same job parameters."
+              ]
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "2-xml-processing-job",
+      "heading": "2. XML Processing Job",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: Read employee data from XML and export it to a JSON file."
+        }
+      ],
+      "wordCount": 14,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Read XML (StaxEventItemReader)",
+                "Transform or validate employee records (ItemProcessor)",
+                "Write JSON (JsonFileItemWriter)"
+              ]
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        },
+        {
+          "id": "job-configuration",
+          "heading": "Job Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic Job xmlToJsonJob(JobBuilderFactory jobBuilderFactory, Step xmlToJsonStep) {\n    return jobBuilderFactory.get(\"xmlToJsonJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(xmlToJsonStep)\n            .build();\n}\n\n@Bean\npublic Step xmlToJsonStep(StepBuilderFactory stepBuilderFactory,\n                          StaxEventItemReader<Employee> reader,\n                          ItemProcessor<Employee, Employee> processor,\n                          JsonFileItemWriter<Employee> writer) {\n    return stepBuilderFactory.get(\"xmlToJsonStep\")\n            .<Employee, Employee>chunk(50)\n            .reader(reader)\n            .processor(processor)\n            .writer(writer)\n            .build();\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Converts XML to JSON in batch mode.",
+                "Chunk size 50 → 50 items per transaction."
+              ]
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "3-tasklet-job-single-step",
+      "heading": "3. Tasklet Job (Single Step)",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: Clean temporary files or send a report email."
+        }
+      ],
+      "wordCount": 10,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Execute a single task (Tasklet) "
+              ]
+            }
+          ],
+          "wordCount": 5,
+          "subsections": []
+        },
+        {
+          "id": "job-configuration",
+          "heading": "Job Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic Job cleanupJob(JobBuilderFactory jobBuilderFactory, Step cleanupStep) {\n    return jobBuilderFactory.get(\"cleanupJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(cleanupStep)\n            .build();\n}\n\n@Bean\npublic Step cleanupStep(StepBuilderFactory stepBuilderFactory) {\n    return stepBuilderFactory.get(\"cleanupStep\")\n            .tasklet((contribution, chunkContext) -> {\n                Files.walk(Paths.get(\"/tmp\"))\n                        .filter(Files::isRegularFile)\n                        .forEach(file -> file.toFile().delete());\n                return RepeatStatus.FINISHED;\n            })\n            .build();\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Tasklet is suitable for one-off or repeated tasks that do not involve chunk-oriented processing."
+              ]
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "4-database-cleanup-job",
+      "heading": "4. Database Cleanup Job",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: Archive old records from orders table and delete them after archiving."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Read old orders (JdbcCursorItemReader)",
+                "Process to archive format (ItemProcessor)",
+                "Write to archive table (JdbcBatchItemWriter)",
+                "Delete old records (TaskletStep)"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Combines chunk-oriented step (read/process/write) with a Tasklet step (deletion).",
+                "Supports multiple steps in a single job for complex workflows."
+              ]
+            }
+          ],
+          "wordCount": 38,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "5-multi-step-etl-job",
+      "heading": "5. Multi-Step ETL Job",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: ETL process – Extract data from DB, transform it, and load to another DB."
+        }
+      ],
+      "wordCount": 16,
+      "subsections": [
+        {
+          "id": "steps",
+          "heading": "Steps",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Step 1: Extract data from source DB (JdbcCursorItemReader)",
+                "Step 2: Transform data (ItemProcessor)",
+                "Step 3: Load data into target DB (JdbcBatchItemWriter)",
+                "Step 4: Send summary email (Tasklet)"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "This is a real-world ETL job.",
+                "Each step is modular → easier to maintain and monitor."
+              ]
+            }
+          ],
+          "wordCount": 44,
+          "subsections": []
+        }
+      ]
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job importEmployeeJob(JobBuilderFactory jobBuilderFactory,\n                             Step importEmployeeStep) {\n    return jobBuilderFactory.get(\"importEmployeeJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(importEmployeeStep)\n            .build();\n}\n\n@Bean\npublic Step importEmployeeStep(StepBuilderFactory stepBuilderFactory,\n                               FlatFileItemReader<Employee> reader,\n                               ItemProcessor<Employee, Employee> processor,\n                               JdbcBatchItemWriter<Employee> writer) {\n    return stepBuilderFactory.get(\"importEmployeeStep\")\n            .<Employee, Employee>chunk(100)\n            .reader(reader)\n            .processor(processor)\n            .writer(writer)\n            .build();\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job xmlToJsonJob(JobBuilderFactory jobBuilderFactory, Step xmlToJsonStep) {\n    return jobBuilderFactory.get(\"xmlToJsonJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(xmlToJsonStep)\n            .build();\n}\n\n@Bean\npublic Step xmlToJsonStep(StepBuilderFactory stepBuilderFactory,\n                          StaxEventItemReader<Employee> reader,\n                          ItemProcessor<Employee, Employee> processor,\n                          JsonFileItemWriter<Employee> writer) {\n    return stepBuilderFactory.get(\"xmlToJsonStep\")\n            .<Employee, Employee>chunk(50)\n            .reader(reader)\n            .processor(processor)\n            .writer(writer)\n            .build();\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job cleanupJob(JobBuilderFactory jobBuilderFactory, Step cleanupStep) {\n    return jobBuilderFactory.get(\"cleanupJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(cleanupStep)\n            .build();\n}\n\n@Bean\npublic Step cleanupStep(StepBuilderFactory stepBuilderFactory) {\n    return stepBuilderFactory.get(\"cleanupStep\")\n            .tasklet((contribution, chunkContext) -> {\n                Files.walk(Paths.get(\"/tmp\"))\n                        .filter(Files::isRegularFile)\n                        .forEach(file -> file.toFile().delete());\n                return RepeatStatus.FINISHED;\n            })\n            .build();\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Job Examples.md",
+    "wordCount": 274,
+    "sectionCount": 14
+  }
+}

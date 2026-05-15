@@ -1,0 +1,461 @@
+{
+  "id": "infrastructure-kubernetes-eks",
+  "slug": "kubernetes-eks",
+  "title": "Kubernetes & EKS",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Kubernetes (K8s) is a container orchestration platform that automates deployment, scaling, and management of containerized applications",
+            "Core objects: Pods (smallest deployable unit), Deployments (declarative updates), Services (stable networking), Ingress (HTTP routing)",
+            "Configuration: ConfigMaps (non-sensitive config), Secrets (sensitive data), Namespaces (resource isolation)",
+            "Control plane components: kube-apiserver, etcd, kube-scheduler, kube-controller-manager, cloud-controller-manager",
+            "Node components: kubelet, kube-proxy, container runtime (containerd, CRI-O)",
+            "Amazon EKS is a managed Kubernetes service that runs the control plane across multiple AWS Availability Zones",
+            "Helm is the package manager for Kubernetes, using charts to define, install, and upgrade applications",
+            "kubectl is the primary CLI tool for interacting with Kubernetes clusters"
+          ]
+        }
+      ],
+      "wordCount": 100,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kubernetes is the right choice when you need to orchestrate containerized workloads at scale across multiple nodes with automated self-healing, rolling deployments, and service discovery. Use Kubernetes when your application consists of multiple microservices that need independent scaling, when you require zero-downtime deployments, or when you need consistent environments across development, staging, and production. Choose EKS specifically when your infrastructure is AWS-native and you want to avoid managing the Kubernetes control plane yourself, need deep integration with AWS services like IAM, ALB, EBS, and CloudWatch, or require compliance certifications that AWS provides out of the box. Kubernetes is overkill for simple single-container applications or small teams without dedicated platform engineering resources. Consider simpler alternatives like ECS Fargate for straightforward container workloads that do not need the full flexibility of Kubernetes."
+        }
+      ],
+      "wordCount": 130,
+      "subsections": []
+    },
+    {
+      "id": "pods",
+      "heading": "Pods",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Pods are the smallest deployable units in Kubernetes, representing one or more containers that share network namespace, storage volumes, and lifecycle. Every container in a pod shares the same IP address and port space, communicating via localhost. Pods are ephemeral by design and should never be created directly in production. Instead, use higher-level controllers like Deployments or StatefulSets that manage pod lifecycle, handle restarts, and maintain desired replica counts."
+        },
+        {
+          "type": "paragraph",
+          "text": "A pod specification defines the containers, their resource requests and limits, volume mounts, environment variables, and health checks. Resource requests guarantee minimum CPU and memory allocation for scheduling decisions, while limits cap the maximum resources a container can consume. Liveness probes detect deadlocked containers and trigger restarts, while readiness probes control whether traffic is routed to the pod. Startup probes handle slow-starting containers without conflicting with liveness checks."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-container pods use sidecar patterns for cross-cutting concerns like logging agents, service mesh proxies (Envoy in Istio), or configuration reloaders. Init containers run sequentially before app containers start, useful for database migrations, configuration fetching, or dependency checks."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: order-service\n  labels:\n    app: order-service\n    version: v2\nspec:\n  initContainers:\n    - name: db-migration\n      image: order-service:v2\n      command: [\"./migrate\", \"--target\", \"latest\"]\n  containers:\n    - name: app\n      image: order-service:v2\n      ports:\n        - containerPort: 8080\n      resources:\n        requests:\n          cpu: \"250m\"\n          memory: \"512Mi\"\n        limits:\n          cpu: \"1000m\"\n          memory: \"1Gi\"\n      livenessProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 30\n        periodSeconds: 10\n      readinessProbe:\n        httpGet:\n          path: /actuator/health/readiness\n          port: 8080\n        initialDelaySeconds: 5\n        periodSeconds: 5\n      env:\n        - name: SPRING_PROFILES_ACTIVE\n          value: \"production\"\n        - name: DB_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: db-credentials\n              key: password\n    - name: envoy-sidecar\n      image: envoyproxy/envoy:v1.28\n      ports:\n        - containerPort: 9901",
+          "runnable": false
+        }
+      ],
+      "wordCount": 174,
+      "subsections": []
+    },
+    {
+      "id": "deployments",
+      "heading": "Deployments",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Deployments provide declarative updates for Pods and ReplicaSets. You describe a desired state in a Deployment spec, and the Deployment controller changes the actual state to match at a controlled rate. Deployments manage the full lifecycle of application releases including rolling updates, rollbacks, scaling, and pause/resume operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "The rolling update strategy replaces pods incrementally, ensuring that a minimum number of pods remain available during the update. The maxUnavailable field controls how many pods can be taken down simultaneously, while maxSurge controls how many extra pods can be created above the desired count. This ensures zero-downtime deployments when combined with proper readiness probes. The recreate strategy terminates all existing pods before creating new ones, useful for applications that cannot run multiple versions simultaneously."
+        },
+        {
+          "type": "paragraph",
+          "text": "Deployment history is maintained through ReplicaSets. Each update creates a new ReplicaSet while scaling down the previous one. You can roll back to any previous revision using kubectl rollout undo. The revisionHistoryLimit field controls how many old ReplicaSets are retained for rollback purposes."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  replicas: 3\n  revisionHistoryLimit: 5\n  selector:\n    matchLabels:\n      app: order-service\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 1\n  template:\n    metadata:\n      labels:\n        app: order-service\n        version: v2\n      annotations:\n        prometheus.io/scrape: \"true\"\n        prometheus.io/port: \"8080\"\n    spec:\n      containers:\n        - name: app\n          image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.1.0\n          ports:\n            - containerPort: 8080\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"1Gi\"\n            limits:\n              cpu: \"2000m\"\n              memory: \"2Gi\"\n          readinessProbe:\n            httpGet:\n              path: /actuator/health/readiness\n              port: 8080\n            initialDelaySeconds: 10\n            periodSeconds: 5\n          livenessProbe:\n            httpGet:\n              path: /actuator/health/liveness\n              port: 8080\n            initialDelaySeconds: 30\n            periodSeconds: 10\n      topologySpreadConstraints:\n        - maxSkew: 1\n          topologyKey: topology.kubernetes.io/zone\n          whenUnsatisfiable: DoNotSchedule\n          labelSelector:\n            matchLabels:\n              app: order-service",
+          "runnable": false
+        }
+      ],
+      "wordCount": 165,
+      "subsections": []
+    },
+    {
+      "id": "services",
+      "heading": "Services",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Services provide stable network endpoints for accessing a set of pods. Since pods are ephemeral and their IP addresses change on restart, Services abstract away pod identity and provide a consistent DNS name and virtual IP (ClusterIP) that routes traffic to healthy pods matching the label selector. Kubernetes supports four service types that address different networking requirements."
+        },
+        {
+          "type": "paragraph",
+          "text": "ClusterIP is the default type, exposing the service on an internal cluster IP reachable only from within the cluster. NodePort exposes the service on a static port on every node, allowing external access via any node IP. LoadBalancer provisions an external load balancer (cloud-provider specific) that routes traffic to the service. ExternalName maps the service to a DNS CNAME record, useful for referencing external services."
+        },
+        {
+          "type": "paragraph",
+          "text": "Service discovery works through DNS. Every service gets a DNS entry in the format <service-name>.<namespace>.svc.cluster.local. Pods can reach services by name within the same namespace or by fully qualified domain name across namespaces. Kube-proxy maintains iptables or IPVS rules on each node to route traffic from the service ClusterIP to backend pod IPs."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  type: ClusterIP\n  selector:\n    app: order-service\n  ports:\n    - name: http\n      port: 80\n      targetPort: 8080\n      protocol: TCP\n    - name: grpc\n      port: 9090\n      targetPort: 9090\n      protocol: TCP\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service-external\n  namespace: production\n  annotations:\n    service.beta.kubernetes.io/aws-load-balancer-type: \"nlb\"\n    service.beta.kubernetes.io/aws-load-balancer-scheme: \"internet-facing\"\nspec:\n  type: LoadBalancer\n  selector:\n    app: order-service\n  ports:\n    - port: 443\n      targetPort: 8080\n      protocol: TCP",
+          "runnable": false
+        }
+      ],
+      "wordCount": 175,
+      "subsections": []
+    },
+    {
+      "id": "ingress",
+      "heading": "Ingress",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Ingress manages external HTTP and HTTPS access to services within the cluster. Unlike LoadBalancer services that provision one load balancer per service, Ingress consolidates routing rules into a single entry point, reducing cost and complexity. An Ingress resource defines rules that map hostnames and URL paths to backend services, while an Ingress Controller (like AWS ALB Ingress Controller, NGINX, or Traefik) implements those rules."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ingress supports host-based routing (directing traffic based on the Host header), path-based routing (directing traffic based on URL path prefixes), TLS termination (handling HTTPS certificates), and default backends for unmatched requests. In AWS EKS environments, the AWS Load Balancer Controller creates Application Load Balancers (ALBs) from Ingress resources, providing native integration with ACM certificates, WAF, and target group health checks."
+        },
+        {
+          "type": "paragraph",
+          "text": "Path types control how URL matching works. Prefix matches URL path prefixes, Exact requires an exact path match, and ImplementationSpecific delegates matching behavior to the Ingress Controller. Annotations customize controller-specific behavior like SSL redirect, connection timeouts, and rate limiting."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: api-ingress\n  namespace: production\n  annotations:\n    kubernetes.io/ingress.class: alb\n    alb.ingress.kubernetes.io/scheme: internet-facing\n    alb.ingress.kubernetes.io/target-type: ip\n    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123\n    alb.ingress.kubernetes.io/listen-ports: '[{\"HTTPS\":443}]'\n    alb.ingress.kubernetes.io/ssl-redirect: \"443\"\n    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health\n    alb.ingress.kubernetes.io/group.name: production-api\nspec:\n  rules:\n    - host: api.example.com\n      http:\n        paths:\n          - path: /orders\n            pathType: Prefix\n            backend:\n              service:\n                name: order-service\n                port:\n                  number: 80\n          - path: /users\n            pathType: Prefix\n            backend:\n              service:\n                name: user-service\n                port:\n                  number: 80\n          - path: /payments\n            pathType: Prefix\n            backend:\n              service:\n                name: payment-service\n                port:\n                  number: 80\n  tls:\n    - hosts:\n        - api.example.com\n      secretName: api-tls-cert",
+          "runnable": false
+        }
+      ],
+      "wordCount": 163,
+      "subsections": []
+    },
+    {
+      "id": "configmaps",
+      "heading": "ConfigMaps",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "ConfigMaps decouple configuration from container images, allowing you to change application behavior without rebuilding images. They store non-sensitive configuration data as key-value pairs that can be consumed by pods as environment variables, command-line arguments, or configuration files mounted as volumes. ConfigMaps are namespace-scoped and can hold up to 1 MiB of data."
+        },
+        {
+          "type": "paragraph",
+          "text": "When mounted as volumes, ConfigMaps create files in the container filesystem where each key becomes a filename and the value becomes the file content. This approach works well for configuration files like application.yml, nginx.conf, or logging configurations. Volume-mounted ConfigMaps support automatic updates: when the ConfigMap is modified, the mounted files are eventually updated (with a delay of up to the kubelet sync period, typically 60 seconds). Environment variables sourced from ConfigMaps do not update automatically and require a pod restart."
+        },
+        {
+          "type": "paragraph",
+          "text": "Immutable ConfigMaps (setting immutable: true) protect against accidental changes and improve cluster performance by allowing the kubelet to skip watching for updates. Use immutable ConfigMaps for configurations that should never change during a deployment lifecycle."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: order-service-config\n  namespace: production\ndata:\n  application.yml: |\n    server:\n      port: 8080\n      shutdown: graceful\n    spring:\n      datasource:\n        url: jdbc:postgresql://db-cluster.internal:5432/orders\n        hikari:\n          maximum-pool-size: 20\n          minimum-idle: 5\n          connection-timeout: 30000\n    management:\n      endpoints:\n        web:\n          exposure:\n            include: health,metrics,prometheus\n      health:\n        readiness-state:\n          enabled: true\n        liveness-state:\n          enabled: true\n    kafka:\n      bootstrap-servers: kafka-cluster.internal:9092\n      consumer:\n        group-id: order-processing\n        auto-offset-reset: earliest\n  log4j2.xml: |\n    <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n    <Configuration status=\"WARN\">\n      <Appenders>\n        <Console name=\"Console\" target=\"SYSTEM_OUT\">\n          <JsonLayout compact=\"true\" eventEol=\"true\"/>\n        </Console>\n      </Appenders>\n      <Loggers>\n        <Root level=\"info\">\n          <AppenderRef ref=\"Console\"/>\n        </Root>\n      </Loggers>\n    </Configuration>\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\nspec:\n  template:\n    spec:\n      containers:\n        - name: app\n          volumeMounts:\n            - name: config-volume\n              mountPath: /app/config\n              readOnly: true\n          env:\n            - name: SPRING_CONFIG_LOCATION\n              value: \"file:/app/config/application.yml\"\n      volumes:\n        - name: config-volume\n          configMap:\n            name: order-service-config",
+          "runnable": false
+        }
+      ],
+      "wordCount": 167,
+      "subsections": []
+    },
+    {
+      "id": "secrets",
+      "heading": "Secrets",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Secrets store sensitive data such as passwords, OAuth tokens, TLS certificates, and SSH keys. While structurally similar to ConfigMaps, Secrets are base64-encoded at rest and can be encrypted using envelope encryption with AWS KMS in EKS. Kubernetes restricts Secret access through RBAC policies and limits their exposure in the API server audit logs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Secrets come in several built-in types: Opaque (arbitrary key-value data), kubernetes.io/tls (TLS certificate and key pairs), kubernetes.io/dockerconfigjson (container registry credentials), and kubernetes.io/service-account-token (service account tokens). Like ConfigMaps, Secrets can be consumed as environment variables or mounted as files. Volume-mounted Secrets are stored in tmpfs (RAM-backed filesystem) on the node, never written to disk."
+        },
+        {
+          "type": "paragraph",
+          "text": "In production EKS environments, use AWS Secrets Manager or AWS Systems Manager Parameter Store with the Secrets Store CSI Driver to inject secrets directly into pods without storing them in etcd. This approach provides automatic rotation, centralized audit logging, and eliminates the need to manage base64-encoded values in YAML manifests."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "apiVersion: v1\nkind: Secret\nmetadata:\n  name: db-credentials\n  namespace: production\ntype: Opaque\ndata:\n  username: b3JkZXItc2VydmljZQ==\n  password: c3VwZXItc2VjcmV0LXBhc3N3b3Jk\n  connection-string: amRiYzpwb3N0Z3Jlc3FsOi8vZGItY2x1c3Rlci5pbnRlcm5hbDo1NDMyL29yZGVycw==\n---\n# Using Secrets Store CSI Driver with AWS Secrets Manager\napiVersion: secrets-store.csi.x-k8s.io/v1\nkind: SecretProviderClass\nmetadata:\n  name: aws-secrets\n  namespace: production\nspec:\n  provider: aws\n  parameters:\n    objects: |\n      - objectName: \"production/order-service/db-credentials\"\n        objectType: \"secretsmanager\"\n        jmesPath:\n          - path: username\n            objectAlias: db-username\n          - path: password\n            objectAlias: db-password\n  secretObjects:\n    - secretName: db-credentials-synced\n      type: Opaque\n      data:\n        - objectName: db-username\n          key: username\n        - objectName: db-password\n          key: password",
+          "runnable": false
+        }
+      ],
+      "wordCount": 156,
+      "subsections": []
+    },
+    {
+      "id": "helm-charts",
+      "heading": "Helm Charts",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Helm is the package manager for Kubernetes that simplifies deploying complex applications through reusable, versioned chart packages. A Helm chart is a collection of templates, default values, and metadata that generates Kubernetes manifests. Charts support parameterization through values files, enabling the same chart to deploy across development, staging, and production environments with different configurations."
+        },
+        {
+          "type": "paragraph",
+          "text": "A chart consists of a Chart.yaml (metadata), values.yaml (default configuration), and a templates/ directory containing Go-templated Kubernetes manifests. Helm uses a three-way merge for upgrades, comparing the previous manifest, the current live state, and the new desired state to compute the minimal set of changes. Chart dependencies allow composing complex applications from smaller, reusable charts (e.g., a microservice chart depending on a PostgreSQL chart)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Helm repositories host packaged charts for distribution. Organizations typically maintain private chart repositories (using ChartMuseum, Harbor, or S3-backed repos) alongside public charts from Artifact Hub. Helm 3 removed the server-side Tiller component, storing release state as Secrets in the target namespace, improving security and multi-tenancy."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# Chart.yaml\napiVersion: v2\nname: order-service\ndescription: Order processing microservice\nversion: 1.2.0\nappVersion: \"2.1.0\"\ndependencies:\n  - name: postgresql\n    version: \"12.x\"\n    repository: \"https://charts.bitnami.com/bitnami\"\n    condition: postgresql.enabled\n\n# values.yaml\nreplicaCount: 3\nimage:\n  repository: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service\n  tag: \"2.1.0\"\n  pullPolicy: IfNotPresent\n\nresources:\n  requests:\n    cpu: 500m\n    memory: 1Gi\n  limits:\n    cpu: 2000m\n    memory: 2Gi\n\nautoscaling:\n  enabled: true\n  minReplicas: 3\n  maxReplicas: 10\n  targetCPUUtilizationPercentage: 70\n\ningress:\n  enabled: true\n  className: alb\n  hosts:\n    - host: api.example.com\n      paths:\n        - path: /orders\n          pathType: Prefix\n\npostgresql:\n  enabled: false  # Use external RDS in production",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "# Common Helm commands\nhelm repo add bitnami https://charts.bitnami.com/bitnami\nhelm repo update\n\n# Install a release\nhelm install order-service ./charts/order-service \\\n  --namespace production \\\n  --values values-production.yaml\n\n# Upgrade with new values\nhelm upgrade order-service ./charts/order-service \\\n  --namespace production \\\n  --values values-production.yaml \\\n  --set image.tag=2.2.0\n\n# Rollback to previous revision\nhelm rollback order-service 1 --namespace production\n\n# View release history\nhelm history order-service --namespace production",
+          "runnable": false
+        }
+      ],
+      "wordCount": 163,
+      "subsections": []
+    },
+    {
+      "id": "eks-specific-configuration",
+      "heading": "EKS-Specific Configuration",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Amazon EKS provides a managed Kubernetes control plane that runs across multiple Availability Zones, handling etcd persistence, API server scaling, and automatic version upgrades. EKS integrates deeply with AWS services for networking (VPC CNI), load balancing (ALB/NLB), storage (EBS CSI, EFS CSI), identity (IAM Roles for Service Accounts), and observability (CloudWatch Container Insights)."
+        },
+        {
+          "type": "paragraph",
+          "text": "The VPC CNI plugin assigns real VPC IP addresses to pods, enabling direct communication with other AWS services without NAT. Each pod gets an IP from the node's subnet, which means subnet sizing directly impacts the maximum number of pods per node. For large clusters, use prefix delegation mode to assign /28 prefixes instead of individual IPs, increasing pod density from approximately 30 to 110 pods per m5.large instance."
+        },
+        {
+          "type": "paragraph",
+          "text": "IAM Roles for Service Accounts (IRSA) provides fine-grained AWS permissions to individual pods without sharing node-level credentials. IRSA uses OIDC federation to map Kubernetes service accounts to IAM roles, following the principle of least privilege. Each microservice gets its own IAM role with only the permissions it needs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Managed node groups automate EC2 instance provisioning, AMI updates, and graceful draining during upgrades. For cost optimization, use a mix of On-Demand instances for baseline capacity and Spot instances for burst workloads with Karpenter or Cluster Autoscaler handling dynamic scaling. Fargate profiles eliminate node management entirely by running pods on serverless compute, ideal for batch jobs or low-traffic services."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# EKS cluster configuration with eksctl\napiVersion: eksctl.io/v1alpha5\nkind: ClusterConfig\nmetadata:\n  name: production-cluster\n  region: us-east-1\n  version: \"1.28\"\n\nvpc:\n  cidr: \"10.0.0.0/16\"\n  nat:\n    gateway: HighlyAvailable\n\nmanagedNodeGroups:\n  - name: system\n    instanceType: m5.large\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 5\n    labels:\n      role: system\n    iam:\n      withAddonPolicies:\n        albIngress: true\n        cloudWatch: true\n        ebs: true\n\n  - name: application\n    instanceTypes:\n      - m5.xlarge\n      - m5a.xlarge\n    desiredCapacity: 5\n    minSize: 3\n    maxSize: 20\n    spot: true\n    labels:\n      role: application\n    taints:\n      - key: spot\n        value: \"true\"\n        effect: PreferNoSchedule\n\niam:\n  withOIDC: true\n  serviceAccounts:\n    - metadata:\n        name: order-service\n        namespace: production\n      attachPolicyARNs:\n        - \"arn:aws:iam::123456789:policy/OrderServicePolicy\"\n    - metadata:\n        name: aws-load-balancer-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        awsLoadBalancerController: true\n\naddons:\n  - name: vpc-cni\n    version: latest\n    configurationValues: '{\"env\":{\"ENABLE_PREFIX_DELEGATION\":\"true\"}}'\n  - name: coredns\n    version: latest\n  - name: kube-proxy\n    version: latest\n  - name: aws-ebs-csi-driver\n    version: latest\n    serviceAccountRoleARN: \"arn:aws:iam::123456789:role/EBSCSIDriverRole\"\n\nfargateProfiles:\n  - name: batch-jobs\n    selectors:\n      - namespace: batch\n        labels:\n          compute: fargate",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# IAM Roles for Service Accounts (IRSA) - Pod-level AWS permissions\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/OrderServiceRole\n---\n# Karpenter provisioner for dynamic node scaling\napiVersion: karpenter.sh/v1beta1\nkind: NodePool\nmetadata:\n  name: default\nspec:\n  template:\n    spec:\n      requirements:\n        - key: kubernetes.io/arch\n          operator: In\n          values: [\"amd64\"]\n        - key: karpenter.sh/capacity-type\n          operator: In\n          values: [\"on-demand\", \"spot\"]\n        - key: karpenter.k8s.aws/instance-family\n          operator: In\n          values: [\"m5\", \"m5a\", \"c5\", \"c5a\", \"r5\", \"r5a\"]\n      nodeClassRef:\n        name: default\n  limits:\n    cpu: \"1000\"\n    memory: 1000Gi\n  disruption:\n    consolidationPolicy: WhenUnderutilized\n    expireAfter: 720h",
+          "runnable": false
+        }
+      ],
+      "wordCount": 229,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-data-flow",
+      "heading": "Architecture and Data Flow",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"AWS Cloud\"\n        subgraph \"VPC\"\n            subgraph \"EKS Control Plane (AWS Managed)\"\n                API[kube-apiserver]\n                ETCD[etcd]\n                SCHED[kube-scheduler]\n                CM[controller-manager]\n            end\n            \n            subgraph \"Worker Nodes (Customer Managed)\"\n                subgraph \"Node 1 - AZ-a\"\n                    P1[Pod: order-svc]\n                    P2[Pod: envoy-proxy]\n                    KP1[kube-proxy]\n                    KL1[kubelet]\n                end\n                subgraph \"Node 2 - AZ-b\"\n                    P3[Pod: order-svc]\n                    P4[Pod: payment-svc]\n                    KP2[kube-proxy]\n                    KL2[kubelet]\n                end\n                subgraph \"Node 3 - AZ-c\"\n                    P5[Pod: order-svc]\n                    P6[Pod: user-svc]\n                    KP3[kube-proxy]\n                    KL3[kubelet]\n                end\n            end\n            \n            ALB[Application Load Balancer]\n            RDS[(RDS PostgreSQL)]\n            CACHE[(ElastiCache Redis)]\n        end\n        \n        ECR[ECR Registry]\n        SM[Secrets Manager]\n        CW[CloudWatch]\n    end\n    \n    CLIENT[Client] --> ALB\n    ALB --> P1\n    ALB --> P3\n    ALB --> P5\n    P1 --> RDS\n    P1 --> CACHE\n    KL1 --> API\n    KL2 --> API\n    KL3 --> API\n    API --> ETCD\n    P1 -.-> SM\n    P1 -.-> CW\n    ECR -.-> KL1"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Not setting resource requests/limits: Pods without resource constraints can starve other workloads or get OOMKilled unpredictably. Always set both requests (for scheduling) and limits (for protection).",
+            "Using latest tag in production: The latest tag is mutable and makes rollbacks impossible. Always use immutable, versioned image tags tied to your CI/CD pipeline.",
+            "Ignoring pod disruption budgets: Without PDBs, cluster upgrades or node drains can take down all replicas simultaneously. Define PDBs to guarantee minimum availability during voluntary disruptions.",
+            "Storing secrets in plain ConfigMaps: ConfigMaps are not encrypted and appear in plain text in etcd. Use Secrets with envelope encryption or external secret managers for sensitive data.",
+            "Skipping readiness probes: Without readiness probes, Kubernetes routes traffic to pods that are not ready to serve requests, causing errors during deployments and restarts.",
+            "Over-provisioning with fixed replica counts: Static replica counts waste resources during low traffic and under-serve during peaks. Use Horizontal Pod Autoscaler (HPA) with appropriate metrics.",
+            "Not using namespaces for isolation: Running everything in the default namespace makes RBAC, resource quotas, and network policies impossible to manage effectively."
+          ]
+        }
+      ],
+      "wordCount": 176,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kubernetes and EKS power production microservice architectures at enterprise scale. A typical e-commerce platform runs order processing, inventory management, payment gateway, and notification services as independent deployments, each scaling based on traffic patterns. During flash sales, HPA scales order services from 5 to 50 replicas within minutes while Karpenter provisions additional Spot nodes to handle the burst."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial services use EKS for real-time transaction processing with strict compliance requirements. IRSA ensures each service accesses only its designated DynamoDB tables and S3 buckets. Network policies enforce east-west traffic restrictions between namespaces, and Pod Security Standards prevent privilege escalation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Platform teams use Helm charts with GitOps (ArgoCD or Flux) to manage hundreds of microservices across multiple clusters. A single chart template handles deployment, service, ingress, HPA, and PDB resources, with environment-specific values files controlling configuration per cluster."
+        }
+      ],
+      "wordCount": 135,
+      "subsections": []
+    },
+    {
+      "id": "common-interview-questions",
+      "heading": "Common Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does a Kubernetes Deployment perform a rolling update?\nA: The Deployment controller creates a new ReplicaSet with the updated pod template, gradually scales it up while scaling down the old ReplicaSet, respecting maxUnavailable and maxSurge constraints to maintain availability throughout the transition."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Service and an Ingress?\nA: A Service provides L4 (TCP/UDP) load balancing to pods within the cluster using a stable ClusterIP, while an Ingress provides L7 (HTTP/HTTPS) routing with host-based and path-based rules, TLS termination, and consolidates multiple services behind a single external endpoint."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does IAM Roles for Service Accounts (IRSA) work in EKS?\nA: IRSA uses an OIDC identity provider associated with the EKS cluster. When a pod with an annotated service account starts, the mutating webhook injects AWS credentials as projected token volumes. The AWS SDK exchanges this token for temporary IAM credentials scoped to the role specified in the service account annotation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you handle secrets rotation in a Kubernetes cluster?\nA: Use the Secrets Store CSI Driver with AWS Secrets Manager for automatic rotation. The CSI driver periodically syncs secrets from the external store, and applications either watch for file changes on mounted volumes or use a sidecar that triggers graceful restarts when secrets change."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens when a node fails in a Kubernetes cluster?\nA: The kubelet stops sending heartbeats, and after the node-monitor-grace-period (default 40s), the node controller marks the node as NotReady. After the pod-eviction-timeout (default 5m), pods are evicted and rescheduled to healthy nodes by the scheduler, respecting topology constraints and resource availability."
+        }
+      ],
+      "wordCount": 267,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enable Pod Disruption Budgets (PDBs) for all production workloads to prevent cluster operations from causing outages. Set minAvailable to at least N-1 for N replicas or use maxUnavailable: 1 to ensure gradual draining during node upgrades.",
+            "Use topology spread constraints to distribute pods across availability zones. This prevents a single AZ failure from taking down all replicas of a service and improves latency by placing pods closer to users.",
+            "Implement resource quotas per namespace to prevent any single team or service from consuming all cluster resources. Combine with LimitRanges to set default requests/limits for pods that do not specify them.",
+            "Monitor etcd performance in self-managed clusters. Etcd latency above 100ms indicates storage or network issues that will degrade the entire control plane. In EKS, AWS handles this, but monitor API server latency via CloudWatch.",
+            "Use Karpenter over Cluster Autoscaler for faster, more flexible node provisioning. Karpenter makes scheduling decisions in seconds rather than minutes and supports diverse instance type selection for cost optimization.",
+            "Implement network policies to restrict pod-to-pod communication. Default-deny policies with explicit allow rules follow zero-trust principles and limit blast radius during security incidents."
+          ]
+        }
+      ],
+      "wordCount": 186,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Docker & Containerization — container fundamentals that Kubernetes orchestrates",
+            "AWS Services — cloud services that integrate with EKS clusters",
+            "CI/CD Pipelines — automated deployment workflows targeting Kubernetes",
+            "Observability — monitoring and logging for containerized workloads"
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: order-service\n  labels:\n    app: order-service\n    version: v2\nspec:\n  initContainers:\n    - name: db-migration\n      image: order-service:v2\n      command: [\"./migrate\", \"--target\", \"latest\"]\n  containers:\n    - name: app\n      image: order-service:v2\n      ports:\n        - containerPort: 8080\n      resources:\n        requests:\n          cpu: \"250m\"\n          memory: \"512Mi\"\n        limits:\n          cpu: \"1000m\"\n          memory: \"1Gi\"\n      livenessProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 30\n        periodSeconds: 10\n      readinessProbe:\n        httpGet:\n          path: /actuator/health/readiness\n          port: 8080\n        initialDelaySeconds: 5\n        periodSeconds: 5\n      env:\n        - name: SPRING_PROFILES_ACTIVE\n          value: \"production\"\n        - name: DB_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: db-credentials\n              key: password\n    - name: envoy-sidecar\n      image: envoyproxy/envoy:v1.28\n      ports:\n        - containerPort: 9901",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  replicas: 3\n  revisionHistoryLimit: 5\n  selector:\n    matchLabels:\n      app: order-service\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 1\n  template:\n    metadata:\n      labels:\n        app: order-service\n        version: v2\n      annotations:\n        prometheus.io/scrape: \"true\"\n        prometheus.io/port: \"8080\"\n    spec:\n      containers:\n        - name: app\n          image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.1.0\n          ports:\n            - containerPort: 8080\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"1Gi\"\n            limits:\n              cpu: \"2000m\"\n              memory: \"2Gi\"\n          readinessProbe:\n            httpGet:\n              path: /actuator/health/readiness\n              port: 8080\n            initialDelaySeconds: 10\n            periodSeconds: 5\n          livenessProbe:\n            httpGet:\n              path: /actuator/health/liveness\n              port: 8080\n            initialDelaySeconds: 30\n            periodSeconds: 10\n      topologySpreadConstraints:\n        - maxSkew: 1\n          topologyKey: topology.kubernetes.io/zone\n          whenUnsatisfiable: DoNotSchedule\n          labelSelector:\n            matchLabels:\n              app: order-service",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  type: ClusterIP\n  selector:\n    app: order-service\n  ports:\n    - name: http\n      port: 80\n      targetPort: 8080\n      protocol: TCP\n    - name: grpc\n      port: 9090\n      targetPort: 9090\n      protocol: TCP\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service-external\n  namespace: production\n  annotations:\n    service.beta.kubernetes.io/aws-load-balancer-type: \"nlb\"\n    service.beta.kubernetes.io/aws-load-balancer-scheme: \"internet-facing\"\nspec:\n  type: LoadBalancer\n  selector:\n    app: order-service\n  ports:\n    - port: 443\n      targetPort: 8080\n      protocol: TCP",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: api-ingress\n  namespace: production\n  annotations:\n    kubernetes.io/ingress.class: alb\n    alb.ingress.kubernetes.io/scheme: internet-facing\n    alb.ingress.kubernetes.io/target-type: ip\n    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123\n    alb.ingress.kubernetes.io/listen-ports: '[{\"HTTPS\":443}]'\n    alb.ingress.kubernetes.io/ssl-redirect: \"443\"\n    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health\n    alb.ingress.kubernetes.io/group.name: production-api\nspec:\n  rules:\n    - host: api.example.com\n      http:\n        paths:\n          - path: /orders\n            pathType: Prefix\n            backend:\n              service:\n                name: order-service\n                port:\n                  number: 80\n          - path: /users\n            pathType: Prefix\n            backend:\n              service:\n                name: user-service\n                port:\n                  number: 80\n          - path: /payments\n            pathType: Prefix\n            backend:\n              service:\n                name: payment-service\n                port:\n                  number: 80\n  tls:\n    - hosts:\n        - api.example.com\n      secretName: api-tls-cert",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: order-service-config\n  namespace: production\ndata:\n  application.yml: |\n    server:\n      port: 8080\n      shutdown: graceful\n    spring:\n      datasource:\n        url: jdbc:postgresql://db-cluster.internal:5432/orders\n        hikari:\n          maximum-pool-size: 20\n          minimum-idle: 5\n          connection-timeout: 30000\n    management:\n      endpoints:\n        web:\n          exposure:\n            include: health,metrics,prometheus\n      health:\n        readiness-state:\n          enabled: true\n        liveness-state:\n          enabled: true\n    kafka:\n      bootstrap-servers: kafka-cluster.internal:9092\n      consumer:\n        group-id: order-processing\n        auto-offset-reset: earliest\n  log4j2.xml: |\n    <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n    <Configuration status=\"WARN\">\n      <Appenders>\n        <Console name=\"Console\" target=\"SYSTEM_OUT\">\n          <JsonLayout compact=\"true\" eventEol=\"true\"/>\n        </Console>\n      </Appenders>\n      <Loggers>\n        <Root level=\"info\">\n          <AppenderRef ref=\"Console\"/>\n        </Root>\n      </Loggers>\n    </Configuration>\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\nspec:\n  template:\n    spec:\n      containers:\n        - name: app\n          volumeMounts:\n            - name: config-volume\n              mountPath: /app/config\n              readOnly: true\n          env:\n            - name: SPRING_CONFIG_LOCATION\n              value: \"file:/app/config/application.yml\"\n      volumes:\n        - name: config-volume\n          configMap:\n            name: order-service-config",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: Secret\nmetadata:\n  name: db-credentials\n  namespace: production\ntype: Opaque\ndata:\n  username: b3JkZXItc2VydmljZQ==\n  password: c3VwZXItc2VjcmV0LXBhc3N3b3Jk\n  connection-string: amRiYzpwb3N0Z3Jlc3FsOi8vZGItY2x1c3Rlci5pbnRlcm5hbDo1NDMyL29yZGVycw==\n---\n# Using Secrets Store CSI Driver with AWS Secrets Manager\napiVersion: secrets-store.csi.x-k8s.io/v1\nkind: SecretProviderClass\nmetadata:\n  name: aws-secrets\n  namespace: production\nspec:\n  provider: aws\n  parameters:\n    objects: |\n      - objectName: \"production/order-service/db-credentials\"\n        objectType: \"secretsmanager\"\n        jmesPath:\n          - path: username\n            objectAlias: db-username\n          - path: password\n            objectAlias: db-password\n  secretObjects:\n    - secretName: db-credentials-synced\n      type: Opaque\n      data:\n        - objectName: db-username\n          key: username\n        - objectName: db-password\n          key: password",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Chart.yaml\napiVersion: v2\nname: order-service\ndescription: Order processing microservice\nversion: 1.2.0\nappVersion: \"2.1.0\"\ndependencies:\n  - name: postgresql\n    version: \"12.x\"\n    repository: \"https://charts.bitnami.com/bitnami\"\n    condition: postgresql.enabled\n\n# values.yaml\nreplicaCount: 3\nimage:\n  repository: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service\n  tag: \"2.1.0\"\n  pullPolicy: IfNotPresent\n\nresources:\n  requests:\n    cpu: 500m\n    memory: 1Gi\n  limits:\n    cpu: 2000m\n    memory: 2Gi\n\nautoscaling:\n  enabled: true\n  minReplicas: 3\n  maxReplicas: 10\n  targetCPUUtilizationPercentage: 70\n\ningress:\n  enabled: true\n  className: alb\n  hosts:\n    - host: api.example.com\n      paths:\n        - path: /orders\n          pathType: Prefix\n\npostgresql:\n  enabled: false  # Use external RDS in production",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Common Helm commands\nhelm repo add bitnami https://charts.bitnami.com/bitnami\nhelm repo update\n\n# Install a release\nhelm install order-service ./charts/order-service \\\n  --namespace production \\\n  --values values-production.yaml\n\n# Upgrade with new values\nhelm upgrade order-service ./charts/order-service \\\n  --namespace production \\\n  --values values-production.yaml \\\n  --set image.tag=2.2.0\n\n# Rollback to previous revision\nhelm rollback order-service 1 --namespace production\n\n# View release history\nhelm history order-service --namespace production",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# EKS cluster configuration with eksctl\napiVersion: eksctl.io/v1alpha5\nkind: ClusterConfig\nmetadata:\n  name: production-cluster\n  region: us-east-1\n  version: \"1.28\"\n\nvpc:\n  cidr: \"10.0.0.0/16\"\n  nat:\n    gateway: HighlyAvailable\n\nmanagedNodeGroups:\n  - name: system\n    instanceType: m5.large\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 5\n    labels:\n      role: system\n    iam:\n      withAddonPolicies:\n        albIngress: true\n        cloudWatch: true\n        ebs: true\n\n  - name: application\n    instanceTypes:\n      - m5.xlarge\n      - m5a.xlarge\n    desiredCapacity: 5\n    minSize: 3\n    maxSize: 20\n    spot: true\n    labels:\n      role: application\n    taints:\n      - key: spot\n        value: \"true\"\n        effect: PreferNoSchedule\n\niam:\n  withOIDC: true\n  serviceAccounts:\n    - metadata:\n        name: order-service\n        namespace: production\n      attachPolicyARNs:\n        - \"arn:aws:iam::123456789:policy/OrderServicePolicy\"\n    - metadata:\n        name: aws-load-balancer-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        awsLoadBalancerController: true\n\naddons:\n  - name: vpc-cni\n    version: latest\n    configurationValues: '{\"env\":{\"ENABLE_PREFIX_DELEGATION\":\"true\"}}'\n  - name: coredns\n    version: latest\n  - name: kube-proxy\n    version: latest\n  - name: aws-ebs-csi-driver\n    version: latest\n    serviceAccountRoleARN: \"arn:aws:iam::123456789:role/EBSCSIDriverRole\"\n\nfargateProfiles:\n  - name: batch-jobs\n    selectors:\n      - namespace: batch\n        labels:\n          compute: fargate",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# IAM Roles for Service Accounts (IRSA) - Pod-level AWS permissions\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/OrderServiceRole\n---\n# Karpenter provisioner for dynamic node scaling\napiVersion: karpenter.sh/v1beta1\nkind: NodePool\nmetadata:\n  name: default\nspec:\n  template:\n    spec:\n      requirements:\n        - key: kubernetes.io/arch\n          operator: In\n          values: [\"amd64\"]\n        - key: karpenter.sh/capacity-type\n          operator: In\n          values: [\"on-demand\", \"spot\"]\n        - key: karpenter.k8s.aws/instance-family\n          operator: In\n          values: [\"m5\", \"m5a\", \"c5\", \"c5a\", \"r5\", \"r5a\"]\n      nodeClassRef:\n        name: default\n  limits:\n    cpu: \"1000\"\n    memory: 1000Gi\n  disruption:\n    consolidationPolicy: WhenUnderutilized\n    expireAfter: 720h",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/infrastructure/kubernetes-eks.md",
+    "wordCount": 2421,
+    "sectionCount": 16
+  }
+}

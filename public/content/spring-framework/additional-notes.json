@@ -1,0 +1,338 @@
+{
+  "id": "spring-microservices-additional-notes",
+  "slug": "additional-notes",
+  "title": "Additional Notes",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "example-configuration-in-a-microservice-applicationproperties",
+      "heading": "Example Configuration in a Microservice (application.properties):",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "spring.datasource.driverClassName=com.mysql.jdbc.Driver\nspring.datasource.url=jdbc:mysql://localhost/infytel\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=update\nspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5Dialect",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "problem-with-embedded-configuration",
+      "heading": "Problem with Embedded Configuration",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "When configuration files are embedded inside each microservice:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Any change in configuration requires modifying multiple microservices.",
+            "Each microservice must be rebuilt and redeployed after changes.",
+            "If a microservice has multiple instances, all instances must be redeployed.",
+            "Difficult to maintain consistency across multiple environments (dev, test, prod)."
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Environment Variables: ",
+            "External Files: ",
+            "Centralized Configuration Server (Ideal Solution): "
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    },
+    {
+      "id": "1-create-a-git-repository-for-configuration",
+      "heading": "1. Create a Git Repository for Configuration",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Create a repo (e.g., spring-microservice-config) in GitHub or an internal Git server.",
+            "Add common properties in a file called application.properties:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "spring.datasource.driverClassName=com.mysql.jdbc.Driver\nspring.jpa.hibernate.ddl-auto=update\nspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5Dialect",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Create individual property files for each microservice named exactly as their spring.application.name, e.g., customer-service.properties or order-service.properties."
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "2-create-config-server-project",
+      "heading": "2. Create Config Server Project",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Create a Spring Boot project with Spring Cloud Config Server dependency:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependencyManagement>\n  <dependencies>\n    <dependency>\n      <groupId>org.springframework.cloud</groupId>\n      <artifactId>spring-cloud-dependencies</artifactId>\n      <version>Greenwich.RELEASE</version>\n      <type>pom</type>\n      <scope>import</scope>\n    </dependency>\n  </dependencies>\n</dependencyManagement>\n\n<dependency>\n  <groupId>org.springframework.cloud</groupId>\n  <artifactId>spring-cloud-config-server</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Configure Git repo URL in application.properties or application.yml of config server:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "server.port=1111\nspring.application.name=config-server\nspring.cloud.config.server.git.uri=https://github.com/yourorg/spring-microservice-config.git",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enable Config Server by adding annotation in main application class:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@EnableConfigServer\n@SpringBootApplication\npublic class ConfigServerApplication { ... }",
+          "runnable": false
+        }
+      ],
+      "wordCount": 32,
+      "subsections": []
+    },
+    {
+      "id": "3-configure-microservices-as-config-clients",
+      "heading": "3. Configure Microservices as Config Clients",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Add Spring Cloud Config Client dependency:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependencyManagement>\n  <dependencies>\n    <dependency>\n      <groupId>org.springframework.cloud</groupId>\n      <artifactId>spring-cloud-dependencies</artifactId>\n      <version>Greenwich.RELEASE</version>\n      <type>pom</type>\n      <scope>import</scope>\n    </dependency>\n  </dependencies>\n</dependencyManagement>\n\n<dependency>\n  <groupId>org.springframework.cloud</groupId>\n  <artifactId>spring-cloud-starter-config</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Create a bootstrap.properties (or application.properties for Spring Boot >2.4.x) in each microservice specifying the config server URL:"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "spring.cloud.config.uri=http://localhost:1111\nspring.datasource.username=root\nspring.datasource.password=root",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Remove sensitive details from microservice’s application.properties."
+          ]
+        }
+      ],
+      "wordCount": 29,
+      "subsections": []
+    },
+    {
+      "id": "how-configurations-are-loaded",
+      "heading": "How Configurations are Loaded",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Cloud creates a bootstrap context (parent to application context) responsible for loading external configuration from Config Server.",
+            "Properties from Config Server take higher precedence over local properties.",
+            "bootstrap.properties or the new spring.config.import property is used to point microservices to the config server."
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The config server looks for config files named after the client’s spring.application.name.",
+            "Multiple profiles can be supported, for example: customer-service-dev.properties\ncustomer-service-prod.properties",
+            "Load order for configuration files: ",
+            "Properties in higher priority files override lower priority ones."
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Config clients fetch configuration only once at startup.",
+            "Changes made in Git after startup are not reflected automatically.",
+            "To update configurations dynamically:  <dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-actuator</artifactId>\n</dependency>  management.endpoints.web.exposure.include=*  curl -X POST http://localhost:8001/actuator/refresh",
+            "If you access properties directly via Environment.getProperty(), you do not need @RefreshScope."
+          ]
+        }
+      ],
+      "wordCount": 121,
+      "subsections": []
+    },
+    {
+      "id": "handling-multiple-microservices-and-refresh-events",
+      "heading": "Handling Multiple Microservices and Refresh Events",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Manually triggering /refresh on every microservice is tedious for large systems.",
+            "Spring Cloud Bus (with messaging middleware like RabbitMQ) can broadcast refresh events automatically to all microservices.",
+            "Spring Cloud Bus is beyond basic scope but important for real-world systems."
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "If the config server is down, microservices fallback to their local configuration.",
+            "To fail fast on config server failures, use: spring.cloud.config.failFast=true",
+            "Config server default port: 8888",
+            "Config server can be scaled horizontally for high availability.",
+            "Use Personal Access Tokens for Git authentication instead of passwords for better security.",
+            "From Spring Boot 2.4+, bootstrap.properties is deprecated; instead, use: spring.config.import=optional:configserver:http://localhost:1111"
+          ]
+        }
+      ],
+      "wordCount": 97,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Concept",
+            "Explanation"
+          ],
+          "rows": [
+            [
+              "Centralized Config Server",
+              "Single place to store microservices configuration using Git and Spring Cloud Config Server"
+            ],
+            [
+              "Bootstrap Context",
+              "Loads external configs with higher precedence before application context"
+            ],
+            [
+              "Config Client Setup",
+              "Microservices configured to fetch configs from Config Server at startup"
+            ],
+            [
+              "Refreshing Configs",
+              "Use @RefreshScope and actuator /refresh endpoint for runtime config update"
+            ],
+            [
+              "Profiles Support",
+              "Supports multiple environments with profile-specific property files"
+            ],
+            [
+              "Fail Fast",
+              "Option to fail at startup if Config Server unreachable"
+            ],
+            [
+              "Security",
+              "Use tokens for Git authentication, secure config server connections"
+            ],
+            [
+              "Cloud-native Approach",
+              "Externalized configuration supports dynamic scaling and agility in cloud environments"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 96,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "",
+      "code": "spring.datasource.driverClassName=com.mysql.jdbc.Driver\nspring.datasource.url=jdbc:mysql://localhost/infytel\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=update\nspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5Dialect",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.driverClassName=com.mysql.jdbc.Driver\nspring.jpa.hibernate.ddl-auto=update\nspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5Dialect",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependencyManagement>\n  <dependencies>\n    <dependency>\n      <groupId>org.springframework.cloud</groupId>\n      <artifactId>spring-cloud-dependencies</artifactId>\n      <version>Greenwich.RELEASE</version>\n      <type>pom</type>\n      <scope>import</scope>\n    </dependency>\n  </dependencies>\n</dependencyManagement>\n\n<dependency>\n  <groupId>org.springframework.cloud</groupId>\n  <artifactId>spring-cloud-config-server</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "server.port=1111\nspring.application.name=config-server\nspring.cloud.config.server.git.uri=https://github.com/yourorg/spring-microservice-config.git",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@EnableConfigServer\n@SpringBootApplication\npublic class ConfigServerApplication { ... }",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependencyManagement>\n  <dependencies>\n    <dependency>\n      <groupId>org.springframework.cloud</groupId>\n      <artifactId>spring-cloud-dependencies</artifactId>\n      <version>Greenwich.RELEASE</version>\n      <type>pom</type>\n      <scope>import</scope>\n    </dependency>\n  </dependencies>\n</dependencyManagement>\n\n<dependency>\n  <groupId>org.springframework.cloud</groupId>\n  <artifactId>spring-cloud-starter-config</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.cloud.config.uri=http://localhost:1111\nspring.datasource.username=root\nspring.datasource.password=root",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Centralized Configuration.md",
+    "wordCount": 466,
+    "sectionCount": 8
+  }
+}

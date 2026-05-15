@@ -1,0 +1,405 @@
+{
+  "id": "spring-security-spring-security",
+  "slug": "spring-security",
+  "title": "Spring Security",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definitions",
+          "heading": "Definitions",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Term",
+                "Definition"
+              ],
+              "rows": [
+                [
+                  "Spring Boot",
+                  "A Java-based framework used to create stand-alone, production-grade Spring applications quickly with minimal configuration."
+                ],
+                [
+                  "Spring Security",
+                  "A powerful and customizable authentication and access-control framework for securing Spring-based applications."
+                ],
+                [
+                  "UserDetailsService",
+                  "A core interface used to retrieve user-related data from a custom source (e.g., DB) for authentication."
+                ],
+                [
+                  "UserDetails",
+                  "Represents the core user information, like username, password, roles, etc."
+                ],
+                [
+                  "AuthenticationManager",
+                  "A component in Spring Security that handles authentication requests."
+                ],
+                [
+                  "PasswordEncoder",
+                  "Used to hash passwords for secure storage and comparison."
+                ],
+                [
+                  "BCrypt",
+                  "A strong hashing function used in Spring for password encryption."
+                ],
+                [
+                  "AuthorityUtils",
+                  "Utility class that converts role strings into Spring Security's GrantedAuthority list."
+                ],
+                [
+                  "WebSecurityConfigurerAdapter",
+                  "Abstract class to customize Spring Security settings like login page, URL protection, etc."
+                ]
+              ]
+            }
+          ],
+          "wordCount": 117,
+          "subsections": []
+        },
+        {
+          "id": "learning-objectives",
+          "heading": "Learning Objectives",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Create a Spring Boot-based web application using Spring Initializr.",
+                "Secure the application with Spring Security.",
+                "Implement custom login functionality using Spring’s UserDetailsService.",
+                "Protect application endpoints from unauthorized access."
+              ]
+            }
+          ],
+          "wordCount": 28,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "spring-security-architecture",
+      "heading": "Spring Security Architecture",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Authentication Flow ",
+            "Authorization ",
+            "Filters and Interceptors ",
+            "Security Context "
+          ]
+        }
+      ],
+      "wordCount": 8,
+      "subsections": [
+        {
+          "id": "key-components",
+          "heading": "Key Components",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "UserDetailsService: Loads user-specific data.",
+                "PasswordEncoder: Hashes and validates passwords.",
+                "AuthenticationManager: Central authentication engine.",
+                "SecurityFilterChain: Intercepts and processes security logic.",
+                "GrantedAuthority: Represents roles/permissions."
+              ]
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "project-implementation-steps",
+      "heading": "Project Implementation Steps",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "execute-table-scripts",
+          "heading": "Execute Table Scripts",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Execute SQL scripts for the following tables: ",
+                "Location of scripts: InfyGoMaven\\InfyGoMaven\\src\\com\\infosys\\irs\\resources"
+              ]
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "set-up-spring-boot-project",
+          "heading": "Set Up Spring Boot Project",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Open Spring Tool Suite (STS).",
+                "Import InfyGoBoot_YAML project from Demo 8.",
+                "Rename to: InfyGoBoot_SpringSecurity."
+              ]
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "include-application-files",
+          "heading": "Include Application Files",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Add all .java and .jsp files from non-Spring Boot IRS project.",
+                "Organize into correct folders: ",
+                "Note: Replace deprecated findOne() method with getOne() in service classes."
+              ]
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        },
+        {
+          "id": "add-security-package",
+          "heading": "Add Security Package",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Create package: com.infosys.irs.security"
+              ]
+            }
+          ],
+          "wordCount": 3,
+          "subsections": []
+        },
+        {
+          "id": "implement-infygouserdetailsjava",
+          "heading": "Implement InfyGoUserDetails.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Purpose: Custom implementation of UserDetails to wrap IRS user data."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class InfyGoUserDetails implements UserDetails {\n\tprivate List<String> userRoles;\n\tprivate User user;\n\n\tpublic InfyGoUserDetails(User user, List<String> userRoles) {\n\t\tthis.user = user;\n\t\tthis.userRoles = userRoles;\n\t}\n\n\t@Override\n\tpublic Collection<? extends GrantedAuthority> getAuthorities() {\n\t\tString roles = StringUtils.collectionToCommaDelimitedString(userRoles);\n\t\treturn AuthorityUtils.commaSeparatedStringToAuthorityList(roles);\n\t}\n\t@Override public String getUsername() { return user.getUserId(); }\n\t@Override public String getPassword() { return user.getPassword(); }\n\t@Override public boolean isAccountNonExpired() { return true; }\n\t@Override public boolean isAccountNonLocked() { return true; }\n\t@Override public boolean isCredentialsNonExpired() { return true; }\n\t@Override public boolean isEnabled() { return true; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        },
+        {
+          "id": "implement-infygouserdetailsservicejava",
+          "heading": "Implement InfyGoUserDetailsService.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Purpose: Load user from DB using UserRepository and return user details for authentication."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\npublic class InfyGoUserDetailsService implements UserDetailsService {\n\t@Autowired private UserRepository userRepository;\n\t@Autowired private PasswordEncoder passwordEncoder;\n\n\t@Override\n\tpublic UserDetails loadUserByUsername(String username) {\n\t\tUserEntity entity = userRepository.findByName(username);\n\t\tif (entity == null) throw new UsernameNotFoundException(username);\n\n\t\tUser user = new User();\n\t\tuser.setName(entity.getName());\n\t\tuser.setPassword(passwordEncoder.encode(entity.getPassword()));\n\t\tuser.setUserId(entity.getUserId());\n\n\t\tList<String> roles = Arrays.asList(\"USER\");\n\t\treturn new InfyGoUserDetails(user, roles);\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        },
+        {
+          "id": "configure-spring-security",
+          "heading": "Configure Spring Security",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\n@Order(SecurityProperties.BASIC_AUTH_ORDER)\npublic class SecurityConfig extends WebSecurityConfigurerAdapter {\n\n\t@Autowired private InfyGoUserDetailsService userDetailsService;\n\n\t@Autowired\n\tpublic void configAuthentication(AuthenticationManagerBuilder auth) throws Exception {\n\t\tauth.userDetailsService(userDetailsService);\n\t}\n\n\t@Override\n\tprotected void configure(HttpSecurity http) throws Exception {\n\t\thttp\n\t\t\t.authorizeRequests()\n\t\t\t\t.antMatchers(\"/\", \"/login\", \"/register\", \"/imgs/**\").permitAll()\n\t\t\t\t.anyRequest().authenticated()\n\t\t\t.and()\n\t\t\t.formLogin()\n\t\t\t\t.loginPage(\"/login\")\n\t\t\t\t.defaultSuccessUrl(\"/flights\", true)\n\t\t\t\t.permitAll()\n\t\t\t.and()\n\t\t\t.logout().permitAll();\n\t}\n\n\t@Bean\n\tpublic PasswordEncoder passwordEncoder() {\n\t\treturn new BCryptPasswordEncoder();\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "update-updateflight-in-flightservicejava",
+          "heading": "Update updateFlight() in FlightService.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public void updateFlight(String flightId, String noOfSeats) throws InfyGoBootException {\n\tFlightEntity flight = flightsRepository.getOne(flightId);\n\tif (flight == null) {\n\t\tthrow new InfyGoBootException(\"No flight for the given details\");\n\t} else {\n\t\tint count = flight.getSeatCount() - Integer.valueOf(noOfSeats);\n\t\tflight.setSeatCount(count);\n\t\tflightsRepository.saveAndFlush(flight);\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "add-dependencies-in-pomxml",
+          "heading": "Add Dependencies in pom.xml",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n   <groupId>org.springframework.boot</groupId>\n   <artifactId>spring-boot-starter-security</artifactId>\n</dependency>\n<dependency>\n   <groupId>com.itextpdf</groupId>\n   <artifactId>itextpdf</artifactId>\n   <version>5.1.0</version>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "run-and-test",
+          "heading": "Run and Test",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Run the app: Run As > Spring Boot App",
+                "Open browser: http://localhost:4242/InfyGoBoot/flights → Redirects to login: http://localhost:4242/InfyGoBoot/login  "
+              ]
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "how-spring-boot-handles-security-automatically",
+      "heading": "How Spring Boot Handles Security Automatically",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Adds default security settings via spring-boot-starter-security: ",
+            "No extra JARs needed manually",
+            "You can override these defaults by defining a custom security config class"
+          ]
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    },
+    {
+      "id": "alternative-in-memory-user-configuration",
+      "heading": "Alternative: In-Memory User Configuration",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "For quick testing without DB:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Autowired\npublic void configAuthentication(AuthenticationManagerBuilder auth) throws Exception {\n\tauth.inMemoryAuthentication()\n\t    .withUser(\"C1001\").password(passwordEncoder().encode(\"Jack1234\")).roles(\"USER\");\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 5,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Security can be integrated into Spring Boot effortlessly using starter-security.",
+            "Customize login logic by implementing UserDetails and UserDetailsService.",
+            "Secure endpoints and routes via WebSecurityConfigurerAdapter.",
+            "Default settings protect all HTTP endpoints.",
+            "Override defaults to define custom login pages and DB-based authentication."
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class InfyGoUserDetails implements UserDetails {\n\tprivate List<String> userRoles;\n\tprivate User user;\n\n\tpublic InfyGoUserDetails(User user, List<String> userRoles) {\n\t\tthis.user = user;\n\t\tthis.userRoles = userRoles;\n\t}\n\n\t@Override\n\tpublic Collection<? extends GrantedAuthority> getAuthorities() {\n\t\tString roles = StringUtils.collectionToCommaDelimitedString(userRoles);\n\t\treturn AuthorityUtils.commaSeparatedStringToAuthorityList(roles);\n\t}\n\t@Override public String getUsername() { return user.getUserId(); }\n\t@Override public String getPassword() { return user.getPassword(); }\n\t@Override public boolean isAccountNonExpired() { return true; }\n\t@Override public boolean isAccountNonLocked() { return true; }\n\t@Override public boolean isCredentialsNonExpired() { return true; }\n\t@Override public boolean isEnabled() { return true; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class InfyGoUserDetailsService implements UserDetailsService {\n\t@Autowired private UserRepository userRepository;\n\t@Autowired private PasswordEncoder passwordEncoder;\n\n\t@Override\n\tpublic UserDetails loadUserByUsername(String username) {\n\t\tUserEntity entity = userRepository.findByName(username);\n\t\tif (entity == null) throw new UsernameNotFoundException(username);\n\n\t\tUser user = new User();\n\t\tuser.setName(entity.getName());\n\t\tuser.setPassword(passwordEncoder.encode(entity.getPassword()));\n\t\tuser.setUserId(entity.getUserId());\n\n\t\tList<String> roles = Arrays.asList(\"USER\");\n\t\treturn new InfyGoUserDetails(user, roles);\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\n@Order(SecurityProperties.BASIC_AUTH_ORDER)\npublic class SecurityConfig extends WebSecurityConfigurerAdapter {\n\n\t@Autowired private InfyGoUserDetailsService userDetailsService;\n\n\t@Autowired\n\tpublic void configAuthentication(AuthenticationManagerBuilder auth) throws Exception {\n\t\tauth.userDetailsService(userDetailsService);\n\t}\n\n\t@Override\n\tprotected void configure(HttpSecurity http) throws Exception {\n\t\thttp\n\t\t\t.authorizeRequests()\n\t\t\t\t.antMatchers(\"/\", \"/login\", \"/register\", \"/imgs/**\").permitAll()\n\t\t\t\t.anyRequest().authenticated()\n\t\t\t.and()\n\t\t\t.formLogin()\n\t\t\t\t.loginPage(\"/login\")\n\t\t\t\t.defaultSuccessUrl(\"/flights\", true)\n\t\t\t\t.permitAll()\n\t\t\t.and()\n\t\t\t.logout().permitAll();\n\t}\n\n\t@Bean\n\tpublic PasswordEncoder passwordEncoder() {\n\t\treturn new BCryptPasswordEncoder();\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public void updateFlight(String flightId, String noOfSeats) throws InfyGoBootException {\n\tFlightEntity flight = flightsRepository.getOne(flightId);\n\tif (flight == null) {\n\t\tthrow new InfyGoBootException(\"No flight for the given details\");\n\t} else {\n\t\tint count = flight.getSeatCount() - Integer.valueOf(noOfSeats);\n\t\tflight.setSeatCount(count);\n\t\tflightsRepository.saveAndFlush(flight);\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n   <groupId>org.springframework.boot</groupId>\n   <artifactId>spring-boot-starter-security</artifactId>\n</dependency>\n<dependency>\n   <groupId>com.itextpdf</groupId>\n   <artifactId>itextpdf</artifactId>\n   <version>5.1.0</version>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Autowired\npublic void configAuthentication(AuthenticationManagerBuilder auth) throws Exception {\n\tauth.inMemoryAuthentication()\n\t    .withUser(\"C1001\").password(passwordEncoder().encode(\"Jack1234\")).roles(\"USER\");\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Spring Security/Spring Security.md",
+    "wordCount": 337,
+    "sectionCount": 19
+  }
+}

@@ -1,0 +1,378 @@
+{
+  "id": "spring-boot-jms",
+  "slug": "jms",
+  "title": "JMS",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "objective",
+      "heading": "Objective",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "To send a notification (email message) when a user completes registration in an IRS (Infosys Reservation System) application by integrating JMS with Spring Boot using ActiveMQ."
+        }
+      ],
+      "wordCount": 26,
+      "subsections": []
+    },
+    {
+      "id": "what-is-jms",
+      "heading": "What is JMS?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Java Message Service (JMS) is an API that allows applications to communicate with one another by sending and receiving messages via a messaging system (message broker) such as ActiveMQ."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Message Producer – sends a message.",
+            "Message Consumer – receives the message.",
+            "Message Broker – intermediates between producers and consumers."
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    },
+    {
+      "id": "what-is-activemq",
+      "heading": "What is ActiveMQ?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "ActiveMQ is an open-source, multi-protocol, Java-based messaging server. It supports JMS and is used here as the message broker."
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "demo-setup",
+      "heading": "Demo Setup",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "start-activemq-server",
+          "heading": "Start ActiveMQ Server",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Ensure the ActiveMQ message broker is running locally (usually at http://localhost:8161)."
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "import-rename-project",
+          "heading": "Import & Rename Project",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Open Spring Tool Suite (STS) and:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Import the IRS project: InfyGoBoot_UnitTesting.",
+                "Rename it to: InfyGoBoot_JMS."
+              ]
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        },
+        {
+          "id": "create-email-model",
+          "heading": "Create Email Model",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Email.java"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class Email {\n\tprivate String toEmail;\n\tprivate String subject;\n\tprivate String emailMessage;\n\n\t// Getters, Setters, toString()\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Purpose: Acts as a POJO (Plain Old Java Object) to carry email message details."
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        },
+        {
+          "id": "registration-controller-message-sender",
+          "heading": "Registration Controller (Message Sender)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "RegistrationController.java"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@PostMapping(value = \"registerUser\")\npublic ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, ...) {\n\tregistrationService.registerUser(user);\n\tEmail email = new Email();\n\temail.setSubject(\"Registration confirmation\");\n\temail.setToEmail(user.getEmail());\n\temail.setEmailMessage(environment.getProperty(\"RegistrationController.SUCCESSFUL_REGISTRATION\"));\n\n\t// Send message to 'mailbox' queue\n\tjmsTemplate.convertAndSend(\"mailbox\", email);\n\n\t...\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "On successful user registration, an Email object is sent to the JMS queue named \"mailbox\" using JmsTemplate."
+              ]
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "message-listener-receiver",
+          "heading": "Message Listener (Receiver)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "📄 EmailListener.java"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\npublic class EmailListener {\n\tfinal Logger logger = LoggerFactory.getLogger(this.getClass());\n\n\t@JmsListener(destination = \"mailbox\")\n\tpublic void listenAndMail(Email email) {\n\t\tlogger.info(\"Received: \" + email);\n\t}\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Explanation:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Annotated with @JmsListener, this method listens to the \"mailbox\" queue.",
+                "Prints the received email (simulates sending email)."
+              ]
+            }
+          ],
+          "wordCount": 20,
+          "subsections": []
+        },
+        {
+          "id": "add-dependency-pomxml",
+          "heading": "Add Dependency (pom.xml)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n\t<groupId>org.springframework.boot</groupId>\n\t<artifactId>spring-boot-starter-activemq</artifactId>\n</dependency>",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "🧠 What It Does:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Adds necessary dependencies for JMS.",
+                "Automatically configures JmsTemplate and ConnectionFactory."
+              ]
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "run-and-test",
+          "heading": "Run and Test",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Launch the app as a Spring Boot App.",
+                "Visit: http://localhost:4343/InfyGoBoot.",
+                "Click SIGN UP → Fill in details → Submit.",
+                "Confirm message sent via console output."
+              ]
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "key-concepts",
+      "heading": "Key Concepts",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "what-is-jmstemplate",
+          "heading": "What is JmsTemplate?",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A helper class provided by Spring to simplify sending messages to a JMS destination."
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "what-is-messageconverter",
+          "heading": "What is MessageConverter?",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Converts Java objects into JMS messages and vice versa."
+            },
+            {
+              "type": "paragraph",
+              "text": "Custom Converter:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic MessageConverter jmsMessageConverter() {\n\tMappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();\n\tconverter.setTargetType(MessageType.TEXT);\n\tconverter.setTypeIdPropertyName(\"_type\");\n\treturn converter;\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "This ensures the Email object (not Serializable) is sent as JSON."
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "spring-boot-auto-configuration-vs-manual",
+      "heading": "Spring Boot Auto-Configuration vs. Manual",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "With Spring Boot",
+            "Without Spring Boot"
+          ],
+          "rows": [
+            [
+              "Dependency Management",
+              "spring-boot-starter-activemq",
+              "Manual jars"
+            ],
+            [
+              "JMS Template",
+              "Auto-configured",
+              "Must define"
+            ],
+            [
+              "Message Listener Detection",
+              "Auto (via @JmsListener)",
+              "Use @EnableJms"
+            ],
+            [
+              "Message Converter",
+              "Defaults to basic types",
+              "Custom required"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    },
+    {
+      "id": "final-thoughts",
+      "heading": "Final Thoughts",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "No @EnableJms is needed with Spring Boot; listeners are auto-detected.",
+            "This setup does not send real emails; it's a simulation using JMS messaging.",
+            "Can be extended to trigger actual email services using SMTP or external APIs (e.g., SendGrid, JavaMail)."
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class Email {\n\tprivate String toEmail;\n\tprivate String subject;\n\tprivate String emailMessage;\n\n\t// Getters, Setters, toString()\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@PostMapping(value = \"registerUser\")\npublic ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, ...) {\n\tregistrationService.registerUser(user);\n\tEmail email = new Email();\n\temail.setSubject(\"Registration confirmation\");\n\temail.setToEmail(user.getEmail());\n\temail.setEmailMessage(environment.getProperty(\"RegistrationController.SUCCESSFUL_REGISTRATION\"));\n\n\t// Send message to 'mailbox' queue\n\tjmsTemplate.convertAndSend(\"mailbox\", email);\n\n\t...\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class EmailListener {\n\tfinal Logger logger = LoggerFactory.getLogger(this.getClass());\n\n\t@JmsListener(destination = \"mailbox\")\n\tpublic void listenAndMail(Email email) {\n\t\tlogger.info(\"Received: \" + email);\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n\t<groupId>org.springframework.boot</groupId>\n\t<artifactId>spring-boot-starter-activemq</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic MessageConverter jmsMessageConverter() {\n\tMappingJackson2MessageConverter converter = new MappingJackson2MessageConverter();\n\tconverter.setTargetType(MessageType.TEXT);\n\tconverter.setTypeIdPropertyName(\"_type\");\n\treturn converter;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/JMS.md",
+    "wordCount": 321,
+    "sectionCount": 17
+  }
+}

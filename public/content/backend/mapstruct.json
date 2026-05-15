@@ -1,0 +1,428 @@
+{
+  "id": "backend-mapstruct",
+  "slug": "mapstruct",
+  "title": "MapStruct",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MapStruct is a compile-time code generator for type-safe Java bean mappings between DTOs, entities, and domain objects",
+            "Annotate interfaces with @Mapper and define method signatures; MapStruct generates the implementation at compile time",
+            "Zero runtime overhead compared to reflection-based mappers (ModelMapper, Dozer) since all mapping code is generated as plain Java",
+            "Supports Spring integration via @Mapper(componentModel = \"spring\") for automatic dependency injection of mapper beans",
+            "Handles nested object mapping, collection mapping, and enum mapping automatically when types are compatible",
+            "Use @Mapping(target = \"field\", source = \"otherField\") for explicit field name mapping between source and target",
+            "MapStruct generates null-safe code by default and supports customizable null-value strategies"
+          ]
+        }
+      ],
+      "wordCount": 105,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "MapStruct is the ideal choice when your application has a clear separation between layers that use different object representations. In enterprise applications following hexagonal or clean architecture, you typically have JPA entities for persistence, domain objects for business logic, DTOs for API responses, and command objects for incoming requests. Manually writing conversion code between these representations is tedious, error-prone, and creates maintenance burden as models evolve. MapStruct eliminates this boilerplate by generating type-safe mapping implementations at compile time, catching mapping errors during the build rather than at runtime. Choose MapStruct over reflection-based alternatives like ModelMapper when performance matters, when you want compile-time safety, or when you need to debug mapping logic by reading generated source code. MapStruct integrates seamlessly with Spring Boot, CDI, and JSR 330 dependency injection frameworks, making it a natural fit for enterprise Java microservices."
+        }
+      ],
+      "wordCount": 138,
+      "subsections": []
+    },
+    {
+      "id": "mapper-interfaces",
+      "heading": "Mapper Interfaces",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Mapper interfaces are the core abstraction in MapStruct. You define a Java interface annotated with @Mapper, declare method signatures that describe the source-to-target conversion, and MapStruct generates the implementation class during compilation. The generated code is plain Java with no reflection, making it fast and debuggable."
+        },
+        {
+          "type": "paragraph",
+          "text": "A basic mapper interface requires only the method signature. MapStruct matches fields by name and type automatically. When the source and target objects share field names and compatible types, no additional configuration is needed. For fields with different names, you use @Mapping annotations to specify the correspondence explicitly."
+        },
+        {
+          "type": "paragraph",
+          "text": "MapStruct supports multiple mapping methods in a single interface, including forward and reverse mappings, update methods that modify an existing target object, and methods that map collections. The framework resolves nested mappings by looking for other mapper methods that can handle the nested type conversion, either within the same interface or in referenced mappers."
+        },
+        {
+          "type": "paragraph",
+          "text": "The componentModel attribute controls how the generated implementation is instantiated. Setting it to \"spring\" makes the generated class a Spring bean annotated with @Component, allowing you to inject it anywhere in your application. Other options include \"cdi\" for Jakarta CDI, \"jsr330\" for JSR 330, and the default which provides a static factory method via Mappers.getMapper()."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\")\npublic interface OrderMapper {\n\n    @Mapping(target = \"orderId\", source = \"id\")\n    @Mapping(target = \"customerName\", source = \"customer.fullName\")\n    @Mapping(target = \"totalAmount\", source = \"total\")\n    @Mapping(target = \"createdDate\", source = \"createdAt\", dateFormat = \"yyyy-MM-dd\")\n    OrderResponse toResponse(Order order);\n\n    @Mapping(target = \"id\", ignore = true)\n    @Mapping(target = \"createdAt\", ignore = true)\n    @Mapping(target = \"status\", constant = \"PENDING\")\n    Order toEntity(CreateOrderRequest request);\n\n    List<OrderResponse> toResponseList(List<Order> orders);\n\n    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)\n    void updateOrderFromRequest(UpdateOrderRequest request, @MappingTarget Order order);\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The @MappingTarget annotation enables update methods that modify an existing object rather than creating a new one. This is particularly useful for PATCH operations where you want to update only the non-null fields from a request onto an existing entity. Combined with NullValuePropertyMappingStrategy.IGNORE, MapStruct skips null source properties during the update."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\", uses = {AddressMapper.class, PaymentMapper.class})\npublic interface CustomerMapper {\n\n    @Mapping(target = \"fullAddress\", source = \"address\")\n    @Mapping(target = \"paymentInfo\", source = \"paymentDetails\")\n    CustomerDto toDto(Customer customer);\n\n    @InheritInverseConfiguration\n    Customer toEntity(CustomerDto dto);\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The uses attribute references other mapper interfaces that MapStruct should use when it encounters nested types it cannot map directly. This promotes composition and reuse across your mapping layer without duplicating conversion logic."
+        }
+      ],
+      "wordCount": 287,
+      "subsections": []
+    },
+    {
+      "id": "custom-mappings",
+      "heading": "Custom Mappings",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Custom mappings handle scenarios where automatic field matching is insufficient. MapStruct provides several mechanisms for customizing the mapping logic: @Mapping annotations with source expressions, default values, constant values, and qualifier-based method selection. For complex transformations that cannot be expressed declaratively, you can define default methods directly in the mapper interface or use abstract classes instead of interfaces."
+        },
+        {
+          "type": "paragraph",
+          "text": "When source and target fields have different names, the @Mapping annotation explicitly declares the correspondence. You can map nested properties using dot notation in the source expression, allowing you to flatten deeply nested source objects into flat target DTOs. MapStruct also supports mapping multiple source objects into a single target by defining methods with multiple parameters."
+        },
+        {
+          "type": "paragraph",
+          "text": "Default methods in the mapper interface let you write arbitrary Java logic for conversions that MapStruct cannot generate automatically. This is useful for type conversions between incompatible types, conditional logic, or aggregation of multiple source fields into a single target field. MapStruct will call your default method when it encounters a type that matches the method signature during code generation."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\")\npublic interface ProductMapper {\n\n    @Mapping(target = \"displayPrice\", source = \"price\", qualifiedByName = \"formatPrice\")\n    @Mapping(target = \"categoryPath\", source = \"category.hierarchy\")\n    @Mapping(target = \"available\", source = \"inventory.quantity\", qualifiedByName = \"checkAvailability\")\n    @Mapping(target = \"tags\", source = \"metadata.tags\")\n    @Mapping(target = \"discountedPrice\", source = \"price\", defaultValue = \"0.00\")\n    ProductResponse toResponse(Product product);\n\n    @Named(\"formatPrice\")\n    default String formatPrice(BigDecimal price) {\n        if (price == null) return \"N/A\";\n        return \"$\" + price.setScale(2, RoundingMode.HALF_UP).toPlainString();\n    }\n\n    @Named(\"checkAvailability\")\n    default boolean checkAvailability(Integer quantity) {\n        return quantity != null && quantity > 0;\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The @Named and qualifiedByName mechanism allows you to define multiple conversion methods for the same type pair and select the appropriate one for each field. Without qualifiers, MapStruct would be ambiguous about which method to use when multiple methods accept the same source type and return the same target type."
+        },
+        {
+          "type": "paragraph",
+          "text": "For mappings that combine multiple source objects, MapStruct supports multi-parameter mapping methods. This is common when assembling a response DTO from an entity plus additional context like user preferences or computed metrics."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\")\npublic interface ReportMapper {\n\n    @Mapping(target = \"title\", source = \"report.name\")\n    @Mapping(target = \"authorName\", source = \"author.displayName\")\n    @Mapping(target = \"generatedAt\", source = \"metadata.timestamp\")\n    @Mapping(target = \"downloadUrl\", source = \"metadata.url\")\n    ReportSummary toSummary(Report report, User author, ReportMetadata metadata);\n\n    default List<ReportSummary> toSummaryList(\n            List<Report> reports, User author, ReportMetadata metadata) {\n        return reports.stream()\n            .map(report -> toSummary(report, author, metadata))\n            .collect(Collectors.toList());\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "You can also use abstract classes instead of interfaces when you need to inject dependencies or maintain state in your mapper. This approach is useful when custom mapping logic requires calling external services, repositories, or utility beans."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\")\npublic abstract class EnrichmentMapper {\n\n    @Autowired\n    protected PricingService pricingService;\n\n    @Autowired\n    protected InventoryClient inventoryClient;\n\n    @Mapping(target = \"currentPrice\", ignore = true)\n    @Mapping(target = \"stockLevel\", ignore = true)\n    public abstract ProductView toView(Product product);\n\n    @AfterMapping\n    protected void enrichWithLiveData(Product source, @MappingTarget ProductView target) {\n        target.setCurrentPrice(pricingService.getCurrentPrice(source.getSku()));\n        target.setStockLevel(inventoryClient.getStock(source.getSku()));\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The @AfterMapping annotation marks a method that MapStruct calls after the generated mapping logic completes. This hook lets you perform additional transformations, validations, or enrichment that depend on the fully mapped target object."
+        }
+      ],
+      "wordCount": 325,
+      "subsections": []
+    },
+    {
+      "id": "expression-mappings",
+      "heading": "Expression Mappings",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Expression mappings allow you to embed Java expressions directly in @Mapping annotations, providing inline computation without requiring separate default methods. This is powerful for simple transformations, string concatenation, static method calls, or conditional assignments that would be verbose as named methods."
+        },
+        {
+          "type": "paragraph",
+          "text": "The expression attribute accepts a Java expression wrapped in java(...) syntax. MapStruct inserts this expression directly into the generated code, so it must be valid Java that compiles in the context of the generated mapper class. You can reference the source parameter, call static methods, use ternary operators, and invoke constructors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Expressions are best suited for simple, self-contained transformations. For complex logic involving multiple steps, error handling, or external dependencies, prefer default methods or @AfterMapping hooks for better readability and testability."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\", imports = {UUID.class, Instant.class, StringUtils.class})\npublic interface EventMapper {\n\n    @Mapping(target = \"eventId\", expression = \"java(UUID.randomUUID().toString())\")\n    @Mapping(target = \"timestamp\", expression = \"java(Instant.now())\")\n    @Mapping(target = \"fullName\", expression = \"java(event.getFirstName() + \\\" \\\" + event.getLastName())\")\n    @Mapping(target = \"normalizedEmail\", expression = \"java(event.getEmail().toLowerCase().trim())\")\n    @Mapping(target = \"source\", constant = \"ORDER_SERVICE\")\n    AuditEvent toAuditEvent(OrderEvent event);\n\n    @Mapping(target = \"key\", expression = \"java(notification.getType().name() + \\\"_\\\" + notification.getUserId())\")\n    @Mapping(target = \"priority\", expression = \"java(notification.isUrgent() ? 1 : 5)\")\n    @Mapping(target = \"expiresAt\", expression = \"java(Instant.now().plus(Duration.ofHours(24)))\")\n    NotificationMessage toMessage(Notification notification);\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The imports attribute on @Mapper specifies classes that should be imported in the generated implementation file. This is required when your expressions reference classes that are not already imported through the method parameter types or return types. Without the imports declaration, the generated code will fail to compile."
+        },
+        {
+          "type": "paragraph",
+          "text": "Conditional expressions using ternary operators are common in expression mappings for null-safe transformations or default value logic that goes beyond what defaultValue supports."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\", imports = {Collections.class, Optional.class})\npublic interface ResponseMapper {\n\n    @Mapping(target = \"items\", expression = \"java(order.getItems() != null ? order.getItems() : Collections.emptyList())\")\n    @Mapping(target = \"status\", expression = \"java(Optional.ofNullable(order.getStatus()).map(Enum::name).orElse(\\\"UNKNOWN\\\"))\")\n    @Mapping(target = \"itemCount\", expression = \"java(order.getItems() != null ? order.getItems().size() : 0)\")\n    OrderSummary toSummary(Order order);\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "You can also use defaultExpression which is evaluated only when the source value is null, providing a computed fallback rather than a static constant."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\", imports = {UUID.class, Instant.class})\npublic interface EntityMapper {\n\n    @Mapping(target = \"id\", source = \"id\", defaultExpression = \"java(UUID.randomUUID())\")\n    @Mapping(target = \"createdAt\", source = \"createdAt\", defaultExpression = \"java(Instant.now())\")\n    @Mapping(target = \"version\", source = \"version\", defaultExpression = \"java(1L)\")\n    AuditableEntity toEntity(CreateRequest request);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 217,
+      "subsections": []
+    },
+    {
+      "id": "decorator-patterns",
+      "heading": "Decorator Patterns",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Decorators in MapStruct allow you to wrap the generated mapper implementation with additional behavior while preserving the generated mapping logic. This pattern is useful when you need to add cross-cutting concerns like logging, validation, caching, or conditional logic that applies to all or specific mapping methods without modifying the mapper interface itself."
+        },
+        {
+          "type": "paragraph",
+          "text": "MapStruct supports decorators through the @DecoratedWith annotation on the mapper interface. You create an abstract class that extends the mapper interface, inject the generated delegate implementation, and override specific methods to add your custom behavior before or after delegating to the generated code. The decorator pattern maintains clean separation between mapping logic and cross-cutting concerns."
+        },
+        {
+          "type": "paragraph",
+          "text": "In a Spring context, the decorator becomes the primary bean while the generated implementation is injected as a delegate. This means consumers of the mapper get the decorated version automatically through dependency injection without any configuration changes."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Mapper(componentModel = \"spring\")\n@DecoratedWith(OrderMapperDecorator.class)\npublic interface OrderMapper {\n\n    @Mapping(target = \"orderId\", source = \"id\")\n    @Mapping(target = \"totalFormatted\", source = \"total\")\n    OrderResponse toResponse(Order order);\n\n    Order toEntity(CreateOrderRequest request);\n}\n\npublic abstract class OrderMapperDecorator implements OrderMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private OrderMapper delegate;\n\n    @Autowired\n    private AuditService auditService;\n\n    @Autowired\n    private ValidationService validationService;\n\n    @Override\n    public OrderResponse toResponse(Order order) {\n        OrderResponse response = delegate.toResponse(order);\n        auditService.logMapping(\"Order\", order.getId(), \"OrderResponse\");\n        return response;\n    }\n\n    @Override\n    public Order toEntity(CreateOrderRequest request) {\n        validationService.validateBusinessRules(request);\n        Order entity = delegate.toEntity(request);\n        entity.setCreatedBy(SecurityContextHolder.getContext().getAuthentication().getName());\n        return entity;\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "The decorator pattern is particularly valuable for adding validation logic that depends on business rules or external state. Rather than cluttering the mapper interface with validation annotations, you centralize validation in the decorator where you have access to injected services."
+        },
+        {
+          "type": "paragraph",
+          "text": "Another common use case is conditional mapping where the transformation logic depends on runtime context such as feature flags, user roles, or tenant configuration."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public abstract class TenantAwareMapperDecorator implements ProductMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private ProductMapper delegate;\n\n    @Autowired\n    private TenantContext tenantContext;\n\n    @Autowired\n    private FeatureFlagService featureFlags;\n\n    @Override\n    public ProductResponse toResponse(Product product) {\n        ProductResponse response = delegate.toResponse(product);\n\n        if (featureFlags.isEnabled(\"SHOW_WHOLESALE_PRICE\", tenantContext.getTenantId())) {\n            response.setWholesalePrice(product.getWholesalePrice());\n        } else {\n            response.setWholesalePrice(null);\n        }\n\n        if (tenantContext.getCurrency() != null) {\n            response.setDisplayCurrency(tenantContext.getCurrency().getCode());\n        }\n\n        return response;\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Decorators can also implement caching for expensive mapping operations where the source object is immutable and the same mapping is requested frequently."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public abstract class CachingUserMapperDecorator implements UserMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private UserMapper delegate;\n\n    private final Cache<UUID, UserProfile> cache = Caffeine.newBuilder()\n        .maximumSize(1000)\n        .expireAfterWrite(Duration.ofMinutes(5))\n        .build();\n\n    @Override\n    public UserProfile toProfile(User user) {\n        return cache.get(user.getId(), id -> delegate.toProfile(user));\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 230,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Compile Time\"\n        SRC[Mapper Interface<br/>@Mapper annotation] --> APT[Annotation Processor<br/>mapstruct-processor]\n        APT --> GEN[Generated Implementation<br/>MapperImpl.java]\n        GEN --> CLASS[Compiled .class file]\n    end\n\n    subgraph \"Runtime - Spring Context\"\n        CLASS --> BEAN[Spring Bean<br/>@Component]\n        BEAN --> CTRL[Controller Layer]\n        BEAN --> SVC[Service Layer]\n    end\n\n    subgraph \"Mapping Flow\"\n        ENTITY[JPA Entity] --> BEAN\n        BEAN --> DTO[Response DTO]\n        CMD[Request Command] --> BEAN\n        BEAN --> ENTITY2[New Entity]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Layered Architecture with MapStruct\"\n        API[API Layer<br/>Controllers] -->|Request DTO| MAP1[Request Mapper]\n        MAP1 -->|Domain Object| BIZ[Business Layer<br/>Services]\n        BIZ -->|Domain Object| MAP2[Response Mapper]\n        MAP2 -->|Response DTO| API\n        BIZ -->|Domain Object| MAP3[Persistence Mapper]\n        MAP3 -->|JPA Entity| DB[Persistence Layer<br/>Repositories]\n        DB -->|JPA Entity| MAP4[Entity-to-Domain Mapper]\n        MAP4 -->|Domain Object| BIZ\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Unmapped target properties warning: MapStruct generates compiler warnings for target properties without a corresponding source. Suppress intentionally unmapped fields with @Mapping(target = \"field\", ignore = true) rather than using unmappedTargetPolicy = ReportingPolicy.IGNORE globally, which hides legitimate mapping gaps.",
+            "Missing annotation processor in build: MapStruct requires the mapstruct-processor dependency with annotationProcessor scope in Gradle or maven-compiler-plugin configuration in Maven. Without it, no implementation is generated and you get NoSuchBeanDefinitionException at runtime.",
+            "Lombok and MapStruct ordering: When using Lombok with MapStruct, the Lombok annotation processor must run before MapStruct so that getters and setters exist when MapStruct generates its code. In Maven, configure annotationProcessorPaths with Lombok listed before MapStruct. In Gradle, use annotationProcessor dependency ordering.",
+            "Ambiguous mapping methods: Defining multiple methods with the same source and target types without qualifiers causes compilation errors. Use @Named qualifiers and qualifiedByName to disambiguate, or use @BeanMapping with different result types.",
+            "Circular references in nested mappings: Entities with bidirectional relationships (e.g., parent-child with back-references) can cause infinite recursion during mapping. Break the cycle by using @Mapping(target = \"parent\", ignore = true) on the child mapper or implementing a custom method with cycle detection."
+          ]
+        }
+      ],
+      "wordCount": 187,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Microservice API boundaries: MapStruct maps between internal domain models and versioned API DTOs, allowing the internal model to evolve independently from the public contract. Different mapper interfaces handle v1 and v2 API responses from the same domain objects.",
+            "Event-driven systems: When publishing domain events to Kafka or RabbitMQ, MapStruct converts rich domain objects into lean event payloads containing only the data consumers need, reducing message size and decoupling internal model changes from event schemas.",
+            "Database migration layers: During gradual database migrations (e.g., moving from a monolithic schema to microservice-owned tables), MapStruct maps between old and new entity structures, allowing both schemas to coexist while the migration progresses.",
+            "Anti-corruption layers: In systems integrating with legacy services or third-party APIs, MapStruct creates clean boundaries by mapping external response formats into your domain model, isolating your codebase from external schema changes."
+          ]
+        }
+      ],
+      "wordCount": 138,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Why choose MapStruct over reflection-based mappers like ModelMapper or Dozer?\nA: MapStruct generates plain Java code at compile time, providing zero runtime reflection overhead, compile-time type safety that catches mapping errors during the build, and debuggable generated source code. Reflection-based mappers discover mappings at runtime, which is slower, fails silently on mismatched fields, and is harder to debug."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does MapStruct handle null values during mapping?\nA: By default, MapStruct generates null checks and returns null when the source is null. You can customize this with nullValueMappingStrategy (return null or create empty target), nullValuePropertyMappingStrategy (set null, ignore, or set default), and nullValueCheckStrategy on individual mappings or globally via @MapperConfig."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you test MapStruct mappers?\nA: Since MapStruct generates concrete implementations, you test them like any other class. Instantiate the mapper implementation directly (or inject via Spring in integration tests), pass source objects, and assert the target fields. The generated code is deterministic, so tests verify your mapping configuration is correct rather than testing the framework itself."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how MapStruct resolves nested object mappings.\nA: When MapStruct encounters a field whose type differs between source and target, it looks for a mapping method (in the same mapper, in uses referenced mappers, or built-in conversions) that can convert the source field type to the target field type. If found, it calls that method. If not found, it reports a compilation error, forcing you to provide the missing conversion explicitly."
+        }
+      ],
+      "wordCount": 242,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use @MapperConfig for shared configuration: Define a shared configuration class with @MapperConfig containing common settings like componentModel, unmappedTargetPolicy, and nullValueMappingStrategy. Reference it via @Mapper(config = SharedMapperConfig.class) to ensure consistency across all mappers without repetition.",
+            "Monitor generated code size: In large projects with hundreds of mappers, the generated code can significantly increase compilation time and JAR size. Use MapStruct's unmappedSourcePolicy = ReportingPolicy.WARN to identify unused source fields that indicate over-mapping, and consider splitting large mappers into focused, single-responsibility interfaces.",
+            "Version your API mappers: When supporting multiple API versions, create separate mapper interfaces per version (e.g., OrderMapperV1, OrderMapperV2). This makes it explicit which fields are exposed in each version and simplifies deprecation of old API contracts.",
+            "Leverage @Condition for null-checking custom logic: MapStruct 1.5+ supports @Condition methods that determine whether a source property should be mapped. This is cleaner than @AfterMapping hacks for conditional field population based on business rules."
+          ]
+        }
+      ],
+      "wordCount": 148,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Framework - MapStruct integrates with Spring's dependency injection for automatic mapper bean management",
+            "Java - MapStruct leverages Java annotation processing and generates idiomatic Java code",
+            "Apache Kafka - MapStruct is commonly used to map domain objects to Kafka event payloads"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\")\npublic interface OrderMapper {\n\n    @Mapping(target = \"orderId\", source = \"id\")\n    @Mapping(target = \"customerName\", source = \"customer.fullName\")\n    @Mapping(target = \"totalAmount\", source = \"total\")\n    @Mapping(target = \"createdDate\", source = \"createdAt\", dateFormat = \"yyyy-MM-dd\")\n    OrderResponse toResponse(Order order);\n\n    @Mapping(target = \"id\", ignore = true)\n    @Mapping(target = \"createdAt\", ignore = true)\n    @Mapping(target = \"status\", constant = \"PENDING\")\n    Order toEntity(CreateOrderRequest request);\n\n    List<OrderResponse> toResponseList(List<Order> orders);\n\n    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)\n    void updateOrderFromRequest(UpdateOrderRequest request, @MappingTarget Order order);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\", uses = {AddressMapper.class, PaymentMapper.class})\npublic interface CustomerMapper {\n\n    @Mapping(target = \"fullAddress\", source = \"address\")\n    @Mapping(target = \"paymentInfo\", source = \"paymentDetails\")\n    CustomerDto toDto(Customer customer);\n\n    @InheritInverseConfiguration\n    Customer toEntity(CustomerDto dto);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\")\npublic interface ProductMapper {\n\n    @Mapping(target = \"displayPrice\", source = \"price\", qualifiedByName = \"formatPrice\")\n    @Mapping(target = \"categoryPath\", source = \"category.hierarchy\")\n    @Mapping(target = \"available\", source = \"inventory.quantity\", qualifiedByName = \"checkAvailability\")\n    @Mapping(target = \"tags\", source = \"metadata.tags\")\n    @Mapping(target = \"discountedPrice\", source = \"price\", defaultValue = \"0.00\")\n    ProductResponse toResponse(Product product);\n\n    @Named(\"formatPrice\")\n    default String formatPrice(BigDecimal price) {\n        if (price == null) return \"N/A\";\n        return \"$\" + price.setScale(2, RoundingMode.HALF_UP).toPlainString();\n    }\n\n    @Named(\"checkAvailability\")\n    default boolean checkAvailability(Integer quantity) {\n        return quantity != null && quantity > 0;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\")\npublic interface ReportMapper {\n\n    @Mapping(target = \"title\", source = \"report.name\")\n    @Mapping(target = \"authorName\", source = \"author.displayName\")\n    @Mapping(target = \"generatedAt\", source = \"metadata.timestamp\")\n    @Mapping(target = \"downloadUrl\", source = \"metadata.url\")\n    ReportSummary toSummary(Report report, User author, ReportMetadata metadata);\n\n    default List<ReportSummary> toSummaryList(\n            List<Report> reports, User author, ReportMetadata metadata) {\n        return reports.stream()\n            .map(report -> toSummary(report, author, metadata))\n            .collect(Collectors.toList());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\")\npublic abstract class EnrichmentMapper {\n\n    @Autowired\n    protected PricingService pricingService;\n\n    @Autowired\n    protected InventoryClient inventoryClient;\n\n    @Mapping(target = \"currentPrice\", ignore = true)\n    @Mapping(target = \"stockLevel\", ignore = true)\n    public abstract ProductView toView(Product product);\n\n    @AfterMapping\n    protected void enrichWithLiveData(Product source, @MappingTarget ProductView target) {\n        target.setCurrentPrice(pricingService.getCurrentPrice(source.getSku()));\n        target.setStockLevel(inventoryClient.getStock(source.getSku()));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\", imports = {UUID.class, Instant.class, StringUtils.class})\npublic interface EventMapper {\n\n    @Mapping(target = \"eventId\", expression = \"java(UUID.randomUUID().toString())\")\n    @Mapping(target = \"timestamp\", expression = \"java(Instant.now())\")\n    @Mapping(target = \"fullName\", expression = \"java(event.getFirstName() + \\\" \\\" + event.getLastName())\")\n    @Mapping(target = \"normalizedEmail\", expression = \"java(event.getEmail().toLowerCase().trim())\")\n    @Mapping(target = \"source\", constant = \"ORDER_SERVICE\")\n    AuditEvent toAuditEvent(OrderEvent event);\n\n    @Mapping(target = \"key\", expression = \"java(notification.getType().name() + \\\"_\\\" + notification.getUserId())\")\n    @Mapping(target = \"priority\", expression = \"java(notification.isUrgent() ? 1 : 5)\")\n    @Mapping(target = \"expiresAt\", expression = \"java(Instant.now().plus(Duration.ofHours(24)))\")\n    NotificationMessage toMessage(Notification notification);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\", imports = {Collections.class, Optional.class})\npublic interface ResponseMapper {\n\n    @Mapping(target = \"items\", expression = \"java(order.getItems() != null ? order.getItems() : Collections.emptyList())\")\n    @Mapping(target = \"status\", expression = \"java(Optional.ofNullable(order.getStatus()).map(Enum::name).orElse(\\\"UNKNOWN\\\"))\")\n    @Mapping(target = \"itemCount\", expression = \"java(order.getItems() != null ? order.getItems().size() : 0)\")\n    OrderSummary toSummary(Order order);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\", imports = {UUID.class, Instant.class})\npublic interface EntityMapper {\n\n    @Mapping(target = \"id\", source = \"id\", defaultExpression = \"java(UUID.randomUUID())\")\n    @Mapping(target = \"createdAt\", source = \"createdAt\", defaultExpression = \"java(Instant.now())\")\n    @Mapping(target = \"version\", source = \"version\", defaultExpression = \"java(1L)\")\n    AuditableEntity toEntity(CreateRequest request);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mapper(componentModel = \"spring\")\n@DecoratedWith(OrderMapperDecorator.class)\npublic interface OrderMapper {\n\n    @Mapping(target = \"orderId\", source = \"id\")\n    @Mapping(target = \"totalFormatted\", source = \"total\")\n    OrderResponse toResponse(Order order);\n\n    Order toEntity(CreateOrderRequest request);\n}\n\npublic abstract class OrderMapperDecorator implements OrderMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private OrderMapper delegate;\n\n    @Autowired\n    private AuditService auditService;\n\n    @Autowired\n    private ValidationService validationService;\n\n    @Override\n    public OrderResponse toResponse(Order order) {\n        OrderResponse response = delegate.toResponse(order);\n        auditService.logMapping(\"Order\", order.getId(), \"OrderResponse\");\n        return response;\n    }\n\n    @Override\n    public Order toEntity(CreateOrderRequest request) {\n        validationService.validateBusinessRules(request);\n        Order entity = delegate.toEntity(request);\n        entity.setCreatedBy(SecurityContextHolder.getContext().getAuthentication().getName());\n        return entity;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public abstract class TenantAwareMapperDecorator implements ProductMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private ProductMapper delegate;\n\n    @Autowired\n    private TenantContext tenantContext;\n\n    @Autowired\n    private FeatureFlagService featureFlags;\n\n    @Override\n    public ProductResponse toResponse(Product product) {\n        ProductResponse response = delegate.toResponse(product);\n\n        if (featureFlags.isEnabled(\"SHOW_WHOLESALE_PRICE\", tenantContext.getTenantId())) {\n            response.setWholesalePrice(product.getWholesalePrice());\n        } else {\n            response.setWholesalePrice(null);\n        }\n\n        if (tenantContext.getCurrency() != null) {\n            response.setDisplayCurrency(tenantContext.getCurrency().getCode());\n        }\n\n        return response;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public abstract class CachingUserMapperDecorator implements UserMapper {\n\n    @Autowired\n    @Qualifier(\"delegate\")\n    private UserMapper delegate;\n\n    private final Cache<UUID, UserProfile> cache = Caffeine.newBuilder()\n        .maximumSize(1000)\n        .expireAfterWrite(Duration.ofMinutes(5))\n        .build();\n\n    @Override\n    public UserProfile toProfile(User user) {\n        return cache.get(user.getId(), id -> delegate.toProfile(user));\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/backend/mapstruct.md",
+    "wordCount": 2058,
+    "sectionCount": 12
+  }
+}

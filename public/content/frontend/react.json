@@ -1,0 +1,387 @@
+{
+  "id": "frontend-react",
+  "slug": "react",
+  "title": "React",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "React is a declarative, component-based JavaScript library for building user interfaces, maintained by Meta",
+            "Components are the fundamental building blocks: function components with hooks are the modern standard, class components are legacy",
+            "Virtual DOM diffing algorithm (reconciliation) minimizes actual DOM mutations by comparing previous and next render trees",
+            "One-way data flow: props flow down from parent to child, state is local, and events bubble up via callback props",
+            "Hooks API (useState, useEffect, useContext, useReducer, useMemo, useCallback, useRef) enables stateful logic in function components",
+            "JSX is syntactic sugar for React.createElement() calls, compiled by Babel or SWC at build time",
+            "React 18 introduced concurrent rendering, automatic batching, Suspense for data fetching, and the useTransition hook",
+            "Key prop is required for list rendering to help the reconciler identify which items changed, were added, or removed"
+          ]
+        }
+      ],
+      "wordCount": 132,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "React is the right choice when building interactive single-page applications, complex dashboards, or any UI that requires frequent state-driven re-renders with predictable data flow. Its component model excels at composing reusable UI elements across large codebases where multiple teams contribute independently. Choose React when you need a mature ecosystem with extensive third-party library support, when your team values flexibility in architectural decisions (React is unopinionated about routing, state management, and styling), or when you need server-side rendering capabilities through frameworks like Next.js. React is particularly strong for applications with complex form handling, real-time data updates, and rich interactive visualizations. It pairs well with TypeScript for type-safe component APIs and scales from small widgets embedded in existing pages to full enterprise applications. Prefer React over Angular when you want a lighter core library with freedom to choose your own tooling, and over Vue when you need the largest talent pool and ecosystem breadth for enterprise hiring."
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "hooks",
+      "heading": "Hooks",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Hooks are functions that let you use React state and lifecycle features in function components. They follow two rules: only call hooks at the top level (never inside loops, conditions, or nested functions) and only call hooks from React function components or custom hooks. Understanding hooks deeply is essential for writing performant, maintainable React applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "useState manages local component state. It returns a tuple of the current value and a setter function. The setter can accept either a new value or an updater function that receives the previous state, which is critical when multiple updates depend on the current state within the same render cycle. State updates are batched in React 18, meaning multiple setState calls in the same event handler result in a single re-render."
+        },
+        {
+          "type": "paragraph",
+          "text": "useEffect synchronizes a component with external systems (APIs, subscriptions, DOM manipulation). It runs after the component renders and can optionally clean up before the next effect runs or when the component unmounts. The dependency array controls when the effect re-runs: an empty array means run once on mount, specific dependencies mean run when those values change, and no array means run after every render. Stale closures are the most common bug with useEffect, occurring when the dependency array is incomplete."
+        },
+        {
+          "type": "paragraph",
+          "text": "useContext consumes values from a React context without prop drilling. Combined with useReducer, it provides a lightweight state management solution for medium-complexity applications. However, any component consuming a context re-renders whenever the context value changes, so splitting contexts by update frequency is important for performance."
+        },
+        {
+          "type": "paragraph",
+          "text": "useReducer manages complex state logic with a reducer function, similar to Redux patterns. It is preferable to useState when state transitions depend on previous state, when state has multiple sub-values, or when the next state depends on the action type. The dispatch function is stable across renders, making it safe to pass to child components without causing unnecessary re-renders."
+        },
+        {
+          "type": "paragraph",
+          "text": "useMemo and useCallback are memoization hooks that cache computed values and function references between renders. useMemo recomputes only when dependencies change, useful for expensive calculations. useCallback returns a memoized function reference, preventing child components wrapped in React.memo from re-rendering when the parent renders. Overusing these hooks adds complexity without benefit; profile before optimizing."
+        },
+        {
+          "type": "paragraph",
+          "text": "useRef holds a mutable value that persists across renders without triggering re-renders when changed. Common uses include storing DOM element references, keeping track of previous values, storing interval or timeout IDs, and holding any mutable value that should not cause a re-render when updated."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Custom hook combining multiple hooks for data fetching with caching\nimport { useState, useEffect, useRef, useCallback } from 'react';\n\ninterface FetchState<T> {\n  data: T | null;\n  loading: boolean;\n  error: Error | null;\n}\n\nfunction useFetch<T>(url: string, options?: RequestInit): FetchState<T> & { refetch: () => void } {\n  const [state, setState] = useState<FetchState<T>>({\n    data: null,\n    loading: true,\n    error: null,\n  });\n  const abortControllerRef = useRef<AbortController | null>(null);\n  const cacheRef = useRef<Map<string, T>>(new Map());\n\n  const fetchData = useCallback(async () => {\n    // Check cache first\n    if (cacheRef.current.has(url)) {\n      setState({ data: cacheRef.current.get(url)!, loading: false, error: null });\n      return;\n    }\n\n    // Abort previous request\n    abortControllerRef.current?.abort();\n    abortControllerRef.current = new AbortController();\n\n    setState(prev => ({ ...prev, loading: true, error: null }));\n\n    try {\n      const response = await fetch(url, {\n        ...options,\n        signal: abortControllerRef.current.signal,\n      });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const data: T = await response.json();\n      cacheRef.current.set(url, data);\n      setState({ data, loading: false, error: null });\n    } catch (error) {\n      if (error instanceof Error && error.name !== 'AbortError') {\n        setState({ data: null, loading: false, error });\n      }\n    }\n  }, [url, options]);\n\n  useEffect(() => {\n    fetchData();\n    return () => abortControllerRef.current?.abort();\n  }, [fetchData]);\n\n  return { ...state, refetch: fetchData };\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 407,
+      "subsections": []
+    },
+    {
+      "id": "state-management-patterns",
+      "heading": "State Management Patterns",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "State management in React ranges from local component state to global application state, with the right choice depending on the scope and complexity of the data being managed. The React ecosystem offers multiple patterns, each with distinct trade-offs around boilerplate, performance, developer experience, and debugging capabilities."
+        },
+        {
+          "type": "paragraph",
+          "text": "Local state with useState/useReducer is sufficient for most component-level concerns: form inputs, toggle states, UI visibility flags, and component-specific data. Lifting state up to the nearest common ancestor handles cases where siblings need to share state. This pattern requires no additional libraries and keeps state close to where it is used, making components easier to understand and test in isolation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Context API with useReducer provides a built-in solution for medium-complexity global state. The pattern mirrors Redux with a reducer function, dispatch actions, and a provider component. It works well for authentication state, theme preferences, locale settings, and other infrequently-changing global values. The primary limitation is performance: every consumer re-renders when any part of the context value changes, requiring careful context splitting or memoization."
+        },
+        {
+          "type": "paragraph",
+          "text": "External state libraries (Redux Toolkit, Zustand, Jotai, Recoil) solve the performance and scalability limitations of Context. Redux Toolkit provides opinionated, batteries-included state management with middleware support, DevTools integration, and predictable state updates through immutable reducers. Zustand offers a minimal API with no boilerplate, using a hook-based store that only re-renders components when their selected state slice changes. Jotai and Recoil provide atomic state management where each piece of state is an independent atom, enabling fine-grained subscriptions and avoiding the single-store bottleneck."
+        },
+        {
+          "type": "paragraph",
+          "text": "Server state management (TanStack Query, SWR) treats server data as a separate concern from client state. These libraries handle caching, background refetching, stale-while-revalidate patterns, optimistic updates, and pagination automatically. They eliminate the need to store server responses in Redux or Context, reducing boilerplate and providing better UX through automatic cache invalidation and retry logic."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Zustand store with slices pattern for scalable state management\nimport { create } from 'zustand';\nimport { devtools, persist } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface AuthSlice {\n  user: User | null;\n  token: string | null;\n  login: (credentials: Credentials) => Promise<void>;\n  logout: () => void;\n}\n\ninterface UISlice {\n  sidebarOpen: boolean;\n  theme: 'light' | 'dark';\n  toggleSidebar: () => void;\n  setTheme: (theme: 'light' | 'dark') => void;\n}\n\ntype AppStore = AuthSlice & UISlice;\n\nconst useAppStore = create<AppStore>()(\n  devtools(\n    persist(\n      immer((set) => ({\n        // Auth slice\n        user: null,\n        token: null,\n        login: async (credentials) => {\n          const response = await authApi.login(credentials);\n          set((state) => {\n            state.user = response.user;\n            state.token = response.token;\n          });\n        },\n        logout: () => {\n          set((state) => {\n            state.user = null;\n            state.token = null;\n          });\n        },\n        // UI slice\n        sidebarOpen: true,\n        theme: 'dark',\n        toggleSidebar: () => set((state) => { state.sidebarOpen = !state.sidebarOpen; }),\n        setTheme: (theme) => set((state) => { state.theme = theme; }),\n      })),\n      { name: 'app-store', partialize: (state) => ({ theme: state.theme }) }\n    )\n  )\n);\n\n// Selector pattern for fine-grained subscriptions\nconst useUser = () => useAppStore((state) => state.user);\nconst useTheme = () => useAppStore((state) => state.theme);",
+          "runnable": false
+        }
+      ],
+      "wordCount": 304,
+      "subsections": []
+    },
+    {
+      "id": "performance-optimization",
+      "heading": "Performance Optimization",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "React performance optimization focuses on reducing unnecessary re-renders, minimizing the work done during renders, and efficiently managing large datasets. The React DevTools Profiler is the primary tool for identifying performance bottlenecks, showing which components re-rendered and why."
+        },
+        {
+          "type": "paragraph",
+          "text": "React.memo wraps a component to skip re-rendering when its props have not changed (shallow comparison by default). It is most effective for components that receive the same props frequently while their parent re-renders due to unrelated state changes. Avoid wrapping every component in memo; the comparison itself has a cost, and components that always receive new props (inline objects, new function references) gain nothing from memoization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Code splitting with React.lazy and Suspense reduces initial bundle size by loading components on demand. Route-level splitting is the most impactful: each page loads its own chunk only when navigated to. Component-level splitting works for heavy libraries (chart libraries, rich text editors) that are not needed on initial render. Dynamic imports with webpack magic comments or Vite's built-in splitting provide fine-grained control over chunk boundaries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Virtualization (react-window, react-virtuoso, TanStack Virtual) renders only the visible portion of large lists or tables, keeping DOM node count constant regardless of data size. A list of 10,000 items renders only the 20-30 visible rows plus a small overscan buffer, dramatically reducing memory usage and initial render time. Virtualization is essential for any list exceeding a few hundred items."
+        },
+        {
+          "type": "paragraph",
+          "text": "State colocation means keeping state as close as possible to where it is used. When state lives too high in the component tree, every update re-renders the entire subtree. Moving state down to the component that actually needs it, or extracting frequently-updating state into a separate component, prevents cascading re-renders. This is often more effective than memoization because it eliminates the problem rather than caching around it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Concurrent features in React 18 (useTransition, useDeferredValue) allow marking state updates as non-urgent, letting React interrupt rendering to handle higher-priority updates like user input. useTransition wraps a state update to indicate it can be interrupted, while useDeferredValue defers re-rendering a value until the browser is idle. These features prevent UI jank during expensive renders without manual debouncing."
+        }
+      ],
+      "wordCount": 351,
+      "subsections": []
+    },
+    {
+      "id": "component-patterns",
+      "heading": "Component Patterns",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Component patterns establish conventions for structuring, composing, and reusing React components across a codebase. Well-chosen patterns reduce duplication, improve testability, and make component APIs intuitive for other developers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Compound components expose a set of related components that work together implicitly through shared context. The parent component manages state and provides it via context, while child components consume that context to render their portion of the UI. This pattern gives consumers full control over rendering order and composition while keeping the internal logic encapsulated. Examples include Tab/TabPanel, Accordion/AccordionItem, and Select/Option patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Render props and children as functions pass rendering control to the consumer by accepting a function that receives data and returns JSX. While hooks have largely replaced this pattern for logic reuse, render props remain useful for components that need to share layout or animation logic while letting consumers control what is rendered inside. Libraries like Downshift and React Spring still use this pattern effectively."
+        },
+        {
+          "type": "paragraph",
+          "text": "Higher-order components (HOCs) wrap a component to inject additional props or behavior. They are a legacy pattern largely replaced by hooks, but understanding them is important for working with older codebases and libraries like Redux's connect(). HOCs compose well but create wrapper hell in DevTools and can cause prop name collisions. Prefer hooks for new code."
+        },
+        {
+          "type": "paragraph",
+          "text": "Custom hooks extract reusable stateful logic into functions prefixed with use. They are the primary mechanism for logic reuse in modern React, replacing HOCs and render props for most use cases. Custom hooks can compose other hooks, manage subscriptions, encapsulate API calls, and share complex state logic across components without affecting the component tree structure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Container/Presentational split separates data-fetching and state management (container) from pure rendering (presentational). While less emphasized since hooks, the principle remains valuable: presentational components are easier to test, reuse, and reason about because they are pure functions of their props. Containers handle the messy integration with APIs, stores, and side effects."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Compound component pattern with context\nimport { createContext, useContext, useState, ReactNode } from 'react';\n\ninterface AccordionContextType {\n  openItems: Set<string>;\n  toggle: (id: string) => void;\n}\n\nconst AccordionContext = createContext<AccordionContextType | null>(null);\n\nfunction Accordion({ children, allowMultiple = false }: { children: ReactNode; allowMultiple?: boolean }) {\n  const [openItems, setOpenItems] = useState<Set<string>>(new Set());\n\n  const toggle = (id: string) => {\n    setOpenItems(prev => {\n      const next = new Set(allowMultiple ? prev : []);\n      if (prev.has(id)) next.delete(id);\n      else next.add(id);\n      return next;\n    });\n  };\n\n  return (\n    <AccordionContext.Provider value={{ openItems, toggle }}>\n      <div role=\"region\" aria-label=\"Accordion\">{children}</div>\n    </AccordionContext.Provider>\n  );\n}\n\nfunction AccordionItem({ id, title, children }: { id: string; title: string; children: ReactNode }) {\n  const context = useContext(AccordionContext);\n  if (!context) throw new Error('AccordionItem must be used within Accordion');\n  const isOpen = context.openItems.has(id);\n\n  return (\n    <div>\n      <button\n        aria-expanded={isOpen}\n        aria-controls={`panel-${id}`}\n        onClick={() => context.toggle(id)}\n      >\n        {title}\n      </button>\n      {isOpen && (\n        <div id={`panel-${id}`} role=\"region\" aria-labelledby={`header-${id}`}>\n          {children}\n        </div>\n      )}\n    </div>\n  );\n}\n\nAccordion.Item = AccordionItem;\nexport { Accordion };",
+          "runnable": false
+        }
+      ],
+      "wordCount": 316,
+      "subsections": []
+    },
+    {
+      "id": "testing-strategies",
+      "heading": "Testing Strategies",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Testing React applications involves multiple layers: unit tests for individual components and hooks, integration tests for component interactions, and end-to-end tests for critical user flows. The testing trophy model emphasizes integration tests as the highest-value layer, testing components as users interact with them rather than testing implementation details."
+        },
+        {
+          "type": "paragraph",
+          "text": "React Testing Library is the standard for component testing. Its philosophy is to test components the way users interact with them: querying by accessible roles, labels, and text rather than by component internals, class names, or test IDs. This approach produces tests that are resilient to refactoring because they only break when user-visible behavior changes, not when implementation details are restructured."
+        },
+        {
+          "type": "paragraph",
+          "text": "Testing hooks uses renderHook from React Testing Library to test custom hooks in isolation. This is useful for hooks with complex logic (data fetching, state machines, debouncing) that would be cumbersome to test through a component. The hook runs inside a test component, and you can trigger updates via act() and assert on the returned values."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mocking strategies should be minimal and targeted. Mock network requests with MSW (Mock Service Worker) rather than mocking fetch or axios directly, because MSW intercepts at the network level and works identically in tests and development. Mock timers with jest.useFakeTimers() or vi.useFakeTimers() for testing debounce, throttle, and animation logic. Avoid mocking React components or hooks unless absolutely necessary, as it couples tests to implementation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Snapshot testing captures the rendered output of a component and compares it against a stored reference. While useful for detecting unintended changes in large component trees, snapshots are brittle and often updated without review. Use them sparingly for stable, presentational components and prefer explicit assertions for dynamic behavior."
+        },
+        {
+          "type": "paragraph",
+          "text": "End-to-end testing with Playwright or Cypress validates complete user flows across the full application stack. E2E tests are the most expensive to write and maintain but provide the highest confidence that the application works correctly from the user's perspective. Focus E2E tests on critical paths: authentication, checkout, data submission, and navigation flows."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Integration test with React Testing Library and MSW\nimport { render, screen, waitFor } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport { http, HttpResponse } from 'msw';\nimport { setupServer } from 'msw/node';\nimport { UserProfile } from './UserProfile';\n\nconst server = setupServer(\n  http.get('/api/user/:id', ({ params }) => {\n    return HttpResponse.json({\n      id: params.id,\n      name: 'Jane Doe',\n      email: 'jane@example.com',\n      role: 'admin',\n    });\n  }),\n  http.put('/api/user/:id', async ({ request }) => {\n    const body = await request.json();\n    return HttpResponse.json({ ...body, updatedAt: new Date().toISOString() });\n  })\n);\n\nbeforeAll(() => server.listen());\nafterEach(() => server.resetHandlers());\nafterAll(() => server.close());\n\ndescribe('UserProfile', () => {\n  it('loads and displays user data', async () => {\n    render(<UserProfile userId=\"123\" />);\n\n    expect(screen.getByRole('progressbar')).toBeInTheDocument();\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane doe/i })).toBeInTheDocument();\n    });\n    expect(screen.getByText('jane@example.com')).toBeInTheDocument();\n    expect(screen.getByText('admin')).toBeInTheDocument();\n  });\n\n  it('allows editing and saving user name', async () => {\n    const user = userEvent.setup();\n    render(<UserProfile userId=\"123\" />);\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane doe/i })).toBeInTheDocument();\n    });\n\n    await user.click(screen.getByRole('button', { name: /edit/i }));\n    const nameInput = screen.getByLabelText(/name/i);\n    await user.clear(nameInput);\n    await user.type(nameInput, 'Jane Smith');\n    await user.click(screen.getByRole('button', { name: /save/i }));\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane smith/i })).toBeInTheDocument();\n    });\n  });\n\n  it('displays error state when API fails', async () => {\n    server.use(\n      http.get('/api/user/:id', () => HttpResponse.error())\n    );\n    render(<UserProfile userId=\"123\" />);\n\n    await waitFor(() => {\n      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load/i);\n    });\n  });\n});",
+          "runnable": false
+        }
+      ],
+      "wordCount": 329,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"React Application Architecture\"\n        subgraph \"Presentation Layer\"\n            Pages[Page Components]\n            Features[Feature Components]\n            UI[Shared UI Components]\n        end\n\n        subgraph \"State Layer\"\n            LocalState[Local State - useState/useReducer]\n            GlobalState[Global State - Zustand/Redux]\n            ServerState[Server State - TanStack Query]\n            URLState[URL State - React Router]\n        end\n\n        subgraph \"Data Layer\"\n            API[API Client - fetch/axios]\n            Cache[Query Cache]\n            Persistence[localStorage/IndexedDB]\n        end\n\n        subgraph \"Infrastructure\"\n            Router[React Router]\n            ErrorBoundary[Error Boundaries]\n            Suspense[Suspense Boundaries]\n            Providers[Context Providers]\n        end\n    end\n\n    Pages --> Features\n    Features --> UI\n    Features --> LocalState\n    Features --> GlobalState\n    Features --> ServerState\n    Pages --> URLState\n    ServerState --> API\n    ServerState --> Cache\n    GlobalState --> Persistence\n    Router --> Pages\n    ErrorBoundary --> Pages\n    Suspense --> Features\n    Providers --> GlobalState"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant User\n    participant Component\n    participant Hook as Custom Hook\n    participant Store as State Store\n    participant API as API Layer\n    participant Server\n\n    User->>Component: Interaction (click, type)\n    Component->>Hook: Call action\n    Hook->>Store: Dispatch update\n    Store->>Component: Re-render with new state\n    \n    alt Async Operation\n        Hook->>API: Request data\n        API->>Server: HTTP Request\n        Server-->>API: Response\n        API-->>Hook: Parsed data\n        Hook->>Store: Update with server data\n        Store->>Component: Re-render with data\n        Component->>User: Updated UI\n    else Optimistic Update\n        Hook->>Store: Optimistic state update\n        Store->>Component: Immediate re-render\n        Hook->>API: Request in background\n        API->>Server: HTTP Request\n        Server-->>API: Response\n        alt Success\n            API-->>Hook: Confirm\n        else Failure\n            API-->>Hook: Error\n            Hook->>Store: Rollback state\n            Store->>Component: Re-render with rollback\n        end\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Stale closures in useEffect: When the dependency array is incomplete, the effect captures stale values from a previous render. The ESLint exhaustive-deps rule catches most cases, but developers often suppress it instead of restructuring the effect. Always include all referenced variables in the dependency array or use useRef for values that should not trigger re-runs.",
+            "Creating objects and functions inline in JSX: Passing style={{ color: 'red' }} or onClick={() => handleClick(id)} creates new references every render, defeating React.memo on child components. Extract stable references with useMemo/useCallback or move constant objects outside the component. Only optimize this when profiling shows it matters.",
+            "Overusing useEffect for derived state: Computing values that can be calculated directly from props or state during render does not need useEffect. Using useEffect to sync derived state causes an extra render cycle and introduces bugs. Calculate derived values inline or with useMemo instead.",
+            "Missing keys or using index as key: Without stable keys, React cannot efficiently reconcile list items, leading to incorrect state preservation when items are reordered, inserted, or deleted. Using array index as key has the same problem when the list order changes. Always use a unique, stable identifier from the data.",
+            "Prop drilling through many layers: Passing props through 5+ intermediate components that do not use them creates coupling and maintenance burden. Use Context for truly global values, component composition (passing children), or state management libraries for shared state that multiple distant components need.",
+            "Not handling race conditions in async effects: When a component fetches data based on a prop that changes rapidly (search input, route params), earlier requests may resolve after later ones, displaying stale data. Use AbortController to cancel previous requests or check a cleanup flag before setting state."
+          ]
+        }
+      ],
+      "wordCount": 286,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enterprise dashboards: React powers complex analytics dashboards at companies like Meta, Netflix, and Airbnb, where dozens of interactive widgets, real-time data streams, and complex filtering logic require efficient re-rendering and state management across hundreds of components.",
+            "E-commerce platforms: Shopify, Walmart, and many retailers use React (often via Next.js) for product catalogs, shopping carts, and checkout flows where server-side rendering provides SEO benefits and fast initial loads, while client-side interactivity handles cart management and dynamic filtering.",
+            "Design tools and editors: Figma's interface, Notion's block editor, and many collaborative tools use React for their complex, highly interactive UIs where component composition, virtualization, and optimistic updates are essential for responsive user experiences.",
+            "Mobile applications: React Native extends React's component model to iOS and Android, allowing teams to share business logic and state management patterns between web and mobile platforms while rendering native UI components."
+          ]
+        }
+      ],
+      "wordCount": 141,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the React reconciliation algorithm and how keys help.\nA: React compares the previous and next virtual DOM trees element by element. When elements have the same type, React updates props and recurses into children. Keys help React identify which children in a list have changed, been added, or removed, allowing it to reuse existing DOM nodes and maintain component state correctly during reordering."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between useEffect and useLayoutEffect?\nA: useEffect runs asynchronously after the browser paints, making it suitable for most side effects (data fetching, subscriptions). useLayoutEffect runs synchronously after DOM mutations but before the browser paints, making it necessary for DOM measurements and synchronous visual updates that must happen before the user sees the rendered output."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does React.memo differ from useMemo?\nA: React.memo is a higher-order component that memoizes an entire component, skipping re-render when props are shallowly equal. useMemo is a hook that memoizes a computed value within a component, recomputing only when dependencies change. React.memo prevents re-rendering; useMemo prevents re-computing expensive values during a render that will happen anyway."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the concept of lifting state up and when to use it.\nA: Lifting state up means moving shared state to the closest common ancestor of the components that need it. Use it when sibling components need to reflect the same changing data. The parent owns the state and passes it down as props, with callback props for children to request changes. This maintains single source of truth without external state management."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are React Server Components and how do they differ from SSR?\nA: Server Components render exclusively on the server and send serialized UI (not HTML) to the client, with zero JavaScript bundle cost. They can directly access databases and file systems. SSR renders the full component tree to HTML on the server for fast initial paint, then hydrates on the client with the full JavaScript bundle. Server Components complement SSR by reducing client bundle size for non-interactive parts of the UI."
+        }
+      ],
+      "wordCount": 336,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Error boundaries are non-negotiable: Wrap major UI sections (sidebar, main content, widgets) in error boundaries to prevent a single component crash from taking down the entire application. Log errors to your monitoring service (Sentry, DataDog) from the error boundary's componentDidCatch method and display a user-friendly fallback UI.",
+            "Bundle analysis and splitting: Run npx vite-bundle-visualizer or webpack-bundle-analyzer regularly to identify unexpectedly large dependencies. Lazy-load routes and heavy components (chart libraries, rich text editors, PDF viewers) to keep the initial bundle under 200KB gzipped. Tree-shaking only works with ES module imports, so avoid importing entire utility libraries.",
+            "Strict Mode in development: Always wrap your app in <React.StrictMode> during development. It double-invokes render functions, effects, and reducers to surface impure logic and missing cleanup functions. It also warns about deprecated APIs. The double-invocation does not happen in production builds.",
+            "Monitoring render performance: Use React DevTools Profiler to identify components that re-render too frequently or take too long. Set up performance budgets: no component should take more than 16ms to render (one frame at 60fps). Track Web Vitals (LCP, FID, CLS) in production using the web-vitals library and report to your analytics pipeline.",
+            "Hydration mismatch prevention: When using SSR, ensure server and client render identical initial output. Common causes of mismatches include using Date.now(), Math.random(), or browser-only APIs during render. Use useEffect for client-only logic and suppressHydrationWarning only as a last resort for intentional differences like timestamps."
+          ]
+        }
+      ],
+      "wordCount": 233,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "TypeScript - TypeScript provides type safety for React component props, state, and hooks, catching errors at compile time",
+            "Next.js - Next.js builds on React with server-side rendering, static generation, and full-stack capabilities",
+            "JavaScript - Understanding JavaScript fundamentals (closures, event loop, prototypes) is essential for effective React development"
+          ]
+        }
+      ],
+      "wordCount": 47,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Custom hook combining multiple hooks for data fetching with caching\nimport { useState, useEffect, useRef, useCallback } from 'react';\n\ninterface FetchState<T> {\n  data: T | null;\n  loading: boolean;\n  error: Error | null;\n}\n\nfunction useFetch<T>(url: string, options?: RequestInit): FetchState<T> & { refetch: () => void } {\n  const [state, setState] = useState<FetchState<T>>({\n    data: null,\n    loading: true,\n    error: null,\n  });\n  const abortControllerRef = useRef<AbortController | null>(null);\n  const cacheRef = useRef<Map<string, T>>(new Map());\n\n  const fetchData = useCallback(async () => {\n    // Check cache first\n    if (cacheRef.current.has(url)) {\n      setState({ data: cacheRef.current.get(url)!, loading: false, error: null });\n      return;\n    }\n\n    // Abort previous request\n    abortControllerRef.current?.abort();\n    abortControllerRef.current = new AbortController();\n\n    setState(prev => ({ ...prev, loading: true, error: null }));\n\n    try {\n      const response = await fetch(url, {\n        ...options,\n        signal: abortControllerRef.current.signal,\n      });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const data: T = await response.json();\n      cacheRef.current.set(url, data);\n      setState({ data, loading: false, error: null });\n    } catch (error) {\n      if (error instanceof Error && error.name !== 'AbortError') {\n        setState({ data: null, loading: false, error });\n      }\n    }\n  }, [url, options]);\n\n  useEffect(() => {\n    fetchData();\n    return () => abortControllerRef.current?.abort();\n  }, [fetchData]);\n\n  return { ...state, refetch: fetchData };\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Zustand store with slices pattern for scalable state management\nimport { create } from 'zustand';\nimport { devtools, persist } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface AuthSlice {\n  user: User | null;\n  token: string | null;\n  login: (credentials: Credentials) => Promise<void>;\n  logout: () => void;\n}\n\ninterface UISlice {\n  sidebarOpen: boolean;\n  theme: 'light' | 'dark';\n  toggleSidebar: () => void;\n  setTheme: (theme: 'light' | 'dark') => void;\n}\n\ntype AppStore = AuthSlice & UISlice;\n\nconst useAppStore = create<AppStore>()(\n  devtools(\n    persist(\n      immer((set) => ({\n        // Auth slice\n        user: null,\n        token: null,\n        login: async (credentials) => {\n          const response = await authApi.login(credentials);\n          set((state) => {\n            state.user = response.user;\n            state.token = response.token;\n          });\n        },\n        logout: () => {\n          set((state) => {\n            state.user = null;\n            state.token = null;\n          });\n        },\n        // UI slice\n        sidebarOpen: true,\n        theme: 'dark',\n        toggleSidebar: () => set((state) => { state.sidebarOpen = !state.sidebarOpen; }),\n        setTheme: (theme) => set((state) => { state.theme = theme; }),\n      })),\n      { name: 'app-store', partialize: (state) => ({ theme: state.theme }) }\n    )\n  )\n);\n\n// Selector pattern for fine-grained subscriptions\nconst useUser = () => useAppStore((state) => state.user);\nconst useTheme = () => useAppStore((state) => state.theme);",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Compound component pattern with context\nimport { createContext, useContext, useState, ReactNode } from 'react';\n\ninterface AccordionContextType {\n  openItems: Set<string>;\n  toggle: (id: string) => void;\n}\n\nconst AccordionContext = createContext<AccordionContextType | null>(null);\n\nfunction Accordion({ children, allowMultiple = false }: { children: ReactNode; allowMultiple?: boolean }) {\n  const [openItems, setOpenItems] = useState<Set<string>>(new Set());\n\n  const toggle = (id: string) => {\n    setOpenItems(prev => {\n      const next = new Set(allowMultiple ? prev : []);\n      if (prev.has(id)) next.delete(id);\n      else next.add(id);\n      return next;\n    });\n  };\n\n  return (\n    <AccordionContext.Provider value={{ openItems, toggle }}>\n      <div role=\"region\" aria-label=\"Accordion\">{children}</div>\n    </AccordionContext.Provider>\n  );\n}\n\nfunction AccordionItem({ id, title, children }: { id: string; title: string; children: ReactNode }) {\n  const context = useContext(AccordionContext);\n  if (!context) throw new Error('AccordionItem must be used within Accordion');\n  const isOpen = context.openItems.has(id);\n\n  return (\n    <div>\n      <button\n        aria-expanded={isOpen}\n        aria-controls={`panel-${id}`}\n        onClick={() => context.toggle(id)}\n      >\n        {title}\n      </button>\n      {isOpen && (\n        <div id={`panel-${id}`} role=\"region\" aria-labelledby={`header-${id}`}>\n          {children}\n        </div>\n      )}\n    </div>\n  );\n}\n\nAccordion.Item = AccordionItem;\nexport { Accordion };",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Integration test with React Testing Library and MSW\nimport { render, screen, waitFor } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\nimport { http, HttpResponse } from 'msw';\nimport { setupServer } from 'msw/node';\nimport { UserProfile } from './UserProfile';\n\nconst server = setupServer(\n  http.get('/api/user/:id', ({ params }) => {\n    return HttpResponse.json({\n      id: params.id,\n      name: 'Jane Doe',\n      email: 'jane@example.com',\n      role: 'admin',\n    });\n  }),\n  http.put('/api/user/:id', async ({ request }) => {\n    const body = await request.json();\n    return HttpResponse.json({ ...body, updatedAt: new Date().toISOString() });\n  })\n);\n\nbeforeAll(() => server.listen());\nafterEach(() => server.resetHandlers());\nafterAll(() => server.close());\n\ndescribe('UserProfile', () => {\n  it('loads and displays user data', async () => {\n    render(<UserProfile userId=\"123\" />);\n\n    expect(screen.getByRole('progressbar')).toBeInTheDocument();\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane doe/i })).toBeInTheDocument();\n    });\n    expect(screen.getByText('jane@example.com')).toBeInTheDocument();\n    expect(screen.getByText('admin')).toBeInTheDocument();\n  });\n\n  it('allows editing and saving user name', async () => {\n    const user = userEvent.setup();\n    render(<UserProfile userId=\"123\" />);\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane doe/i })).toBeInTheDocument();\n    });\n\n    await user.click(screen.getByRole('button', { name: /edit/i }));\n    const nameInput = screen.getByLabelText(/name/i);\n    await user.clear(nameInput);\n    await user.type(nameInput, 'Jane Smith');\n    await user.click(screen.getByRole('button', { name: /save/i }));\n\n    await waitFor(() => {\n      expect(screen.getByRole('heading', { name: /jane smith/i })).toBeInTheDocument();\n    });\n  });\n\n  it('displays error state when API fails', async () => {\n    server.use(\n      http.get('/api/user/:id', () => HttpResponse.error())\n    );\n    render(<UserProfile userId=\"123\" />);\n\n    await waitFor(() => {\n      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load/i);\n    });\n  });\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/frontend/react.md",
+    "wordCount": 3037,
+    "sectionCount": 13
+  }
+}

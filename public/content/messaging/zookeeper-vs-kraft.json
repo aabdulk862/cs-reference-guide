@@ -1,0 +1,458 @@
+{
+  "id": "introduction-to-apache-kafka-zookeeper-vs-kraft",
+  "slug": "zookeeper-vs-kraft",
+  "title": "Zookeeper vs KRaft",
+  "category": "Messaging",
+  "sections": [
+    {
+      "id": "kafka-architecture-basics",
+      "heading": "Kafka Architecture Basics",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Component",
+            "Role"
+          ],
+          "rows": [
+            [
+              "Broker",
+              "Kafka server; stores and serves messages"
+            ],
+            [
+              "Topic",
+              "Logical stream of data split into partitions"
+            ],
+            [
+              "Partition",
+              "Subdivision of a topic for parallelism"
+            ],
+            [
+              "Producer",
+              "Sends data to Kafka"
+            ],
+            [
+              "Consumer",
+              "Reads data from Kafka"
+            ],
+            [
+              "Controller",
+              "Coordinates partition leadership, ISR, broker events"
+            ],
+            [
+              "Log",
+              "Append-only file where messages are stored"
+            ],
+            [
+              "Offset",
+              "Unique ID of a message in a partition"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    },
+    {
+      "id": "comparison",
+      "heading": "Comparison",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Zookeeper Mode",
+            "KRaft Mode (Kafka Raft Metadata)"
+          ],
+          "rows": [
+            [
+              "Metadata Store",
+              "External (Zookeeper)",
+              "Internal (Kafka log: @metadata)"
+            ],
+            [
+              "Consensus Protocol",
+              "ZAB (Zookeeper Atomic Broadcast)",
+              "Raft"
+            ],
+            [
+              "Controller Election",
+              "Zookeeper handles it",
+              "Kafka Raft protocol"
+            ],
+            [
+              "Broker Registration",
+              "In Zookeeper path /brokers/ids",
+              "Via metadata log (KRaft)"
+            ],
+            [
+              "Cluster Metadata",
+              "Stored in Zookeeper",
+              "Stored in replicated metadata log"
+            ],
+            [
+              "Topic Configs",
+              "In Zookeeper",
+              "In metadata log"
+            ],
+            [
+              "Complexity",
+              "Requires running Zookeeper",
+              "Kafka-only setup"
+            ],
+            [
+              "Startup Setup",
+              "Start Zookeeper, then Kafka",
+              "Just format metadata, then start Kafka"
+            ],
+            [
+              "Scalability",
+              "Limited with high partition counts",
+              "Scales better, lower latency"
+            ],
+            [
+              "Security",
+              "Harder to secure",
+              "More secure with unified Kafka config"
+            ],
+            [
+              "Recommended For",
+              "Legacy users or transitional systems",
+              "New installations"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 105,
+      "subsections": []
+    },
+    {
+      "id": "key-kraft-concepts",
+      "heading": "Key KRaft Concepts",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "metadata-log",
+          "heading": "Metadata Log",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Stored internally in Kafka (e.g., meta.properties)",
+                "Topic: @metadata (internal, not user-visible)",
+                "Replicated via Raft among controller quorum nodes"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "cluster-uuid",
+          "heading": "Cluster UUID",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Assigned via: kafka-storage.sh format -t <uuid> -c config/server.properties",
+                "Stored in logs and used to identify the cluster"
+              ]
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "controller-quorum",
+          "heading": "Controller Quorum",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Minimum 3 nodes recommended (odd number)",
+                "One elected leader, others are followers",
+                "Ensures fault-tolerance of metadata"
+              ]
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "commands-setup",
+      "heading": "Commands & Setup",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "format-storage-for-kraft",
+          "heading": "Format Storage for KRaft",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "kafka-storage.sh format -t $(uuidgen) -c config/kraft-broker.properties",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "start-kafka-in-kraft-mode",
+          "heading": "Start Kafka in KRaft Mode",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "bin/kafka-server-start.sh config/kraft-broker.properties",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "minimal-config-for-kraft",
+          "heading": "Minimal Config for KRaft",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "process.roles=broker,controller\nnode.id=1\ncontroller.quorum.voters=1@localhost:9093\nlisteners=PLAINTEXT://:9092,CONTROLLER://:9093\nlog.dirs=/tmp/kraft-logs",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "kafka-metadata-security",
+      "heading": "Kafka Metadata & Security",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Aspect",
+            "Description"
+          ],
+          "rows": [
+            [
+              "UUIDs",
+              "Used for broker ID and cluster ID"
+            ],
+            [
+              "Security",
+              "TLS, SCRAM, OAuth support in Kafka directly"
+            ],
+            [
+              "Metadata Replication",
+              "Via Raft consensus"
+            ],
+            [
+              "No External Access",
+              "Metadata internal to Kafka; Zookeeper no longer needed"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "performance-benefits-with-kraft",
+      "heading": "Performance Benefits with KRaft",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Benefit"
+          ],
+          "rows": [
+            [
+              "No Zookeeper Latency",
+              "Direct Kafka-native controller election"
+            ],
+            [
+              "Metadata Scalability",
+              "Faster topic/partition creation"
+            ],
+            [
+              "Reduced Complexity",
+              "Single binary, no ZK ops"
+            ],
+            [
+              "Simplified Security",
+              "One layer of security setup"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    },
+    {
+      "id": "migration-zookeeper-kraft",
+      "heading": "Migration (Zookeeper → KRaft)",
+      "level": 2,
+      "content": [
+        {
+          "type": "blockquote",
+          "text": "Kafka offers tools to migrate metadata from Zookeeper to KRaft"
+        },
+        {
+          "type": "paragraph",
+          "text": "Steps:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Export metadata using kafka-metadata-shell.sh",
+            "Format with the KRaft cluster UUID",
+            "Restart brokers in KRaft mode",
+            "Ensure replication is healthy"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "🛠 Best done in Kafka 3.5+"
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "bonus-related-kafka-tips",
+      "heading": "Bonus: Related Kafka Tips",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "useful-commands",
+          "heading": "Useful Commands:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# List topics\nkafka-topics.sh --bootstrap-server localhost:9092 --list\n\n# Describe topic\nkafka-topics.sh --describe --topic my-topic --bootstrap-server localhost:9092\n\n# Produce messages\nkafka-console-producer.sh --topic my-topic --bootstrap-server localhost:9092\n\n# Consume messages\nkafka-console-consumer.sh --topic my-topic --bootstrap-server localhost:9092 --from-beginning",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "env-setup-on-windows",
+          "heading": "Env Setup on Windows",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Add Kafka bin/windows path to system PATH",
+                "Restart terminal",
+                "Use .bat versions of Kafka scripts (e.g., kafka-topics.bat)"
+              ]
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Use Case",
+            "Use Zookeeper?",
+            "Use KRaft?"
+          ],
+          "rows": [
+            [
+              "New Project",
+              "❌",
+              "✅"
+            ],
+            [
+              "Large Scale (>10k partitions)",
+              "❌",
+              "✅"
+            ],
+            [
+              "Simple Setup",
+              "❌",
+              "✅"
+            ],
+            [
+              "Legacy Compatibility",
+              "✅",
+              "❌"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 24,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "kafka-storage.sh format -t $(uuidgen) -c config/kraft-broker.properties",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "bin/kafka-server-start.sh config/kraft-broker.properties",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "process.roles=broker,controller\nnode.id=1\ncontroller.quorum.voters=1@localhost:9093\nlisteners=PLAINTEXT://:9092,CONTROLLER://:9093\nlog.dirs=/tmp/kraft-logs",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# List topics\nkafka-topics.sh --bootstrap-server localhost:9092 --list\n\n# Describe topic\nkafka-topics.sh --describe --topic my-topic --bootstrap-server localhost:9092\n\n# Produce messages\nkafka-console-producer.sh --topic my-topic --bootstrap-server localhost:9092\n\n# Consume messages\nkafka-console-consumer.sh --topic my-topic --bootstrap-server localhost:9092 --from-beginning",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Zookeeper vs KRaft.md",
+    "wordCount": 352,
+    "sectionCount": 17
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "id": "spring-rest-with-kafka-example-rest-api-calls",
+  "slug": "example-rest-api-calls",
+  "title": "Example REST API Calls",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "high-level-architecture",
+      "heading": "High-Level Architecture",
+      "level": 2,
+      "content": [
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/image.png",
+          "alt": "image.png",
+          "originalPath": "Spring%20Rest%20with%20Kafka/image.png"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-ktable-state-store",
+          "heading": "1. KTable (State Store)",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Materialized view of Kafka stream as a Key-Value store.",
+                "Filters BrakeEfficiency < 70% and stores occurrence counts.",
+                "Declaration: KTable<String, Long> trainDatum = trainData\n    .filter((key, value) -> key.equalsIgnoreCase(\"BrakeEfficiency\"))\n    .filter((key, value) -> Long.parseLong(value) < 70)\n    .groupBy((key, value) -> value, Grouped.with(Serdes.String(), Serdes.String()))\n    .count(Materialized.as(\"breakdata\"));"
+              ]
+            }
+          ],
+          "wordCount": 40,
+          "subsections": []
+        },
+        {
+          "id": "2-streamsbuilderfactorybean",
+          "heading": "2. StreamsBuilderFactoryBean",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Lifecycle manager for Kafka Streams in Spring.",
+                "Required to get access to the KafkaStreams instance. @Autowired\nStreamsBuilderFactoryBean factoryBean;"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "3-accessing-ktable-via-rest",
+          "heading": "3. Accessing KTable via REST",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Query the state store using Kafka’s QueryableStoreTypes.keyValueStore(): final KafkaStreams kafkaStreams = factoryBean.getKafkaStreams();\nfinal ReadOnlyKeyValueStore<String, Long> store =\n    kafkaStreams.store(StoreQueryParameters.fromNameAndType(\"breakdata\", QueryableStoreTypes.keyValueStore()));\nreturn store.get(inputpercent);"
+              ]
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "goal",
+          "heading": "Goal:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "To process and expose train speed and brake efficiency data, particularly brake efficiency < 70%, through Kafka Streams and a REST API."
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        },
+        {
+          "id": "workflow",
+          "heading": "Workflow:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Sender Application: ",
+                "Receiver Application: ",
+                "REST Controller: ",
+                "Use Case: "
+              ]
+            }
+          ],
+          "wordCount": 8,
+          "subsections": []
+        },
+        {
+          "id": "sender-infyraileventstreamsender",
+          "heading": "Sender (infyrail.eventstream.sender)",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Sends random values.",
+                "Topics: "
+              ]
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic ApplicationRunner sendMessage(KafkaTemplate<String, String> template) {\n    return args -> {\n        for (int i = 1; i <= 100; i++) {\n            String speed = String.valueOf(Math.round(Math.random() * 1000));\n            String brk = String.valueOf(Math.round(Math.random() * 100));\n            template.send(\"InfyRail_C_To_D\", \"Speed\", speed);\n            template.send(\"InfyRail_C_To_D\", \"BrakeEfficiency\", brk);\n            Thread.sleep(2000);\n        }\n    };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 4,
+          "subsections": []
+        },
+        {
+          "id": "streambuilder",
+          "heading": "StreamBuilder",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "KStream<String, String> trainData = streamsBuilder.stream(\"InfyRail_C_To_D\");\nKTable<String, Long> trainDatum = trainData\n    .filter((k, v) -> k.equalsIgnoreCase(\"BrakeEfficiency\"))\n    .filter((k, v) -> Long.parseLong(v) < 70)\n    .groupBy((k, v) -> v)\n    .count(Materialized.as(\"breakdata\"));\n\ntrainDatum.toStream().to(\"InfyRail_C_To_D_Brake_Warning\");",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "kafka-listener",
+          "heading": "Kafka Listener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@KafkaListener(id = \"IRC2D_1\", topics = \"InfyRail_C_To_D_Brake_Warning\")\npublic void listenToTopic2(ConsumerRecord<String, Long> msg) {\n    System.out.println(\"Received BrakeEfficiency: \" + msg.value() + \"% — Count: \" + msg.key());\n}\n",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "rest-controller",
+          "heading": "REST Controller",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/breakdata\")\npublic class BreakDataController {\n    @Autowired\n    StreamsBuilderFactoryBean factoryBean;\n\n    @GetMapping(\"/{input}\")\n    public Long getData(@PathVariable(\"input\") String inputpercent) {\n        KafkaStreams kafkaStreams = factoryBean.getKafkaStreams();\n        ReadOnlyKeyValueStore<String, Long> store =\n            kafkaStreams.store(StoreQueryParameters.fromNameAndType(\"breakdata\", QueryableStoreTypes.keyValueStore()));\n        return store.get(inputpercent);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "GET http://localhost:8082/breakdata/16 → Number of times brake efficiency was 16%.",
+                "GET http://localhost:8082/breakdata/BrakeEfficiency → (General lookup)."
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/f14041eb-1984-4aa4-a74d-e9427742d7bd.png",
+              "alt": "image.png",
+              "originalPath": "Spring%20Rest%20with%20Kafka/f14041eb-1984-4aa4-a74d-e9427742d7bd.png"
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "observations",
+      "heading": "Observations",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Sender Console: Displays sent speed + brake data.",
+            "Receiver Console: Displays filtered brake data below 70%.",
+            "REST Response: Gives count for a specific brake efficiency (e.g., how many times \"16%\" occurred)."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Spring%20Rest%20with%20Kafka/image%201.png"
+        }
+      ],
+      "wordCount": 31,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/image.png",
+      "alt": "image.png",
+      "originalPath": "Spring%20Rest%20with%20Kafka/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/f14041eb-1984-4aa4-a74d-e9427742d7bd.png",
+      "alt": "image.png",
+      "originalPath": "Spring%20Rest%20with%20Kafka/f14041eb-1984-4aa4-a74d-e9427742d7bd.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring%20Rest%20with%20Kafka/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Spring%20Rest%20with%20Kafka/image%201.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Bean\npublic ApplicationRunner sendMessage(KafkaTemplate<String, String> template) {\n    return args -> {\n        for (int i = 1; i <= 100; i++) {\n            String speed = String.valueOf(Math.round(Math.random() * 1000));\n            String brk = String.valueOf(Math.round(Math.random() * 100));\n            template.send(\"InfyRail_C_To_D\", \"Speed\", speed);\n            template.send(\"InfyRail_C_To_D\", \"BrakeEfficiency\", brk);\n            Thread.sleep(2000);\n        }\n    };\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "KStream<String, String> trainData = streamsBuilder.stream(\"InfyRail_C_To_D\");\nKTable<String, Long> trainDatum = trainData\n    .filter((k, v) -> k.equalsIgnoreCase(\"BrakeEfficiency\"))\n    .filter((k, v) -> Long.parseLong(v) < 70)\n    .groupBy((k, v) -> v)\n    .count(Materialized.as(\"breakdata\"));\n\ntrainDatum.toStream().to(\"InfyRail_C_To_D_Brake_Warning\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@KafkaListener(id = \"IRC2D_1\", topics = \"InfyRail_C_To_D_Brake_Warning\")\npublic void listenToTopic2(ConsumerRecord<String, Long> msg) {\n    System.out.println(\"Received BrakeEfficiency: \" + msg.value() + \"% — Count: \" + msg.key());\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/breakdata\")\npublic class BreakDataController {\n    @Autowired\n    StreamsBuilderFactoryBean factoryBean;\n\n    @GetMapping(\"/{input}\")\n    public Long getData(@PathVariable(\"input\") String inputpercent) {\n        KafkaStreams kafkaStreams = factoryBean.getKafkaStreams();\n        ReadOnlyKeyValueStore<String, Long> store =\n            kafkaStreams.store(StoreQueryParameters.fromNameAndType(\"breakdata\", QueryableStoreTypes.keyValueStore()));\n        return store.get(inputpercent);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Integration/Spring Rest with Kafka/Spring Rest with Kafka.md",
+    "wordCount": 159,
+    "sectionCount": 11
+  }
+}

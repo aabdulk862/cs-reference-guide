@@ -1,0 +1,290 @@
+{
+  "id": "spring-batch-item-readers",
+  "slug": "item-readers",
+  "title": "Item Readers",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch ItemReaders are used to read data from various sources like files, databases, XML, or JSON. Each ItemReader implementation is specialized for a particular source type."
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    },
+    {
+      "id": "flat-file-itemreader",
+      "heading": "Flat File ItemReader",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: FlatFileItemReader"
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to read data from flat files (CSV, TXT, etc.)."
+        }
+      ],
+      "wordCount": 12,
+      "subsections": [
+        {
+          "id": "components",
+          "heading": "Components",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "LineMapper – Maps a line of input into an object. "
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Example:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "FlatFileItemReader<Employee> reader = new FlatFileItemReader<>();\nreader.setResource(new ClassPathResource(\"employees.csv\"));\nreader.setLineMapper(new DefaultLineMapper<Employee>() {{\n    setLineTokenizer(new DelimitedLineTokenizer() {{\n        setNames(\"empId\", \"empName\", \"email\", \"jobLocation\");\n    }});\n    setFieldSetMapper(new BeanWrapperFieldSetMapper<Employee>() {{\n        setTargetType(Employee.class);\n    }});\n}});",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Best suited for reading structured text files."
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "xml-itemreader",
+      "heading": "XML ItemReader",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: StaxEventItemReader"
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to read XML files where each record is a fragment."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": [
+        {
+          "id": "example-xml",
+          "heading": "Example XML",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<employee>\n  <empId>1001</empId>\n  <empName>Raj</empName>\n  <email>Raj@infy.com</email>\n  <jobLocation>Pune</jobLocation>\n</employee>\n<employee>\n  <empId>1002</empId>\n  <empName>Raji</empName>\n  <email>Raji@infy.com</email>\n  <jobLocation>Pune</jobLocation>\n</employee>",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Each <employee> is treated as a fragment.",
+                "Root element: <employee>"
+              ]
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        },
+        {
+          "id": "spring-oxm-staxeventitemreader",
+          "heading": "Spring OXM & StaxEventItemReader",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\n@StepScope\npublic StaxEventItemReader<Employee> staxEventEmployeeItemReader(\n        @Value(\"#{jobParameters['inputFile']}\") FileSystemResource fileResource) {\n    StaxEventItemReader<Employee> reader = new StaxEventItemReader<>();\n    reader.setResource(fileResource);\n    reader.setFragmentRootElementName(\"employee\");\n    reader.setUnmarshaller(new Jaxb2Marshaller() {{\n        setClassesToBeBound(Employee.class);\n    }});\n    return reader;\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Ideal for reading large XML files efficiently."
+            }
+          ],
+          "wordCount": 8,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "json-itemreader",
+      "heading": "JSON ItemReader",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: JsonItemReader"
+        },
+        {
+          "type": "paragraph",
+          "text": "Uses JsonObjectReader (e.g., JacksonJsonObjectReader) to parse JSON and bind it to domain objects."
+        }
+      ],
+      "wordCount": 15,
+      "subsections": [
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic JsonItemReader<Employee> jsonEmployeeItemReader() {\n    JsonItemReader<Employee> reader = new JsonItemReader<>();\n    reader.setResource(new ClassPathResource(\"employees.json\"));\n    reader.setJsonObjectReader(new JacksonJsonObjectReader<>(Employee.class));\n    return reader;\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: For reading structured JSON files and converting to objects."
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "database-itemreader",
+      "heading": "Database ItemReader",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "types",
+          "heading": "Types",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Cursor-based: Reads rows sequentially (e.g., JdbcCursorItemReader)",
+                "Paging-based: Reads data in pages (e.g., JdbcPagingItemReader)"
+              ]
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        },
+        {
+          "id": "cursor-based-example",
+          "heading": "Cursor-based Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic JdbcCursorItemReader<Employee> jdbcEmployeeItemReader(DataSource dataSource) {\n    JdbcCursorItemReader<Employee> reader = new JdbcCursorItemReader<>();\n    reader.setDataSource(dataSource);\n    reader.setSql(\"SELECT * FROM employee\");\n    reader.setRowMapper(new BeanPropertyRowMapper<Employee>() {{\n        setMappedClass(Employee.class);\n    }});\n    return reader;\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Best for small to medium datasets where reading row by row is acceptable. For large datasets, prefer paging readers."
+            }
+          ],
+          "wordCount": 20,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary-table",
+      "heading": "Summary Table",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Source",
+            "Reader Class",
+            "Key Features"
+          ],
+          "rows": [
+            [
+              "Flat File",
+              "FlatFileItemReader",
+              "Uses LineMapper, LineTokenizer, FieldSetMapper"
+            ],
+            [
+              "XML",
+              "StaxEventItemReader",
+              "Fragment-based reading, supports OXM binding"
+            ],
+            [
+              "JSON",
+              "JsonItemReader",
+              "Uses Jackson to map JSON to objects"
+            ],
+            [
+              "Database",
+              "JdbcCursorItemReader",
+              "Reads sequentially from DB"
+            ],
+            [
+              "Database",
+              "JdbcPagingItemReader",
+              "Reads DB rows in pages for large datasets"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "FlatFileItemReader<Employee> reader = new FlatFileItemReader<>();\nreader.setResource(new ClassPathResource(\"employees.csv\"));\nreader.setLineMapper(new DefaultLineMapper<Employee>() {{\n    setLineTokenizer(new DelimitedLineTokenizer() {{\n        setNames(\"empId\", \"empName\", \"email\", \"jobLocation\");\n    }});\n    setFieldSetMapper(new BeanWrapperFieldSetMapper<Employee>() {{\n        setTargetType(Employee.class);\n    }});\n}});",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<employee>\n  <empId>1001</empId>\n  <empName>Raj</empName>\n  <email>Raj@infy.com</email>\n  <jobLocation>Pune</jobLocation>\n</employee>\n<employee>\n  <empId>1002</empId>\n  <empName>Raji</empName>\n  <email>Raji@infy.com</email>\n  <jobLocation>Pune</jobLocation>\n</employee>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\n@StepScope\npublic StaxEventItemReader<Employee> staxEventEmployeeItemReader(\n        @Value(\"#{jobParameters['inputFile']}\") FileSystemResource fileResource) {\n    StaxEventItemReader<Employee> reader = new StaxEventItemReader<>();\n    reader.setResource(fileResource);\n    reader.setFragmentRootElementName(\"employee\");\n    reader.setUnmarshaller(new Jaxb2Marshaller() {{\n        setClassesToBeBound(Employee.class);\n    }});\n    return reader;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic JsonItemReader<Employee> jsonEmployeeItemReader() {\n    JsonItemReader<Employee> reader = new JsonItemReader<>();\n    reader.setResource(new ClassPathResource(\"employees.json\"));\n    reader.setJsonObjectReader(new JacksonJsonObjectReader<>(Employee.class));\n    return reader;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic JdbcCursorItemReader<Employee> jdbcEmployeeItemReader(DataSource dataSource) {\n    JdbcCursorItemReader<Employee> reader = new JdbcCursorItemReader<>();\n    reader.setDataSource(dataSource);\n    reader.setSql(\"SELECT * FROM employee\");\n    reader.setRowMapper(new BeanPropertyRowMapper<Employee>() {{\n        setMappedClass(Employee.class);\n    }});\n    return reader;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Item Readers.md",
+    "wordCount": 191,
+    "sectionCount": 12
+  }
+}

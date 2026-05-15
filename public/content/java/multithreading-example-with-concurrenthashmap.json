@@ -1,0 +1,388 @@
+{
+  "id": "best-practices-multithreading-example-with-concurrenthashmap",
+  "slug": "multithreading-example-with-concurrenthashmap",
+  "title": "Multithreading Example with ConcurrentHashMap",
+  "category": "Java",
+  "sections": [
+    {
+      "id": "string-replacement-prefer-replace-over-replaceall",
+      "heading": "String Replacement – Prefer replace() Over replaceAll()",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use replace() instead of replaceAll() when not using regex patterns.",
+            "replaceAll() expects the first parameter to be a regular expression. Using plain strings causes unnecessary performance cost."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "❌ Noncompliant:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "String changed = init.replaceAll(\"Bob is\", \"It's\");",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Compliant:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "String changed = init.replace(\"Bob is\", \"It's\");",
+          "runnable": false
+        }
+      ],
+      "wordCount": 31,
+      "subsections": []
+    },
+    {
+      "id": "regex-compilation-use-patterncompile-judiciously",
+      "heading": "Regex Compilation – Use Pattern.compile() Judiciously",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Avoid recompiling the same regex repeatedly.",
+            "Store compiled patterns in static final fields for reuse.",
+            "Methods like String.matches() and String.split() internally compile regex patterns, causing performance issues."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "❌ Noncompliant:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "Pattern regexp = Pattern.compile(\"myRegexp\");\nif (string.matches(\"myRegexp2\")) { ... }",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Compliant:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "private static final Pattern MY_REGEXP = Pattern.compile(\"myRegexp\");\nprivate static final Pattern MY_REGEXP2 = Pattern.compile(\"myRegexp2\");\nMatcher matcher = MY_REGEXP.matcher(\"s\");\nif (MY_REGEXP2.matcher(string).matches()) { ... }",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use java.io.File instead of raw String paths for portability.",
+            "Prefer FileReader/FileWriter with proper encoding (e.g., UTF-8).",
+            "Always close files using try-with-resources."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Compliant:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "try (InputStream in = new FileInputStream(file);\n     Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8);\n     BufferedReader bReader = new BufferedReader(reader)) {\n    // read content\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Avoid relying on platform default encoding."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use PreparedStatement:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Faster due to pre-compilation.",
+            "Prevents SQL injection."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Disable Auto-commit:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "conn.setAutoCommit(false);\n// execute batch\nconn.commit(); // or conn.rollback() on failure",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use Bind Variables:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "PreparedStatement ps = conn.prepareStatement(\"SELECT * FROM users WHERE id = ?\");\nps.setInt(1, userId);",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Close All Resources in finally or Use Try-with-Resources:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Always close Connection, Statement, ResultSet."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use Correct getXXX() Methods:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Align method with column type (e.g., getString() for VARCHAR)."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use ANSI Standard SQL:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Promotes database portability and reduces migration effort."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Choose Right JDBC Driver:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prefer Type 4 (native) drivers for better performance."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use ExecutorFramework:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Efficient and scalable thread management."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Prefer Immutable Types:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prevents data inconsistency and concurrency issues."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Lock Only Critical Sections:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Avoid locking unnecessary code blocks to boost performance."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use Local Variables:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Reduces shared-state issues."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "❌ Avoid Static Objects:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Can cause data races unless used as static final."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✔ Use Concurrent Collections:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prefer ConcurrentHashMap over synchronized collections."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "InputThread: Randomly modifies (adds/removes) entries in the map."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "import java.util.Random;\nimport java.util.concurrent.ConcurrentMap;\npublic class InputThread extends Thread {\n\tprivate ConcurrentMap<Integer, String> map;\n\tprivate Random random;\n\tprivate String name;\n\tpublic InputThread(ConcurrentMap<Integer, String> map,\n\t\t\tString threadName, long randomSeed) {\n\t\tthis.map = map;\n\t\tthis.random = new Random(randomSeed);\n\t\tthis.name = threadName;\n\t}\n    @Override\n\tpublic void run() {\n\t\twhile (true) {\n\t\t\tInteger key = random.nextInt(10);\n\t\t\tString value = name;\n\t\t\tif(map.putIfAbsent(key, value) == null) {\n\t\t\t\tlong time = System.currentTimeMillis();\n\t\t\t\tString output = String.format(\"%d: %s has put [%d => %s]\",\n\t\t\t\t\t\ttime, name, key, value);\n\t\t\t\tSystem.out.println(output);\n\t\t\t}\n\t\t\tInteger keyToRemove = random.nextInt(10);\n\t\t\tif (map.remove(keyToRemove, value)) {\n\t\t\t\tlong time = System.currentTimeMillis();\n\t\t\t\tString output = String.format(\"%d: %s has removed [%d => %s]\",\n\t\t\t\t\t\ttime, name, keyToRemove, value);\n\t\t\t\tSystem.out.println(output);\n\t\t\t}\n\t\t\ttry {\n\t\t\t\tThread.sleep(200);\n\t\t\t} catch (InterruptedException ex) {\n\t\t\t\tex.printStackTrace();\n\t\t\t}\n\t\t}\n\t}\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "OutputThread: Continuously reads map entries and prints them."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "import java.util.Iterator;\nimport java.util.concurrent.ConcurrentHashMap;\npublic class OutputThread extends Thread {\n    private ConcurrentHashMap<Integer, String> map;\n    private String name;\n \n    public OutputThread(ConcurrentHashMap<Integer, String> map, String threadName) {\n        this.map = map;\n        this.name = threadName;\n    }\n    @Override\n    public void run() {\n        while (true) {\n            ConcurrentHashMap.KeySetView<Integer, String> keySetView = map.keySet();\n            Iterator<Integer> iterator = keySetView.iterator();\n \n            long time = System.currentTimeMillis();\n            String output = time + \": \" + name + \": \";\n \n            while (iterator.hasNext()) {\n                Integer key = iterator.next();\n                String value = map.get(key);\n                output += key + \"=>\" + value + \"; \";\n            }\n \n            System.out.println(output);\n \n            try {\n                Thread.sleep(400);\n            } catch (InterruptedException ex) {\n                ex.printStackTrace();\n            }\n        }\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Main Program:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ConcurrentHashMap<Integer, String> map = new ConcurrentHashMap<>();\nnew InputThread(map, \"Input\", 2).start();\nnew OutputThread(map, \"Output\").start();",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "This program runs forever because the threads run an infinite loop, so you need to terminate the program and observe the output."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The Output thread lets you know that the map is constantly updated by the Input threads.",
+            "Here’s a screenshot captured when running the above program on Eclipse IDE:"
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Best Practices/Best%20Practices/image.png",
+          "alt": "image.png",
+          "originalPath": "Best%20Practices/image.png"
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Best Practices/Best%20Practices/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Best%20Practices/image%201.png"
+        },
+        {
+          "type": "paragraph",
+          "text": "Key Concepts Demonstrated:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "No synchronized block needed due to thread-safe map.",
+            "Shows real-time concurrent read/write without race conditions."
+          ]
+        }
+      ],
+      "wordCount": 276,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Best Practices/Best%20Practices/image.png",
+      "alt": "image.png",
+      "originalPath": "Best%20Practices/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Best Practices/Best%20Practices/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Best%20Practices/image%201.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "String changed = init.replaceAll(\"Bob is\", \"It's\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "String changed = init.replace(\"Bob is\", \"It's\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Pattern regexp = Pattern.compile(\"myRegexp\");\nif (string.matches(\"myRegexp2\")) { ... }",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "private static final Pattern MY_REGEXP = Pattern.compile(\"myRegexp\");\nprivate static final Pattern MY_REGEXP2 = Pattern.compile(\"myRegexp2\");\nMatcher matcher = MY_REGEXP.matcher(\"s\");\nif (MY_REGEXP2.matcher(string).matches()) { ... }",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "try (InputStream in = new FileInputStream(file);\n     Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8);\n     BufferedReader bReader = new BufferedReader(reader)) {\n    // read content\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "conn.setAutoCommit(false);\n// execute batch\nconn.commit(); // or conn.rollback() on failure",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "PreparedStatement ps = conn.prepareStatement(\"SELECT * FROM users WHERE id = ?\");\nps.setInt(1, userId);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.util.Random;\nimport java.util.concurrent.ConcurrentMap;\npublic class InputThread extends Thread {\n\tprivate ConcurrentMap<Integer, String> map;\n\tprivate Random random;\n\tprivate String name;\n\tpublic InputThread(ConcurrentMap<Integer, String> map,\n\t\t\tString threadName, long randomSeed) {\n\t\tthis.map = map;\n\t\tthis.random = new Random(randomSeed);\n\t\tthis.name = threadName;\n\t}\n    @Override\n\tpublic void run() {\n\t\twhile (true) {\n\t\t\tInteger key = random.nextInt(10);\n\t\t\tString value = name;\n\t\t\tif(map.putIfAbsent(key, value) == null) {\n\t\t\t\tlong time = System.currentTimeMillis();\n\t\t\t\tString output = String.format(\"%d: %s has put [%d => %s]\",\n\t\t\t\t\t\ttime, name, key, value);\n\t\t\t\tSystem.out.println(output);\n\t\t\t}\n\t\t\tInteger keyToRemove = random.nextInt(10);\n\t\t\tif (map.remove(keyToRemove, value)) {\n\t\t\t\tlong time = System.currentTimeMillis();\n\t\t\t\tString output = String.format(\"%d: %s has removed [%d => %s]\",\n\t\t\t\t\t\ttime, name, keyToRemove, value);\n\t\t\t\tSystem.out.println(output);\n\t\t\t}\n\t\t\ttry {\n\t\t\t\tThread.sleep(200);\n\t\t\t} catch (InterruptedException ex) {\n\t\t\t\tex.printStackTrace();\n\t\t\t}\n\t\t}\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.util.Iterator;\nimport java.util.concurrent.ConcurrentHashMap;\npublic class OutputThread extends Thread {\n    private ConcurrentHashMap<Integer, String> map;\n    private String name;\n \n    public OutputThread(ConcurrentHashMap<Integer, String> map, String threadName) {\n        this.map = map;\n        this.name = threadName;\n    }\n    @Override\n    public void run() {\n        while (true) {\n            ConcurrentHashMap.KeySetView<Integer, String> keySetView = map.keySet();\n            Iterator<Integer> iterator = keySetView.iterator();\n \n            long time = System.currentTimeMillis();\n            String output = time + \": \" + name + \": \";\n \n            while (iterator.hasNext()) {\n                Integer key = iterator.next();\n                String value = map.get(key);\n                output += key + \"=>\" + value + \"; \";\n            }\n \n            System.out.println(output);\n \n            try {\n                Thread.sleep(400);\n            } catch (InterruptedException ex) {\n                ex.printStackTrace();\n            }\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ConcurrentHashMap<Integer, String> map = new ConcurrentHashMap<>();\nnew InputThread(map, \"Input\", 2).start();\nnew OutputThread(map, \"Output\").start();",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Best Practices/Best Practices.md",
+    "wordCount": 307,
+    "sectionCount": 2
+  }
+}

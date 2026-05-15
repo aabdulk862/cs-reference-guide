@@ -1,0 +1,540 @@
+{
+  "id": "spring-batch-error-handling",
+  "slug": "error-handling",
+  "title": "Error Handling",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch provides powerful mechanisms to handle failures gracefully during batch processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "The main strategies are:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Skip → Ignore faulty items (non-fatal errors)",
+            "Retry → Retry transient failures",
+            "Restart → Continue a failed job from the point of failure"
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    },
+    {
+      "id": "skip",
+      "heading": "Skip",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "what-is-skip",
+      "heading": "What is Skip?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Skip is used when an individual item encounters a non-fatal exception but the batch should continue processing the rest."
+        },
+        {
+          "type": "paragraph",
+          "text": "Used when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The corrupted/invalid data can be ignored",
+            "You want the step to continue despite errors"
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    },
+    {
+      "id": "key-properties",
+      "heading": "Key Properties",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Property",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "skippable-exception-classes",
+              "Exceptions that can be skipped"
+            ],
+            [
+              "skip-limit",
+              "Maximum number of skips allowed before failing"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 16,
+      "subsections": []
+    },
+    {
+      "id": "xml-example",
+      "heading": "XML Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" skip-limit=\"10\">\n        <skippable-exception-classes>\n            <include class=\"org.springframework.batch.item.file.FlatFileParseException\"/>\n        </skippable-exception-classes>\n    </chunk>\n</tasklet>",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "java-config-example",
+          "heading": "Java Config Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": ".stepBuilderFactory.get(\"fileStep\")\n    .<Input, Output>chunk(100)\n    .reader(reader())\n    .writer(writer())\n    .faultTolerant()\n    .skip(FlatFileParseException.class)\n    .skipLimit(10)\n    .build();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "heading": "Retry",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "what-is-retry",
+      "heading": "What is Retry?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Retry is used for transient exceptions—errors that may succeed after a few attempts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Examples:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Concurrency conflict",
+            "Temporary DB lock",
+            "Network hiccup"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Retry is expensive because each retry triggers a rollback."
+        }
+      ],
+      "wordCount": 30,
+      "subsections": []
+    },
+    {
+      "id": "xml-example",
+      "heading": "XML Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" retry-limit=\"3\">\n        <retryable-exception-classes>\n            <include class=\"org.springframework.dao.OptimisticLockingFailureException\"/>\n        </retryable-exception-classes>\n    </chunk>\n</tasklet>",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "java-config-example",
+      "heading": "Java Config Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": ".faultTolerant()\n.retry(OptimisticLockingFailureException.class)\n.retryLimit(3)",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "combining-retry-and-skip",
+      "heading": "Combining Retry and Skip",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "why-combine-them",
+      "heading": "Why combine them?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Some errors are:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Transient (retry first)",
+            "But if still failing → skip the item instead of failing the job."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Workflow:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Retry up to retry-limit",
+            "If still failing → skip the problematic item",
+            "Fail the job only if skip-limit is exceeded"
+          ]
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    },
+    {
+      "id": "xml-example",
+      "heading": "XML Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\"\n           commit-interval=\"100\"\n           retry-limit=\"3\"\n           skip-limit=\"10\">\n\n        <retryable-exception-classes>\n            <include class=\"org.springframework.dao.DeadlockLoserDataAccessException\"/>\n        </retryable-exception-classes>\n\n        <skippable-exception-classes>\n            <include class=\"org.springframework.dao.DeadlockLoserDataAccessException\"/>\n        </skippable-exception-classes>\n\n    </chunk>\n</tasklet>",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "java-config-example",
+      "heading": "Java Config Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": ".faultTolerant()\n.retry(DeadlockLoserDataAccessException.class)\n.retryLimit(3)\n.skip(DeadlockLoserDataAccessException.class)\n.skipLimit(10)",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "restart",
+      "heading": "Restart",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "what-is-restart",
+      "heading": "What is Restart?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Restart enables a failed job to resume exactly from where it left off, using metadata stored in a persistent repository."
+        }
+      ],
+      "wordCount": 20,
+      "subsections": [
+        {
+          "id": "requirements",
+          "heading": "Requirements",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "A persistent JobRepository (JDBC)",
+                "The job must have previously failed",
+                "Restartable is enabled by default"
+              ]
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "important-attributes",
+      "heading": "Important Attributes",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Attribute",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "restartable (job attribute)",
+              "Turn restart on/off"
+            ],
+            [
+              "allow-start-if-complete (tasklet)",
+              "Allow rerunning a completed step"
+            ],
+            [
+              "start-limit (tasklet)",
+              "Limit number of times a step can restart"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 25,
+      "subsections": []
+    },
+    {
+      "id": "xml-example",
+      "heading": "XML Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<job id=\"fileJob\" restartable=\"true\">\n    <step id=\"decompress\" next=\"readWriteItems\">\n        <tasklet allow-start-if-complete=\"true\">\n            ...\n        </tasklet>\n    </step>\n\n    <step id=\"readWriteItems\" next=\"cleanUp\">\n        <tasklet start-limit=\"3\">\n            ...\n        </tasklet>\n    </step>\n</job>",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "stopping-jobs",
+      "heading": "Stopping Jobs",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Jobs can be stopped gracefully using:"
+        }
+      ],
+      "wordCount": 6,
+      "subsections": []
+    },
+    {
+      "id": "1-joboperator-api",
+      "heading": "1. JobOperator API",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "jobOperator.stop(executionId);",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "2-inside-a-tasklet",
+      "heading": "2. Inside a Tasklet",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "chunkContext\n    .getStepContext()\n    .getStepExecution()\n    .setTerminateOnly();",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "3-via-a-step-listener-in-chunk-execution",
+      "heading": "3. Via a Step Listener (in chunk execution)",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "listener-example",
+          "heading": "Listener Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\npublic class StopListener {\n\n    private StepExecution stepExecution;\n\n    @BeforeStep\n    public void beforeStep(StepExecution stepExecution) {\n        this.stepExecution = stepExecution;\n    }\n\n    @AfterStep\n    public void afterStep() {\n        stepExecution.setTerminateOnly(); // signal job to stop\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "register-listener",
+          "heading": "Register Listener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<batch:chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\"/>\n<batch:listeners>\n    <batch:listener ref=\"stopListener\"/>\n</batch:listeners>\n",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Purpose",
+            "Typical Use Case"
+          ],
+          "rows": [
+            [
+              "Skip",
+              "Ignore bad data",
+              "Bad record in input file"
+            ],
+            [
+              "Retry",
+              "Reattempt temporary failures",
+              "DB deadlock, network issue"
+            ],
+            [
+              "Retry + Skip",
+              "Retry first, skip later",
+              "Persistent transient failure"
+            ],
+            [
+              "Restart",
+              "Resume after job failure",
+              "Resume large file processing"
+            ],
+            [
+              "Stop",
+              "Graceful job shutdown",
+              "Manual stop / system control"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 50,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" skip-limit=\"10\">\n        <skippable-exception-classes>\n            <include class=\"org.springframework.batch.item.file.FlatFileParseException\"/>\n        </skippable-exception-classes>\n    </chunk>\n</tasklet>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": ".stepBuilderFactory.get(\"fileStep\")\n    .<Input, Output>chunk(100)\n    .reader(reader())\n    .writer(writer())\n    .faultTolerant()\n    .skip(FlatFileParseException.class)\n    .skipLimit(10)\n    .build();",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" retry-limit=\"3\">\n        <retryable-exception-classes>\n            <include class=\"org.springframework.dao.OptimisticLockingFailureException\"/>\n        </retryable-exception-classes>\n    </chunk>\n</tasklet>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": ".faultTolerant()\n.retry(OptimisticLockingFailureException.class)\n.retryLimit(3)",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\"\n           commit-interval=\"100\"\n           retry-limit=\"3\"\n           skip-limit=\"10\">\n\n        <retryable-exception-classes>\n            <include class=\"org.springframework.dao.DeadlockLoserDataAccessException\"/>\n        </retryable-exception-classes>\n\n        <skippable-exception-classes>\n            <include class=\"org.springframework.dao.DeadlockLoserDataAccessException\"/>\n        </skippable-exception-classes>\n\n    </chunk>\n</tasklet>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": ".faultTolerant()\n.retry(DeadlockLoserDataAccessException.class)\n.retryLimit(3)\n.skip(DeadlockLoserDataAccessException.class)\n.skipLimit(10)",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<job id=\"fileJob\" restartable=\"true\">\n    <step id=\"decompress\" next=\"readWriteItems\">\n        <tasklet allow-start-if-complete=\"true\">\n            ...\n        </tasklet>\n    </step>\n\n    <step id=\"readWriteItems\" next=\"cleanUp\">\n        <tasklet start-limit=\"3\">\n            ...\n        </tasklet>\n    </step>\n</job>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "jobOperator.stop(executionId);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "chunkContext\n    .getStepContext()\n    .getStepExecution()\n    .setTerminateOnly();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class StopListener {\n\n    private StepExecution stepExecution;\n\n    @BeforeStep\n    public void beforeStep(StepExecution stepExecution) {\n        this.stepExecution = stepExecution;\n    }\n\n    @AfterStep\n    public void afterStep() {\n        stepExecution.setTerminateOnly(); // signal job to stop\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<batch:chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\"/>\n<batch:listeners>\n    <batch:listener ref=\"stopListener\"/>\n</batch:listeners>\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Error Handling.md",
+    "wordCount": 276,
+    "sectionCount": 26
+  }
+}

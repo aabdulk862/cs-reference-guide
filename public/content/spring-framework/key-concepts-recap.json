@@ -1,0 +1,495 @@
+{
+  "id": "security-key-concepts-recap",
+  "slug": "key-concepts-recap",
+  "title": "Key Concepts Recap",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "definition",
+      "heading": "Definition",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A Monolithic Application is a single-tiered software where all components are interconnected and run as one service."
+        }
+      ],
+      "wordCount": 17,
+      "subsections": []
+    },
+    {
+      "id": "how-security-works",
+      "heading": "How Security Works",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Authentication is handled when the client provides credentials (e.g., username/password).",
+            "A session is created and stored (often server-side).",
+            "The server checks the session and determines whether the user is authorized to access specific functionalities."
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "User logs in → server stores session data → each request is checked using this session."
+        }
+      ],
+      "wordCount": 16,
+      "subsections": []
+    },
+    {
+      "id": "definition",
+      "heading": "Definition",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Microservices Architecture breaks the application into smaller, independent services that communicate via APIs."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "security-challenges",
+      "heading": "Security Challenges",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Client only communicates with API Gateway (e.g., Zuul).",
+            "Internal threats remain: Services behind the gateway cannot determine the origin of requests (user, service, or malicious actor).",
+            "Unlike monoliths, there's no centralized session handling."
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    },
+    {
+      "id": "problem",
+      "heading": "Problem:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Services cannot distinguish if a request came from:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Authenticated user",
+            "Another microservice",
+            "Malicious code/script"
+          ]
+        }
+      ],
+      "wordCount": 14,
+      "subsections": []
+    },
+    {
+      "id": "step-1-secure-the-api-gateway-zuul",
+      "heading": "Step 1: Secure the API Gateway (Zuul)",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Add Dependency in infytel-zuul:"
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-security</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Add Annotations to Application Class:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@EnableOAuth2Sso   // Enables Single Sign-On using OAuth2\n@EnableZuulProxy   // Turns the app into a Zuul gateway",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Add Configuration in application.yml:"
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "client:\n  clientId: bd1c0a783ccdd1c9b9e4\n  clientSecret: 1a9030fbca47a5b2c28e92f19050bb77824b5ad1\n  accessTokenUri: https://github.com/login/oauth/access_token\n  userAuthorizationUri: https://github.com/login/oauth/authorize\n  clientAuthenticationScheme: form\nresource:\n  userInfoUri: https://api.github.com/user",
+          "runnable": false
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "step-2-secure-each-microservice",
+      "heading": "Step 2: Secure Each Microservice",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Add Dependency to Microservices:"
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-starter-security</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Add Annotation in Application Class:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@EnableResourceServer   // Makes the service an OAuth2 resource server",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Add Configuration in application.yml:"
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "client:\n  accessTokenUri: https://github.com/login/oauth/access_token\n  userAuthorizationUri: https://github.com/login/oauth/authorize\nresource:\n  userInfoUri: https://api.github.com/user",
+          "runnable": false
+        }
+      ],
+      "wordCount": 13,
+      "subsections": [
+        {
+          "id": "problem",
+          "heading": "Problem",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When a service (e.g., Product Service) calls another (e.g., Order Service), the OAuth token received from the gateway is not forwarded automatically."
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        },
+        {
+          "id": "solution",
+          "heading": "Solution",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Use a custom interceptor or RestTemplate configuration.",
+                "Manually forward headers (esp. Authorization token)."
+              ]
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "RestTemplate restTemplate = new RestTemplate();\nHttpHeaders headers = new HttpHeaders();\nheaders.set(\"Authorization\", incomingRequest.getHeader(\"Authorization\"));\nHttpEntity<?> entity = new HttpEntity<>(headers);\nrestTemplate.exchange(\"http://orderservice/api/orders\", HttpMethod.GET, entity, String.class);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "problem",
+          "heading": "Problem",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Anyone can access the Config Server and retrieve sensitive properties from Git (e.g., DB credentials)."
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        },
+        {
+          "id": "solution",
+          "heading": "Solution",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Use Basic Authentication: ",
+                "Encrypt Sensitive Data: "
+              ]
+            }
+          ],
+          "wordCount": 6,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.cloud.config.server.encrypt.enabled=true",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Encrypt values using:"
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "curl -u user:password http://localhost:8888/encrypt -d 'myDBpassword'",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Paste the encrypted value in the config file:"
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "spring:\n  datasource:\n    password: '{cipher}f3f2f1...encryptedText'",
+              "runnable": false
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "1-what-happens-on-startup",
+      "heading": "1️⃣ What Happens on Startup?",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "order-of-startup-is-critical",
+          "heading": "Order of Startup is Critical:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "If microservices start before the Config Server, they won’t get their configurations."
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/f3a550d4-ba02-44f4-92a4-29176f81845c.png",
+              "alt": "image.png",
+              "originalPath": "Security/f3a550d4-ba02-44f4-92a4-29176f81845c.png"
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        },
+        {
+          "id": "correct-startup-order",
+          "heading": "Correct Startup Order:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Database(s) ",
+                "Config Server ",
+                "Eureka Server (Service Registry) ",
+                "Zipkin Server (Distributed Tracing) ",
+                "Zuul API Gateway ",
+                "Microservices (Business Services) "
+              ]
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "2-what-happens-when-a-request-hits-the-system",
+      "heading": "2️⃣ What Happens When a Request Hits the System?",
+      "level": 2,
+      "content": [
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/aa85606f-9d84-4c7e-9130-85c8250cb4ba.png",
+          "alt": "image.png",
+          "originalPath": "Security/aa85606f-9d84-4c7e-9130-85c8250cb4ba.png"
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/67e0fa88-5ec9-42d2-883c-85bb7ab1353a.png",
+          "alt": "image.png",
+          "originalPath": "Security/67e0fa88-5ec9-42d2-883c-85bb7ab1353a.png"
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/c069fc6d-939f-4344-a3a1-f46c18b187b4.png",
+          "alt": "image.png",
+          "originalPath": "Security/c069fc6d-939f-4344-a3a1-f46c18b187b4.png"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Concept",
+            "Definition"
+          ],
+          "rows": [
+            [
+              "Session",
+              "Server-side storage of user state after login"
+            ],
+            [
+              "API Gateway",
+              "Entry point to microservices; handles routing, security, and more"
+            ],
+            [
+              "OAuth2",
+              "Authorization framework that enables token-based access"
+            ],
+            [
+              "Zuul Proxy",
+              "Netflix component used for intelligent routing and load balancing"
+            ],
+            [
+              "@EnableOAuth2Sso",
+              "Annotation enabling single sign-on via OAuth2"
+            ],
+            [
+              "@EnableResourceServer",
+              "Secures endpoints with OAuth2 tokens"
+            ],
+            [
+              "RestTemplate",
+              "Spring’s HTTP client for inter-service communication"
+            ],
+            [
+              "Spring Cloud Config Server",
+              "Centralized configuration management for microservices"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 68,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/f3a550d4-ba02-44f4-92a4-29176f81845c.png",
+      "alt": "image.png",
+      "originalPath": "Security/f3a550d4-ba02-44f4-92a4-29176f81845c.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/aa85606f-9d84-4c7e-9130-85c8250cb4ba.png",
+      "alt": "image.png",
+      "originalPath": "Security/aa85606f-9d84-4c7e-9130-85c8250cb4ba.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/67e0fa88-5ec9-42d2-883c-85bb7ab1353a.png",
+      "alt": "image.png",
+      "originalPath": "Security/67e0fa88-5ec9-42d2-883c-85bb7ab1353a.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security/c069fc6d-939f-4344-a3a1-f46c18b187b4.png",
+      "alt": "image.png",
+      "originalPath": "Security/c069fc6d-939f-4344-a3a1-f46c18b187b4.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-security</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@EnableOAuth2Sso   // Enables Single Sign-On using OAuth2\n@EnableZuulProxy   // Turns the app into a Zuul gateway",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "client:\n  clientId: bd1c0a783ccdd1c9b9e4\n  clientSecret: 1a9030fbca47a5b2c28e92f19050bb77824b5ad1\n  accessTokenUri: https://github.com/login/oauth/access_token\n  userAuthorizationUri: https://github.com/login/oauth/authorize\n  clientAuthenticationScheme: form\nresource:\n  userInfoUri: https://api.github.com/user",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.cloud</groupId>\n    <artifactId>spring-cloud-starter-security</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@EnableResourceServer   // Makes the service an OAuth2 resource server",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "client:\n  accessTokenUri: https://github.com/login/oauth/access_token\n  userAuthorizationUri: https://github.com/login/oauth/authorize\nresource:\n  userInfoUri: https://api.github.com/user",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "RestTemplate restTemplate = new RestTemplate();\nHttpHeaders headers = new HttpHeaders();\nheaders.set(\"Authorization\", incomingRequest.getHeader(\"Authorization\"));\nHttpEntity<?> entity = new HttpEntity<>(headers);\nrestTemplate.exchange(\"http://orderservice/api/orders\", HttpMethod.GET, entity, String.class);",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.cloud.config.server.encrypt.enabled=true",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "curl -u user:password http://localhost:8888/encrypt -d 'myDBpassword'",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "spring:\n  datasource:\n    password: '{cipher}f3f2f1...encryptedText'",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Microservices/Security/Security.md",
+    "wordCount": 317,
+    "sectionCount": 18
+  }
+}

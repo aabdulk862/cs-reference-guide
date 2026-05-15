@@ -1,0 +1,305 @@
+{
+  "id": "spring-rest-pagniation",
+  "slug": "pagniation",
+  "title": "Pagniation",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definition",
+          "heading": "Definition:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Pagination is the process of dividing a large set of data into smaller, manageable chunks (pages). It allows users to retrieve a subset of records from a full dataset—useful in REST APIs, tables, or list views."
+            }
+          ],
+          "wordCount": 36,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "why-pagination-is-important",
+      "heading": "Why Pagination is Important?",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Benefit",
+            "Description"
+          ],
+          "rows": [
+            [
+              "💨 Improves Performance",
+              "Reduces the amount of data sent per request"
+            ],
+            [
+              "📱 Enhances User Experience",
+              "Loads content faster for end-users"
+            ],
+            [
+              "🧠 Memory Efficient",
+              "Helps avoid memory overload by fetching only required data"
+            ],
+            [
+              "🔁 Easy Navigation",
+              "Enables navigation through pages with controls like Next/Prev"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    },
+    {
+      "id": "spring-boot-pagination-support",
+      "heading": "Spring Boot Pagination Support",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Data JPA provides built-in support for pagination using the following core interfaces:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Pageable – used to define pagination parameters like page number and size.",
+            "Page<T> – a wrapper that contains data and pagination metadata."
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    },
+    {
+      "id": "how-to-implement-pagination-in-spring-boot",
+      "heading": "How to Implement Pagination in Spring Boot",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-add-dependencies",
+          "heading": "1. Add Dependencies",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In pom.xml:"
+            },
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-jpa</artifactId>\n</dependency>\n<dependency>\n    <groupId>com.h2database</groupId>\n    <artifactId>h2</artifactId>\n    <scope>runtime</scope>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 2,
+          "subsections": []
+        },
+        {
+          "id": "2-create-a-model-eg-user",
+          "heading": "2. Create a Model (e.g., User)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Entity\npublic class User {\n    @Id\n    @GeneratedValue(strategy = GenerationType.IDENTITY)\n    private Long id;\n    private String name;\n    private String email;\n\n    // Getters & Setters\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "3-create-a-repository-interface",
+          "heading": "3. Create a Repository Interface",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface UserRepository extends JpaRepository<User, Long> {\n\n}",
+              "runnable": false
+            },
+            {
+              "type": "blockquote",
+              "text": "JpaRepository already includes pagination and sorting support."
+            }
+          ],
+          "wordCount": 7,
+          "subsections": []
+        },
+        {
+          "id": "4-create-a-service-method-with-pagination",
+          "heading": "4. Create a Service Method with Pagination",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\npublic class UserService {\n\n    @Autowired\n    private UserRepository userRepository;\n\n    public Page<User> getUsers(int page, int size) {\n        Pageable pageable = PageRequest.of(page, size);\n        return userRepository.findAll(pageable);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "5-create-a-rest-controller-endpoint",
+          "heading": "5. Create a REST Controller Endpoint",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/users\")\npublic class UserController {\n\n    @Autowired\n    private UserService userService;\n\n    @GetMapping\n    public Page<User> getPaginatedUsers(\n            @RequestParam(defaultValue = \"0\") int page,\n            @RequestParam(defaultValue = \"5\") int size) {\n        return userService.getUsers(page, size);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "blockquote",
+              "text": "Access the API at:\nhttp://localhost:8080/users?page=0&size=5"
+            }
+          ],
+          "wordCount": 5,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "example-json-response-page",
+      "heading": "Example JSON Response (Page)",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "json",
+          "code": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"name\": \"Alice\",\n      \"email\": \"alice@example.com\"\n    },\n    ...\n  ],\n  \"pageable\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 5\n  },\n  \"totalPages\": 10,\n  \"totalElements\": 50,\n  \"last\": false,\n  \"first\": true,\n  \"numberOfElements\": 5\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "bonus-add-sorting",
+      "heading": "Bonus: Add Sorting",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "You can also combine pagination with sorting:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "PageRequest.of(page, size, Sort.by(\"name\").ascending());",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@GetMapping(\"/sorted\")\npublic Page<User> getSortedUsers(\n        @RequestParam(defaultValue = \"0\") int page,\n        @RequestParam(defaultValue = \"5\") int size,\n        @RequestParam(defaultValue = \"name\") String sortBy) {\n    Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));\n    return userService.getUsers(pageable);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Component",
+            "Role"
+          ],
+          "rows": [
+            [
+              "Pageable",
+              "Defines page number, size, and sorting"
+            ],
+            [
+              "Page<T>",
+              "Holds data and pagination metadata"
+            ],
+            [
+              "@RequestParam",
+              "Retrieves pagination info from request"
+            ],
+            [
+              "PageRequest.of(page, size)",
+              "Factory method to create Pageable"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-jpa</artifactId>\n</dependency>\n<dependency>\n    <groupId>com.h2database</groupId>\n    <artifactId>h2</artifactId>\n    <scope>runtime</scope>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Entity\npublic class User {\n    @Id\n    @GeneratedValue(strategy = GenerationType.IDENTITY)\n    private Long id;\n    private String name;\n    private String email;\n\n    // Getters & Setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface UserRepository extends JpaRepository<User, Long> {\n\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class UserService {\n\n    @Autowired\n    private UserRepository userRepository;\n\n    public Page<User> getUsers(int page, int size) {\n        Pageable pageable = PageRequest.of(page, size);\n        return userRepository.findAll(pageable);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/users\")\npublic class UserController {\n\n    @Autowired\n    private UserService userService;\n\n    @GetMapping\n    public Page<User> getPaginatedUsers(\n            @RequestParam(defaultValue = \"0\") int page,\n            @RequestParam(defaultValue = \"5\") int size) {\n        return userService.getUsers(page, size);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n  \"content\": [\n    {\n      \"id\": 1,\n      \"name\": \"Alice\",\n      \"email\": \"alice@example.com\"\n    },\n    ...\n  ],\n  \"pageable\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 5\n  },\n  \"totalPages\": 10,\n  \"totalElements\": 50,\n  \"last\": false,\n  \"first\": true,\n  \"numberOfElements\": 5\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "PageRequest.of(page, size, Sort.by(\"name\").ascending());",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@GetMapping(\"/sorted\")\npublic Page<User> getSortedUsers(\n        @RequestParam(defaultValue = \"0\") int page,\n        @RequestParam(defaultValue = \"5\") int size,\n        @RequestParam(defaultValue = \"name\") String sortBy) {\n    Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy));\n    return userService.getUsers(pageable);\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Pagniation.md",
+    "wordCount": 165,
+    "sectionCount": 13
+  }
+}

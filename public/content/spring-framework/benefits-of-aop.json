@@ -1,0 +1,437 @@
+{
+  "id": "aspect-oriented-programming-benefits-of-aop",
+  "slug": "benefits-of-aop",
+  "title": "Benefits of AOP",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "layers",
+      "heading": "Layers:",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Layer",
+            "Responsibility"
+          ],
+          "rows": [
+            [
+              "Presentation Layer",
+              "Handles user interaction and presentation of data (e.g., UI/REST APIs)."
+            ],
+            [
+              "Service Layer",
+              "Implements the business logic (e.g., processing orders, user registration)."
+            ],
+            [
+              "Persistence Layer",
+              "Handles data access logic (e.g., CRUD operations with the database)."
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "These are functionalities used across multiple layers/modules and are not specific to any one layer."
+        }
+      ],
+      "wordCount": 52,
+      "subsections": []
+    },
+    {
+      "id": "examples",
+      "heading": "Examples:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Transaction Management: Controls database transactions (commit/rollback).",
+            "Security: Checks permissions/roles before allowing actions.",
+            "Logging: Logs application behavior or exceptions.",
+            "Error Handling: Manages application errors gracefully.",
+            "Performance Monitoring: Tracks method execution times, etc."
+          ]
+        },
+        {
+          "type": "blockquote",
+          "text": "Problem: When cross-cutting concerns are embedded into business logic, it leads to tight coupling, reducing modularity and making the code harder to maintain."
+        }
+      ],
+      "wordCount": 54,
+      "subsections": []
+    },
+    {
+      "id": "definition",
+      "heading": "Definition:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "AOP is a programming paradigm that separates cross-cutting concerns from business logic, making code cleaner and more maintainable."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Aspect Oriented Programming/Aspect%20Oriented%20Programming/image.png",
+          "alt": "image.png",
+          "originalPath": "Aspect%20Oriented%20Programming/image.png"
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    },
+    {
+      "id": "-without-aop",
+      "heading": "❌ Without AOP:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public void register() {\n   try {\n      if(plan.enrollToPlan()) {\n         System.out.println(\"Customer enrolled to Plan\");\n      } else {\n         throw new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n      }\n   } catch(Exception e) {\n      Logger LOGGER = LogManager.getLogger(this.getClass());\n      LOGGER.error(e.getMessage(), e);\n   }\n}",
+          "runnable": false
+        },
+        {
+          "type": "blockquote",
+          "text": "Logging is embedded, creating tight coupling."
+        }
+      ],
+      "wordCount": 6,
+      "subsections": []
+    },
+    {
+      "id": "-with-aop",
+      "heading": "✅ With AOP:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public String register(String planName) {\n   if(plan.enrollToPlan(planName)) {\n      return \"Customer enrolled to Plan\";\n   } else {\n      throw new Exception(\"Customer not registered!\");\n   }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "LoggingAspect.java:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Component\n@Aspect\npublic class LoggingAspect {\n   public static final Logger LOGGER = LogManager.getLogger(LoggingAspect.class);\n\n   @AfterThrowing(pointcut = \"execution(* com.infy.bean.*.*(..))\",throwing = \"exception\")\n   public void afterThrowing(Exception exception) {\n      LOGGER.error(exception.getMessage(), exception);\n   }\n}",
+          "runnable": false
+        },
+        {
+          "type": "blockquote",
+          "text": "Logging is separated into an aspect. Business logic is cleaner."
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Term",
+            "Definition"
+          ],
+          "rows": [
+            [
+              "Aspect",
+              "A class that encapsulates a cross-cutting concern (annotated with @Aspect)."
+            ],
+            [
+              "Join Point",
+              "Specific point during execution (e.g., method execution)."
+            ],
+            [
+              "Advice",
+              "Code to be executed at a join point (e.g., logging, security)."
+            ],
+            [
+              "Pointcut",
+              "Expression to match join points (i.e., where to apply advice)."
+            ]
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Type",
+            "Description",
+            "Annotation"
+          ],
+          "rows": [
+            [
+              "Before",
+              "Runs before the method execution.",
+              "@Before"
+            ],
+            [
+              "After Returning",
+              "Runs after method returns normally.",
+              "@AfterReturning"
+            ],
+            [
+              "After Throwing",
+              "Runs if method throws an exception.",
+              "@AfterThrowing"
+            ],
+            [
+              "After",
+              "Runs after method ends, regardless of exception.",
+              "@After"
+            ],
+            [
+              "Around",
+              "Runs before and after method execution.",
+              "@Around"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 100,
+      "subsections": []
+    },
+    {
+      "id": "before-advice",
+      "heading": "Before Advice:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Before(\"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic void logBeforeAdvice(JoinPoint joinPoint) {\n   logger.info(\"Joinpoint: {}\", joinPoint.getSignature());\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "afterreturning-advice",
+      "heading": "AfterReturning Advice:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@AfterReturning(pointcut = \"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\", returning = \"result\")\npublic void logAfterReturning(JoinPoint joinPoint, String result) {\n   logger.info(\"Return: {}\", result);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "afterthrowing-advice",
+      "heading": "AfterThrowing Advice:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@AfterThrowing(pointcut = \"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\", throwing = \"exception\")\npublic void logAfterThrowingAdvice(JoinPoint joinPoint, Exception exception) {\n   logger.error(\"Exception: {}\", exception.getMessage());\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "around-advice",
+      "heading": "Around Advice:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Around(\"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic Object aroundAdvice(ProceedingJoinPoint joinPoint) throws Throwable {\n   logger.info(\"Before execution\");\n   Object result = joinPoint.proceed();\n   logger.info(\"After execution\");\n   return result;\n}",
+          "runnable": false
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Aspect Oriented Programming/Aspect%20Oriented%20Programming/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Aspect%20Oriented%20Programming/image%201.png"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "syntax",
+      "heading": "Syntax:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "execution(<modifiers>? <return-type> <package>.<class>.<method>(<parameters>))",
+          "runnable": false
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Example",
+            "Description"
+          ],
+          "rows": [
+            [
+              "execution(public * *(..))",
+              "Any public method."
+            ],
+            [
+              "execution(* service*(..))",
+              "Methods starting with \"service\"."
+            ],
+            [
+              "execution(* com.infy.service.*.*(..))",
+              "Any method in the specified package."
+            ],
+            [
+              "execution(public String com.infy.repository.CustomerRepository.*(..))",
+              "All String returning public methods in a class."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Pointcut(\"execution(* com.infosys.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic void logFetchCustomer() {}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "reusing",
+      "heading": "Reusing:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Before(\"com.infosys.aop.CommonAOP.logFetchCustomer()\")\npublic void updateLog(JoinPoint joinPoint) {\n   logger.info(\"Logging from reused pointcut\");\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Add the dependency in pom.xml:"
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-aop</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "This pulls in:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "spring-aop: Core AOP functionality.",
+            "aspectjweaver: Enables AOP weaving at runtime."
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Separation of concerns – Business logic is isolated from cross-cutting concerns.",
+            "Reusability – Centralized cross-cutting code.",
+            "Maintainability – Easy to update or replace concerns (e.g., change logging framework).",
+            "Cleaner code – Less clutter in core business logic."
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Aspect Oriented Programming/Aspect%20Oriented%20Programming/image.png",
+      "alt": "image.png",
+      "originalPath": "Aspect%20Oriented%20Programming/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Aspect Oriented Programming/Aspect%20Oriented%20Programming/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Aspect%20Oriented%20Programming/image%201.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public void register() {\n   try {\n      if(plan.enrollToPlan()) {\n         System.out.println(\"Customer enrolled to Plan\");\n      } else {\n         throw new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n      }\n   } catch(Exception e) {\n      Logger LOGGER = LogManager.getLogger(this.getClass());\n      LOGGER.error(e.getMessage(), e);\n   }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public String register(String planName) {\n   if(plan.enrollToPlan(planName)) {\n      return \"Customer enrolled to Plan\";\n   } else {\n      throw new Exception(\"Customer not registered!\");\n   }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\n@Aspect\npublic class LoggingAspect {\n   public static final Logger LOGGER = LogManager.getLogger(LoggingAspect.class);\n\n   @AfterThrowing(pointcut = \"execution(* com.infy.bean.*.*(..))\",throwing = \"exception\")\n   public void afterThrowing(Exception exception) {\n      LOGGER.error(exception.getMessage(), exception);\n   }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Before(\"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic void logBeforeAdvice(JoinPoint joinPoint) {\n   logger.info(\"Joinpoint: {}\", joinPoint.getSignature());\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@AfterReturning(pointcut = \"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\", returning = \"result\")\npublic void logAfterReturning(JoinPoint joinPoint, String result) {\n   logger.info(\"Return: {}\", result);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@AfterThrowing(pointcut = \"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\", throwing = \"exception\")\npublic void logAfterThrowingAdvice(JoinPoint joinPoint, Exception exception) {\n   logger.error(\"Exception: {}\", exception.getMessage());\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Around(\"execution(* com.infy.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic Object aroundAdvice(ProceedingJoinPoint joinPoint) throws Throwable {\n   logger.info(\"Before execution\");\n   Object result = joinPoint.proceed();\n   logger.info(\"After execution\");\n   return result;\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "execution(<modifiers>? <return-type> <package>.<class>.<method>(<parameters>))",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Pointcut(\"execution(* com.infosys.service.CustomerServiceImpl.fetchCustomer(..))\")\npublic void logFetchCustomer() {}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Before(\"com.infosys.aop.CommonAOP.logFetchCustomer()\")\npublic void updateLog(JoinPoint joinPoint) {\n   logger.info(\"Logging from reused pointcut\");\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-aop</artifactId>\n</dependency>",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Aspect Oriented Programming/Aspect Oriented Programming.md",
+    "wordCount": 318,
+    "sectionCount": 12
+  }
+}

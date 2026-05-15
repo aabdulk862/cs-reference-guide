@@ -1,0 +1,135 @@
+{
+  "id": "spring-batch-key-points",
+  "slug": "key-points",
+  "title": "Key Points",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Key Points",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The ItemProcessor interface in Spring Batch allows you to process data between reading and writing in a batch job. It is an optional component in a chunk-oriented step but is commonly used for transformations, validations, or filtering."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public interface ItemProcessor<I, O> {\n    O process(I item) throws Exception;\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "I → Input type (type read by ItemReader)",
+            "O → Output type (type written by ItemWriter)",
+            "The process() method is called for each item read by the ItemReader.",
+            "Returning null in process() will filter out the item, so it is not passed to the writer."
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Component\npublic class UpperCaseNameItemProcessor implements ItemProcessor<Employee, Employee> {\n\n    @Override\n    public Employee process(Employee item) throws Exception {\n        // Transform employee name to uppercase\n        item.setEmpName(item.getEmpName().toUpperCase());\n        return item;\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Explanation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "This processor reads an Employee object and modifies its empName to uppercase.",
+            "Can also be used for data validation, filtering, or business logic transformation."
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Step employeeJdbcJsonStep() {\n    return stepBuilderFactory.get(\"employeeJdbcJsonStep\")\n            .<Employee, Employee>chunk(3)  // process 3 items per transaction\n            .reader(jdbcEmployeeItemReader) // ItemReader reads from DB\n            .processor(upperCaseNameItemProcessor) // Transform names\n            .writer(jsonFileItemWriter)    // Write to JSON file\n            .build();\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Explanation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "<Employee, Employee> → Input and output types are both Employee.",
+            "chunk(3) → Each transaction processes 3 records at a time.",
+            "This step reads from a database, transforms the employee names, and writes them to a JSON file.",
+            "The processor is seamlessly integrated into the chunk-oriented step."
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Use Case",
+            "Processor Behavior"
+          ],
+          "rows": [
+            [
+              "Data Transformation",
+              "Convert text to uppercase, change date formats, calculate derived fields"
+            ],
+            [
+              "Validation",
+              "Skip invalid records or throw exceptions for failed validations"
+            ],
+            [
+              "Filtering",
+              "Filter out records by returning null from process()"
+            ],
+            [
+              "Enrichment",
+              "Add additional data from external services or APIs"
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "ItemProcessor is optional, but recommended for separation of concerns.",
+            "Multiple processors can be chained using CompositeItemProcessor.",
+            "Processing happens between reading and writing in a chunk-oriented step.",
+            "Returning null → skips the item in writing phase."
+          ]
+        }
+      ],
+      "wordCount": 233,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public interface ItemProcessor<I, O> {\n    O process(I item) throws Exception;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class UpperCaseNameItemProcessor implements ItemProcessor<Employee, Employee> {\n\n    @Override\n    public Employee process(Employee item) throws Exception {\n        // Transform employee name to uppercase\n        item.setEmpName(item.getEmpName().toUpperCase());\n        return item;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Step employeeJdbcJsonStep() {\n    return stepBuilderFactory.get(\"employeeJdbcJsonStep\")\n            .<Employee, Employee>chunk(3)  // process 3 items per transaction\n            .reader(jdbcEmployeeItemReader) // ItemReader reads from DB\n            .processor(upperCaseNameItemProcessor) // Transform names\n            .writer(jsonFileItemWriter)    // Write to JSON file\n            .build();\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Item Processor.md",
+    "wordCount": 233,
+    "sectionCount": 1
+  }
+}

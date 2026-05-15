@@ -1,0 +1,422 @@
+{
+  "id": "system-design-operating-systems",
+  "slug": "operating-systems",
+  "title": "Operating Systems",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "An operating system manages hardware resources and provides abstractions (processes, files, memory) for user programs",
+            "Process states: New → Ready → Running → Waiting → Terminated; the scheduler decides which ready process runs next",
+            "Virtual memory maps process address spaces to physical frames using page tables, enabling isolation and overcommitment",
+            "File systems organize persistent data into hierarchical namespaces with metadata (inodes) and data blocks",
+            "Concurrency primitives (mutexes, semaphores, condition variables) coordinate access to shared resources",
+            "IPC mechanisms: pipes, message queues, shared memory, sockets, signals — each with different performance and complexity tradeoffs",
+            "Context switch cost includes saving/restoring registers, TLB flush, and cache pollution — typically 1-10 microseconds",
+            "The kernel runs in privileged mode (ring 0) while user processes run in restricted mode (ring 3) on x86 architectures",
+            "Deadlock requires four conditions simultaneously: mutual exclusion, hold-and-wait, no preemption, circular wait"
+          ]
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding operating systems is essential for any engineer working on performance-sensitive applications, distributed systems, or infrastructure software. OS knowledge directly applies when diagnosing production issues like memory leaks, CPU contention, I/O bottlenecks, and deadlocks. System design interviews frequently test OS fundamentals because they underpin every layer of the software stack. You need OS knowledge when tuning JVM garbage collection (which interacts with virtual memory), configuring container resource limits (which use cgroups and namespaces), designing concurrent data structures, choosing IPC mechanisms for microservice communication, or understanding why your database performs differently under various workloads. Engineers working with Kubernetes, Docker, or cloud infrastructure benefit from understanding how the kernel schedules containers, manages memory pressure, and handles network I/O. OS concepts also inform architectural decisions: choosing between threads and processes, selecting synchronization strategies, designing file storage layouts, and understanding the performance implications of system calls versus library calls."
+        }
+      ],
+      "wordCount": 145,
+      "subsections": []
+    },
+    {
+      "id": "process-scheduling",
+      "heading": "Process Scheduling",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Process scheduling determines which process gets CPU time and for how long. The scheduler is one of the most performance-critical components of the kernel because it directly affects application latency, throughput, and fairness. Modern operating systems use preemptive multitasking, meaning the kernel can interrupt a running process to give CPU time to another process based on priority, time slice expiration, or I/O events."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Completely Fair Scheduler (CFS) in Linux uses a red-black tree to track virtual runtime for each process. Processes that have consumed less CPU time relative to their weight are scheduled first, ensuring proportional fairness. CFS replaced the O(1) scheduler and provides better interactive responsiveness by avoiding fixed time slices in favor of dynamic scheduling periods. The scheduling period is divided proportionally among all runnable tasks based on their nice values (priority weights ranging from -20 to +19)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-time scheduling policies (SCHED_FIFO and SCHED_RR) provide deterministic scheduling for latency-sensitive workloads. SCHED_FIFO runs a process until it voluntarily yields or a higher-priority real-time task becomes runnable. SCHED_RR adds time-slicing among equal-priority real-time tasks. These policies are used in audio processing, industrial control systems, and high-frequency trading where microsecond-level latency predictability matters."
+        },
+        {
+          "type": "paragraph",
+          "text": "Context switching involves saving the current process state (registers, program counter, stack pointer) to its Process Control Block (PCB), updating scheduling data structures, loading the next process state, and flushing or tagging TLB entries. The direct cost is typically 1-5 microseconds, but the indirect cost from cache and TLB pollution can be significantly higher, especially for memory-intensive workloads. Reducing unnecessary context switches through proper thread pool sizing and I/O multiplexing is a key performance optimization."
+        }
+      ],
+      "wordCount": 268,
+      "subsections": []
+    },
+    {
+      "id": "memory-management",
+      "heading": "Memory Management",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Memory management handles allocation, deallocation, and protection of physical memory among competing processes. The kernel maintains data structures tracking which physical frames are free, which are allocated to processes, and which are used for kernel buffers and caches. Efficient memory management prevents fragmentation, enables sharing, and enforces isolation between processes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Physical memory is divided into fixed-size frames (typically 4KB on x86), and the kernel uses buddy allocation to manage free frames. The buddy system splits and coalesces power-of-two-sized blocks to satisfy allocation requests while minimizing external fragmentation. For smaller allocations within the kernel, slab allocation provides object caches that pre-allocate and reuse fixed-size structures (like task_struct, inode, dentry), eliminating per-object allocation overhead and internal fragmentation."
+        },
+        {
+          "type": "paragraph",
+          "text": "User-space memory allocation (malloc/free) is handled by the C library allocator (glibc's ptmalloc2, jemalloc, tcmalloc) which requests large chunks from the kernel via brk() or mmap() and subdivides them for application use. These allocators use thread-local caches, size-class bins, and arena-based strategies to reduce lock contention and fragmentation in multithreaded applications. Understanding allocator behavior is critical for diagnosing memory fragmentation in long-running services."
+        },
+        {
+          "type": "paragraph",
+          "text": "The kernel also manages the page cache, which buffers disk I/O in unused physical memory. File reads are served from the page cache when possible, and writes are buffered before being flushed to disk. The page cache dynamically grows and shrinks based on memory pressure, using LRU-like eviction policies. On Linux, the free command shows cached memory separately because it is reclaimable under pressure, not truly consumed."
+        }
+      ],
+      "wordCount": 245,
+      "subsections": []
+    },
+    {
+      "id": "virtual-memory",
+      "heading": "Virtual Memory",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Virtual memory provides each process with the illusion of a large, contiguous, private address space regardless of physical memory size or layout. The Memory Management Unit (MMU) translates virtual addresses to physical addresses using page tables, enabling memory isolation between processes, demand paging, copy-on-write optimization, and memory-mapped files."
+        },
+        {
+          "type": "paragraph",
+          "text": "Page tables are hierarchical structures (4 levels on x86-64: PGD, PUD, PMD, PTE) that map virtual page numbers to physical frame numbers. Each page table entry contains the physical frame address plus permission bits (read, write, execute, user/kernel, present). A page fault occurs when a process accesses a virtual address whose page table entry is marked not-present, triggering the kernel to load the page from disk (demand paging), allocate a new zero page, or signal a segmentation fault for invalid accesses."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Translation Lookaside Buffer (TLB) caches recent virtual-to-physical translations to avoid the multi-level page table walk on every memory access. TLB misses are expensive (10-100 cycles for a page table walk versus 1 cycle for a TLB hit), making TLB efficiency critical for performance. Huge pages (2MB or 1GB on x86-64) reduce TLB pressure by covering more address space per entry, which is why databases and JVMs often configure huge page support for large heap allocations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Copy-on-write (COW) is a key optimization where forked processes initially share the same physical pages. Pages are only duplicated when one process attempts to write, at which point the kernel allocates a new frame, copies the content, and updates the page table. This makes fork() nearly instantaneous regardless of process memory size and is the foundation for efficient process creation in Unix systems."
+        },
+        {
+          "type": "paragraph",
+          "text": "Swap space extends physical memory to disk, allowing the system to handle memory overcommitment. When physical memory is exhausted, the kernel's page replacement algorithm (approximated LRU using accessed/dirty bits) selects victim pages to write to swap. Excessive swapping (thrashing) devastates performance because disk I/O is orders of magnitude slower than memory access. Production systems typically configure swappiness low or disable swap entirely, relying on OOM killing to handle memory exhaustion."
+        }
+      ],
+      "wordCount": 338,
+      "subsections": []
+    },
+    {
+      "id": "file-systems",
+      "heading": "File Systems",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "File systems organize persistent data on storage devices into a hierarchical namespace of files and directories, providing abstractions for creating, reading, writing, and deleting data. The file system translates logical operations (open, read, write) into physical block I/O operations on the underlying storage device, managing space allocation, metadata, caching, and crash consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "The inode is the fundamental metadata structure in Unix file systems. Each inode stores file attributes (size, permissions, timestamps, owner) and pointers to data blocks. Directory entries map human-readable names to inode numbers, enabling the hierarchical namespace. Hard links create multiple directory entries pointing to the same inode, while symbolic links store a path string that is resolved at access time. This separation of names from metadata enables atomic rename operations and efficient file sharing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Journaling file systems (ext4, XFS, NTFS) maintain a write-ahead log of metadata changes to ensure crash consistency. Before modifying file system structures, the intended changes are written to the journal. If a crash occurs mid-operation, the journal is replayed during recovery to complete or roll back partial updates. Full data journaling (journaling both metadata and file data) provides stronger consistency guarantees but reduces write performance due to double-writing. Most production systems use metadata-only journaling as a compromise."
+        },
+        {
+          "type": "paragraph",
+          "text": "Copy-on-write file systems (ZFS, Btrfs) never overwrite existing data blocks. Instead, modifications are written to new locations and the metadata tree is updated atomically to point to the new data. This approach provides built-in snapshots (old data is preserved until explicitly freed), checksumming for data integrity verification, and simplified crash recovery. ZFS combines the file system and volume manager, providing features like RAID-Z, deduplication, compression, and send/receive for replication."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Virtual File System (VFS) layer in Linux provides a uniform interface for all file system implementations. Applications use the same system calls (open, read, write, stat) regardless of whether the underlying storage is ext4, NFS, procfs, or tmpfs. VFS defines abstract operations (inode_operations, file_operations, super_operations) that each file system driver implements, enabling transparent access to diverse storage backends."
+        }
+      ],
+      "wordCount": 332,
+      "subsections": []
+    },
+    {
+      "id": "concurrency-primitives",
+      "heading": "Concurrency Primitives",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Concurrency primitives are synchronization mechanisms that coordinate access to shared resources among multiple threads or processes executing simultaneously. Without proper synchronization, concurrent access to shared mutable state leads to race conditions, data corruption, and non-deterministic behavior that is extremely difficult to reproduce and debug."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mutexes (mutual exclusion locks) provide exclusive access to a critical section. Only one thread can hold the mutex at a time; other threads attempting to acquire it are blocked until the holder releases it. Mutexes should protect the minimum necessary code to reduce contention. Recursive mutexes allow the same thread to acquire the lock multiple times without deadlocking, but they often indicate design problems and should be avoided. Read-write locks (rwlock) allow multiple concurrent readers but exclusive writers, optimizing for read-heavy workloads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Semaphores generalize mutexes by maintaining a counter that allows up to N concurrent accesses. A counting semaphore initialized to N permits N threads to enter the critical section simultaneously, useful for resource pools (database connections, thread pools). Binary semaphores (initialized to 1) behave like mutexes but lack ownership semantics, meaning any thread can signal (release) them regardless of which thread waited (acquired). This makes semaphores suitable for signaling between threads but prone to misuse."
+        },
+        {
+          "type": "paragraph",
+          "text": "Condition variables enable threads to wait for a specific condition to become true without busy-waiting. A thread acquires a mutex, checks the condition, and if false, atomically releases the mutex and sleeps on the condition variable. When another thread changes the shared state, it signals the condition variable to wake one (signal) or all (broadcast) waiting threads. The awakened thread re-acquires the mutex and re-checks the condition (spurious wakeups require loop-based checking). This pattern is the foundation for producer-consumer queues, barriers, and other coordination structures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Lock-free and wait-free data structures use atomic operations (compare-and-swap, fetch-and-add) instead of locks to achieve thread safety. Lock-free algorithms guarantee system-wide progress (at least one thread makes progress), while wait-free algorithms guarantee per-thread progress (every thread completes in bounded steps). These approaches eliminate deadlock risk and reduce latency variance but are significantly more complex to implement correctly. Common lock-free structures include queues (Michael-Scott queue), stacks (Treiber stack), and hash maps."
+        }
+      ],
+      "wordCount": 355,
+      "subsections": []
+    },
+    {
+      "id": "inter-process-communication",
+      "heading": "Inter-Process Communication",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Inter-process communication (IPC) enables separate processes to exchange data and coordinate actions. Unlike threads that share an address space, processes have isolated memory, so explicit mechanisms are needed for communication. The choice of IPC mechanism depends on data volume, latency requirements, whether processes are on the same host, and the communication pattern (unidirectional, bidirectional, one-to-many)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Pipes provide a unidirectional byte stream between related processes (parent-child). Anonymous pipes are created with the pipe() system call and are the mechanism behind shell pipelines (cmd1 | cmd2). Named pipes (FIFOs) exist in the filesystem namespace and allow communication between unrelated processes. Pipes are simple and efficient for streaming data but limited to unidirectional flow and same-host communication. They buffer data in kernel memory (typically 64KB on Linux) and block writers when the buffer is full."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shared memory is the fastest IPC mechanism because data is exchanged through memory-mapped regions accessible to multiple processes without kernel involvement for each transfer. Processes use mmap() with MAP_SHARED or POSIX shared memory (shm_open) to establish shared regions. However, shared memory requires explicit synchronization (semaphores, futexes) to prevent race conditions, making it more complex to use correctly. It is ideal for high-throughput, low-latency scenarios like database buffer pools and multimedia processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Message queues (POSIX mq_send/mq_receive or System V msgget/msgsnd/msgrcv) provide structured message passing with priority ordering and size limits. Messages are copied between user space and kernel space, adding overhead compared to shared memory but providing built-in synchronization and message boundaries. Message queues decouple sender and receiver timing, enabling asynchronous communication patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Unix domain sockets provide bidirectional, connection-oriented or datagram-based communication between processes on the same host. They use the socket API (socket, bind, listen, accept, connect) with the AF_UNIX address family, making them familiar to network programmers. Unix sockets are faster than TCP loopback because they bypass the network stack (no checksumming, no routing, no TCP state machine). They also support passing file descriptors between processes (SCM_RIGHTS), enabling sophisticated privilege separation patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Signals are asynchronous notifications sent to a process to indicate events (SIGTERM for termination, SIGCHLD for child exit, SIGUSR1/SIGUSR2 for application-defined events). Signal handlers execute asynchronously in the context of the receiving process, interrupting normal execution. Because handlers run asynchronously, only async-signal-safe functions should be called within them. Signals carry minimal data (just the signal number and optional siginfo) and are primarily used for control flow rather than data transfer."
+        }
+      ],
+      "wordCount": 395,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "thread-safe-producer-consumer-queue-with-condition-variables",
+          "heading": "Thread-Safe Producer-Consumer Queue with Condition Variables",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.LinkedList;\nimport java.util.Queue;\nimport java.util.concurrent.locks.Condition;\nimport java.util.concurrent.locks.ReentrantLock;\n\npublic class BoundedBlockingQueue<T> {\n    private final Queue<T> queue;\n    private final int capacity;\n    private final ReentrantLock lock;\n    private final Condition notFull;\n    private final Condition notEmpty;\n\n    public BoundedBlockingQueue(int capacity) {\n        this.capacity = capacity;\n        this.queue = new LinkedList<>();\n        this.lock = new ReentrantLock();\n        this.notFull = lock.newCondition();\n        this.notEmpty = lock.newCondition();\n    }\n\n    public void put(T item) throws InterruptedException {\n        lock.lock();\n        try {\n            // Wait while queue is full (loop handles spurious wakeups)\n            while (queue.size() == capacity) {\n                notFull.await();\n            }\n            queue.offer(item);\n            notEmpty.signal(); // Wake one waiting consumer\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public T take() throws InterruptedException {\n        lock.lock();\n        try {\n            // Wait while queue is empty\n            while (queue.isEmpty()) {\n                notEmpty.await();\n            }\n            T item = queue.poll();\n            notFull.signal(); // Wake one waiting producer\n            return item;\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public int size() {\n        lock.lock();\n        try {\n            return queue.size();\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "process-scheduling-simulation-with-priority-queue",
+          "heading": "Process Scheduling Simulation with Priority Queue",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import heapq\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom typing import Optional\n\nclass ProcessState(Enum):\n    READY = \"ready\"\n    RUNNING = \"running\"\n    WAITING = \"waiting\"\n    TERMINATED = \"terminated\"\n\n@dataclass(order=True)\nclass Process:\n    priority: int\n    pid: int = field(compare=False)\n    name: str = field(compare=False)\n    burst_time: int = field(compare=False)\n    remaining_time: int = field(compare=False)\n    state: ProcessState = field(default=ProcessState.READY, compare=False)\n    wait_time: int = field(default=0, compare=False)\n\nclass PriorityScheduler:\n    \"\"\"Preemptive priority scheduler with aging to prevent starvation.\"\"\"\n\n    def __init__(self, time_quantum: int = 10, aging_threshold: int = 50):\n        self.ready_queue: list[Process] = []\n        self.current: Optional[Process] = None\n        self.time_quantum = time_quantum\n        self.aging_threshold = aging_threshold\n        self.clock = 0\n        self.completed: list[Process] = []\n\n    def add_process(self, process: Process):\n        heapq.heappush(self.ready_queue, process)\n\n    def tick(self):\n        \"\"\"Advance one time unit.\"\"\"\n        self.clock += 1\n\n        # Age waiting processes to prevent starvation\n        for proc in self.ready_queue:\n            proc.wait_time += 1\n            if proc.wait_time >= self.aging_threshold:\n                proc.priority = max(0, proc.priority - 1)\n                proc.wait_time = 0\n\n        if self.current:\n            self.current.remaining_time -= 1\n            if self.current.remaining_time <= 0:\n                self.current.state = ProcessState.TERMINATED\n                self.completed.append(self.current)\n                self.current = None\n\n        # Check for preemption: higher priority process available\n        if self.ready_queue:\n            if self.current is None or self.ready_queue[0].priority < self.current.priority:\n                if self.current and self.current.state != ProcessState.TERMINATED:\n                    self.current.state = ProcessState.READY\n                    heapq.heappush(self.ready_queue, self.current)\n                self.current = heapq.heappop(self.ready_queue)\n                self.current.state = ProcessState.RUNNING\n                self.current.wait_time = 0\n\n    def run_until_complete(self):\n        while self.current or self.ready_queue:\n            self.tick()\n        return self.completed\n\n# Usage\nscheduler = PriorityScheduler(aging_threshold=30)\nscheduler.add_process(Process(priority=3, pid=1, name=\"background-job\", burst_time=100, remaining_time=100))\nscheduler.add_process(Process(priority=1, pid=2, name=\"user-request\", burst_time=20, remaining_time=20))\nscheduler.add_process(Process(priority=2, pid=3, name=\"batch-process\", burst_time=50, remaining_time=50))\n\ncompleted = scheduler.run_until_complete()\nfor proc in completed:\n    print(f\"PID {proc.pid} ({proc.name}) completed at time {scheduler.clock}\")",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "virtual-memory-page-table-lookup",
+          "heading": "Virtual Memory Page Table Lookup",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <stdint.h>\n\n#define PAGE_SIZE 4096\n#define PAGE_OFFSET_BITS 12\n#define PTE_PRESENT  (1UL << 0)\n#define PTE_WRITABLE (1UL << 1)\n#define PTE_USER     (1UL << 2)\n#define PTE_ACCESSED (1UL << 5)\n#define PTE_DIRTY    (1UL << 6)\n\ntypedef struct {\n    uint64_t entries[512];  // 512 entries per page table level\n} PageTable;\n\ntypedef struct {\n    PageTable *pgd;  // Page Global Directory (top level)\n    uint64_t total_pages_allocated;\n    uint64_t page_faults;\n} AddressSpace;\n\n/* Extract page table indices from a virtual address (4-level paging) */\nstatic inline uint64_t pgd_index(uint64_t vaddr) { return (vaddr >> 39) & 0x1FF; }\nstatic inline uint64_t pud_index(uint64_t vaddr) { return (vaddr >> 30) & 0x1FF; }\nstatic inline uint64_t pmd_index(uint64_t vaddr) { return (vaddr >> 21) & 0x1FF; }\nstatic inline uint64_t pte_index(uint64_t vaddr) { return (vaddr >> 12) & 0x1FF; }\nstatic inline uint64_t page_offset(uint64_t vaddr) { return vaddr & 0xFFF; }\n\n/* Simulate a page table walk to translate virtual to physical address */\nuint64_t translate_address(AddressSpace *as, uint64_t virtual_addr) {\n    uint64_t pgd_entry = as->pgd->entries[pgd_index(virtual_addr)];\n    if (!(pgd_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PGD level for address 0x%lx\\n\", virtual_addr);\n        return 0;  // Would trigger page fault handler in real kernel\n    }\n\n    PageTable *pud = (PageTable *)(pgd_entry & ~0xFFF);\n    uint64_t pud_entry = pud->entries[pud_index(virtual_addr)];\n    if (!(pud_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PUD level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    PageTable *pmd = (PageTable *)(pud_entry & ~0xFFF);\n    uint64_t pmd_entry = pmd->entries[pmd_index(virtual_addr)];\n    if (!(pmd_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PMD level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    PageTable *pte = (PageTable *)(pmd_entry & ~0xFFF);\n    uint64_t pte_entry = pte->entries[pte_index(virtual_addr)];\n    if (!(pte_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PTE level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    /* Mark page as accessed */\n    pte->entries[pte_index(virtual_addr)] |= PTE_ACCESSED;\n\n    uint64_t physical_frame = pte_entry & ~0xFFF;\n    uint64_t physical_addr = physical_frame | page_offset(virtual_addr);\n    return physical_addr;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Operating System Architecture\"\n        subgraph \"User Space (Ring 3)\"\n            APP1[Application Process 1]\n            APP2[Application Process 2]\n            APP3[Application Process 3]\n            LIBC[C Library / System Call Wrapper]\n        end\n\n        subgraph \"Kernel Space (Ring 0)\"\n            SYSCALL[System Call Interface]\n            \n            subgraph \"Process Management\"\n                SCHED[Scheduler<br/>CFS / Real-Time]\n                PCB[Process Control Blocks]\n                IPC_K[IPC Subsystem<br/>pipes, shmem, sockets]\n            end\n            \n            subgraph \"Memory Management\"\n                VMM[Virtual Memory Manager]\n                PFA[Page Frame Allocator<br/>Buddy System]\n                SLAB[Slab Allocator]\n                SWAP[Swap Manager]\n            end\n            \n            subgraph \"File Systems\"\n                VFS[Virtual File System Layer]\n                EXT4[ext4]\n                XFS_FS[XFS]\n                TMPFS[tmpfs]\n                PCACHE[Page Cache]\n            end\n            \n            subgraph \"I/O Subsystem\"\n                BLKIO[Block I/O Layer]\n                NETIO[Network Stack<br/>TCP/IP]\n                DRIVERS[Device Drivers]\n            end\n        end\n\n        subgraph \"Hardware\"\n            CPU[CPU + MMU + TLB]\n            RAM[Physical Memory]\n            DISK[Storage Devices]\n            NIC[Network Interface]\n        end\n    end\n\n    APP1 --> LIBC\n    APP2 --> LIBC\n    APP3 --> LIBC\n    LIBC --> SYSCALL\n    SYSCALL --> SCHED\n    SYSCALL --> VMM\n    SYSCALL --> VFS\n    SYSCALL --> NETIO\n    \n    SCHED --> CPU\n    VMM --> PFA --> RAM\n    VMM --> SWAP --> DISK\n    VFS --> PCACHE --> BLKIO --> DISK\n    NETIO --> NIC\n    DRIVERS --> CPU\n    DRIVERS --> DISK\n    DRIVERS --> NIC"
+        },
+        {
+          "type": "mermaid",
+          "source": "stateDiagram-v2\n    [*] --> New: Process Created\n    New --> Ready: Admitted to ready queue\n    Ready --> Running: Scheduler dispatches\n    Running --> Ready: Preempted (time slice expired)\n    Running --> Waiting: I/O request or event wait\n    Waiting --> Ready: I/O complete or event occurs\n    Running --> Terminated: Process exits or killed\n    Terminated --> [*]: Resources reclaimed\n\n    note right of Running\n        Only ONE process per CPU core\n        can be in Running state\n    end note\n\n    note right of Waiting\n        Process blocked on:\n        - Disk I/O\n        - Network I/O\n        - Lock acquisition\n        - Signal/event\n    end note"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Virtual Address Translation (4-Level Page Table)\"\n        VA[Virtual Address<br/>48 bits used] --> PGD_IDX[PGD Index<br/>bits 47-39]\n        VA --> PUD_IDX[PUD Index<br/>bits 38-30]\n        VA --> PMD_IDX[PMD Index<br/>bits 29-21]\n        VA --> PTE_IDX[PTE Index<br/>bits 20-12]\n        VA --> OFFSET[Page Offset<br/>bits 11-0]\n        \n        CR3[CR3 Register] --> PGD[Page Global Directory]\n        PGD_IDX --> PGD\n        PGD --> PUD[Page Upper Directory]\n        PUD_IDX --> PUD\n        PUD --> PMD[Page Middle Directory]\n        PMD_IDX --> PMD\n        PMD --> PTE[Page Table Entry]\n        PTE_IDX --> PTE\n        PTE --> FRAME[Physical Frame Address]\n        FRAME --> PA[Physical Address]\n        OFFSET --> PA\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Deadlock from inconsistent lock ordering: When multiple threads acquire multiple locks in different orders, circular wait can occur. Always establish a global lock ordering and acquire locks in that order. Use lock hierarchies or try-lock with backoff to break potential cycles. Tools like ThreadSanitizer and lockdep (Linux kernel) can detect ordering violations at runtime.",
+            "Priority inversion without priority inheritance: A high-priority thread blocked waiting for a lock held by a low-priority thread can be starved if medium-priority threads preempt the lock holder. Priority inheritance protocols temporarily boost the lock holder's priority to the highest waiter's priority. This famously caused issues on the Mars Pathfinder mission until the mutex was reconfigured with priority inheritance.",
+            "Thrashing from memory overcommitment: When the working set of all processes exceeds physical memory, the system spends more time swapping pages than executing useful work. Monitor page fault rates and resident set sizes. Configure memory limits per process (cgroups in containers), use memory-mapped I/O judiciously, and consider disabling swap in favor of OOM killing for latency-sensitive services.",
+            "Ignoring cache effects in concurrent code: False sharing occurs when threads modify different variables that happen to reside on the same cache line (typically 64 bytes), causing constant cache invalidation traffic between cores. Pad shared structures to cache line boundaries using alignas(64) or @Contended annotations. Profile with hardware performance counters (perf stat) to detect excessive cache coherency traffic.",
+            "Signal handler reentrancy bugs: Signal handlers interrupt normal execution at arbitrary points. Calling non-async-signal-safe functions (malloc, printf, mutex operations) from signal handlers causes undefined behavior including deadlocks and corruption. Use only async-signal-safe functions in handlers, or set a flag and handle the signal in the main loop.",
+            "File descriptor leaks in forked processes: After fork(), the child inherits all open file descriptors. If the child exec()s another program without closing unnecessary descriptors, those resources remain held. Use close-on-exec (O_CLOEXEC) flag when opening files, or explicitly close inherited descriptors before exec. Leaked descriptors can exhaust system limits and cause subtle resource contention."
+          ]
+        }
+      ],
+      "wordCount": 329,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Container resource isolation: Docker and Kubernetes use Linux namespaces (PID, network, mount, user) for process isolation and cgroups for resource limits (CPU shares, memory limits, I/O bandwidth). Understanding these OS primitives is essential for debugging container performance issues, configuring resource requests/limits, and understanding why containers behave differently from bare-metal processes.",
+            "Database buffer pool management: Databases like PostgreSQL and MySQL manage their own buffer pools using shared memory (mmap or shmget), implementing custom page replacement algorithms optimized for database access patterns (clock sweep, LRU-2). They use direct I/O (O_DIRECT) to bypass the OS page cache and avoid double-buffering, and use fsync/fdatasync for durability guarantees.",
+            "JVM garbage collection and OS interaction: The JVM's garbage collector interacts heavily with the OS virtual memory system. Large heaps benefit from huge pages (reducing TLB misses), GC pauses can trigger page faults if pages were swapped out, and the G1/ZGC collectors use memory mapping tricks for concurrent compaction. Understanding these interactions is critical for tuning JVM performance in production.",
+            "High-frequency trading systems: HFT systems use real-time scheduling (SCHED_FIFO), CPU pinning (taskset/cpuset), huge pages, kernel bypass networking (DPDK, io_uring), and lock-free data structures to achieve sub-microsecond latencies. They disable features like NUMA balancing, transparent huge pages, and CPU frequency scaling that introduce latency jitter."
+          ]
+        }
+      ],
+      "wordCount": 207,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between a process and a thread. When would you choose one over the other?\nA: A process has its own address space, file descriptors, and signal handlers, providing strong isolation but expensive creation and communication. Threads share the process address space and resources, enabling fast communication through shared memory but requiring explicit synchronization. Choose processes for isolation (security boundaries, fault isolation) and threads for performance (shared state, low-overhead parallelism). Modern systems often combine both: multiple processes for fault isolation with multiple threads per process for concurrency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What causes a deadlock and how do you prevent it?\nA: Deadlock requires four simultaneous conditions: mutual exclusion (resources are non-sharable), hold-and-wait (processes hold resources while waiting for others), no preemption (resources cannot be forcibly taken), and circular wait (a cycle exists in the wait graph). Prevention breaks one condition: lock ordering eliminates circular wait, try-lock with timeout breaks hold-and-wait, and lock-free algorithms eliminate mutual exclusion. Detection uses wait-for graphs with periodic cycle detection and victim selection for recovery."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does virtual memory provide process isolation?\nA: Each process has its own page table mapping virtual addresses to physical frames. The MMU enforces these mappings in hardware, so a process cannot access physical memory not mapped in its page table. The kernel sets permission bits (user/supervisor, read/write/execute) on each page table entry, preventing user processes from accessing kernel memory. Context switches update the page table base register (CR3 on x86), completely changing the address space view."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Describe the page replacement problem and common algorithms.\nA: When physical memory is full and a new page must be loaded, the OS must choose a victim page to evict. Optimal (Belady's) evicts the page used furthest in the future but requires future knowledge. LRU evicts the least recently used page but is expensive to implement exactly. Clock (second-chance) approximates LRU using a circular buffer and reference bits, clearing the bit on first pass and evicting on second pass if still unset. Linux uses a two-list approach (active/inactive) with aging to approximate LRU efficiently."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between user-level threads and kernel-level threads?\nA: User-level threads are managed entirely in user space by a threading library without kernel awareness. They have fast context switches (no system call) but cannot exploit multiple CPUs and block the entire process on blocking system calls. Kernel-level threads are managed by the OS scheduler, can run on multiple CPUs, and handle blocking calls independently, but have higher context switch overhead. Modern systems use kernel threads (pthreads on Linux map 1:1 to kernel threads), while languages like Go use M:N threading (many goroutines multiplexed onto fewer kernel threads)."
+        }
+      ],
+      "wordCount": 443,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor context switch rates: High involuntary context switch rates (visible in vmstat cs column or /proc/pid/status nonvoluntary_ctxt_switches) indicate CPU contention. If your service has more runnable threads than available cores, threads compete for CPU time, increasing tail latency. Size thread pools to match available cores for CPU-bound work, and use I/O multiplexing (epoll, io_uring) instead of thread-per-connection for I/O-bound work.",
+            "Configure huge pages for large heaps: Applications with large memory footprints (JVM heaps, database buffer pools, in-memory caches) benefit significantly from huge pages (2MB instead of 4KB). This reduces TLB misses by 512x per entry, which matters for random-access workloads. On Linux, configure transparent huge pages (THP) or explicit hugetlbfs. For JVMs, use -XX:+UseTransparentHugePages or -XX:+UseLargePages with pre-allocated huge pages.",
+            "Use cgroups v2 for resource isolation: In containerized environments, configure memory limits to prevent OOM kills from affecting other containers. Set CPU limits to prevent noisy neighbors. Monitor cgroup memory.stat for page cache usage versus anonymous memory. Set memory.high (soft limit with throttling) below memory.max (hard limit with OOM kill) to provide backpressure before hard failures.",
+            "Tune file descriptor limits: Production services handling many concurrent connections need raised file descriptor limits. The default 1024 is insufficient for servers handling thousands of connections. Set both soft and hard limits in /etc/security/limits.conf and the systemd service unit. Monitor open file descriptors per process via /proc/pid/fd count and alert before approaching limits.",
+            "Profile with perf and eBPF: Use perf stat for hardware counter analysis (cache misses, branch mispredictions, TLB misses), perf record for CPU profiling with call graphs, and eBPF tools (bpftrace, BCC) for dynamic tracing of kernel and user-space functions without recompilation. These tools reveal whether bottlenecks are CPU-bound, memory-bound, or I/O-bound, guiding optimization efforts."
+          ]
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "System Design - Distributed systems fundamentals build on OS concepts like consistency, concurrency, and resource management",
+            "Networking - The OS network stack (TCP/IP, sockets, epoll) is the foundation for all networked applications",
+            "Docker & Containerization - Containers use OS primitives (namespaces, cgroups) for process isolation and resource control"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.LinkedList;\nimport java.util.Queue;\nimport java.util.concurrent.locks.Condition;\nimport java.util.concurrent.locks.ReentrantLock;\n\npublic class BoundedBlockingQueue<T> {\n    private final Queue<T> queue;\n    private final int capacity;\n    private final ReentrantLock lock;\n    private final Condition notFull;\n    private final Condition notEmpty;\n\n    public BoundedBlockingQueue(int capacity) {\n        this.capacity = capacity;\n        this.queue = new LinkedList<>();\n        this.lock = new ReentrantLock();\n        this.notFull = lock.newCondition();\n        this.notEmpty = lock.newCondition();\n    }\n\n    public void put(T item) throws InterruptedException {\n        lock.lock();\n        try {\n            // Wait while queue is full (loop handles spurious wakeups)\n            while (queue.size() == capacity) {\n                notFull.await();\n            }\n            queue.offer(item);\n            notEmpty.signal(); // Wake one waiting consumer\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public T take() throws InterruptedException {\n        lock.lock();\n        try {\n            // Wait while queue is empty\n            while (queue.isEmpty()) {\n                notEmpty.await();\n            }\n            T item = queue.poll();\n            notFull.signal(); // Wake one waiting producer\n            return item;\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public int size() {\n        lock.lock();\n        try {\n            return queue.size();\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import heapq\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom typing import Optional\n\nclass ProcessState(Enum):\n    READY = \"ready\"\n    RUNNING = \"running\"\n    WAITING = \"waiting\"\n    TERMINATED = \"terminated\"\n\n@dataclass(order=True)\nclass Process:\n    priority: int\n    pid: int = field(compare=False)\n    name: str = field(compare=False)\n    burst_time: int = field(compare=False)\n    remaining_time: int = field(compare=False)\n    state: ProcessState = field(default=ProcessState.READY, compare=False)\n    wait_time: int = field(default=0, compare=False)\n\nclass PriorityScheduler:\n    \"\"\"Preemptive priority scheduler with aging to prevent starvation.\"\"\"\n\n    def __init__(self, time_quantum: int = 10, aging_threshold: int = 50):\n        self.ready_queue: list[Process] = []\n        self.current: Optional[Process] = None\n        self.time_quantum = time_quantum\n        self.aging_threshold = aging_threshold\n        self.clock = 0\n        self.completed: list[Process] = []\n\n    def add_process(self, process: Process):\n        heapq.heappush(self.ready_queue, process)\n\n    def tick(self):\n        \"\"\"Advance one time unit.\"\"\"\n        self.clock += 1\n\n        # Age waiting processes to prevent starvation\n        for proc in self.ready_queue:\n            proc.wait_time += 1\n            if proc.wait_time >= self.aging_threshold:\n                proc.priority = max(0, proc.priority - 1)\n                proc.wait_time = 0\n\n        if self.current:\n            self.current.remaining_time -= 1\n            if self.current.remaining_time <= 0:\n                self.current.state = ProcessState.TERMINATED\n                self.completed.append(self.current)\n                self.current = None\n\n        # Check for preemption: higher priority process available\n        if self.ready_queue:\n            if self.current is None or self.ready_queue[0].priority < self.current.priority:\n                if self.current and self.current.state != ProcessState.TERMINATED:\n                    self.current.state = ProcessState.READY\n                    heapq.heappush(self.ready_queue, self.current)\n                self.current = heapq.heappop(self.ready_queue)\n                self.current.state = ProcessState.RUNNING\n                self.current.wait_time = 0\n\n    def run_until_complete(self):\n        while self.current or self.ready_queue:\n            self.tick()\n        return self.completed\n\n# Usage\nscheduler = PriorityScheduler(aging_threshold=30)\nscheduler.add_process(Process(priority=3, pid=1, name=\"background-job\", burst_time=100, remaining_time=100))\nscheduler.add_process(Process(priority=1, pid=2, name=\"user-request\", burst_time=20, remaining_time=20))\nscheduler.add_process(Process(priority=2, pid=3, name=\"batch-process\", burst_time=50, remaining_time=50))\n\ncompleted = scheduler.run_until_complete()\nfor proc in completed:\n    print(f\"PID {proc.pid} ({proc.name}) completed at time {scheduler.clock}\")",
+      "runnable": false
+    },
+    {
+      "language": "c",
+      "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <stdint.h>\n\n#define PAGE_SIZE 4096\n#define PAGE_OFFSET_BITS 12\n#define PTE_PRESENT  (1UL << 0)\n#define PTE_WRITABLE (1UL << 1)\n#define PTE_USER     (1UL << 2)\n#define PTE_ACCESSED (1UL << 5)\n#define PTE_DIRTY    (1UL << 6)\n\ntypedef struct {\n    uint64_t entries[512];  // 512 entries per page table level\n} PageTable;\n\ntypedef struct {\n    PageTable *pgd;  // Page Global Directory (top level)\n    uint64_t total_pages_allocated;\n    uint64_t page_faults;\n} AddressSpace;\n\n/* Extract page table indices from a virtual address (4-level paging) */\nstatic inline uint64_t pgd_index(uint64_t vaddr) { return (vaddr >> 39) & 0x1FF; }\nstatic inline uint64_t pud_index(uint64_t vaddr) { return (vaddr >> 30) & 0x1FF; }\nstatic inline uint64_t pmd_index(uint64_t vaddr) { return (vaddr >> 21) & 0x1FF; }\nstatic inline uint64_t pte_index(uint64_t vaddr) { return (vaddr >> 12) & 0x1FF; }\nstatic inline uint64_t page_offset(uint64_t vaddr) { return vaddr & 0xFFF; }\n\n/* Simulate a page table walk to translate virtual to physical address */\nuint64_t translate_address(AddressSpace *as, uint64_t virtual_addr) {\n    uint64_t pgd_entry = as->pgd->entries[pgd_index(virtual_addr)];\n    if (!(pgd_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PGD level for address 0x%lx\\n\", virtual_addr);\n        return 0;  // Would trigger page fault handler in real kernel\n    }\n\n    PageTable *pud = (PageTable *)(pgd_entry & ~0xFFF);\n    uint64_t pud_entry = pud->entries[pud_index(virtual_addr)];\n    if (!(pud_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PUD level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    PageTable *pmd = (PageTable *)(pud_entry & ~0xFFF);\n    uint64_t pmd_entry = pmd->entries[pmd_index(virtual_addr)];\n    if (!(pmd_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PMD level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    PageTable *pte = (PageTable *)(pmd_entry & ~0xFFF);\n    uint64_t pte_entry = pte->entries[pte_index(virtual_addr)];\n    if (!(pte_entry & PTE_PRESENT)) {\n        as->page_faults++;\n        printf(\"Page fault at PTE level for address 0x%lx\\n\", virtual_addr);\n        return 0;\n    }\n\n    /* Mark page as accessed */\n    pte->entries[pte_index(virtual_addr)] |= PTE_ACCESSED;\n\n    uint64_t physical_frame = pte_entry & ~0xFFF;\n    uint64_t physical_addr = physical_frame | page_offset(virtual_addr);\n    return physical_addr;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/system-design/operating-systems.md",
+    "wordCount": 3527,
+    "sectionCount": 18
+  }
+}

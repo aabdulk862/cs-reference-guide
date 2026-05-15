@@ -1,0 +1,656 @@
+{
+  "id": "exception-handling-and-validation-best-practices-summary",
+  "slug": "best-practices-summary",
+  "title": "Best Practices Summary",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "definition",
+      "heading": "Definition:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "An exception is an interruption or unexpected event that occurs during the execution of a program, potentially causing the application to terminate abnormally."
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    },
+    {
+      "id": "common-causes",
+      "heading": "Common Causes:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Division by zero: int result = 5 / 0; // ArithmeticException",
+            "Invalid login credentials: Login fails if the username/password is incorrect.",
+            "Resource not found: e.g., customer ID passed doesn't exist in the database."
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    },
+    {
+      "id": "without-proper-handling",
+      "heading": "Without Proper Handling:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Application crashes or terminates abruptly.",
+            "Bad user experience and loss of trust.",
+            "Business impact due to poor reliability."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Exception Handling and Validation/Exception%20Handling%20and%20Validation/image.png",
+          "alt": "image.png",
+          "originalPath": "Exception%20Handling%20and%20Validation/image.png"
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    },
+    {
+      "id": "in-spring-rest",
+      "heading": "In Spring REST:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring REST follows a layered architecture:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Controller Layer",
+            "Service Layer",
+            "Persistence Layer"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Exceptions can originate in any layer but eventually reach the Controller. If unhandled, Spring maps them to:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "HTTP Status: 500 Internal Server Error",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Goal:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Return meaningful messages and appropriate HTTP status codes."
+          ]
+        }
+      ],
+      "wordCount": 38,
+      "subsections": []
+    },
+    {
+      "id": "exceptionhandler",
+      "heading": "@ExceptionHandler",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Usage:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Handles exceptions within a controller (or globally if used with @ControllerAdvice)."
+          ]
+        }
+      ],
+      "wordCount": 12,
+      "subsections": []
+    },
+    {
+      "id": "example-handle-nullpointerexception",
+      "heading": "Example – Handle NullPointerException:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@ExceptionHandler(NullPointerException.class)\npublic String handleNullPointer(NullPointerException ex) {\n    return ex.getMessage();\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "example-handle-multiple-exceptions",
+      "heading": "Example – Handle Multiple Exceptions:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@ExceptionHandler({NoSuchCustomerException.class, ArithmeticException.class})\npublic String handleMultipleExceptions(Exception ex) {\n    // handle logic\n    return ex.getMessage();\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "restcontrolleradvice-global-exception-handling",
+      "heading": "@RestControllerAdvice (Global Exception Handling)",
+      "level": 3,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "why",
+      "heading": "Why?",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Local exception handlers cannot catch exceptions thrown in other controllers."
+        }
+      ],
+      "wordCount": 10,
+      "subsections": []
+    },
+    {
+      "id": "solution",
+      "heading": "Solution:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Create a global handler class using @RestControllerAdvice."
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@RestControllerAdvice\npublic class ExceptionControllerAdvice {\n\n    @ExceptionHandler(NoSuchCustomerException.class)\n    public ResponseEntity<ErrorMessage> handleCustomerNotFound(NoSuchCustomerException ex) {\n        ErrorMessage error = new ErrorMessage();\n        error.setErrorCode(HttpStatus.NOT_FOUND.value());\n        error.setMessage(ex.getMessage());\n        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "errormessage-class",
+      "heading": "ErrorMessage Class:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class ErrorMessage {\n    private int errorCode;\n    private String message;\n    // Getters and setters\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "why-validate-input",
+      "heading": "Why Validate Input?",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prevents invalid data from being processed.",
+            "Ensures data integrity and improves API reliability.",
+            "Avoids runtime exceptions like: "
+          ]
+        }
+      ],
+      "wordCount": 17,
+      "subsections": []
+    },
+    {
+      "id": "bean-validation-api",
+      "heading": "Bean Validation API",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JSR-380 (Jakarta Bean Validation)",
+            "Default implementation: Hibernate Validator",
+            "Use annotations to enforce rules."
+          ]
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "string-and-text-constraints",
+      "heading": "String and Text Constraints",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Annotation",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "@NotBlank",
+              "Must not be null, empty, or whitespace only."
+            ],
+            [
+              "@NotEmpty",
+              "Must not be null or empty (applies to strings, arrays, collections)."
+            ],
+            [
+              "@Size(min, max)",
+              "Length must be within specified range (applies to string, collections)."
+            ],
+            [
+              "@Email",
+              "Must be a valid email address format."
+            ],
+            [
+              "@Pattern(regexp)",
+              "Must match a specified regular expression."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 50,
+      "subsections": []
+    },
+    {
+      "id": "numeric-constraints",
+      "heading": "Numeric Constraints",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Annotation",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "@Min(value)",
+              "Value must be ≥ specified minimum."
+            ],
+            [
+              "@Max(value)",
+              "Value must be ≤ specified maximum."
+            ],
+            [
+              "@DecimalMin(value)",
+              "Same as @Min but supports decimals."
+            ],
+            [
+              "@DecimalMax(value)",
+              "Same as @Max but supports decimals."
+            ],
+            [
+              "@Positive",
+              "Value must be strictly > 0."
+            ],
+            [
+              "@PositiveOrZero",
+              "Value must be ≥ 0."
+            ],
+            [
+              "@Negative",
+              "Value must be strictly < 0."
+            ],
+            [
+              "@NegativeOrZero",
+              "Value must be ≤ 0."
+            ],
+            [
+              "@Digits(integer, fraction)",
+              "Must be a number with up to specified integer and fraction digits."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 70,
+      "subsections": []
+    },
+    {
+      "id": "date-and-time-constraints",
+      "heading": "Date and Time Constraints",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Annotation",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "@Past",
+              "Must be a date/time in the past."
+            ],
+            [
+              "@PastOrPresent",
+              "Must be in the past or present."
+            ],
+            [
+              "@Future",
+              "Must be a date/time in the future."
+            ],
+            [
+              "@FutureOrPresent",
+              "Must be in the future or present."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "boolean-and-conditional-validation",
+      "heading": "Boolean and Conditional Validation",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Annotation",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "@AssertTrue",
+              "Must be true."
+            ],
+            [
+              "@AssertFalse",
+              "Must be false."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 10,
+      "subsections": []
+    },
+    {
+      "id": "object-and-bean-level-constraints",
+      "heading": "Object and Bean-Level Constraints",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Annotation",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "@NotNull",
+              "Field must not be null."
+            ],
+            [
+              "@Null",
+              "Field must be null."
+            ],
+            [
+              "@Valid",
+              "Cascade validation to nested object(s), collections, or arrays."
+            ],
+            [
+              "@ConvertGroup(from, to)",
+              "Converts one validation group to another. (Advanced use case)"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    },
+    {
+      "id": "steps",
+      "heading": "Steps:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Annotate DTO fields with validation annotations.",
+            "Annotate controller method argument with @Valid.",
+            "Handle MethodArgumentNotValidException."
+          ]
+        }
+      ],
+      "wordCount": 14,
+      "subsections": []
+    },
+    {
+      "id": "example-dto",
+      "heading": "Example DTO:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class CustomerDTO {\n    @NotNull\n    private String name;\n\n    @Email(message = \"Invalid email format\")\n    private String email;\n\n    private int age;\n    // Other fields, getters, setters\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "controller",
+      "heading": "Controller:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@PostMapping(\"/customers\")\npublic ResponseEntity<CustomerDTO> createCustomer(@Valid @RequestBody CustomerDTO dto) {\n    return ResponseEntity.status(HttpStatus.CREATED).body(customerService.createCustomer(dto));\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "steps",
+      "heading": "Steps:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Add validation annotations on URI parameter method arguments.",
+            "Annotate the controller with @Validated.",
+            "Handle ConstraintViolationException."
+          ]
+        }
+      ],
+      "wordCount": 15,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Validated\n@RestController\n@RequestMapping(\"/customers\")\npublic class CustomerController {\n\n    @DeleteMapping(\"/{phoneNumber}\")\n    public String deleteCustomer(\n        @PathVariable\n        @Pattern(regexp = \"[0-9]{10}\", message = \"{customer.phoneNo.invalid}\")\n        String phoneNumber) {\n        // Logic to delete\n        return \"Customer deleted\";\n    }\n}\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Message \"customer.phoneNo.invalid\" can be externalized in ValidationMessages.properties."
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "add-to-exceptioncontrolleradvice",
+      "heading": "Add to ExceptionControllerAdvice:",
+      "level": 3,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "1-body-validation",
+      "heading": "1. Body Validation",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@ExceptionHandler(MethodArgumentNotValidException.class)\npublic ResponseEntity<ErrorMessage> handleBodyValidation(MethodArgumentNotValidException ex) {\n    String message = ex.getBindingResult().getAllErrors()\n                      .stream()\n                      .map(ObjectError::getDefaultMessage)\n                      .collect(Collectors.joining(\", \"));\n\n    ErrorMessage error = new ErrorMessage();\n    error.setErrorCode(HttpStatus.BAD_REQUEST.value());\n    error.setMessage(message);\n    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "2-uri-validation",
+      "heading": "2. URI Validation",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@ExceptionHandler(ConstraintViolationException.class)\npublic ResponseEntity<ErrorMessage> handleURIValidation(ConstraintViolationException ex) {\n    String message = ex.getConstraintViolations()\n                      .stream()\n                      .map(ConstraintViolation::getMessage)\n                      .collect(Collectors.joining(\", \"));\n\n    ErrorMessage error = new ErrorMessage();\n    error.setErrorCode(HttpStatus.BAD_REQUEST.value());\n    error.setMessage(message);\n    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);\n}\n",
+          "runnable": false
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Practice",
+            "Benefit"
+          ],
+          "rows": [
+            [
+              "Centralize exception handling",
+              "Clean, maintainable code"
+            ],
+            [
+              "Use @Valid and @Validated",
+              "Automatic input validation"
+            ],
+            [
+              "Externalize error messages",
+              "Better manageability and localization"
+            ],
+            [
+              "Return structured error responses",
+              "Improves client-side debugging"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 29,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Exception Handling and Validation/Exception%20Handling%20and%20Validation/image.png",
+      "alt": "image.png",
+      "originalPath": "Exception%20Handling%20and%20Validation/image.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "",
+      "code": "HTTP Status: 500 Internal Server Error",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@ExceptionHandler(NullPointerException.class)\npublic String handleNullPointer(NullPointerException ex) {\n    return ex.getMessage();\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@ExceptionHandler({NoSuchCustomerException.class, ArithmeticException.class})\npublic String handleMultipleExceptions(Exception ex) {\n    // handle logic\n    return ex.getMessage();\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestControllerAdvice\npublic class ExceptionControllerAdvice {\n\n    @ExceptionHandler(NoSuchCustomerException.class)\n    public ResponseEntity<ErrorMessage> handleCustomerNotFound(NoSuchCustomerException ex) {\n        ErrorMessage error = new ErrorMessage();\n        error.setErrorCode(HttpStatus.NOT_FOUND.value());\n        error.setMessage(ex.getMessage());\n        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class ErrorMessage {\n    private int errorCode;\n    private String message;\n    // Getters and setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class CustomerDTO {\n    @NotNull\n    private String name;\n\n    @Email(message = \"Invalid email format\")\n    private String email;\n\n    private int age;\n    // Other fields, getters, setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@PostMapping(\"/customers\")\npublic ResponseEntity<CustomerDTO> createCustomer(@Valid @RequestBody CustomerDTO dto) {\n    return ResponseEntity.status(HttpStatus.CREATED).body(customerService.createCustomer(dto));\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Validated\n@RestController\n@RequestMapping(\"/customers\")\npublic class CustomerController {\n\n    @DeleteMapping(\"/{phoneNumber}\")\n    public String deleteCustomer(\n        @PathVariable\n        @Pattern(regexp = \"[0-9]{10}\", message = \"{customer.phoneNo.invalid}\")\n        String phoneNumber) {\n        // Logic to delete\n        return \"Customer deleted\";\n    }\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@ExceptionHandler(MethodArgumentNotValidException.class)\npublic ResponseEntity<ErrorMessage> handleBodyValidation(MethodArgumentNotValidException ex) {\n    String message = ex.getBindingResult().getAllErrors()\n                      .stream()\n                      .map(ObjectError::getDefaultMessage)\n                      .collect(Collectors.joining(\", \"));\n\n    ErrorMessage error = new ErrorMessage();\n    error.setErrorCode(HttpStatus.BAD_REQUEST.value());\n    error.setMessage(message);\n    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@ExceptionHandler(ConstraintViolationException.class)\npublic ResponseEntity<ErrorMessage> handleURIValidation(ConstraintViolationException ex) {\n    String message = ex.getConstraintViolations()\n                      .stream()\n                      .map(ConstraintViolation::getMessage)\n                      .collect(Collectors.joining(\", \"));\n\n    ErrorMessage error = new ErrorMessage();\n    error.setErrorCode(HttpStatus.BAD_REQUEST.value());\n    error.setMessage(message);\n    return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Exception Handling and Validation/Exception Handling and Validation.md",
+    "wordCount": 433,
+    "sectionCount": 27
+  }
+}

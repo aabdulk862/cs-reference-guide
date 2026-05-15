@@ -1,0 +1,638 @@
+{
+  "id": "spring-rest-cloud-deployment-considerations",
+  "slug": "cloud-deployment-considerations",
+  "title": "Cloud Deployment Considerations",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "what-is-monitoring-in-spring-rest-services",
+      "heading": "What is Monitoring in Spring REST services?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Monitoring refers to the continuous observation of the system’s performance and behavior, including uptime, response time, error rates, etc."
+        },
+        {
+          "type": "blockquote",
+          "text": "Example: Tracking response time of a /api/customers endpoint."
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    },
+    {
+      "id": "why-do-we-need-to-implement-effective-monitoring",
+      "heading": "Why do we need to implement effective monitoring?",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Early detection of failures",
+            "Ensures system reliability",
+            "Helps optimize performance",
+            "Enables alerting mechanisms"
+          ]
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "what-is-logging-in-spring-rest",
+      "heading": "What is Logging in Spring REST?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Logging is the process of recording events and messages during application execution to help in debugging and diagnostics."
+        },
+        {
+          "type": "blockquote",
+          "text": "Example: Logging request/response of API calls or exceptions using Logger.info() or Logger.error()."
+        }
+      ],
+      "wordCount": 30,
+      "subsections": []
+    },
+    {
+      "id": "what-is-spring-boot-actuator",
+      "heading": "What is Spring Boot Actuator?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A production-ready feature set that adds endpoints to monitor and manage your Spring Boot application."
+        }
+      ],
+      "wordCount": 15,
+      "subsections": []
+    },
+    {
+      "id": "purpose-of-spring-boot-actuator",
+      "heading": "Purpose of Spring Boot Actuator",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Provides ready-to-use endpoints",
+            "Exposes application health, metrics, and environment data",
+            "Simplifies integration with monitoring tools like Prometheus, Grafana"
+          ]
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    },
+    {
+      "id": "how-to-enable-actuator",
+      "heading": "How to Enable Actuator",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<!-- pom.xml -->\n<dependency>\n  <groupId>org.springframework.boot</groupId>\n  <artifactId>spring-boot-starter-actuator</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# application.yml\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: \"*\"",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-actuator-endpoints",
+      "heading": "Common Actuator Endpoints",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Endpoint",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "/actuator/health",
+              "Shows application health"
+            ],
+            [
+              "/actuator/metrics",
+              "Application performance stats"
+            ],
+            [
+              "/actuator/loggers",
+              "View/change log levels"
+            ],
+            [
+              "/actuator/info",
+              "Custom info from app"
+            ],
+            [
+              "/actuator/env",
+              "Environment properties"
+            ],
+            [
+              "/actuator/beans",
+              "Lists all beans"
+            ],
+            [
+              "/actuator/httptrace",
+              "Recent HTTP request traces"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Checks service availability and integrations like DB, MQ."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Component\npublic class CustomHealthIndicator implements HealthIndicator {\n    @Override\n    public Health health() {\n        return Health.up().withDetail(\"custom\", \"All systems operational\").build();\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management.endpoint.health.show-details: always\n",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management:\n  endpoints:\n    web:\n      exposure:\n        include: health,info,metrics\n  endpoint:\n    health:\n      show-details: when-authorized",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Provides application metrics like memory, threads, requests."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Autowired\nprivate MeterRegistry meterRegistry;\n\n@PostConstruct\npublic void init() {\n    meterRegistry.counter(\"custom.metric\", \"type\", \"telecom\").increment();\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "json",
+          "code": "// PUT to /actuator/loggers/com.example\n{\n  \"configuredLevel\": \"DEBUG\"\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "logging:\n  level:\n    com.example: INFO",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Logging Framework Integration: Spring Boot supports Logback (default), Log4j2, SLF4J."
+        },
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n  <groupId>ch.qos.logback</groupId>\n  <artifactId>logback-classic</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Used for version, environment, or git info."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management.endpoint.info.enabled: true\ninfo:\n  app:\n    name: Telecom API\n    version: 1.0.0",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management:\n  endpoint:\n    httptrace:\n      enabled: true",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Access recent requests at /actuator/httptrace."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management.endpoints.web.exposure.include: health,info\nmanagement.endpoints.web.base-path: /management",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Configuration\npublic class SecurityConfig extends WebSecurityConfigurerAdapter {\n  @Override\n  protected void configure(HttpSecurity http) throws Exception {\n    http\n      .authorizeRequests()\n      .antMatchers(\"/management/**\").hasRole(\"ADMIN\")\n      .and().httpBasic();\n  }\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Micrometer: Default metrics library",
+            "Prometheus + Grafana: Visualization & alerting",
+            "ELK stack: Centralized logging with Elasticsearch, Logstash, Kibana"
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use async logging",
+            "Avoid exposing sensitive endpoints publicly",
+            "Customize health checks with DB/ping integrations",
+            "Use log rotation and retention strategies"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Integrate with Prometheus AlertManager:"
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "management.metrics.export.prometheus.enabled: true\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Expose /actuator/prometheus and use PromQL for alert conditions."
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "telecom-app/\n├── controller/\n│   └── CustomerController.java\n├── service/\n│   └── CustomerService.java\n├── repository/\n│   └── CustomerRepository.java\n├── model/\n│   └── Customer.java\n├── config/\n│   └── LoggingConfig.java\n├── application.yml\n└── TelecomAppApplication.java",
+          "runnable": false
+        }
+      ],
+      "wordCount": 118,
+      "subsections": []
+    },
+    {
+      "id": "environments",
+      "heading": "Environments",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Development (dev)",
+            "Testing (qa / staging)",
+            "Production (prod)"
+          ]
+        }
+      ],
+      "wordCount": 8,
+      "subsections": []
+    },
+    {
+      "id": "handling-environment-specific-configs",
+      "heading": "Handling Environment-Specific Configs",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# application-dev.yml\nspring:\n  datasource:\n    url: jdbc:mysql://localhost/dev_db\n\n# application-prod.yml\nspring:\n  datasource:\n    url: jdbc:mysql://prod-server/prod_db",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Run with profile:"
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "java -jar app.jar --spring.profiles.active=prod",
+          "runnable": false
+        }
+      ],
+      "wordCount": 3,
+      "subsections": []
+    },
+    {
+      "id": "deployment-strategies",
+      "heading": "Deployment Strategies",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Traditional WAR on Tomcat",
+            "Standalone JAR via Spring Boot",
+            "Containers using Docker/K8s",
+            "Cloud-based (AWS Elastic Beanstalk, Azure App Service)"
+          ]
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "database-config-per-environment",
+      "heading": "Database Config per Environment",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "spring:\n  datasource:\n    driver-class-name: com.mysql.cj.jdbc.Driver\n    username: ${DB_USER}\n    password: ${DB_PASS}\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Use .env files or a secrets manager to inject values securely."
+        }
+      ],
+      "wordCount": 11,
+      "subsections": []
+    },
+    {
+      "id": "best-practices",
+      "heading": "Best Practices",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Externalize configs",
+            "Use config servers (e.g., Spring Cloud Config)",
+            "Encrypt sensitive data (Jasypt, Vault)",
+            "Avoid hardcoding secrets in YAML"
+          ]
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "handling-env-specific-dependencies",
+      "heading": "Handling Env-Specific Dependencies",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use profiles:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Profile(\"dev\")\n@Bean\npublic DataSource devDataSource() {\n    // Return dev-specific datasource\n}\n",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Jenkins",
+            "GitLab CI",
+            "Azure DevOps",
+            "GitHub Actions",
+            "Docker + Helm for Kubernetes"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Use semantic versioning and keep older builds in artifact repositories."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "info:\n  app:\n    version: 2.0.1\n",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use managed DBs (e.g., RDS, Cloud SQL)",
+            "IAM-based access control",
+            "Autoscaling",
+            "Logging via CloudWatch (AWS) or Stackdriver (GCP)"
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    },
+    {
+      "id": "consistency-across-environments",
+      "heading": "Consistency Across Environments",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Docker + Kubernetes for reproducible deployments."
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "monitoring-troubleshooting-deployed-services",
+      "heading": "Monitoring & Troubleshooting Deployed Services",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Distributed tracing with Zipkin/Sleuth",
+            "Use /health, /metrics, /httptrace"
+          ]
+        }
+      ],
+      "wordCount": 8,
+      "subsections": []
+    },
+    {
+      "id": "env-specific-logging",
+      "heading": "Env-Specific Logging",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "logging:\n  file:\n    name: /var/log/telecom/telecom.log\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Use log shippers (e.g., Fluentd, Filebeat) to push logs to a centralized system."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "sample-cicd-jenkinsfile",
+      "heading": "Sample CI/CD (Jenkinsfile)",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "groovy",
+          "code": "pipeline {\n  stages {\n    stage('Build') {\n      steps { sh 'mvn clean package' }\n    }\n    stage('Deploy to QA') {\n      steps { sh './deploy.sh qa' }\n    }\n  }\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "sample-project-structure-for-deployment",
+      "heading": "Sample Project Structure for Deployment",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "telecom-app/\n├── Dockerfile\n├── Jenkinsfile\n├── k8s/\n│   └── deployment.yaml\n├── config/\n│   └── application-*.yml\n├── ...",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<!-- pom.xml -->\n<dependency>\n  <groupId>org.springframework.boot</groupId>\n  <artifactId>spring-boot-starter-actuator</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# application.yml\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: \"*\"",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class CustomHealthIndicator implements HealthIndicator {\n    @Override\n    public Health health() {\n        return Health.up().withDetail(\"custom\", \"All systems operational\").build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management.endpoint.health.show-details: always\n",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management:\n  endpoints:\n    web:\n      exposure:\n        include: health,info,metrics\n  endpoint:\n    health:\n      show-details: when-authorized",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Autowired\nprivate MeterRegistry meterRegistry;\n\n@PostConstruct\npublic void init() {\n    meterRegistry.counter(\"custom.metric\", \"type\", \"telecom\").increment();\n}",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "// PUT to /actuator/loggers/com.example\n{\n  \"configuredLevel\": \"DEBUG\"\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "logging:\n  level:\n    com.example: INFO",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n  <groupId>ch.qos.logback</groupId>\n  <artifactId>logback-classic</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management.endpoint.info.enabled: true\ninfo:\n  app:\n    name: Telecom API\n    version: 1.0.0",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management:\n  endpoint:\n    httptrace:\n      enabled: true",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management.endpoints.web.exposure.include: health,info\nmanagement.endpoints.web.base-path: /management",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\npublic class SecurityConfig extends WebSecurityConfigurerAdapter {\n  @Override\n  protected void configure(HttpSecurity http) throws Exception {\n    http\n      .authorizeRequests()\n      .antMatchers(\"/management/**\").hasRole(\"ADMIN\")\n      .and().httpBasic();\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "management.metrics.export.prometheus.enabled: true\n",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "telecom-app/\n├── controller/\n│   └── CustomerController.java\n├── service/\n│   └── CustomerService.java\n├── repository/\n│   └── CustomerRepository.java\n├── model/\n│   └── Customer.java\n├── config/\n│   └── LoggingConfig.java\n├── application.yml\n└── TelecomAppApplication.java",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# application-dev.yml\nspring:\n  datasource:\n    url: jdbc:mysql://localhost/dev_db\n\n# application-prod.yml\nspring:\n  datasource:\n    url: jdbc:mysql://prod-server/prod_db",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "java -jar app.jar --spring.profiles.active=prod",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "spring:\n  datasource:\n    driver-class-name: com.mysql.cj.jdbc.Driver\n    username: ${DB_USER}\n    password: ${DB_PASS}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Profile(\"dev\")\n@Bean\npublic DataSource devDataSource() {\n    // Return dev-specific datasource\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "info:\n  app:\n    version: 2.0.1\n",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "logging:\n  file:\n    name: /var/log/telecom/telecom.log\n",
+      "runnable": false
+    },
+    {
+      "language": "groovy",
+      "code": "pipeline {\n  stages {\n    stage('Build') {\n      steps { sh 'mvn clean package' }\n    }\n    stage('Deploy to QA') {\n      steps { sh './deploy.sh qa' }\n    }\n  }\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "telecom-app/\n├── Dockerfile\n├── Jenkinsfile\n├── k8s/\n│   └── deployment.yaml\n├── config/\n│   └── application-*.yml\n├── ...",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Deployment, Scaling, and Monitoring.md",
+    "wordCount": 351,
+    "sectionCount": 18
+  }
+}

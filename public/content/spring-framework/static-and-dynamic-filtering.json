@@ -1,0 +1,373 @@
+{
+  "id": "spring-rest-static-and-dynamic-filtering",
+  "slug": "static-and-dynamic-filtering",
+  "title": "Static and Dynamic Filtering",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "In Spring Boot REST APIs, Filtering refers to controlling what parts of a Java object are included in the serialized response (usually JSON). This is useful for hiding sensitive information, reducing payload size, or customizing data views."
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    },
+    {
+      "id": "static-filtering",
+      "heading": "Static Filtering",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definition",
+          "heading": "Definition:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Static filtering is a fixed way to define which fields should be excluded from JSON output. Once defined, it applies to all responses of that object type."
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        },
+        {
+          "id": "how-it-works",
+          "heading": "How it Works:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Uses annotations like @JsonIgnore or @JsonIgnoreProperties from Jackson.",
+                "Cannot be changed at runtime."
+              ]
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "-model-class",
+          "heading": "👩‍💻 Model Class:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class User {\n    private Long id;\n    private String name;\n\n    @JsonIgnore  // This field will be ignored during JSON serialization\n    private String password;\n\n    // Getters and Setters\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "resulting-json",
+          "heading": "Resulting JSON:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n    \"id\": 1,\n    \"name\": \"Alice\"\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "The password field is statically excluded from all API responses."
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        },
+        {
+          "id": "annotations-used",
+          "heading": "Annotations Used:",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Annotation",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "@JsonIgnore",
+                  "Hides a single field from serialization/deserialization"
+                ],
+                [
+                  "@JsonIgnoreProperties({\"field1\", \"field2\"})",
+                  "Ignores multiple fields in a class"
+                ],
+                [
+                  "@JsonInclude(JsonInclude.Include.NON_NULL)",
+                  "Ignores fields with null values"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "dynamic-filtering",
+      "heading": "Dynamic Filtering",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definition",
+          "heading": "Definition:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Dynamic filtering allows you to selectively include or exclude fields from JSON output at runtime, based on business logic or endpoint requirements."
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        },
+        {
+          "id": "how-it-works",
+          "heading": "How it Works:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Uses Jackson's @JsonFilter in combination with Spring’s MappingJacksonValue.",
+                "Offers fine-grained control over what to return based on the request or context."
+              ]
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "model-class",
+          "heading": "Model Class:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@JsonFilter(\"UserFilter\")\npublic class User {\n    private Long id;\n    private String name;\n    private String email;\n    private String password;\n\n    // Getters and Setters\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "controller",
+          "heading": "Controller:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@GetMapping(\"/user\")\npublic MappingJacksonValue getUser() {\n    User user = new User(1L, \"Alice\", \"alice@example.com\", \"secret\");\n\n    SimpleBeanPropertyFilter filter = SimpleBeanPropertyFilter\n            .filterOutAllExcept(\"id\", \"name\");\n\n    FilterProvider filters = new SimpleFilterProvider().addFilter(\"UserFilter\", filter);\n\n    MappingJacksonValue mapping = new MappingJacksonValue(user);\n    mapping.setFilters(filters);\n\n    return mapping;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "output",
+          "heading": "Output:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n    \"id\": 1,\n    \"name\": \"Alice\"\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Fields email and password are excluded dynamically for this specific response."
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "key-components-in-dynamic-filtering",
+          "heading": "Key Components in Dynamic Filtering:",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Component",
+                "Purpose"
+              ],
+              "rows": [
+                [
+                  "@JsonFilter(\"FilterName\")",
+                  "Marks the class as dynamically filterable"
+                ],
+                [
+                  "SimpleBeanPropertyFilter",
+                  "Defines which fields to include/exclude"
+                ],
+                [
+                  "SimpleFilterProvider",
+                  "Applies the filter to the object"
+                ],
+                [
+                  "MappingJacksonValue",
+                  "Wraps the object and associates the filter"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "static-vs-dynamic-filtering-comparison",
+      "heading": "Static vs Dynamic Filtering Comparison",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Static Filtering",
+            "Dynamic Filtering"
+          ],
+          "rows": [
+            [
+              "Configuration Time",
+              "Compile-time",
+              "Runtime"
+            ],
+            [
+              "Flexibility",
+              "Fixed",
+              "Highly flexible"
+            ],
+            [
+              "Scope",
+              "Global per class",
+              "Per request/response"
+            ],
+            [
+              "Use Case",
+              "Always hide fields like passwords",
+              "Show different views for different endpoints or users"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "use-cases",
+      "heading": "Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Static Filtering ",
+            "Dynamic Filtering "
+          ]
+        }
+      ],
+      "wordCount": 4,
+      "subsections": []
+    },
+    {
+      "id": "best-practices",
+      "heading": "Best Practices",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use static filtering for security-critical fields (e.g., passwords).",
+            "Use dynamic filtering when flexibility is required for different use cases.",
+            "Combine with Spring Security to show/hide data based on user roles."
+          ]
+        }
+      ],
+      "wordCount": 30,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class User {\n    private Long id;\n    private String name;\n\n    @JsonIgnore  // This field will be ignored during JSON serialization\n    private String password;\n\n    // Getters and Setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n    \"id\": 1,\n    \"name\": \"Alice\"\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@JsonFilter(\"UserFilter\")\npublic class User {\n    private Long id;\n    private String name;\n    private String email;\n    private String password;\n\n    // Getters and Setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@GetMapping(\"/user\")\npublic MappingJacksonValue getUser() {\n    User user = new User(1L, \"Alice\", \"alice@example.com\", \"secret\");\n\n    SimpleBeanPropertyFilter filter = SimpleBeanPropertyFilter\n            .filterOutAllExcept(\"id\", \"name\");\n\n    FilterProvider filters = new SimpleFilterProvider().addFilter(\"UserFilter\", filter);\n\n    MappingJacksonValue mapping = new MappingJacksonValue(user);\n    mapping.setFilters(filters);\n\n    return mapping;\n}",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n    \"id\": 1,\n    \"name\": \"Alice\"\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Static and Dynamic Filtering.md",
+    "wordCount": 262,
+    "sectionCount": 19
+  }
+}

@@ -1,0 +1,460 @@
+{
+  "id": "spring-batch-listeners",
+  "slug": "listeners",
+  "title": "Listeners",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch allows you to hook into different execution events using listeners. These listeners can run custom logic before/after key batch operations such as reading, writing, processing, step execution, and job execution."
+        },
+        {
+          "type": "paragraph",
+          "text": "There are three main categories of listeners:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Listener Type",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "Job Listeners",
+              "Listen to job-level events (job start/end)"
+            ],
+            [
+              "Step Listeners",
+              "Listen to step-level events (chunk, read, write, process, etc.)"
+            ],
+            [
+              "Item Listeners",
+              "Listen to item-level retry/repeat events"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 68,
+      "subsections": []
+    },
+    {
+      "id": "job-listeners",
+      "heading": "Job Listeners",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "what-they-do",
+      "heading": "What They Do",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Trigger actions before a job starts and after a job ends.",
+            "Implement JobExecutionListener.",
+            "Receive notifications regardless of job success or failure.",
+            "Must be registered on the Job."
+          ]
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    },
+    {
+      "id": "interface",
+      "heading": "Interface",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public interface JobExecutionListener {\n    void beforeJob(JobExecution jobExecution);\n    void afterJob(JobExecution jobExecution);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Component\npublic class CleanupListener implements JobExecutionListener {\n\n    @Override\n    public void beforeJob(JobExecution je) {\n        System.out.println(\"Job starting: Cleanup or Setup here\");\n    }\n\n    @Override\n    public void afterJob(JobExecution je) {\n        if (je.getStatus() == BatchStatus.COMPLETED) {\n            System.out.println(\"Job completed successfully!\");\n        } else if (je.getStatus() == BatchStatus.FAILED) {\n            System.out.println(\"Job failed! Send alert or rollback.\");\n        }\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "registering-listener",
+      "heading": "Registering Listener",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Job sampleJob() {\n    return jobBuilderFactory.get(\"sampleJob\")\n            .listener(new CleanupListener())\n            .start(step1())\n            .build();\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "step-listeners",
+      "heading": "Step Listeners",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "what-they-do",
+      "heading": "What They Do",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Respond to events occurring within a Step."
+        },
+        {
+          "type": "paragraph",
+          "text": "Spring Batch provides multiple interfaces depending on which lifecycle stage you want to react to."
+        }
+      ],
+      "wordCount": 22,
+      "subsections": [
+        {
+          "id": "types-of-step-listeners",
+          "heading": "Types of Step Listeners",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Interface",
+                "Triggered When"
+              ],
+              "rows": [
+                [
+                  "ChunkListener",
+                  "Before/after a chunk executes"
+                ],
+                [
+                  "ItemReadListener",
+                  "Before/after reading an item or when read fails"
+                ],
+                [
+                  "ItemProcessListener",
+                  "Before/after processing an item or when processing fails"
+                ],
+                [
+                  "ItemWriteListener",
+                  "Before/after writing items or when writing fails"
+                ],
+                [
+                  "SkipListener",
+                  "When an item is skipped in read/process/write"
+                ],
+                [
+                  "StepExecutionListener",
+                  "Before/after entire step execution"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 47,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "key-step-listener-interfaces",
+      "heading": "Key Step Listener Interfaces",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "stepexecutionlistener",
+          "heading": "StepExecutionListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface StepExecutionListener extends StepListener {\n    void beforeStep(StepExecution stepExecution);\n    ExitStatus afterStep(StepExecution stepExecution);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "chunklistener",
+          "heading": "ChunkListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface ChunkListener extends StepListener {\n    void beforeChunk();\n    ExitStatus afterChunk();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "skiplistener",
+          "heading": "SkipListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface SkipListener<T, S> extends StepListener {\n    void onSkipInRead(Throwable t);\n    void onSkipInProcess(T item, Throwable t);\n    void onSkipInWrite(S item, Throwable t);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "itemprocesslistener",
+          "heading": "ItemProcessListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface ItemProcessListener<T, S> {\n    void beforeProcess(T item);\n    void afterProcess(T item, S result);\n    void onProcessError(T item, Exception e);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "itemreadlistener",
+          "heading": "ItemReadListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface ItemReadListener<T> {\n    void beforeRead();\n    void afterRead(T item);\n    void onReadError(Exception e);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "itemwritelistener",
+          "heading": "ItemWriteListener",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface ItemWriteListener<S> {\n    void beforeWrite(List<? extends S> items);\n    void afterWrite(List<? extends S> items);\n    void onWriteError(Exception e, List<? extends S> items);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "item-level-listeners-repeat-retry",
+      "heading": "Item-Level Listeners (Repeat & Retry)",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch supports repeat and retry logic for robust item processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "These listeners help track retries, failures, and repeat attempts."
+        }
+      ],
+      "wordCount": 20,
+      "subsections": []
+    },
+    {
+      "id": "repeatlistener",
+      "heading": "RepeatListener",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Used for events in the repeat template (chunk processing)."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public interface RepeatListener {\n    void before(RepeatContext context);\n    void after(RepeatContext context, RepeatStatus result);\n    void open(RepeatContext context);\n    void onError(RepeatContext context, Throwable e);\n    void close(RepeatContext context);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 9,
+      "subsections": []
+    },
+    {
+      "id": "retrylistener",
+      "heading": "RetryListener",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Used for retryable operations (e.g., transient network failures)."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public interface RetryListener {\n    <T> void open(RetryContext ctx, RetryCallback<T> callback);\n    <T> void onError(RetryContext ctx, RetryCallback<T> callback, Throwable e);\n    <T> void close(RetryContext ctx, RetryCallback<T> callback, Throwable e);\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 8,
+      "subsections": [
+        {
+          "id": "example-usage-simple",
+          "heading": "Example Usage (simple)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic RetryListener loggingRetryListener() {\n    return new RetryListener() {\n        @Override\n        public <T> void onError(RetryContext ctx, RetryCallback<T> callback, Throwable e) {\n            System.out.println(\"Retry failed, attempt: \" + ctx.getRetryCount());\n        }\n    };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Listener Category",
+            "Interface(s)",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "Job Listeners",
+              "JobExecutionListener",
+              "Job-level start/end"
+            ],
+            [
+              "Step Listeners",
+              "ItemReadListener, ItemProcessListener, ItemWriteListener, SkipListener, ChunkListener, StepExecutionListener",
+              "Step lifecycle"
+            ],
+            [
+              "Item Listeners",
+              "RepeatListener, RetryListener",
+              "Retry & repeat handling"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public interface JobExecutionListener {\n    void beforeJob(JobExecution jobExecution);\n    void afterJob(JobExecution jobExecution);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class CleanupListener implements JobExecutionListener {\n\n    @Override\n    public void beforeJob(JobExecution je) {\n        System.out.println(\"Job starting: Cleanup or Setup here\");\n    }\n\n    @Override\n    public void afterJob(JobExecution je) {\n        if (je.getStatus() == BatchStatus.COMPLETED) {\n            System.out.println(\"Job completed successfully!\");\n        } else if (je.getStatus() == BatchStatus.FAILED) {\n            System.out.println(\"Job failed! Send alert or rollback.\");\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job sampleJob() {\n    return jobBuilderFactory.get(\"sampleJob\")\n            .listener(new CleanupListener())\n            .start(step1())\n            .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface StepExecutionListener extends StepListener {\n    void beforeStep(StepExecution stepExecution);\n    ExitStatus afterStep(StepExecution stepExecution);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface ChunkListener extends StepListener {\n    void beforeChunk();\n    ExitStatus afterChunk();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface SkipListener<T, S> extends StepListener {\n    void onSkipInRead(Throwable t);\n    void onSkipInProcess(T item, Throwable t);\n    void onSkipInWrite(S item, Throwable t);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface ItemProcessListener<T, S> {\n    void beforeProcess(T item);\n    void afterProcess(T item, S result);\n    void onProcessError(T item, Exception e);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface ItemReadListener<T> {\n    void beforeRead();\n    void afterRead(T item);\n    void onReadError(Exception e);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface ItemWriteListener<S> {\n    void beforeWrite(List<? extends S> items);\n    void afterWrite(List<? extends S> items);\n    void onWriteError(Exception e, List<? extends S> items);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface RepeatListener {\n    void before(RepeatContext context);\n    void after(RepeatContext context, RepeatStatus result);\n    void open(RepeatContext context);\n    void onError(RepeatContext context, Throwable e);\n    void close(RepeatContext context);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface RetryListener {\n    <T> void open(RetryContext ctx, RetryCallback<T> callback);\n    <T> void onError(RetryContext ctx, RetryCallback<T> callback, Throwable e);\n    <T> void close(RetryContext ctx, RetryCallback<T> callback, Throwable e);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic RetryListener loggingRetryListener() {\n    return new RetryListener() {\n        @Override\n        public <T> void onError(RetryContext ctx, RetryCallback<T> callback, Throwable e) {\n            System.out.println(\"Retry failed, attempt: \" + ctx.getRetryCount());\n        }\n    };\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Listeners.md",
+    "wordCount": 228,
+    "sectionCount": 21
+  }
+}

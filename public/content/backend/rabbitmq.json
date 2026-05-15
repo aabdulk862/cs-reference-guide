@@ -1,0 +1,408 @@
+{
+  "id": "backend-rabbitmq",
+  "slug": "rabbitmq",
+  "title": "RabbitMQ",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "RabbitMQ is an open-source message broker implementing AMQP 0-9-1 (Advanced Message Queuing Protocol)",
+            "Core model: Producers publish messages to Exchanges, which route them to Queues via Bindings, and Consumers read from Queues",
+            "Exchange types: Direct (exact routing key match), Fanout (broadcast to all bound queues), Topic (pattern-based routing), Headers (header attribute matching)",
+            "Delivery guarantees: at-most-once (auto-ack), at-least-once (manual ack + publisher confirms), effectively-once (deduplication at consumer)",
+            "Persistence: durable exchanges/queues survive broker restart; persistent messages (delivery_mode=2) are written to disk",
+            "Clustering: multiple nodes share topology and state; queues live on one node by default unless mirrored or using quorum queues",
+            "Management UI available on port 15672; CLI tools via rabbitmqctl and rabbitmq-diagnostics"
+          ]
+        }
+      ],
+      "wordCount": 111,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "RabbitMQ is ideal when you need a traditional message broker with sophisticated routing capabilities, reliable delivery guarantees, and support for multiple messaging patterns including point-to-point, publish-subscribe, request-reply, and work queues. Choose RabbitMQ when your application requires complex routing logic through exchange types and binding rules, when you need per-message acknowledgments with redelivery on failure, or when you want built-in support for dead-letter exchanges to handle poison messages. RabbitMQ excels in enterprise integration scenarios where different services need different subsets of messages routed based on content or headers, and in task distribution systems where work must be load-balanced across multiple workers with guaranteed processing. It is particularly well-suited for systems that need priority queues, message TTL, delayed messaging, and request-reply patterns with correlation IDs. Prefer RabbitMQ over Kafka when you need smart routing at the broker level, true message deletion after consumption, and lower operational complexity for moderate throughput workloads (tens of thousands of messages per second rather than millions)."
+        }
+      ],
+      "wordCount": 159,
+      "subsections": []
+    },
+    {
+      "id": "exchanges",
+      "heading": "Exchanges",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Exchanges are the routing layer in RabbitMQ. Producers never send messages directly to queues; instead, they publish to an exchange, which then routes copies of the message to zero or more queues based on the exchange type and binding rules. Understanding exchange types is fundamental to designing effective messaging topologies."
+        },
+        {
+          "type": "paragraph",
+          "text": "A direct exchange routes messages to queues whose binding key exactly matches the message routing key. This is the simplest routing model and works well for point-to-point communication where each message type has a dedicated consumer. The default exchange (empty string name) is a special direct exchange that automatically binds to every queue using the queue name as the routing key."
+        },
+        {
+          "type": "paragraph",
+          "text": "A fanout exchange ignores routing keys entirely and broadcasts every message to all bound queues. This is the publish-subscribe pattern: one producer, many consumers each receiving every message. Use fanout exchanges for event notification systems where multiple services need to react to the same event independently."
+        },
+        {
+          "type": "paragraph",
+          "text": "A topic exchange routes messages based on wildcard pattern matching against the routing key. Routing keys are dot-delimited strings (e.g., order.created.us), and binding patterns use * (match exactly one word) and # (match zero or more words). Topic exchanges provide flexible content-based routing without requiring a binding for every possible routing key value."
+        },
+        {
+          "type": "paragraph",
+          "text": "A headers exchange ignores the routing key and routes based on message header attributes. The binding specifies header key-value pairs and a match type (x-match: all requires all headers to match, x-match: any requires at least one). Headers exchanges are useful when routing decisions depend on multiple attributes that do not fit cleanly into a single routing key string."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Declaring exchanges with Spring AMQP\n@Configuration\npublic class RabbitExchangeConfig {\n\n    @Bean\n    public DirectExchange orderExchange() {\n        return ExchangeBuilder.directExchange(\"order.direct\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public FanoutExchange notificationExchange() {\n        return ExchangeBuilder.fanoutExchange(\"notification.fanout\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public TopicExchange eventExchange() {\n        return ExchangeBuilder.topicExchange(\"event.topic\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public HeadersExchange auditExchange() {\n        return ExchangeBuilder.headersExchange(\"audit.headers\")\n            .durable(true)\n            .build();\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 269,
+      "subsections": []
+    },
+    {
+      "id": "queues",
+      "heading": "Queues",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Queues are the storage mechanism in RabbitMQ where messages wait until a consumer retrieves them. Each queue is an ordered FIFO buffer residing on a single node (unless using quorum queues or classic mirrored queues). Queue properties determine durability, exclusivity, auto-deletion behavior, and advanced features like TTL and length limits."
+        },
+        {
+          "type": "paragraph",
+          "text": "Classic queues are the traditional queue type. They reside on a single node with optional mirroring to other nodes for high availability. Classic queues support all features including priority, lazy mode, and per-message TTL. However, mirrored classic queues have known issues with synchronization and are being deprecated in favor of quorum queues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Quorum queues (RabbitMQ 3.8+) use the Raft consensus algorithm to replicate messages across multiple nodes. They provide stronger data safety guarantees than mirrored classic queues, with automatic leader election and consistent replication. Quorum queues are the recommended choice for durable, replicated queues in production. They do not support some classic queue features like priority and non-durable modes, but offer poison message handling via delivery count tracking."
+        },
+        {
+          "type": "paragraph",
+          "text": "Lazy queues move messages to disk as early as possible, keeping only a small buffer in memory. This is useful for queues that accumulate millions of messages (e.g., during consumer downtime) where keeping everything in memory would exhaust available RAM. In RabbitMQ 3.12+, all classic queues use a lazy-like storage engine by default."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Queue declarations with various configurations\n@Configuration\npublic class RabbitQueueConfig {\n\n    @Bean\n    public Queue orderQueue() {\n        return QueueBuilder.durable(\"order.processing\")\n            .withArgument(\"x-queue-type\", \"quorum\")  // Quorum queue\n            .withArgument(\"x-delivery-limit\", 5)      // Max redeliveries\n            .build();\n    }\n\n    @Bean\n    public Queue notificationQueue() {\n        return QueueBuilder.durable(\"notification.email\")\n            .withArgument(\"x-message-ttl\", 86400000)  // 24h TTL\n            .withArgument(\"x-max-length\", 100000)     // Max 100k messages\n            .withArgument(\"x-overflow\", \"reject-publish\") // Reject when full\n            .build();\n    }\n\n    @Bean\n    public Queue temporaryQueue() {\n        return QueueBuilder.nonDurable()\n            .autoDelete()\n            .exclusive()\n            .build();\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 221,
+      "subsections": []
+    },
+    {
+      "id": "bindings",
+      "heading": "Bindings",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Bindings are the rules that connect exchanges to queues (or other exchanges). A binding defines the relationship between an exchange and a queue, specifying under what conditions messages arriving at the exchange should be copied to the queue. Without bindings, messages published to an exchange are discarded because there is no route to any queue."
+        },
+        {
+          "type": "paragraph",
+          "text": "For direct exchanges, the binding key is a simple string that must exactly match the routing key of the published message. You can bind multiple queues with the same binding key to achieve fanout-like behavior on a direct exchange, or bind one queue with multiple binding keys to receive messages from different routing keys."
+        },
+        {
+          "type": "paragraph",
+          "text": "For topic exchanges, the binding key is a dot-delimited pattern. The wildcard * substitutes for exactly one word, and # substitutes for zero or more words. For example, binding key order.*.us matches routing keys order.created.us and order.cancelled.us but not order.created.eu or order.item.created.us."
+        },
+        {
+          "type": "paragraph",
+          "text": "Exchange-to-exchange bindings allow you to create routing topologies where one exchange forwards messages to another exchange before they reach queues. This enables layered routing architectures where a top-level topic exchange routes to specialized direct exchanges, each serving a different consumer group."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Binding configuration with Spring AMQP\n@Configuration\npublic class RabbitBindingConfig {\n\n    @Bean\n    public Binding orderBinding(Queue orderQueue, DirectExchange orderExchange) {\n        return BindingBuilder.bind(orderQueue)\n            .to(orderExchange)\n            .with(\"order.process\");  // Routing key\n    }\n\n    @Bean\n    public Binding notificationBinding(Queue notificationQueue, FanoutExchange notificationExchange) {\n        return BindingBuilder.bind(notificationQueue)\n            .to(notificationExchange);  // No routing key for fanout\n    }\n\n    @Bean\n    public Binding eventBinding(Queue orderQueue, TopicExchange eventExchange) {\n        return BindingBuilder.bind(orderQueue)\n            .to(eventExchange)\n            .with(\"order.#\");  // Matches order.created, order.cancelled, etc.\n    }\n\n    @Bean\n    public Binding auditBinding(Queue auditQueue, HeadersExchange auditExchange) {\n        return BindingBuilder.bind(auditQueue)\n            .to(auditExchange)\n            .whereAll(\"source\", \"action\").match();  // Match all specified headers\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 192,
+      "subsections": []
+    },
+    {
+      "id": "acknowledgments",
+      "heading": "Acknowledgments",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Acknowledgments are the mechanism by which consumers confirm successful message processing to the broker. Proper acknowledgment handling is critical for reliable messaging because it determines whether a message is removed from the queue or redelivered to another consumer. RabbitMQ supports both consumer acknowledgments (from consumer to broker) and publisher confirms (from broker to publisher)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Consumer acknowledgments come in three modes. In auto-ack mode (autoAck=true), the broker considers a message delivered the moment it sends it to the consumer, regardless of whether processing succeeds. This provides at-most-once delivery with the highest throughput but risks message loss on consumer failure. In manual-ack mode, the consumer explicitly sends basic.ack after successful processing, basic.nack to reject and optionally requeue, or basic.reject for a single message rejection. Manual acknowledgment provides at-least-once delivery guarantees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Publisher confirms are the producer-side equivalent. When a channel is put into confirm mode, the broker acknowledges each published message with a basic.ack once it has been persisted (for persistent messages) or routed to at least one queue. If the message cannot be routed, the broker sends basic.nack. Publisher confirms combined with consumer manual acks provide end-to-end delivery guarantees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Prefetch count (basic.qos) controls how many unacknowledged messages the broker delivers to a consumer at once. Setting prefetch to 1 ensures fair dispatch across consumers but reduces throughput. Higher prefetch values improve throughput by allowing consumers to pipeline processing but risk uneven load distribution if processing times vary significantly."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Consumer with manual acknowledgment using Spring AMQP\n@Component\npublic class OrderConsumer {\n\n    @RabbitListener(queues = \"order.processing\", ackMode = \"MANUAL\")\n    public void processOrder(Message message, Channel channel,\n                             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {\n        try {\n            OrderEvent order = deserialize(message);\n            orderService.process(order);\n\n            // Acknowledge successful processing\n            channel.basicAck(deliveryTag, false);  // false = single message\n            log.info(\"Processed order: {}\", order.getOrderId());\n\n        } catch (RecoverableException e) {\n            // Requeue for retry\n            channel.basicNack(deliveryTag, false, true);  // requeue=true\n            log.warn(\"Requeueing order due to transient error\", e);\n\n        } catch (PoisonMessageException e) {\n            // Reject without requeue (send to DLQ if configured)\n            channel.basicReject(deliveryTag, false);  // requeue=false\n            log.error(\"Rejecting poison message\", e);\n        }\n    }\n}\n\n// Publisher confirms configuration\n@Configuration\npublic class PublisherConfirmConfig {\n\n    @Bean\n    public CachingConnectionFactory connectionFactory() {\n        CachingConnectionFactory factory = new CachingConnectionFactory(\"localhost\");\n        factory.setPublisherConfirmType(ConfirmType.CORRELATED);\n        factory.setPublisherReturns(true);\n        return factory;\n    }\n\n    @Bean\n    public RabbitTemplate rabbitTemplate(CachingConnectionFactory connectionFactory) {\n        RabbitTemplate template = new RabbitTemplate(connectionFactory);\n        template.setMandatory(true);\n\n        template.setConfirmCallback((correlationData, ack, cause) -> {\n            if (!ack) {\n                log.error(\"Message not confirmed: {}\", cause);\n                // Retry or alert\n            }\n        });\n\n        template.setReturnsCallback(returned -> {\n            log.warn(\"Message returned: exchange={}, routingKey={}, replyCode={}\",\n                returned.getExchange(), returned.getRoutingKey(), returned.getReplyCode());\n        });\n\n        return template;\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 236,
+      "subsections": []
+    },
+    {
+      "id": "dead-letter-queues",
+      "heading": "Dead-Letter Queues",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Dead-letter queues (DLQs) are queues that receive messages which could not be processed successfully. RabbitMQ implements dead-lettering through dead-letter exchanges (DLXs): when a message is rejected, expires, or exceeds a queue length limit, it is republished to the configured dead-letter exchange, which routes it to a dead-letter queue. DLQs are essential for building resilient systems that handle failures gracefully without losing messages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Messages are dead-lettered in three scenarios: the consumer rejects the message with requeue=false (via basic.reject or basic.nack), the message TTL expires while sitting in the queue, or the queue exceeds its maximum length and the overflow strategy is set to reject-publish-dlx or the default drop-head behavior pushes messages out."
+        },
+        {
+          "type": "paragraph",
+          "text": "When a message is dead-lettered, RabbitMQ adds headers to the message recording the reason for dead-lettering (x-death header array), the original exchange and routing key, the queue from which it was dead-lettered, and a count of how many times it has been dead-lettered. This metadata is invaluable for debugging and implementing retry logic."
+        },
+        {
+          "type": "paragraph",
+          "text": "A common pattern is the retry with backoff topology: the main queue dead-letters to a retry exchange, which routes to a delay queue with a TTL. When the TTL expires, the delay queue dead-letters back to the original exchange, creating a retry loop with configurable delay. After a maximum number of retries (tracked via the x-death count header), the message is routed to a parking lot queue for manual inspection."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Dead-letter queue configuration\n@Configuration\npublic class DeadLetterConfig {\n\n    // Main queue with DLX configuration\n    @Bean\n    public Queue orderQueue() {\n        return QueueBuilder.durable(\"order.processing\")\n            .withArgument(\"x-dead-letter-exchange\", \"order.dlx\")\n            .withArgument(\"x-dead-letter-routing-key\", \"order.dead\")\n            .build();\n    }\n\n    // Dead-letter exchange\n    @Bean\n    public DirectExchange deadLetterExchange() {\n        return new DirectExchange(\"order.dlx\");\n    }\n\n    // Dead-letter queue\n    @Bean\n    public Queue deadLetterQueue() {\n        return QueueBuilder.durable(\"order.dlq\").build();\n    }\n\n    @Bean\n    public Binding deadLetterBinding() {\n        return BindingBuilder.bind(deadLetterQueue())\n            .to(deadLetterExchange())\n            .with(\"order.dead\");\n    }\n\n    // Retry queue with TTL (messages wait here before retry)\n    @Bean\n    public Queue retryQueue() {\n        return QueueBuilder.durable(\"order.retry\")\n            .withArgument(\"x-message-ttl\", 30000)  // 30 second delay\n            .withArgument(\"x-dead-letter-exchange\", \"order.direct\")\n            .withArgument(\"x-dead-letter-routing-key\", \"order.process\")\n            .build();\n    }\n}\n\n// Consumer with retry count checking\n@Component\npublic class OrderConsumerWithRetry {\n\n    private static final int MAX_RETRIES = 3;\n\n    @RabbitListener(queues = \"order.processing\", ackMode = \"MANUAL\")\n    public void processOrder(Message message, Channel channel,\n                             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {\n        int retryCount = getRetryCount(message);\n\n        try {\n            orderService.process(deserialize(message));\n            channel.basicAck(deliveryTag, false);\n        } catch (Exception e) {\n            if (retryCount >= MAX_RETRIES) {\n                // Send to DLQ (parking lot) for manual inspection\n                channel.basicReject(deliveryTag, false);\n                log.error(\"Max retries exceeded, sending to DLQ\", e);\n            } else {\n                // Requeue to retry queue via DLX\n                channel.basicNack(deliveryTag, false, false);\n                log.warn(\"Retry {} of {}\", retryCount + 1, MAX_RETRIES, e);\n            }\n        }\n    }\n\n    private int getRetryCount(Message message) {\n        List<Map<String, ?>> deaths = message.getMessageProperties().getXDeathHeader();\n        if (deaths == null || deaths.isEmpty()) return 0;\n        return deaths.stream()\n            .mapToInt(d -> ((Number) d.get(\"count\")).intValue())\n            .sum();\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 234,
+      "subsections": []
+    },
+    {
+      "id": "clustering",
+      "heading": "Clustering",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "RabbitMQ clustering connects multiple broker nodes into a single logical broker, sharing users, virtual hosts, exchanges, bindings, and runtime parameters across all nodes. Clustering provides both high availability (if one node fails, others continue serving) and horizontal scaling (distribute queues across nodes to increase total capacity). Understanding clustering topology is essential for production deployments."
+        },
+        {
+          "type": "paragraph",
+          "text": "In a cluster, all nodes share metadata (exchanges, bindings, users, policies) but queue contents live on the node where the queue was declared (the queue owner) unless replication is configured. Clients can connect to any node in the cluster; if they consume from a queue on a different node, the messages are transparently forwarded. However, this cross-node forwarding adds latency, so connecting consumers to the node hosting their queue is preferred."
+        },
+        {
+          "type": "paragraph",
+          "text": "Quorum queues are the recommended replication strategy for production clusters. They use the Raft consensus algorithm with a configurable replication factor (typically 3 or 5 nodes). A quorum queue elects a leader that handles all reads and writes, with followers replicating data. If the leader fails, a follower with the most up-to-date data is elected as the new leader. Quorum queues guarantee that acknowledged messages are not lost as long as a majority of replicas survive."
+        },
+        {
+          "type": "paragraph",
+          "text": "Network partitions are the primary failure mode in distributed systems. RabbitMQ offers three partition handling strategies: pause-minority (nodes in the minority partition pause until connectivity is restored, preventing split-brain), autoheal (the losing partition restarts after connectivity is restored), and ignore (nodes continue independently, requiring manual intervention). For most production deployments, pause-minority is recommended because it prevents split-brain scenarios where both sides accept writes."
+        },
+        {
+          "type": "code",
+          "language": "yaml",
+          "code": "# rabbitmq.conf - Cluster configuration\ncluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s\ncluster_formation.k8s.host = kubernetes.default.svc.cluster.local\ncluster_formation.k8s.address_type = hostname\ncluster_formation.node_cleanup.interval = 30\ncluster_formation.node_cleanup.only_log_warning = true\ncluster_partition_handling = pause_minority\n\n# Quorum queue defaults\ndefault_queue_type = quorum\n\n# Resource limits\nvm_memory_high_watermark.relative = 0.7\ndisk_free_limit.absolute = 2GB",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "# Cluster management commands\n# Join a node to an existing cluster\nrabbitmqctl stop_app\nrabbitmqctl reset\nrabbitmqctl join_cluster rabbit@node1\nrabbitmqctl start_app\n\n# Check cluster status\nrabbitmqctl cluster_status\n\n# Set a policy for quorum queues with replication factor 3\nrabbitmqctl set_policy ha-quorum \"^order\\.\" \\\n  '{\"queue-type\": \"quorum\", \"x-quorum-initial-group-size\": 3}' \\\n  --apply-to queues\n\n# Force remove a failed node\nrabbitmqctl forget_cluster_node rabbit@failed-node\n\n# Rebalance queue leaders across nodes\nrabbitmq-queues rebalance all",
+          "runnable": false
+        }
+      ],
+      "wordCount": 264,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"RabbitMQ Cluster (3 Nodes)\"\n        subgraph \"Node 1\"\n            E1[Exchanges]\n            Q1[Queue Leader: orders]\n            Q1F[Queue Follower: payments]\n        end\n        subgraph \"Node 2\"\n            E2[Exchanges]\n            Q2[Queue Leader: payments]\n            Q2F[Queue Follower: notifications]\n        end\n        subgraph \"Node 3\"\n            E3[Exchanges]\n            Q3[Queue Leader: notifications]\n            Q3F[Queue Follower: orders]\n        end\n    end\n\n    subgraph \"Producers\"\n        P1[Order Service]\n        P2[Payment Service]\n    end\n\n    subgraph \"Consumers\"\n        C1[Order Worker 1]\n        C2[Order Worker 2]\n        C3[Notification Service]\n    end\n\n    P1 -->|publish| E1\n    P2 -->|publish| E2\n    Q1 --> C1\n    Q1 --> C2\n    Q3 --> C3\n\n    Q1 -.->|Raft replication| Q3F\n    Q2 -.->|Raft replication| Q1F\n    Q3 -.->|Raft replication| Q2F"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant P as Producer\n    participant E as Exchange\n    participant Q as Queue\n    participant C as Consumer\n    participant DLX as Dead-Letter Exchange\n    participant DLQ as Dead-Letter Queue\n\n    P->>E: Publish (routing_key=\"order.new\")\n    E->>Q: Route via binding\n    Q->>C: Deliver (prefetch=10)\n    \n    alt Success\n        C->>Q: basic.ack(deliveryTag)\n        Q->>Q: Remove message\n    else Transient Failure\n        C->>Q: basic.nack(requeue=true)\n        Q->>C: Redeliver to another consumer\n    else Permanent Failure\n        C->>Q: basic.reject(requeue=false)\n        Q->>DLX: Dead-letter message\n        DLX->>DLQ: Route to DLQ\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Unbounded queue growth: Without consumers or with slow consumers, queues grow indefinitely, consuming all available memory until the broker triggers flow control or crashes. Always set x-max-length or x-max-length-bytes on queues, and configure x-overflow to either reject-publish (backpressure to producers) or drop-head (discard oldest messages).",
+            "Missing publisher confirms: Publishing without confirms means the producer has no way to know if messages were actually persisted or routed. If the broker crashes between receiving a message and writing it to disk, the message is lost silently. Always enable publisher confirms for messages that must not be lost.",
+            "Auto-ack with expensive processing: Using auto-acknowledge mode means the broker removes the message from the queue immediately upon delivery. If the consumer crashes mid-processing, the message is gone. Use manual acknowledgment for any processing that takes more than trivial time or has side effects.",
+            "Connection per operation anti-pattern: Creating a new connection for each publish or consume operation is extremely expensive (TCP handshake + AMQP handshake + TLS negotiation). Use connection pooling and channel multiplexing. A single connection can support thousands of channels, each acting as a lightweight virtual connection.",
+            "Ignoring memory and disk alarms: When RabbitMQ hits the memory high watermark (default 40% of system RAM) or disk free space drops below the limit, it blocks all publishers via flow control. Monitor rabbitmq_node_mem_used and rabbitmq_node_disk_free metrics and set alerts well before thresholds are reached.",
+            "Not setting message TTL: Messages without TTL sit in queues indefinitely if consumers are down. For time-sensitive messages (notifications, OTPs, session tokens), always set per-message TTL or queue-level x-message-ttl to prevent stale message processing when consumers recover."
+          ]
+        }
+      ],
+      "wordCount": 267,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Order processing pipeline: E-commerce platforms use RabbitMQ to decouple order placement from fulfillment. The order service publishes to a topic exchange with routing keys like order.created.electronics, allowing inventory, shipping, and notification services to each bind with patterns matching their domain, processing orders independently and at their own pace.",
+            "Email and notification dispatch: A notification service consumes from a fanout exchange, receiving all system events. It applies filtering logic to determine which events warrant user notifications, then publishes to priority queues (high for security alerts, low for marketing) with appropriate TTLs to prevent sending stale notifications.",
+            "Distributed task scheduling: Background job systems use RabbitMQ work queues with prefetch=1 to distribute CPU-intensive tasks (image processing, report generation, data exports) across a pool of workers. Dead-letter queues capture failed jobs for retry or manual intervention, and priority queues ensure urgent tasks are processed first.",
+            "Microservice saga orchestration: In distributed transactions spanning multiple services, RabbitMQ facilitates the saga pattern. A saga orchestrator publishes commands to service-specific queues and listens for completion or compensation events on reply queues, coordinating multi-step business processes with eventual consistency."
+          ]
+        }
+      ],
+      "wordCount": 180,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a direct exchange and a topic exchange?\nA: A direct exchange routes messages only when the routing key exactly matches the binding key. A topic exchange supports wildcard pattern matching with * (one word) and # (zero or more words) in binding keys, enabling flexible content-based routing where one binding can match multiple routing key patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does RabbitMQ ensure messages are not lost?\nA: Three mechanisms work together: durable exchanges and queues survive broker restarts, persistent messages (delivery_mode=2) are written to disk before acknowledgment, and publisher confirms notify producers when messages are safely persisted. On the consumer side, manual acknowledgments ensure messages are only removed from the queue after successful processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between basic.reject and basic.nack.\nA: basic.reject operates on a single message and can either requeue it or discard it (triggering dead-lettering). basic.nack is a RabbitMQ extension that supports rejecting multiple messages at once via the multiple flag, making it more efficient for batch rejection scenarios. Both support the requeue parameter."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are quorum queues and when should you use them?\nA: Quorum queues use the Raft consensus algorithm to replicate queue data across multiple nodes. They provide stronger durability guarantees than classic mirrored queues, with automatic leader election and consistent replication. Use them for any queue where message loss is unacceptable. They trade some features (no priority, no non-durable mode) and slightly higher latency for significantly better data safety."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does RabbitMQ handle network partitions in a cluster?\nA: RabbitMQ offers three strategies: pause-minority pauses nodes in the smaller partition to prevent split-brain (recommended for most cases), autoheal automatically restarts the losing partition after healing, and ignore lets both sides continue independently (risking divergence). The choice depends on whether you prioritize availability or consistency during partitions."
+        }
+      ],
+      "wordCount": 301,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Connection management: Use a single long-lived connection per application instance with multiple channels for concurrency. Spring AMQP's CachingConnectionFactory handles this automatically. Set heartbeat interval to 60 seconds to detect dead connections without excessive network overhead.",
+            "Monitoring essentials: Track queue depth (rabbitmq_queue_messages), consumer utilization (rabbitmq_queue_consumer_utilisation), message rates (rabbitmq_queue_messages_published_total), and node memory usage. Alert when queue depth exceeds normal operating range or consumer utilization drops below 70%.",
+            "Quorum queue sizing: For quorum queues, use an odd replication factor (3 or 5). Three replicas tolerate one node failure; five tolerate two. More replicas increase write latency due to Raft consensus overhead. Place replicas across availability zones for maximum resilience.",
+            "Flow control awareness: When the broker is under memory or disk pressure, it blocks publishing connections. Design producers to handle blocked connection callbacks gracefully, implementing backpressure or buffering rather than timing out and retrying aggressively, which worsens the situation.",
+            "Virtual host isolation: Use separate virtual hosts for different applications or environments (dev, staging, production) sharing the same cluster. Virtual hosts provide namespace isolation for exchanges, queues, and bindings, plus independent permission controls and resource limits via policies."
+          ]
+        }
+      ],
+      "wordCount": 183,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Apache Kafka - Kafka provides event streaming with log-based persistence, complementing RabbitMQ's traditional message broker model",
+            "Spring Framework - Spring AMQP and Spring Cloud Stream provide high-level RabbitMQ integration with declarative listeners",
+            "Java - RabbitMQ Java client library and Spring AMQP are the primary integration points for JVM applications"
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Declaring exchanges with Spring AMQP\n@Configuration\npublic class RabbitExchangeConfig {\n\n    @Bean\n    public DirectExchange orderExchange() {\n        return ExchangeBuilder.directExchange(\"order.direct\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public FanoutExchange notificationExchange() {\n        return ExchangeBuilder.fanoutExchange(\"notification.fanout\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public TopicExchange eventExchange() {\n        return ExchangeBuilder.topicExchange(\"event.topic\")\n            .durable(true)\n            .build();\n    }\n\n    @Bean\n    public HeadersExchange auditExchange() {\n        return ExchangeBuilder.headersExchange(\"audit.headers\")\n            .durable(true)\n            .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Queue declarations with various configurations\n@Configuration\npublic class RabbitQueueConfig {\n\n    @Bean\n    public Queue orderQueue() {\n        return QueueBuilder.durable(\"order.processing\")\n            .withArgument(\"x-queue-type\", \"quorum\")  // Quorum queue\n            .withArgument(\"x-delivery-limit\", 5)      // Max redeliveries\n            .build();\n    }\n\n    @Bean\n    public Queue notificationQueue() {\n        return QueueBuilder.durable(\"notification.email\")\n            .withArgument(\"x-message-ttl\", 86400000)  // 24h TTL\n            .withArgument(\"x-max-length\", 100000)     // Max 100k messages\n            .withArgument(\"x-overflow\", \"reject-publish\") // Reject when full\n            .build();\n    }\n\n    @Bean\n    public Queue temporaryQueue() {\n        return QueueBuilder.nonDurable()\n            .autoDelete()\n            .exclusive()\n            .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Binding configuration with Spring AMQP\n@Configuration\npublic class RabbitBindingConfig {\n\n    @Bean\n    public Binding orderBinding(Queue orderQueue, DirectExchange orderExchange) {\n        return BindingBuilder.bind(orderQueue)\n            .to(orderExchange)\n            .with(\"order.process\");  // Routing key\n    }\n\n    @Bean\n    public Binding notificationBinding(Queue notificationQueue, FanoutExchange notificationExchange) {\n        return BindingBuilder.bind(notificationQueue)\n            .to(notificationExchange);  // No routing key for fanout\n    }\n\n    @Bean\n    public Binding eventBinding(Queue orderQueue, TopicExchange eventExchange) {\n        return BindingBuilder.bind(orderQueue)\n            .to(eventExchange)\n            .with(\"order.#\");  // Matches order.created, order.cancelled, etc.\n    }\n\n    @Bean\n    public Binding auditBinding(Queue auditQueue, HeadersExchange auditExchange) {\n        return BindingBuilder.bind(auditQueue)\n            .to(auditExchange)\n            .whereAll(\"source\", \"action\").match();  // Match all specified headers\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Consumer with manual acknowledgment using Spring AMQP\n@Component\npublic class OrderConsumer {\n\n    @RabbitListener(queues = \"order.processing\", ackMode = \"MANUAL\")\n    public void processOrder(Message message, Channel channel,\n                             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {\n        try {\n            OrderEvent order = deserialize(message);\n            orderService.process(order);\n\n            // Acknowledge successful processing\n            channel.basicAck(deliveryTag, false);  // false = single message\n            log.info(\"Processed order: {}\", order.getOrderId());\n\n        } catch (RecoverableException e) {\n            // Requeue for retry\n            channel.basicNack(deliveryTag, false, true);  // requeue=true\n            log.warn(\"Requeueing order due to transient error\", e);\n\n        } catch (PoisonMessageException e) {\n            // Reject without requeue (send to DLQ if configured)\n            channel.basicReject(deliveryTag, false);  // requeue=false\n            log.error(\"Rejecting poison message\", e);\n        }\n    }\n}\n\n// Publisher confirms configuration\n@Configuration\npublic class PublisherConfirmConfig {\n\n    @Bean\n    public CachingConnectionFactory connectionFactory() {\n        CachingConnectionFactory factory = new CachingConnectionFactory(\"localhost\");\n        factory.setPublisherConfirmType(ConfirmType.CORRELATED);\n        factory.setPublisherReturns(true);\n        return factory;\n    }\n\n    @Bean\n    public RabbitTemplate rabbitTemplate(CachingConnectionFactory connectionFactory) {\n        RabbitTemplate template = new RabbitTemplate(connectionFactory);\n        template.setMandatory(true);\n\n        template.setConfirmCallback((correlationData, ack, cause) -> {\n            if (!ack) {\n                log.error(\"Message not confirmed: {}\", cause);\n                // Retry or alert\n            }\n        });\n\n        template.setReturnsCallback(returned -> {\n            log.warn(\"Message returned: exchange={}, routingKey={}, replyCode={}\",\n                returned.getExchange(), returned.getRoutingKey(), returned.getReplyCode());\n        });\n\n        return template;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Dead-letter queue configuration\n@Configuration\npublic class DeadLetterConfig {\n\n    // Main queue with DLX configuration\n    @Bean\n    public Queue orderQueue() {\n        return QueueBuilder.durable(\"order.processing\")\n            .withArgument(\"x-dead-letter-exchange\", \"order.dlx\")\n            .withArgument(\"x-dead-letter-routing-key\", \"order.dead\")\n            .build();\n    }\n\n    // Dead-letter exchange\n    @Bean\n    public DirectExchange deadLetterExchange() {\n        return new DirectExchange(\"order.dlx\");\n    }\n\n    // Dead-letter queue\n    @Bean\n    public Queue deadLetterQueue() {\n        return QueueBuilder.durable(\"order.dlq\").build();\n    }\n\n    @Bean\n    public Binding deadLetterBinding() {\n        return BindingBuilder.bind(deadLetterQueue())\n            .to(deadLetterExchange())\n            .with(\"order.dead\");\n    }\n\n    // Retry queue with TTL (messages wait here before retry)\n    @Bean\n    public Queue retryQueue() {\n        return QueueBuilder.durable(\"order.retry\")\n            .withArgument(\"x-message-ttl\", 30000)  // 30 second delay\n            .withArgument(\"x-dead-letter-exchange\", \"order.direct\")\n            .withArgument(\"x-dead-letter-routing-key\", \"order.process\")\n            .build();\n    }\n}\n\n// Consumer with retry count checking\n@Component\npublic class OrderConsumerWithRetry {\n\n    private static final int MAX_RETRIES = 3;\n\n    @RabbitListener(queues = \"order.processing\", ackMode = \"MANUAL\")\n    public void processOrder(Message message, Channel channel,\n                             @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {\n        int retryCount = getRetryCount(message);\n\n        try {\n            orderService.process(deserialize(message));\n            channel.basicAck(deliveryTag, false);\n        } catch (Exception e) {\n            if (retryCount >= MAX_RETRIES) {\n                // Send to DLQ (parking lot) for manual inspection\n                channel.basicReject(deliveryTag, false);\n                log.error(\"Max retries exceeded, sending to DLQ\", e);\n            } else {\n                // Requeue to retry queue via DLX\n                channel.basicNack(deliveryTag, false, false);\n                log.warn(\"Retry {} of {}\", retryCount + 1, MAX_RETRIES, e);\n            }\n        }\n    }\n\n    private int getRetryCount(Message message) {\n        List<Map<String, ?>> deaths = message.getMessageProperties().getXDeathHeader();\n        if (deaths == null || deaths.isEmpty()) return 0;\n        return deaths.stream()\n            .mapToInt(d -> ((Number) d.get(\"count\")).intValue())\n            .sum();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# rabbitmq.conf - Cluster configuration\ncluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s\ncluster_formation.k8s.host = kubernetes.default.svc.cluster.local\ncluster_formation.k8s.address_type = hostname\ncluster_formation.node_cleanup.interval = 30\ncluster_formation.node_cleanup.only_log_warning = true\ncluster_partition_handling = pause_minority\n\n# Quorum queue defaults\ndefault_queue_type = quorum\n\n# Resource limits\nvm_memory_high_watermark.relative = 0.7\ndisk_free_limit.absolute = 2GB",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Cluster management commands\n# Join a node to an existing cluster\nrabbitmqctl stop_app\nrabbitmqctl reset\nrabbitmqctl join_cluster rabbit@node1\nrabbitmqctl start_app\n\n# Check cluster status\nrabbitmqctl cluster_status\n\n# Set a policy for quorum queues with replication factor 3\nrabbitmqctl set_policy ha-quorum \"^order\\.\" \\\n  '{\"queue-type\": \"quorum\", \"x-quorum-initial-group-size\": 3}' \\\n  --apply-to queues\n\n# Force remove a failed node\nrabbitmqctl forget_cluster_node rabbit@failed-node\n\n# Rebalance queue leaders across nodes\nrabbitmq-queues rebalance all",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/backend/rabbitmq.md",
+    "wordCount": 2666,
+    "sectionCount": 14
+  }
+}

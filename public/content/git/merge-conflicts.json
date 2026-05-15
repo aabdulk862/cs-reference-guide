@@ -1,0 +1,270 @@
+{
+  "id": "git-merge-conflicts",
+  "slug": "merge-conflicts",
+  "title": "Merge Conflicts",
+  "category": "Git",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A merge conflict occurs when Git cannot automatically reconcile changes to the same lines in different branches",
+            "Conflict markers: <<<<<<< HEAD, =======, >>>>>>> branch-name",
+            "Resolution workflow: identify conflicts → edit files → remove markers → git add → git commit",
+            "git merge --abort — cancel a merge and return to pre-merge state",
+            "git diff --check — check for conflict markers before committing",
+            "git mergetool — launch configured visual merge tool",
+            "Conflicts can occur during: git merge, git rebase, git pull, git cherry-pick, git stash pop",
+            "Prevention: frequent pulls, small branches, clear code ownership, communication"
+          ]
+        }
+      ],
+      "wordCount": 94,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Merge conflict resolution is not something you choose to do — it is something you must handle when Git cannot automatically combine changes. Conflicts arise when two branches modify the same lines of the same file, when one branch deletes a file that another branch modifies, or when both branches add different content at the same location. You will encounter conflicts most frequently when pulling remote changes that overlap with your local work, when merging long-lived feature branches back into main, during interactive rebases that replay commits onto a changed base, and when cherry-picking commits that touch code that has since been modified. Understanding conflict resolution is a critical skill because avoiding conflicts entirely is impossible in collaborative development. The goal is to minimize their frequency through good practices and resolve them quickly and correctly when they occur."
+        }
+      ],
+      "wordCount": 138,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "triggering-and-resolving-a-conflict",
+          "heading": "Triggering and Resolving a Conflict",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Attempt to merge a branch (conflict occurs)\ngit merge feature/update-header\n# Auto-merging src/components/Header.tsx\n# CONFLICT (content): Merge conflict in src/components/Header.tsx\n# Automatic merge failed; fix conflicts and then commit the result.\n\n# Check which files have conflicts\ngit status\n# Both modified: src/components/Header.tsx\n\n# Open the conflicted file and resolve manually\n# (edit the file, choose correct code, remove markers)\n\n# After resolving, stage the file\ngit add src/components/Header.tsx\n\n# Complete the merge with a commit\ngit commit -m \"Merge feature/update-header, resolve header conflict\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "understanding-conflict-markers",
+          "heading": "Understanding Conflict Markers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "text",
+              "code": "<<<<<<< HEAD\n// Your current branch's version\nconst title = \"Dashboard - Admin Panel\";\nconst subtitle = \"Welcome back, administrator\";\n=======\n// Incoming branch's version\nconst title = \"Dashboard - User Portal\";\nconst subtitle = \"Welcome back\";\n>>>>>>> feature/update-header",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "text",
+              "code": "// After resolution (choosing to combine both):\nconst title = \"Dashboard - User Portal\";\nconst subtitle = \"Welcome back, administrator\";",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "using-merge-strategies",
+          "heading": "Using Merge Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Accept all changes from current branch (ours)\ngit checkout --ours path/to/file.txt\ngit add path/to/file.txt\n\n# Accept all changes from incoming branch (theirs)\ngit checkout --theirs path/to/file.txt\ngit add path/to/file.txt\n\n# Abort the merge entirely (return to pre-merge state)\ngit merge --abort\n\n# During a rebase, skip a conflicting commit\ngit rebase --skip\n\n# During a rebase, continue after resolving\ngit rebase --continue\n\n# Abort a rebase in progress\ngit rebase --abort",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "preventing-conflicts-with-rerere",
+          "heading": "Preventing Conflicts with Rerere",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Enable rerere (reuse recorded resolution)\ngit config --global rerere.enabled true\n\n# Git will remember how you resolved a conflict\n# and automatically apply the same resolution next time\n# the same conflict appears (common during rebases)\n\n# View recorded resolutions\ngit rerere status\n\n# Forget a recorded resolution\ngit rerere forget path/to/file.txt",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "conflict-resolution-flow",
+      "heading": "Conflict Resolution Flow",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "flowchart TD\n    A[Attempt merge / pull / rebase] --> B{Conflict?}\n    B -->|No| C[Operation completes automatically]\n    B -->|Yes| D[Git marks conflicting files]\n    D --> E[Run git status to identify conflicts]\n    E --> F[Open each conflicted file]\n    F --> G[Identify conflict markers]\n    G --> H{Resolution Strategy}\n    H -->|Keep ours| I[git checkout --ours file]\n    H -->|Keep theirs| J[git checkout --theirs file]\n    H -->|Manual merge| K[Edit file, combine changes]\n    H -->|Use merge tool| L[git mergetool]\n    I --> M[Remove conflict markers]\n    J --> M\n    K --> M\n    L --> M\n    M --> N[Test the resolved code]\n    N --> O[git add resolved files]\n    O --> P[git commit / git rebase --continue]\n    P --> Q[Push resolved changes]"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "types-of-conflicts",
+          "heading": "Types of Conflicts",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Content Conflict\"\n        CC1[Branch A modifies line 10] --> CC3[Same file, same lines]\n        CC2[Branch B modifies line 10] --> CC3\n        CC3 --> CC4[Git cannot auto-merge]\n    end\n\n    subgraph \"Delete/Modify Conflict\"\n        DM1[Branch A deletes file.txt] --> DM3[Conflicting operations]\n        DM2[Branch B modifies file.txt] --> DM3\n        DM3 --> DM4[Git asks: keep or delete?]\n    end\n\n    subgraph \"Rename Conflict\"\n        RC1[Branch A renames to utils.ts] --> RC3[Same file, different names]\n        RC2[Branch B renames to helpers.ts] --> RC3\n        RC3 --> RC4[Git asks: which name?]\n    end"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Blindly accepting \"ours\" or \"theirs\" without understanding: Using --ours or --theirs for every conflict without reading the code leads to lost functionality or introduced bugs. Always understand what both sides intended before choosing.",
+            "Leaving conflict markers in committed code: Accidentally committing files with <<<<<<<, =======, or >>>>>>> markers breaks the application. Use git diff --check before committing to catch leftover markers, or configure a pre-commit hook.",
+            "Not testing after resolution: Resolving conflicts syntactically (removing markers) does not guarantee the code works correctly. Always run tests and verify the application builds after resolving conflicts before committing.",
+            "Resolving conflicts in large batches: When multiple files conflict, resolving them all at once increases the chance of mistakes. Resolve one file at a time, test incrementally, and stage each resolved file individually.",
+            "Ignoring the merge base: Conflicts show \"ours\" vs \"theirs\" but understanding the common ancestor (merge base) provides crucial context. Use git merge-base main feature and three-way diff tools to see what each side actually changed.",
+            "Not communicating with the other developer: When conflicts involve another developer's code, do not guess their intent. Reach out to understand what they were trying to accomplish before deciding how to combine the changes."
+          ]
+        }
+      ],
+      "wordCount": 197,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q1: What causes a merge conflict and how do you resolve one?\nA merge conflict occurs when two branches modify the same lines of the same file, or when one branch deletes a file that another modifies. To resolve: open the conflicted file, understand both versions by reading the conflict markers, decide which changes to keep or how to combine them, remove the markers, test the result, then git add and git commit to complete the merge."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q2: What is the difference between git merge --abort and git reset --hard?\ngit merge --abort cleanly cancels an in-progress merge, restoring the repository to its pre-merge state. It only works during an active merge. git reset --hard discards all uncommitted changes and moves the branch pointer, which is more destructive and can be used outside of merge contexts. Prefer --abort during merges as it is purpose-built and safer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q3: How would you minimize merge conflicts in a team environment?\nKeep branches short-lived (1-3 days), pull from main frequently to stay current, break work into small focused commits, establish clear code ownership so developers rarely modify the same files, use feature flags instead of long-lived branches, communicate about overlapping work, and configure CI to require branches be up-to-date before merging."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q4: Explain git rerere and when it is useful.\ngit rerere (reuse recorded resolution) records how you resolve conflicts and automatically applies the same resolution when the identical conflict appears again. It is particularly useful during repeated rebases where the same conflicts recur, or when maintaining long-lived branches that are regularly synced with main. Enable with git config rerere.enabled true."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q5: What is a three-way merge and why does Git use it?\nA three-way merge uses three reference points: the two branch tips being merged and their common ancestor (merge base). By comparing each branch against the ancestor, Git can determine what each side changed independently. If only one side changed a section, Git takes that change. If both sides changed the same section differently, Git declares a conflict. This is more accurate than a two-way diff which cannot distinguish additions from deletions."
+        }
+      ],
+      "wordCount": 350,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Configure a visual merge tool: Set up a tool like VS Code, IntelliJ, or meld as your default mergetool (git config --global merge.tool vscode). Visual three-way merge views make complex conflicts much easier to resolve correctly than editing markers in a text editor.",
+            "Enable rerere for repeated rebases: If your workflow involves frequently rebasing feature branches onto an updated main, git config rerere.enabled true saves significant time by automatically resolving conflicts you have already handled.",
+            "Use CI checks to prevent conflict-prone merges: Configure your CI pipeline to require branches be up-to-date with main before merging. This catches conflicts at PR time rather than after merge, when they are harder to attribute and fix.",
+            "Establish code ownership boundaries: When possible, organize code so that different features or modules are owned by different developers or teams. Clear boundaries reduce the frequency of conflicts because developers rarely modify the same files simultaneously.",
+            "Document conflict resolution decisions: When resolving non-trivial conflicts, add a comment in the commit message explaining why you chose a particular resolution. This helps future developers understand the decision if the merged code behaves unexpectedly."
+          ]
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Git Branching — branching strategies that minimize conflict frequency",
+            "Git Commands — commands for merging, rebasing, and conflict resolution",
+            "Pull Requests — how conflicts surface during the PR review process",
+            "Local vs Remote — how pulling remote changes can trigger conflicts"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "# Attempt to merge a branch (conflict occurs)\ngit merge feature/update-header\n# Auto-merging src/components/Header.tsx\n# CONFLICT (content): Merge conflict in src/components/Header.tsx\n# Automatic merge failed; fix conflicts and then commit the result.\n\n# Check which files have conflicts\ngit status\n# Both modified: src/components/Header.tsx\n\n# Open the conflicted file and resolve manually\n# (edit the file, choose correct code, remove markers)\n\n# After resolving, stage the file\ngit add src/components/Header.tsx\n\n# Complete the merge with a commit\ngit commit -m \"Merge feature/update-header, resolve header conflict\"",
+      "runnable": false
+    },
+    {
+      "language": "text",
+      "code": "<<<<<<< HEAD\n// Your current branch's version\nconst title = \"Dashboard - Admin Panel\";\nconst subtitle = \"Welcome back, administrator\";\n=======\n// Incoming branch's version\nconst title = \"Dashboard - User Portal\";\nconst subtitle = \"Welcome back\";\n>>>>>>> feature/update-header",
+      "runnable": false
+    },
+    {
+      "language": "text",
+      "code": "// After resolution (choosing to combine both):\nconst title = \"Dashboard - User Portal\";\nconst subtitle = \"Welcome back, administrator\";",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Accept all changes from current branch (ours)\ngit checkout --ours path/to/file.txt\ngit add path/to/file.txt\n\n# Accept all changes from incoming branch (theirs)\ngit checkout --theirs path/to/file.txt\ngit add path/to/file.txt\n\n# Abort the merge entirely (return to pre-merge state)\ngit merge --abort\n\n# During a rebase, skip a conflicting commit\ngit rebase --skip\n\n# During a rebase, continue after resolving\ngit rebase --continue\n\n# Abort a rebase in progress\ngit rebase --abort",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Enable rerere (reuse recorded resolution)\ngit config --global rerere.enabled true\n\n# Git will remember how you resolved a conflict\n# and automatically apply the same resolution next time\n# the same conflict appears (common during rebases)\n\n# View recorded resolutions\ngit rerere status\n\n# Forget a recorded resolution\ngit rerere forget path/to/file.txt",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/git/merge-conflicts.md",
+    "wordCount": 1004,
+    "sectionCount": 13
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "id": "spring-batch-controling-job-flow",
+  "slug": "controling-job-flow",
+  "title": "Controling Job Flow",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch provides several ways to control the flow of steps in a job:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Linear Flow of Steps – Steps execute sequentially.",
+            "Conditional Flow of Steps – Steps execute based on exit status or conditions.",
+            "Split Flow of Steps – Steps execute in parallel (used in scaling scenarios)."
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    },
+    {
+      "id": "sequential-flow-of-steps-linear-flow",
+      "heading": "Sequential Flow of Steps (Linear Flow)",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Steps execute one after the other in a predefined order.",
+            "Achieved using the .next() method of JobBuilder."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Example:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Job sequentialFlowJob() {\n    return jobBuilderFactory.get(\"sequentialFlowJob\")\n            .start(firstStep())    // First step\n            .next(secondStep())    // Second step\n            .next(thirdStep())     // Third step\n            .build();\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Explanation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "firstStep() executes first, followed by secondStep(), then thirdStep().",
+            "Simple linear execution, suitable for basic batch processing pipelines."
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "conditional-flow-of-steps",
+      "heading": "Conditional Flow of Steps",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Step execution can be conditional based on exit status (COMPLETED, FAILED, etc.).",
+            "Use .on() and .to() methods to define transitions.",
+            "Wildcards () allow less specific matching; exact status strings allow precise control."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Example:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Job conditionalFlowJob() {\n    return jobBuilderFactory.get(\"conditionalFlowJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(flowFirstStep())\n                .on(\"FAILED\").to(flowThirdStep())   // If first step fails, go to third step\n            .from(flowFirstStep())\n                .on(\"*\").to(flowSecondStep())      // Otherwise, go to second step\n            .end()\n            .build();\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Explanation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "This allows handling failures or alternative paths in a batch job.",
+            "The RunIdIncrementer ensures a new job instance is created on each run."
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    },
+    {
+      "id": "conditional-flow-using-jobexecutiondecider",
+      "heading": "Conditional Flow Using JobExecutionDecider",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A JobExecutionDecider allows programmatic control over job flow.",
+            "The decide() method returns a FlowExecutionStatus, which determines the next step.",
+            "Spring Batch does not store decider execution metadata in the job repository."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Example: Custom Decider"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class MyFlowDecider implements JobExecutionDecider {\n    @Override\n    public FlowExecutionStatus decide(JobExecution jobExecution, StepExecution stepExecution) {\n        String result = LocalDateTime.now().getHour() < 12 ? \"FN\" : \"AN\";\n        return new FlowExecutionStatus(result);\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "This decider chooses \"FN\" for morning and \"AN\" for afternoon."
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    },
+    {
+      "id": "integrating-decider-into-job",
+      "heading": "Integrating Decider into Job",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Job deciderJob() {\n    return jobBuilderFactory.get(\"deciderJob\")\n            .start(deciderFirstStep())\n            .next(decider())                     // Invoke the decider\n            .from(decider())\n                .on(\"FN\").to(deciderSecondStep()) // Morning path\n            .from(decider())\n                .on(\"*\").to(deciderThirdStep())  // All other paths\n            .end()\n            .build();\n}\n\n@Bean\npublic JobExecutionDecider decider() {\n    return new MyFlowDecider();\n}\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Explanation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "decider() determines which step runs next based on logic in MyFlowDecider.",
+            "Provides dynamic job flow that cannot be achieved with static .next() chaining."
+          ]
+        }
+      ],
+      "wordCount": 24,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Job Flow Type",
+            "Description",
+            "Example Use Case"
+          ],
+          "rows": [
+            [
+              "Sequential",
+              "Steps execute one after another",
+              "Simple ETL pipelines"
+            ],
+            [
+              "Conditional",
+              "Step execution based on exit status",
+              "Retry, failure handling, alternative paths"
+            ],
+            [
+              "Decider-based",
+              "Programmatic decision making for next step",
+              "Time-based flow, business rules, dynamic routing"
+            ],
+            [
+              "Split Flow",
+              "Steps execute in parallel (scaling)",
+              "Large-scale processing with partitioned steps"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 53,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job sequentialFlowJob() {\n    return jobBuilderFactory.get(\"sequentialFlowJob\")\n            .start(firstStep())    // First step\n            .next(secondStep())    // Second step\n            .next(thirdStep())     // Third step\n            .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job conditionalFlowJob() {\n    return jobBuilderFactory.get(\"conditionalFlowJob\")\n            .incrementer(new RunIdIncrementer())\n            .start(flowFirstStep())\n                .on(\"FAILED\").to(flowThirdStep())   // If first step fails, go to third step\n            .from(flowFirstStep())\n                .on(\"*\").to(flowSecondStep())      // Otherwise, go to second step\n            .end()\n            .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class MyFlowDecider implements JobExecutionDecider {\n    @Override\n    public FlowExecutionStatus decide(JobExecution jobExecution, StepExecution stepExecution) {\n        String result = LocalDateTime.now().getHour() < 12 ? \"FN\" : \"AN\";\n        return new FlowExecutionStatus(result);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job deciderJob() {\n    return jobBuilderFactory.get(\"deciderJob\")\n            .start(deciderFirstStep())\n            .next(decider())                     // Invoke the decider\n            .from(decider())\n                .on(\"FN\").to(deciderSecondStep()) // Morning path\n            .from(decider())\n                .on(\"*\").to(deciderThirdStep())  // All other paths\n            .end()\n            .build();\n}\n\n@Bean\npublic JobExecutionDecider decider() {\n    return new MyFlowDecider();\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Controling Job Flow.md",
+    "wordCount": 262,
+    "sectionCount": 6
+  }
+}

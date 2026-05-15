@@ -1,0 +1,920 @@
+{
+  "id": "core-components-job-parameters",
+  "slug": "job-parameters",
+  "title": "Job Parameters",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "characteristics",
+      "heading": "Characteristics",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Runs from start → end without interruption.",
+            "Defined using Java config or XML config.",
+            "Contains one or more steps.",
+            "Can be executed repeatedly."
+          ]
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    },
+    {
+      "id": "common-example-of-a-job",
+      "heading": "Common Example of a Job",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Import new products from a CSV file",
+            "Validate and transform them",
+            "Write them into a database"
+          ]
+        }
+      ],
+      "wordCount": 16,
+      "subsections": []
+    },
+    {
+      "id": "job-attributes",
+      "heading": "Job Attributes",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Attribute",
+            "Description"
+          ],
+          "rows": [
+            [
+              "id",
+              "Job identifier."
+            ],
+            [
+              "restartable",
+              "Whether the job can be restarted after failure (true by default)."
+            ],
+            [
+              "job-repository",
+              "Job repository reference storing metadata."
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Example:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Bean\npublic Job importJob(JobRepository jobRepository, Step step1) {\n    return jobBuilderFactory.get(\"importProductsJob\")\n        .repository(jobRepository)\n        .start(step1)\n        .build();\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "A Step is part of a Job. A job may have multiple steps executed sequentially or conditionally."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%202.png",
+          "alt": "image.png",
+          "originalPath": "Core%20Components/image%202.png"
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    },
+    {
+      "id": "types-of-steps",
+      "heading": "Types of Steps",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Tasklet-based step",
+            "Chunk-based step"
+          ]
+        }
+      ],
+      "wordCount": 4,
+      "subsections": []
+    },
+    {
+      "id": "examples",
+      "heading": "Examples",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Tasklet-based step: Delete temp files, download a ZIP, unzip data.",
+            "Chunk-based step: Read → Process → Write customer records in chunks of 100."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "A Tasklet represents a block of work repeatedly executed until complete."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%203.png",
+          "alt": "image.png",
+          "originalPath": "Core%20Components/image%203.png"
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "key-points",
+      "heading": "Key Points",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implements Tasklet interface.",
+            "execute() runs inside a transaction.",
+            "Useful for: "
+          ]
+        }
+      ],
+      "wordCount": 10,
+      "subsections": []
+    },
+    {
+      "id": "example-tasklet",
+      "heading": "Example Tasklet",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class CleanupTasklet implements Tasklet {\n    @Override\n    public RepeatStatus execute(StepContribution contribution, ChunkContext context) {\n        Files.deleteIfExists(Paths.get(\"/temp/input.csv\"));\n        return RepeatStatus.FINISHED;\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "tasklet-attributes",
+      "heading": "Tasklet Attributes",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Attribute",
+            "Use"
+          ],
+          "rows": [
+            [
+              "ref",
+              "Bean reference implementing Tasklet"
+            ],
+            [
+              "transaction-manager",
+              "Transaction manager for the step"
+            ],
+            [
+              "start-limit",
+              "Max times step can start"
+            ],
+            [
+              "allow-start-if-complete",
+              "Whether step can rerun even if previously completed"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    },
+    {
+      "id": "config-example",
+      "heading": "Config Example",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Steps:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Add @EnableBatchProcessing",
+            "Define a Job",
+            "Define a Step",
+            "Use a Tasklet inside the step"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@EnableBatchProcessing\n@Configuration\npublic class BatchConfig {\n\n    @Bean\n    public Job firstJob(JobBuilderFactory jobBuilders, Step firstStep) {\n        return jobBuilders.get(\"firstJob\")\n            .start(firstStep)\n            .build();\n    }\n\n    @Bean\n    public Step firstStep(StepBuilderFactory stepBuilders, Tasklet tasklet) {\n        return stepBuilders.get(\"firstStep\")\n            .tasklet(tasklet)\n            .build();\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Chunk = group of items processed together (e.g., chunk of size 10)."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%204.png",
+          "alt": "image.png",
+          "originalPath": "Core%20Components/image%204.png"
+        }
+      ],
+      "wordCount": 27,
+      "subsections": [
+        {
+          "id": "read-process-write-workflow",
+          "heading": "Read → Process → Write workflow",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "ItemReader ──► ItemProcessor ──► ItemWriter\n       (read)       (optional)         (write chunk)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "chunk-example-use-cases",
+          "heading": "Chunk Example Use Cases",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Reading CSV file and writing to DB",
+                "Reading DB rows and generating XML files",
+                "Transforming data for migration jobs"
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%205.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/image%205.png"
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "itemreader",
+          "heading": "ItemReader",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Reads one item at a time."
+            },
+            {
+              "type": "paragraph",
+              "text": "Common implementations:"
+            },
+            {
+              "type": "table",
+              "headers": [
+                "Reader",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "FlatFileItemReader",
+                  "Read CSV/flat files"
+                ],
+                [
+                  "StaxEventItemReader",
+                  "Read XML using StAX"
+                ],
+                [
+                  "JdbcCursorItemReader",
+                  "Read from DB using JDBC cursor"
+                ],
+                [
+                  "JpaPagingItemReader",
+                  "Read DB with JPA paging"
+                ],
+                [
+                  "JmsItemReader",
+                  "Read from JMS queue"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 37,
+          "subsections": []
+        },
+        {
+          "id": "itemwriter",
+          "heading": "ItemWriter",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Writes a list of items at once."
+            },
+            {
+              "type": "table",
+              "headers": [
+                "Writer",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "FlatFileItemWriter",
+                  "Write to CSV"
+                ],
+                [
+                  "JdbcBatchItemWriter",
+                  "Efficient DB write using batch insert"
+                ],
+                [
+                  "StaxEventItemWriter",
+                  "Write to XML"
+                ],
+                [
+                  "JpaItemWriter",
+                  "Writes entities using JPA"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        },
+        {
+          "id": "itemprocessor",
+          "heading": "ItemProcessor",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Uses:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "transform data",
+                "validate data",
+                "filter data (return null)"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Example processor:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class ProductProcessor implements ItemProcessor<Product, Product> {\n    @Override\n    public Product process(Product item) {\n        if(item.getPrice() <= 0) return null; // filter invalid\n        item.setName(item.getName().toUpperCase());\n        return item;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%206.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/image%206.png"
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "job-instance",
+          "heading": "Job Instance",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Represents a logical job run:"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "Job + Job Parameters = Job Instance",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Example:"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "processCatalogJob + date=2024-01-10",
+              "runnable": false
+            }
+          ],
+          "wordCount": 6,
+          "subsections": []
+        },
+        {
+          "id": "job-execution",
+          "heading": "Job Execution",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Represents one physical attempt to run a job instance."
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%207.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/image%207.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Example:"
+            },
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "First attempt → FAILED",
+                "Second attempt → COMPLETED"
+              ]
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "A StepExecution represents a single attempt to execute a Step.",
+                "A new StepExecution is created each time a Step is run, similar to JobExecution.",
+                "However, if a step fails to execute because the step before it fails, no execution is persisted for it.",
+                "A StepExecution is created only when its Step is actually started."
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%208.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/image%208.png"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "Job\n └── JobInstance\n      └── JobExecution (attempt 1)\n            └── StepExecution (step1)\n            └── StepExecution (step2)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 72,
+          "subsections": []
+        },
+        {
+          "id": "batchstatus",
+          "heading": "BatchStatus",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Represents current state:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "STARTED",
+                "STARTING",
+                "COMPLETED",
+                "FAILED",
+                "STOPPED"
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/ac3e501c-1182-4aba-a0ed-b51397d0eb67.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/ac3e501c-1182-4aba-a0ed-b51397d0eb67.png"
+            }
+          ],
+          "wordCount": 8,
+          "subsections": []
+        },
+        {
+          "id": "exitstatus",
+          "heading": "ExitStatus",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Represents final result:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "ExitStatus.COMPLETED",
+                "ExitStatus.FAILED",
+                "Custom exit statuses"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Stores:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Job executions",
+                "Step executions",
+                "Items read/written/skipped",
+                "Execution timestamps"
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%209.png",
+              "alt": "image.png",
+              "originalPath": "Core%20Components/image%209.png"
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "implementations",
+          "heading": "Implementations",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "In-memory (for tests only)",
+                "Relational DB (MySQL, Postgres, Oracle)"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Spring Batch auto-creates required tables like:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "BATCH_JOB_INSTANCE",
+                "BATCH_JOB_EXECUTION",
+                "BATCH_STEP_EXECUTION"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "job-explorer",
+      "heading": "Job Explorer",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Used to query Job Repository:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "jobExplorer.getJobInstances(\"importJob\", 0, 10);\njobExplorer.getJobExecution(executionId);\njobExplorer.findRunningJobExecutions(\"dailyJob\");",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to run jobs programmatically:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "JobExecution exec = jobLauncher.run(job, jobParameters);",
+          "runnable": false
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%2010.png",
+          "alt": "image.png",
+          "originalPath": "Core%20Components/image%2010.png"
+        },
+        {
+          "type": "paragraph",
+          "text": "Thrown exceptions include:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JobExecutionAlreadyRunningException",
+            "JobRestartException",
+            "JobInstanceAlreadyCompleteException",
+            "JobParametersInvalidException"
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Scope",
+            "Usage"
+          ],
+          "rows": [
+            [
+              "Step Scope (@StepScope)",
+              "Beans created when step begins → destroyed when step ends"
+            ],
+            [
+              "Job Scope (@JobScope)",
+              "Beans created for job instance duration"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Used for late binding, e.g. reading job parameters inside reader/processor/writer."
+        }
+      ],
+      "wordCount": 51,
+      "subsections": []
+    },
+    {
+      "id": "other-spring-bean-scopes",
+      "heading": "Other Spring Bean Scopes",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Core Scopes"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "singleton – One instance per Spring container (default)",
+            "prototype – New instance every time it's requested"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Web Scopes (Servlet/Web MVC)"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "request – One instance per HTTP request",
+            "session – One instance per HTTP session",
+            "application – One instance per ServletContext",
+            "websocket – One instance per WebSocket session"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Custom Scopes"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Custom scopes (e.g., thread, tenant, etc.) — user-defined"
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JobParameters is a set of parameters used to start a batch job.",
+            "They can be used for identification or even as reference data during the run",
+            "Passed as key-value pairs during job launch."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%2011.png",
+          "alt": "image.png",
+          "originalPath": "Core%20Components/image%2011.png"
+        }
+      ],
+      "wordCount": 92,
+      "subsections": []
+    },
+    {
+      "id": "methods-of-passing-parameters",
+      "heading": "Methods of passing parameters",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Command line"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "java -jar batch.jar file=input.csv date=20240110",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "JobParametersBuilder"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "JobParameters params = new JobParametersBuilder()\n        .addString(\"file\", \"input.csv\")\n        .toJobParameters();",
+          "runnable": false
+        }
+      ],
+      "wordCount": 3,
+      "subsections": []
+    },
+    {
+      "id": "accessing-parameters",
+      "heading": "Accessing Parameters",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Through ChunkContext"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "String file = chunkContext.getStepContext()\n               .getJobParameters()\n               .get(\"file\");",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Through Late Binding"
+        },
+        {
+          "type": "paragraph",
+          "text": "Requires @StepScope."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Value(\"#{jobParameters['file']}\")\nprivate String fileName;",
+          "runnable": false
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%202.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%202.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%203.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%203.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%204.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%204.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%205.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%205.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%206.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%206.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%207.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%207.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%208.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%208.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/ac3e501c-1182-4aba-a0ed-b51397d0eb67.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/ac3e501c-1182-4aba-a0ed-b51397d0eb67.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%209.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%209.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%2010.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%2010.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core%20Components/image%2011.png",
+      "alt": "image.png",
+      "originalPath": "Core%20Components/image%2011.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job importJob(JobRepository jobRepository, Step step1) {\n    return jobBuilderFactory.get(\"importProductsJob\")\n        .repository(jobRepository)\n        .start(step1)\n        .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class CleanupTasklet implements Tasklet {\n    @Override\n    public RepeatStatus execute(StepContribution contribution, ChunkContext context) {\n        Files.deleteIfExists(Paths.get(\"/temp/input.csv\"));\n        return RepeatStatus.FINISHED;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@EnableBatchProcessing\n@Configuration\npublic class BatchConfig {\n\n    @Bean\n    public Job firstJob(JobBuilderFactory jobBuilders, Step firstStep) {\n        return jobBuilders.get(\"firstJob\")\n            .start(firstStep)\n            .build();\n    }\n\n    @Bean\n    public Step firstStep(StepBuilderFactory stepBuilders, Tasklet tasklet) {\n        return stepBuilders.get(\"firstStep\")\n            .tasklet(tasklet)\n            .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "ItemReader ──► ItemProcessor ──► ItemWriter\n       (read)       (optional)         (write chunk)",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class ProductProcessor implements ItemProcessor<Product, Product> {\n    @Override\n    public Product process(Product item) {\n        if(item.getPrice() <= 0) return null; // filter invalid\n        item.setName(item.getName().toUpperCase());\n        return item;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Job + Job Parameters = Job Instance",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "processCatalogJob + date=2024-01-10",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Job\n └── JobInstance\n      └── JobExecution (attempt 1)\n            └── StepExecution (step1)\n            └── StepExecution (step2)",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "jobExplorer.getJobInstances(\"importJob\", 0, 10);\njobExplorer.getJobExecution(executionId);\njobExplorer.findRunningJobExecutions(\"dailyJob\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "JobExecution exec = jobLauncher.run(job, jobParameters);",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "java -jar batch.jar file=input.csv date=20240110",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "JobParameters params = new JobParametersBuilder()\n        .addString(\"file\", \"input.csv\")\n        .toJobParameters();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "String file = chunkContext.getStepContext()\n               .getJobParameters()\n               .get(\"file\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Value(\"#{jobParameters['file']}\")\nprivate String fileName;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Core Components/Core Components.md",
+    "wordCount": 553,
+    "sectionCount": 23
+  }
+}

@@ -1,0 +1,245 @@
+{
+  "id": "git-what-is-git",
+  "slug": "what-is-git",
+  "title": "What is Git",
+  "category": "Git",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Git is a distributed version control system where every developer has a full copy of the repository history",
+            "Three main areas: Working Directory, Staging Area (Index), and Local Repository",
+            "Core operations: git init, git clone, git add, git commit, git push, git pull",
+            "Git tracks content by SHA-1 hashes, making every commit uniquely identifiable",
+            "Branching is lightweight — creating a branch is just creating a pointer to a commit",
+            "Git stores snapshots of files, not diffs (unlike older VCS tools like SVN)",
+            "The .git/ directory contains the entire repository database, hooks, and configuration"
+          ]
+        }
+      ],
+      "wordCount": 93,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Git is the standard version control system for virtually all modern software development. Use Git when you need to track changes to any text-based files, collaborate with other developers, or maintain a history of your project's evolution. Git excels in scenarios where multiple developers work on the same codebase simultaneously, where you need to experiment with features in isolation, or where you need to maintain multiple release versions of software. Even for solo projects, Git provides invaluable safety nets through its commit history, allowing you to revert mistakes and understand why changes were made. Git is appropriate for any project larger than a throwaway script, including documentation repositories, infrastructure-as-code, configuration management, and data science notebooks. The only scenarios where Git may not be ideal are for large binary files (though Git LFS addresses this) or for extremely large monorepos where specialized tools like Perforce may be preferred."
+        }
+      ],
+      "wordCount": 147,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "initializing-a-repository",
+          "heading": "Initializing a Repository",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Create a new Git repository in the current directory\ngit init\n\n# This creates a .git/ directory with the following structure:\n# .git/\n#   HEAD          - Points to current branch\n#   config        - Repository-specific configuration\n#   objects/      - Object database (commits, trees, blobs)\n#   refs/         - Branch and tag pointers",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cloning-and-basic-workflow",
+          "heading": "Cloning and Basic Workflow",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Clone a remote repository to your local machine\ngit clone https://github.com/user/repository.git\n\n# Check the status of your working directory\ngit status\n\n# Stage specific files for commit\ngit add src/feature.js tests/feature.test.js\n\n# Stage all changes (new, modified, deleted)\ngit add .\n\n# Commit staged changes with a descriptive message\ngit commit -m \"Add user authentication feature with JWT tokens\"\n\n# Push commits to the remote repository\ngit push origin main\n\n# Pull latest changes from remote and merge into current branch\ngit pull origin main",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "viewing-history",
+          "heading": "Viewing History",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# View commit log with graph visualization\ngit log --oneline --graph --decorate --all\n\n# Show details of a specific commit\ngit show abc1234\n\n# See who last modified each line of a file\ngit blame src/app.js\n\n# Search commit messages for a keyword\ngit log --grep=\"bugfix\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-and-data-model",
+      "heading": "Architecture and Data Model",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Git Object Model\"\n        BLOB[Blob<br/>File content snapshot]\n        TREE[Tree<br/>Directory listing]\n        COMMIT[Commit<br/>Snapshot + metadata]\n        TAG[Tag<br/>Named reference to commit]\n    end\n\n    COMMIT --> TREE\n    COMMIT -->|parent| COMMIT\n    TREE --> BLOB\n    TREE -->|subdirectory| TREE\n    TAG --> COMMIT\n\n    subgraph \"References\"\n        HEAD[HEAD<br/>Current branch pointer]\n        BRANCH[Branch<br/>Pointer to latest commit]\n        RTAG[Lightweight Tag<br/>Direct commit pointer]\n    end\n\n    HEAD --> BRANCH\n    BRANCH --> COMMIT\n    RTAG --> COMMIT"
+        },
+        {
+          "type": "paragraph",
+          "text": "Git uses a content-addressable filesystem built on four object types. A blob stores the contents of a single file. A tree represents a directory, mapping filenames to blobs or other trees. A commit points to a tree (the project snapshot) and contains metadata like author, timestamp, message, and parent commit references. A tag is a named pointer to a specific commit, typically used for release versions. Every object is identified by its SHA-1 hash, which means identical content always produces the same hash, enabling efficient deduplication and integrity verification."
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant WD as Working Directory\n    participant SA as Staging Area (Index)\n    participant LR as Local Repository\n    participant RR as Remote Repository\n\n    WD->>SA: git add (stage changes)\n    SA->>LR: git commit (create snapshot)\n    LR->>RR: git push (upload commits)\n    RR->>LR: git fetch (download commits)\n    LR->>WD: git checkout / git merge\n    RR->>WD: git pull (fetch + merge)"
+        }
+      ],
+      "wordCount": 89,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Committing sensitive data: Accidentally committing API keys, passwords, or .env files to the repository. Once pushed, secrets remain in Git history even after deletion. Use .gitignore proactively and tools like git-secrets or trufflehog to scan for leaked credentials.",
+            "Working directly on main: Making changes directly on the main branch instead of feature branches leads to messy history and makes collaboration difficult. Always branch for new work.",
+            "Large commits with vague messages: Committing many unrelated changes with messages like \"updates\" or \"fix stuff\" makes it impossible to understand history or revert specific changes. Commit small, logical units with descriptive messages.",
+            "Forgetting to pull before push: Pushing without first pulling remote changes causes rejected pushes or unnecessary merge commits. Always git pull --rebase before pushing.",
+            "Confusing git reset --hard with safe operations: Running git reset --hard permanently discards uncommitted changes. Use git stash or git reset --soft when you want to preserve work.",
+            "Not understanding detached HEAD state: Checking out a specific commit instead of a branch puts you in detached HEAD state. Any commits made here can be lost if you switch branches without creating a new branch first."
+          ]
+        }
+      ],
+      "wordCount": 188,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q1: What is the difference between Git and GitHub?\nGit is a distributed version control system that runs locally on your machine and manages source code history. GitHub is a cloud-hosted platform that provides remote repository hosting, pull request workflows, issue tracking, and CI/CD integration built on top of Git."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q2: Explain the three-tree architecture in Git.\nGit maintains three main data structures: the Working Directory (your actual files on disk), the Staging Area or Index (a snapshot of what will go into the next commit), and the Repository (the committed history stored in .git/). Changes flow from working directory to staging via git add, and from staging to repository via git commit."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q3: What is a SHA-1 hash in Git and why is it important?\nEvery Git object (blob, tree, commit, tag) is identified by a 40-character SHA-1 hash computed from its content. This provides content integrity verification, efficient deduplication, and unique identification of every snapshot in the repository's history."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q4: How does Git differ from centralized version control systems like SVN?\nGit is distributed, meaning every developer has a complete copy of the repository including full history, enabling offline work and faster operations. SVN is centralized with a single server holding the canonical repository. Git branches are lightweight pointers while SVN branches are full directory copies. Git stores snapshots while SVN stores diffs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q5: What happens internally when you run git commit?\nGit creates a tree object representing the current staging area contents, then creates a commit object pointing to that tree with metadata (author, timestamp, message, parent commit hash). The current branch pointer advances to the new commit, and HEAD continues pointing to the branch."
+        }
+      ],
+      "wordCount": 278,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Git is used across virtually every domain of software development. In enterprise environments, teams use Git with branching strategies like Git Flow to manage complex release cycles with multiple environments (development, staging, production). Open-source projects rely on Git's fork-and-pull-request model to accept contributions from thousands of developers worldwide without granting direct write access. DevOps teams use Git as the single source of truth for infrastructure-as-code, storing Terraform configurations, Kubernetes manifests, and CI/CD pipeline definitions alongside application code. Data science teams version Jupyter notebooks and model configurations in Git, enabling reproducibility and collaboration on experiments. Documentation teams use Git to manage technical writing with the same review workflows as code, ensuring accuracy through peer review. Game development studios use Git with LFS (Large File Storage) to version both code and binary assets like textures and models. Even non-technical teams adopt Git-based workflows through platforms like GitHub for managing legal documents, research papers, and policy documents where change tracking and approval workflows are valuable."
+        }
+      ],
+      "wordCount": 162,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use signed commits in production workflows: Configure GPG signing (git config commit.gpgsign true) to verify commit authorship in regulated environments. This prevents impersonation and satisfies audit requirements.",
+            "Implement branch protection rules: On your remote platform, require pull request reviews, passing CI checks, and linear history before merging to main. This prevents accidental force pushes and ensures code quality.",
+            "Use shallow clones in CI/CD: For large repositories, git clone --depth 1 significantly reduces clone time in CI pipelines where full history is unnecessary. Use --filter=blob:none for even more efficient partial clones.",
+            "Configure .gitattributes for consistent line endings: Set * text=auto to normalize line endings across Windows and Unix systems, preventing spurious diffs and merge conflicts caused by CRLF vs LF differences.",
+            "Tag releases with semantic versioning: Use annotated tags (git tag -a v1.2.3 -m \"Release 1.2.3\") for production releases. This creates a permanent, signed reference point for deployments and rollbacks."
+          ]
+        }
+      ],
+      "wordCount": 149,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Git Commands — comprehensive reference for all common Git operations",
+            "Git Branching — branching strategies and workflows for team collaboration",
+            "Local vs Remote — understanding the distributed nature of Git repositories",
+            "Pull Requests — code review workflows built on Git's branching model"
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "# Create a new Git repository in the current directory\ngit init\n\n# This creates a .git/ directory with the following structure:\n# .git/\n#   HEAD          - Points to current branch\n#   config        - Repository-specific configuration\n#   objects/      - Object database (commits, trees, blobs)\n#   refs/         - Branch and tag pointers",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Clone a remote repository to your local machine\ngit clone https://github.com/user/repository.git\n\n# Check the status of your working directory\ngit status\n\n# Stage specific files for commit\ngit add src/feature.js tests/feature.test.js\n\n# Stage all changes (new, modified, deleted)\ngit add .\n\n# Commit staged changes with a descriptive message\ngit commit -m \"Add user authentication feature with JWT tokens\"\n\n# Push commits to the remote repository\ngit push origin main\n\n# Pull latest changes from remote and merge into current branch\ngit pull origin main",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# View commit log with graph visualization\ngit log --oneline --graph --decorate --all\n\n# Show details of a specific commit\ngit show abc1234\n\n# See who last modified each line of a file\ngit blame src/app.js\n\n# Search commit messages for a keyword\ngit log --grep=\"bugfix\"",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/git/what-is-git.md",
+    "wordCount": 1148,
+    "sectionCount": 12
+  }
+}

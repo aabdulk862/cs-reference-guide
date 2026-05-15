@@ -1,0 +1,473 @@
+{
+  "id": "spring-rest-complete-telecom-application-asynchronous-processing",
+  "slug": "complete-telecom-application-asynchronous-processing",
+  "title": "Complete Telecom Application – Asynchronous Processing",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "what-is-asynchronous-programming",
+      "heading": "What is Asynchronous Programming?",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Asynchronous programming allows tasks to run separately from the main program flow and not block the execution thread while waiting for long-running operations, such as network calls or database access."
+        }
+      ],
+      "wordCount": 30,
+      "subsections": []
+    },
+    {
+      "id": "what-are-asynchronous-requests-in-spring-rest-and-why-are-they-important",
+      "heading": "What are asynchronous requests in Spring REST, and why are they important?",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Asynchronous requests in Spring REST enable non-blocking processing of HTTP requests. They're useful when dealing with high-load scenarios or long-running operations, improving system responsiveness and scalability."
+        }
+      ],
+      "wordCount": 26,
+      "subsections": []
+    },
+    {
+      "id": "how-does-spring-handle-asynchronous-requests-in-restful-apis",
+      "heading": "How does Spring handle asynchronous requests in RESTful APIs?",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring provides several abstractions like @Async, Callable, DeferredResult, and CompletableFuture to support async request processing. These allow background thread execution while freeing up request-handling threads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Sample Implementation"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@RestController\npublic class AsyncController {\n\n    @GetMapping(\"/process\")\n    public Callable<String> processAsync() {\n        return () -> {\n            Thread.sleep(2000); // simulate delay\n            return \"Processed asynchronously\";\n        };\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    },
+    {
+      "id": "benefits-of-asynchronous-request-handling",
+      "heading": "Benefits of Asynchronous Request Handling",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Improves server throughput by freeing threads",
+            "Better performance under load",
+            "Enhances user experience for slow operations",
+            "Scalable system design"
+          ]
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "key-annotationstypes",
+      "heading": "Key Annotations/Types",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "@Async – Marks a method for asynchronous execution",
+            "Callable – Wraps a task that returns a value",
+            "DeferredResult – Provides greater control over the response",
+            "CompletableFuture – Enables functional-style async operations"
+          ]
+        }
+      ],
+      "wordCount": 31,
+      "subsections": []
+    },
+    {
+      "id": "role-of-async-annotation",
+      "heading": "Role of @Async Annotation",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Used to execute methods asynchronously in a background thread. It requires @EnableAsync in a configuration class."
+        }
+      ],
+      "wordCount": 16,
+      "subsections": []
+    },
+    {
+      "id": "enabling-async",
+      "heading": "Enabling @Async",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Configuration\n@EnableAsync\npublic class AsyncConfig {\n\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "asynchronous-controller-method",
+      "heading": "Asynchronous Controller Method",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@RestController\npublic class AsyncServiceController {\n\n    @Autowired\n    private AsyncService service;\n\n    @GetMapping(\"/async-call\")\n    public CompletableFuture<String> callAsyncService() {\n        return service.performTask();\n    }\n}\n\n@Service\npublic class AsyncService {\n\n    @Async\n    public CompletableFuture<String> performTask() {\n        // Simulate delay\n        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}\n        return CompletableFuture.completedFuture(\"Done\");\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "thread-pool-configuration",
+      "heading": "Thread Pool Configuration",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Customize the executor used by @Async via a TaskExecutor bean."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Configuration\n@EnableAsync\npublic class AsyncExecutorConfig {\n\n    @Bean(name = \"taskExecutor\")\n    public Executor taskExecutor() {\n        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();\n        executor.setCorePoolSize(4);\n        executor.setMaxPoolSize(10);\n        executor.setQueueCapacity(500);\n        executor.setThreadNamePrefix(\"Async-\");\n        executor.initialize();\n        return executor;\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 10,
+      "subsections": []
+    },
+    {
+      "id": "how-spring-manages-execution",
+      "heading": "How Spring Manages Execution",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring uses the configured executor to schedule and run background tasks, keeping them off the main servlet thread."
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    },
+    {
+      "id": "handling-exceptions-in-async",
+      "heading": "Handling Exceptions in Async",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use CompletableFuture.exceptionally() or configure exception resolvers for DeferredResult."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Async\npublic CompletableFuture<String> process() {\n    return CompletableFuture.supplyAsync(() -> {\n        throw new RuntimeException(\"Something went wrong\");\n    }).exceptionally(ex -> \"Error: \" + ex.getMessage());\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 8,
+      "subsections": []
+    },
+    {
+      "id": "thread-safety-considerations",
+      "heading": "Thread Safety Considerations",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Avoid shared mutable state",
+            "Use synchronization or thread-safe data structures",
+            "Stateless services preferred"
+          ]
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "security-and-caching",
+      "heading": "Security and Caching",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Async processing can be integrated with:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Security (secured endpoints still function)",
+            "Spring Cache (cache asynchronously fetched data)"
+          ]
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    },
+    {
+      "id": "example-with-caching",
+      "heading": "Example with Caching",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Async\n@Cacheable(\"dataCache\")\npublic CompletableFuture<String> getCachedData(String id) {\n    return CompletableFuture.completedFuture(fetchFromDb(id));\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "deferredresult",
+      "heading": "DeferredResult",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Provides control over response from a separate thread."
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@GetMapping(\"/deferred\")\npublic DeferredResult<String> handleDeferred() {\n    DeferredResult<String> output = new DeferredResult<>();\n    new Thread(() -> {\n        try {\n            Thread.sleep(2000);\n            output.setResult(\"Completed with DeferredResult\");\n        } catch (InterruptedException e) {\n            output.setErrorResult(\"Error occurred\");\n        }\n    }).start();\n    return output;\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 8,
+      "subsections": []
+    },
+    {
+      "id": "completablefuture-use-cases",
+      "heading": "CompletableFuture Use Cases",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Preferred for chaining dependent async calls",
+            "Supports functional programming style",
+            "Better for complex async workflows"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Chaining Example"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public CompletableFuture<String> chainAsyncTasks() {\n    return CompletableFuture.supplyAsync(() -> \"Task1\")\n            .thenApply(result -> result + \" + Task2\")\n            .thenApply(result -> result + \" + Task3\");\n}\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Parallel Execution"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public CompletableFuture<String> runInParallel() {\n    CompletableFuture<String> task1 = CompletableFuture.supplyAsync(() -> \"First\");\n    CompletableFuture<String> task2 = CompletableFuture.supplyAsync(() -> \"Second\");\n\n    return task1.thenCombine(task2, (a, b) -> a + \" and \" + b);\n}\n",
+          "runnable": false
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "best-practices-and-considerations",
+      "heading": "Best Practices and Considerations",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Always configure a custom thread pool",
+            "Handle timeouts, exceptions, and cancellations",
+            "Avoid long-running tasks in request threads",
+            "Prefer stateless services and immutable objects"
+          ]
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    },
+    {
+      "id": "structure",
+      "heading": "Structure:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CustomerController – Exposes async endpoints",
+            "CustomerService – Async operations on customer data",
+            "CustomerRepository – Extends JpaRepository",
+            "Uses DeferredResult or CompletableFuture"
+          ]
+        }
+      ],
+      "wordCount": 20,
+      "subsections": []
+    },
+    {
+      "id": "example-controller",
+      "heading": "Example Controller",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@RestController\n@RequestMapping(\"/customers\")\npublic class CustomerController {\n\n    @Autowired\n    private CustomerService customerService;\n\n    @GetMapping(\"/{id}\")\n    public CompletableFuture<ResponseEntity<Customer>> getCustomer(@PathVariable Long id) {\n        return customerService.findCustomerAsync(id)\n               .thenApply(ResponseEntity::ok);\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "service-layer",
+      "heading": "Service Layer",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Service\npublic class CustomerService {\n\n    @Autowired\n    private CustomerRepository repo;\n\n    @Async\n    public CompletableFuture<Customer> findCustomerAsync(Long id) {\n        return CompletableFuture.completedFuture(repo.findById(id).orElseThrow());\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "applicationproperties",
+      "heading": "application.properties",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "spring.datasource.url=jdbc:mysql://localhost:3306/telecom\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=update",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "dependencies-in-pomxml",
+      "heading": "Dependencies in pom.xml",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-web</artifactId>\n</dependency>\n<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-jpa</artifactId>\n</dependency>\n<dependency>\n    <groupId>mysql</groupId>\n    <artifactId>mysql-connector-java</artifactId>\n</dependency>",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@RestController\npublic class AsyncController {\n\n    @GetMapping(\"/process\")\n    public Callable<String> processAsync() {\n        return () -> {\n            Thread.sleep(2000); // simulate delay\n            return \"Processed asynchronously\";\n        };\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\n@EnableAsync\npublic class AsyncConfig {\n\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\npublic class AsyncServiceController {\n\n    @Autowired\n    private AsyncService service;\n\n    @GetMapping(\"/async-call\")\n    public CompletableFuture<String> callAsyncService() {\n        return service.performTask();\n    }\n}\n\n@Service\npublic class AsyncService {\n\n    @Async\n    public CompletableFuture<String> performTask() {\n        // Simulate delay\n        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}\n        return CompletableFuture.completedFuture(\"Done\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\n@EnableAsync\npublic class AsyncExecutorConfig {\n\n    @Bean(name = \"taskExecutor\")\n    public Executor taskExecutor() {\n        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();\n        executor.setCorePoolSize(4);\n        executor.setMaxPoolSize(10);\n        executor.setQueueCapacity(500);\n        executor.setThreadNamePrefix(\"Async-\");\n        executor.initialize();\n        return executor;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Async\npublic CompletableFuture<String> process() {\n    return CompletableFuture.supplyAsync(() -> {\n        throw new RuntimeException(\"Something went wrong\");\n    }).exceptionally(ex -> \"Error: \" + ex.getMessage());\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Async\n@Cacheable(\"dataCache\")\npublic CompletableFuture<String> getCachedData(String id) {\n    return CompletableFuture.completedFuture(fetchFromDb(id));\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@GetMapping(\"/deferred\")\npublic DeferredResult<String> handleDeferred() {\n    DeferredResult<String> output = new DeferredResult<>();\n    new Thread(() -> {\n        try {\n            Thread.sleep(2000);\n            output.setResult(\"Completed with DeferredResult\");\n        } catch (InterruptedException e) {\n            output.setErrorResult(\"Error occurred\");\n        }\n    }).start();\n    return output;\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public CompletableFuture<String> chainAsyncTasks() {\n    return CompletableFuture.supplyAsync(() -> \"Task1\")\n            .thenApply(result -> result + \" + Task2\")\n            .thenApply(result -> result + \" + Task3\");\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public CompletableFuture<String> runInParallel() {\n    CompletableFuture<String> task1 = CompletableFuture.supplyAsync(() -> \"First\");\n    CompletableFuture<String> task2 = CompletableFuture.supplyAsync(() -> \"Second\");\n\n    return task1.thenCombine(task2, (a, b) -> a + \" and \" + b);\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/customers\")\npublic class CustomerController {\n\n    @Autowired\n    private CustomerService customerService;\n\n    @GetMapping(\"/{id}\")\n    public CompletableFuture<ResponseEntity<Customer>> getCustomer(@PathVariable Long id) {\n        return customerService.findCustomerAsync(id)\n               .thenApply(ResponseEntity::ok);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class CustomerService {\n\n    @Autowired\n    private CustomerRepository repo;\n\n    @Async\n    public CompletableFuture<Customer> findCustomerAsync(Long id) {\n        return CompletableFuture.completedFuture(repo.findById(id).orElseThrow());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.url=jdbc:mysql://localhost:3306/telecom\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=update",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-web</artifactId>\n</dependency>\n<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-jpa</artifactId>\n</dependency>\n<dependency>\n    <groupId>mysql</groupId>\n    <artifactId>mysql-connector-java</artifactId>\n</dependency>",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Performance Tuning and Caching.md",
+    "wordCount": 286,
+    "sectionCount": 22
+  }
+}

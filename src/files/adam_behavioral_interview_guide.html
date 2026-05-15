@@ -1,0 +1,445 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .guide { padding: 1.5rem 0; }
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .nav-btn {
+    font-size: 13px; padding: 6px 14px; border-radius: 20px;
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-primary);
+    color: var(--color-text-secondary); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .nav-btn:hover { background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .nav-btn.active {
+    background: #185FA5; border-color: #185FA5; color: #E6F1FB; font-weight: 500;
+  }
+  .section { display: none; }
+  .section.visible { display: block; }
+
+  .card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem;
+    margin-bottom: 12px;
+  }
+  .card-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 10px; cursor: pointer;
+  }
+  .card-header h3 { font-size: 15px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+  .card-body { font-size: 14px; color: var(--color-text-secondary); line-height: 1.7; }
+  .card-body.collapsed { display: none; }
+
+  .tag {
+    font-size: 11px; padding: 3px 9px; border-radius: 12px; font-weight: 500;
+  }
+  .tag-blue { background: #E6F1FB; color: #185FA5; }
+  .tag-teal { background: #E1F5EE; color: #0F6E56; }
+  .tag-amber { background: #FAEEDA; color: #854F0B; }
+  .tag-coral { background: #FAECE7; color: #993C1D; }
+  .tag-purple { background: #EEEDFE; color: #534AB7; }
+
+  .chevron { font-size: 16px; color: var(--color-text-tertiary); transition: transform 0.2s; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .script-box {
+    background: var(--color-background-secondary);
+    border-left: 3px solid #185FA5;
+    border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0;
+    padding: 1rem 1.25rem;
+    margin: 10px 0;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    line-height: 1.8;
+  }
+  .script-label {
+    font-size: 11px; font-weight: 500; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #185FA5; margin-bottom: 8px;
+  }
+
+  .rule-box {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 1rem 1.25rem;
+    margin: 8px 0;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+  }
+  .rule-box strong { color: var(--color-text-primary); font-weight: 500; }
+
+  .do-dont { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+  .do-box { background: #EAF3DE; border-radius: var(--border-radius-md); padding: 1rem; }
+  .do-box .label { font-size: 11px; font-weight: 500; color: #3B6D11; margin-bottom: 8px; }
+  .do-box li { font-size: 13px; color: #27500A; line-height: 1.7; list-style: none; padding: 2px 0; }
+  .do-box li::before { content: "✓ "; }
+  .dont-box { background: #FCEBEB; border-radius: var(--border-radius-md); padding: 1rem; }
+  .dont-box .label { font-size: 11px; font-weight: 500; color: #A32D2D; margin-bottom: 8px; }
+  .dont-box li { font-size: 13px; color: #791F1F; line-height: 1.7; list-style: none; padding: 2px 0; }
+  .dont-box li::before { content: "✗ "; }
+
+  .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .story-btn {
+    padding: 10px 14px; border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-primary);
+    color: var(--color-text-primary); cursor: pointer; text-align: left;
+    font-size: 13px; font-weight: 500; transition: all 0.15s;
+  }
+  .story-btn:hover { background: var(--color-background-secondary); }
+  .story-btn.active { border-color: #185FA5; background: #E6F1FB; color: #185FA5; }
+  .story-detail { display: none; }
+  .story-detail.visible { display: block; }
+
+  .star-row { display: grid; grid-template-columns: 80px 1fr; gap: 8px; margin: 6px 0; align-items: start; }
+  .star-label { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); padding-top: 2px; }
+
+  .q-list { list-style: none; }
+  .q-list li {
+    padding: 10px 0;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    font-size: 14px; color: var(--color-text-primary); line-height: 1.6;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .q-list li:last-child { border-bottom: none; }
+  .q-num { font-size: 12px; font-weight: 500; color: var(--color-text-tertiary); min-width: 20px; padding-top: 2px; }
+
+  .mindset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  .mindset-card {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 1rem; font-size: 13px; color: var(--color-text-secondary); line-height: 1.7;
+  }
+  .mindset-card .title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 6px; }
+
+  .section-title { font-size: 13px; font-weight: 500; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin: 1.5rem 0 10px; }
+</style>
+
+<div class="guide">
+  <h2 class="sr-only">Adam Abdulkadir — Behavioral Interview Guide</h2>
+
+  <div class="nav">
+    <button class="nav-btn active" onclick="showSection('philosophy')">Philosophy</button>
+    <button class="nav-btn" onclick="showSection('intro')">Tell me about yourself</button>
+    <button class="nav-btn" onclick="showSection('stories')">Story bank</button>
+    <button class="nav-btn" onclick="showSection('common')">Common questions</button>
+    <button class="nav-btn" onclick="showSection('questions')">Your questions</button>
+    <button class="nav-btn" onclick="showSection('mindset')">Final mindset</button>
+  </div>
+
+  <!-- PHILOSOPHY -->
+  <div class="section visible" id="section-philosophy">
+    <div class="section-title">Core framework</div>
+    <div class="rule-box">
+      <strong>The natural STAR formula.</strong> Don't think Situation → Task → Action → Result. Think:
+      <br><br>
+      1. What was happening?<br>
+      2. What was the problem?<br>
+      3. What did <em>I</em> actually do?<br>
+      4. What happened after?
+    </div>
+
+    <div class="do-dont">
+      <div class="do-box">
+        <div class="label">Good answers sound like</div>
+        <ul>
+          <li>Reflective, not rehearsed</li>
+          <li>Include tradeoffs</li>
+          <li>Explain your thinking</li>
+          <li>Engineer talking naturally</li>
+          <li>Structured without sounding it</li>
+        </ul>
+      </div>
+      <div class="dont-box">
+        <div class="label">Bad answers sound like</div>
+        <ul>
+          <li>Memorized scripts</li>
+          <li>Over-polished</li>
+          <li>Buzzword soup</li>
+          <li>Too much detail</li>
+          <li>No clear outcome</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section-title">Delivery rules</div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Slow down</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        Speak 15–20% slower than feels natural. Pause more. Simplify explanations. Avoid over-explaining.<br><br>
+        You naturally think quickly and deeply — in interviews that can come across as rapid-fire technical dumping. Calm and measured always reads stronger than fast and thorough.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Don't try to sound senior</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        You already sound stronger than your years of experience because you think systemically, understand production systems, understand operational risk, and understand architecture.<br><br>
+        Your only goal is: <strong>communicate clearly and calmly.</strong> That alone separates you from most candidates at your level.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Be conversational, not corporate</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        No fake enthusiasm. No buzzword soup. No over-rehearsed answers.<br><br>
+        Aim for: <strong>conversational · confident · grounded · slightly technical · concise · adaptable.</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- INTRO -->
+  <div class="section" id="section-intro">
+    <div class="section-title">Phone screen version</div>
+    <div class="script-box">
+      <div class="script-label">Say this</div>
+      I'm a software engineer — most of my recent work has been backend-focused around Java 21, Spring Boot, Kafka, RabbitMQ, and Kubernetes, supporting production on a large distributed platform processing millions of messages daily across SMS, email, and IVR.<br><br>
+      I started more full-stack — React, Angular, Next.js — but over time I realized I genuinely enjoy backend systems, debugging, and understanding how large-scale systems behave in production. A lot of what I've done recently: incident investigation, microservice architecture, deployments, SQL analysis, and security remediation.<br><br>
+      I'm now looking for backend or strong full-stack roles where I can keep growing technically while working on systems at scale.
+    </div>
+
+    <div class="section-title">Why are you looking?</div>
+    <div class="script-box">
+      <div class="script-label">Say this</div>
+      I've learned a lot in my current role — distributed systems, production debugging, cloud infrastructure, enterprise-scale backend work. At this point I'm looking for somewhere I can take on more ownership and work more directly within a long-term engineering team.
+    </div>
+
+    <div class="section-title">Why do you want this role?</div>
+    <div class="script-box">
+      <div class="script-label">Say this</div>
+      A few things stood out. The technical stack aligns closely with the kind of work I enjoy — backend engineering, distributed systems, cloud infrastructure, modern Java. I like roles where engineering teams are working on systems that operate at real scale with real business impact. And honestly, I'm looking for a team where I can keep leveling up by working around strong engineers and larger technical challenges.
+    </div>
+
+    <div class="section-title">Greatest strength</div>
+    <div class="script-box">
+      <div class="script-label">Say this</div>
+      Debugging and system-level investigation. I'm good at tracing issues across services, logs, configs, infrastructure, and code paths without jumping to assumptions. A lot of my recent work has involved diagnosing production problems in distributed systems where the root cause wasn't obvious at first glance.
+    </div>
+
+    <div class="section-title">Weakness</div>
+    <div class="script-box">
+      <div class="script-label">Say this</div>
+      Earlier in my career I sometimes focused too much on implementation before fully stepping back to understand the broader architectural context. As I've gotten more experience in enterprise systems, I've gotten much better at slowing down upfront, validating assumptions, and making sure I understand the bigger picture before diving into code.
+    </div>
+  </div>
+
+  <!-- STORY BANK -->
+  <div class="section" id="section-stories">
+    <div class="section-title">Your 5 strongest stories — know these cold</div>
+    <div class="story-grid">
+      <button class="story-btn active" onclick="showStory('npe')">1. Production NPE dropping messages</button>
+      <button class="story-btn" onclick="showStory('appt')">2. Appointment Service extraction</button>
+      <button class="story-btn" onclick="showStory('rcs')">3. RCS duplicate record issue</button>
+      <button class="story-btn" onclick="showStory('sec')">4. CVE security remediation</button>
+      <button class="story-btn" onclick="showStory('ai')">5. AI engineering workflow</button>
+    </div>
+
+    <div class="story-detail visible" id="story-npe">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span class="tag tag-blue">debugging</span>
+        <span class="tag tag-teal">ownership</span>
+        <span class="tag tag-coral">distributed systems</span>
+        <span class="tag tag-amber">production support</span>
+      </div>
+      <div class="star-row"><span class="star-label">What was happening</span><span class="card-body">Messages were silently failing in one of our communication flows — and the difficult part was that failures weren't surfacing clearly in monitoring because they crossed async execution boundaries.</span></div>
+      <div class="star-row"><span class="star-label">The problem</span><span class="card-body">An NPE in MapStruct-based mapping logic under a specific edge case — causing around 16,000 messages per hour to fail silently.</span></div>
+      <div class="star-row"><span class="star-label">What I did</span><span class="card-body">Traced execution flow through logs, event mappings, and downstream processing behavior until I identified the crash vector. Validated the fix carefully against edge cases.</span></div>
+      <div class="star-row"><span class="star-label">Outcome</span><span class="card-body">Fixed and deployed. The biggest takeaway was how critical observability and execution tracing are in distributed async systems — and it directly influenced how I approach instrumentation now.</span></div>
+      <div class="rule-box" style="margin-top:12px;"><strong>Use when asked about:</strong> debugging, production incidents, attention to detail, ownership, working under pressure</div>
+    </div>
+
+    <div class="story-detail" id="story-appt">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span class="tag tag-blue">architecture</span>
+        <span class="tag tag-teal">ownership</span>
+        <span class="tag tag-coral">modernization</span>
+        <span class="tag tag-purple">communication</span>
+      </div>
+      <div class="star-row"><span class="star-label">What was happening</span><span class="card-body">Appointment Service was tightly coupled inside a much larger monolithic codebase — Kafka, S3, batch processing all bundled in, even though the service only needed a fraction of that.</span></div>
+      <div class="star-row"><span class="star-label">The problem</span><span class="card-body">Every deploy touched shared dependencies. Tightly coupled logic made independent scaling and maintenance impossible.</span></div>
+      <div class="star-row"><span class="star-label">What I did</span><span class="card-body">Identified true service boundaries, removed unused dependencies, rebuilt integrations around REST APIs and RabbitMQ. A big part of the work was documentation and assumption validation — not just coding.</span></div>
+      <div class="star-row"><span class="star-label">Outcome</span><span class="card-body">Standalone Spring Boot microservice, demoed successfully to the Director of Engineering. Reduced technical debt and gave the service clean deployment independence.</span></div>
+      <div class="rule-box" style="margin-top:12px;"><strong>Use when asked about:</strong> architecture decisions, taking initiative, technical leadership, refactoring, communication with leadership</div>
+    </div>
+
+    <div class="story-detail" id="story-rcs">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span class="tag tag-blue">SQL</span>
+        <span class="tag tag-amber">production debugging</span>
+        <span class="tag tag-coral">risk management</span>
+        <span class="tag tag-teal">careful deployment</span>
+      </div>
+      <div class="star-row"><span class="star-label">What was happening</span><span class="card-body">RCS channel fallback behavior was creating duplicate database records, which was causing query conflicts in production.</span></div>
+      <div class="star-row"><span class="star-label">The problem</span><span class="card-body">Multi-row query conflict from duplicate records — needed a fix that wouldn't cause downtime on a high-traffic system.</span></div>
+      <div class="star-row"><span class="star-label">What I did</span><span class="card-body">Analyzed production data patterns, query behavior, and fallback execution logic. Designed a zero-downtime SQL fix, validated against live prod data, and coordinated deployment across 7 environment-specific config files.</span></div>
+      <div class="star-row"><span class="star-label">Outcome</span><span class="card-body">Resolved cleanly. Reinforced how important operational caution is when making changes on high-traffic systems — the fix itself was straightforward; the careful execution was the hard part.</span></div>
+      <div class="rule-box" style="margin-top:12px;"><strong>Use when asked about:</strong> problem-solving, careful judgment, SQL/data skills, deployment risk, working in production</div>
+    </div>
+
+    <div class="story-detail" id="story-sec">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span class="tag tag-coral">security</span>
+        <span class="tag tag-blue">operations</span>
+        <span class="tag tag-teal">ownership</span>
+      </div>
+      <div class="star-row"><span class="star-label">What was happening</span><span class="card-body">Log4Shell (CVE-2021-44228) and Spring Cloud Function RCE (CVE-2022-22963) vulnerabilities flagged across multiple services and environments.</span></div>
+      <div class="star-row"><span class="star-label">The problem</span><span class="card-body">14 Logstash services across 5 environments — and distinguishing actual exploitable vulnerabilities from false positives caused by stale Docker overlay layers was non-trivial.</span></div>
+      <div class="star-row"><span class="star-label">What I did</span><span class="card-body">Rebuilt Docker images, updated dependencies, coordinated deployments, and verified remediation results through Qualys scans. Carefully separated real vulnerabilities from false positives before acting.</span></div>
+      <div class="star-row"><span class="star-label">Outcome</span><span class="card-body">Full remediation verified. Gave me a much stronger understanding of how security remediation works operationally at enterprise scale — not just the CVE, but the deployment mechanics around it.</span></div>
+      <div class="rule-box" style="margin-top:12px;"><strong>Use when asked about:</strong> security awareness, handling ambiguity, enterprise operations, initiative, breadth of experience</div>
+    </div>
+
+    <div class="story-detail" id="story-ai">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span class="tag tag-purple">innovation</span>
+        <span class="tag tag-blue">systems thinking</span>
+        <span class="tag tag-teal">process improvement</span>
+      </div>
+      <div class="star-row"><span class="star-label">What was happening</span><span class="card-body">LLM tools were generating inaccurate code suggestions on a large, complex codebase because they lacked reliable context about service architecture and dependencies.</span></div>
+      <div class="star-row"><span class="star-label">The problem</span><span class="card-body">Generic AI tooling hallucinated on enterprise codebases. Needed a way to give LLMs accurate, verifiable context without manual re-explanation every session.</span></div>
+      <div class="star-row"><span class="star-label">What I did</span><span class="card-body">Built a structured knowledge base of service architecture and repository overviews as verified context for LLM tools. Designed a CI pipeline to detect documentation drift when service code changes.</span></div>
+      <div class="star-row"><span class="star-label">Outcome</span><span class="card-body">More accurate reasoning and planning from LLM tools. The insight: this is less about "AI coding" and more about designing reliable context and verification systems around engineering workflows.</span></div>
+      <div class="rule-box" style="margin-top:12px;"><strong>Use when asked about:</strong> innovation, self-directed learning, process improvement, going beyond the job description</div>
+    </div>
+  </div>
+
+  <!-- COMMON QUESTIONS -->
+  <div class="section" id="section-common">
+    <div class="section-title">Situational & behavioral</div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Conflict with a coworker</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        <div class="script-box">
+          <div class="script-label">Say this</div>
+          I haven't had major interpersonal conflict, but I've had situations where engineers disagreed on implementation approaches or priorities. I try to focus discussions around tradeoffs — maintainability, operational risk, delivery timelines, long-term scalability — rather than who's right. Keeping it technical and collaborative usually resolves things quickly.
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Failure or mistake</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        <div class="script-box">
+          <div class="script-label">Say this</div>
+          I've had situations where I started investigating in the wrong area because I made assumptions too early about where an issue was. Over time I've become much more methodical — validating logs, payloads, configs, database state, and execution flow before narrowing in. I now treat assumption validation as part of the debugging process, not a step you skip to save time.
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Working under pressure / tight deadline</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        <div class="script-box">
+          <div class="script-label">Use story 1 or 3 here</div>
+          The NPE story (16k messages/hour dropping silently) or the RCS zero-downtime SQL fix are both strong here. Both involved real production pressure, clear stakes, and deliberate execution over panic.
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Took ownership beyond your role</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        <div class="script-box">
+          <div class="script-label">Use story 2 or 4 here</div>
+          Appointment Service extraction (ended with a director demo) or the CVE remediation across 14 services show you picked up work that wasn't handed to you and saw it through end-to-end.
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header" onclick="toggleCard(this)">
+        <h3>Explain a technical concept to a non-technical person</h3>
+        <i class="ti ti-chevron-down chevron" aria-hidden="true"></i>
+      </div>
+      <div class="card-body collapsed">
+        Pick a concept from your work — like what a microservice is, or what an NPE means — and explain it plainly without jargon. Demonstrate awareness of your audience. The point isn't the answer, it's showing you can adjust your communication register.
+      </div>
+    </div>
+  </div>
+
+  <!-- YOUR QUESTIONS -->
+  <div class="section" id="section-questions">
+    <div class="section-title">For recruiters</div>
+    <ul class="q-list">
+      <li><span class="q-num">1</span>What does success look like in this role during the first 6–12 months?</li>
+      <li><span class="q-num">2</span>What kinds of projects would this engineer likely work on first?</li>
+      <li><span class="q-num">3</span>How is the engineering organization structured?</li>
+      <li><span class="q-num">4</span>What's the balance between new development versus operational and support work?</li>
+      <li><span class="q-num">5</span>What are the biggest technical challenges the team is currently dealing with?</li>
+    </ul>
+
+    <div class="section-title">For engineering managers</div>
+    <ul class="q-list">
+      <li><span class="q-num">1</span>How are architectural decisions typically made on the team?</li>
+      <li><span class="q-num">2</span>How does the team approach ownership and production support?</li>
+      <li><span class="q-num">3</span>What does onboarding usually look like for engineers joining the platform?</li>
+      <li><span class="q-num">4</span>How much collaboration is there between backend, platform, and infrastructure teams?</li>
+      <li><span class="q-num">5</span>What kinds of engineers tend to do well on this team long-term?</li>
+    </ul>
+  </div>
+
+  <!-- MINDSET -->
+  <div class="section" id="section-mindset">
+    <div class="mindset-grid">
+      <div class="mindset-card">
+        <div class="title">You already have the substance</div>
+        You've debugged production NPEs dropping 16k messages/hour. You've extracted microservices and demoed to directors. You've remediated CVEs across 14 services. You don't need to fake depth — just communicate it clearly.
+      </div>
+      <div class="mindset-card">
+        <div class="title">Calm > fast</div>
+        Slow answers that show thinking always outperform fast answers that show nerves. If you need a second to think, take it. "Let me think about that for a second" is a green flag, not a red one.
+      </div>
+      <div class="mindset-card">
+        <div class="title">Tradeoffs > certainty</div>
+        The best engineers talk about tradeoffs, not perfect solutions. "We chose X over Y because of Z" shows more seniority than "X was the right answer."
+      </div>
+      <div class="mindset-card">
+        <div class="title">Story > resume</div>
+        Your resume lists what you did. Your stories explain how you think. The interview is about the thinking, not the bullet points.
+      </div>
+    </div>
+
+    <div class="rule-box" style="margin-top:16px; border-left: 3px solid #185FA5; border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0; padding-left: 1.25rem;">
+      <strong>The final rule:</strong> Communicate clearly and calmly. That alone separates you from most candidates at your level.
+    </div>
+  </div>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('visible');
+  event.target.classList.add('active');
+}
+function toggleCard(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  body.classList.toggle('collapsed');
+  chevron.classList.toggle('open');
+}
+function showStory(id) {
+  document.querySelectorAll('.story-detail').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.story-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('story-' + id).classList.add('visible');
+  event.target.classList.add('active');
+}
+</script>

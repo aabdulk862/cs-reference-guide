@@ -1,0 +1,526 @@
+{
+  "id": "spring-essentials-profiles",
+  "slug": "profiles",
+  "title": "Profiles",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "what-is-an-environment",
+      "heading": "What is an Environment?",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "An Environment is a setup of software and hardware used during different stages of software development."
+        },
+        {
+          "type": "paragraph",
+          "text": "It includes:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Operating System",
+            "Database",
+            "RAM",
+            "Network and storage configurations"
+          ]
+        }
+      ],
+      "wordCount": 26,
+      "subsections": [
+        {
+          "id": "typical-environments-in-an-enterprise-application",
+          "heading": "Typical Environments in an Enterprise Application",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Development (dev) – where coding happens",
+                "Testing (test) – for QA/testing team",
+                "Staging (pre-prod) – close to production",
+                "Production (prod) – live, user-facing"
+              ]
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "problem-statements",
+      "heading": "Problem Statements",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "requirement-1",
+          "heading": "Requirement 1:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "InfyTel (a telecom application):"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Uses Oracle DB in development",
+                "Uses MySQL DB in production"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "⛔ Challenge:"
+            },
+            {
+              "type": "paragraph",
+              "text": "Two different configurations are required – how does Spring know which to use?"
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        },
+        {
+          "id": "requirement-2",
+          "heading": "Requirement 2:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Logging configuration should be:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Verbose (DEBUG) in testing",
+                "Minimal (INFO) in production"
+              ]
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "spring-profiles-the-solution",
+      "heading": "Spring Profiles – The Solution",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "what-is-a-profile",
+          "heading": "What is a Profile?",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A Spring Profile is a way to segregate parts of your application (beans, properties) for different environments."
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "how-profiles-help",
+          "heading": "How Profiles Help:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Enable environment-based beans and configuration",
+                "Activate a specific profile at runtime",
+                "Spring loads the appropriate beans/config based on the active profile"
+              ]
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "identify-profile-based-beans-optional",
+      "heading": "Identify Profile-Based Beans (Optional)",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use the @Profile annotation on Spring beans."
+        }
+      ],
+      "wordCount": 7,
+      "subsections": [
+        {
+          "id": "class-level-example",
+          "heading": "Class-level example:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Profile(\"dev\")\n@Component\n@Aspect\npublic class LoggingAspect {\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "📝 This bean only loads if the \"dev\" profile is active."
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "method-level-example",
+          "heading": "Method-level example:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\npublic class SpringConfiguration {\n\n    @Bean(\"customerService\")\n    @Profile(\"dev\")\n    public CustomerService customerServiceDev() {\n        CustomerService service = new CustomerService();\n        service.setName(\"Development-Customer\");\n        return service;\n    }\n\n    @Bean(\"customerService\")\n    @Profile(\"prod\")\n    public CustomerService customerServiceProd() {\n        CustomerService service = new CustomerService();\n        service.setName(\"Production-Customer\");\n        return service;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "📝 Different implementations for different profiles."
+            }
+          ],
+          "wordCount": 6,
+          "subsections": []
+        },
+        {
+          "id": "important",
+          "heading": "Important:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Don’t mix class-level and method-level @Profile in the same bean – may cause NoSuchBeanDefinitionException."
+              ]
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "using-not-operator",
+          "heading": "Using NOT ! operator:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Profile(\"!test\")\n@Configuration\n@ComponentScan(basePackages = \"com.infy.service\")\npublic class SpringConfiguration { }",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "📝 Excludes the bean from loading in \"test\" profile."
+            }
+          ],
+          "wordCount": 9,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "create-environment-based-applicationproperties",
+      "heading": "Create Environment-Based application.properties",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Naming convention:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "application-<profile-name>.properties",
+          "runnable": false
+        }
+      ],
+      "wordCount": 2,
+      "subsections": [
+        {
+          "id": "application-devproperties",
+          "heading": "application-dev.properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.datasource.url=jdbc:oracle:thin:@localhost:1522:devDB\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=oracle.jdbc.driver.OracleDriver\n\nlogging.level.org.springframework.web=ERROR",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "application-testproperties",
+          "heading": "application-test.properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.datasource.url=jdbc:oracle:thin:@localhost:1522:testDB\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=oracle.jdbc.driver.OracleDriver\n\nlogging.level.org.springframework.web=DEBUG",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "application-prodproperties",
+          "heading": "application-prod.properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.datasource.url=jdbc:mysql://localhost:3306/prodDB?useSSL=false\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=com.mysql.jdbc.Driver\n\nlogging.level.org.springframework.web=INFO",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "activate-a-profile",
+      "heading": "Activate a Profile",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "applicationproperties",
+          "heading": "application.properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.profiles.active=dev\n# or multiple profiles\nspring.profiles.active=dev,prod",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "jvm-arguments-run-config",
+          "heading": "JVM Arguments (Run Config)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "-Dspring.profiles.active=dev",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "programmatic-activation",
+          "heading": "Programmatic Activation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public static void main(String[] args) {\n    System.setProperty(AbstractEnvironment.ACTIVE_PROFILES_PROPERTY_NAME, \"prod\");\n    SpringApplication.run(MyApplication.class, args);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "maven-profile-based-activation",
+      "heading": "Maven Profile-Based Activation",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-add-profiles-to-pomxml",
+          "heading": "1: Add Profiles to pom.xml",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<profiles>\n  <profile>\n    <id>dev</id>\n    <properties>\n      <spring.profiles.active>dev</spring.profiles.active>\n    </properties>\n  </profile>\n  <profile>\n    <id>test</id>\n    <activation>\n      <activeByDefault>true</activeByDefault>\n    </activation>\n    <properties>\n      <spring.profiles.active>test</spring.profiles.active>\n    </properties>\n  </profile>\n</profiles>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "2-update-applicationproperties",
+          "heading": "2: Update application.properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "spring.profiles.active=@spring.profiles.active@",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "3-build-using-maven",
+          "heading": "3: Build Using Maven",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Right-click Project → Run As → Maven Build",
+                "Goals: clean package",
+                "Profiles: dev",
+                "Check: Skip Tests"
+              ]
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Description"
+          ],
+          "rows": [
+            [
+              "@Profile",
+              "Defines profile-based beans"
+            ],
+            [
+              "application-<profile>.properties",
+              "Environment-based config"
+            ],
+            [
+              "spring.profiles.active",
+              "Activates profile(s)"
+            ],
+            [
+              "Maven Profiles",
+              "Activate profiles during build"
+            ],
+            [
+              "VM/System args",
+              "Activate profiles at runtime"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 24,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Profile(\"dev\")\n@Component\n@Aspect\npublic class LoggingAspect {\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\npublic class SpringConfiguration {\n\n    @Bean(\"customerService\")\n    @Profile(\"dev\")\n    public CustomerService customerServiceDev() {\n        CustomerService service = new CustomerService();\n        service.setName(\"Development-Customer\");\n        return service;\n    }\n\n    @Bean(\"customerService\")\n    @Profile(\"prod\")\n    public CustomerService customerServiceProd() {\n        CustomerService service = new CustomerService();\n        service.setName(\"Production-Customer\");\n        return service;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Profile(\"!test\")\n@Configuration\n@ComponentScan(basePackages = \"com.infy.service\")\npublic class SpringConfiguration { }",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "application-<profile-name>.properties",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.url=jdbc:oracle:thin:@localhost:1522:devDB\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=oracle.jdbc.driver.OracleDriver\n\nlogging.level.org.springframework.web=ERROR",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.url=jdbc:oracle:thin:@localhost:1522:testDB\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=oracle.jdbc.driver.OracleDriver\n\nlogging.level.org.springframework.web=DEBUG",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.url=jdbc:mysql://localhost:3306/prodDB?useSSL=false\nspring.datasource.username=root\nspring.datasource.password=root\nspring.datasource.driver-class=com.mysql.jdbc.Driver\n\nlogging.level.org.springframework.web=INFO",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.profiles.active=dev\n# or multiple profiles\nspring.profiles.active=dev,prod",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "-Dspring.profiles.active=dev",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public static void main(String[] args) {\n    System.setProperty(AbstractEnvironment.ACTIVE_PROFILES_PROPERTY_NAME, \"prod\");\n    SpringApplication.run(MyApplication.class, args);\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<profiles>\n  <profile>\n    <id>dev</id>\n    <properties>\n      <spring.profiles.active>dev</spring.profiles.active>\n    </properties>\n  </profile>\n  <profile>\n    <id>test</id>\n    <activation>\n      <activeByDefault>true</activeByDefault>\n    </activation>\n    <properties>\n      <spring.profiles.active>test</spring.profiles.active>\n    </properties>\n  </profile>\n</profiles>",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.profiles.active=@spring.profiles.active@",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Profiles.md",
+    "wordCount": 217,
+    "sectionCount": 26
+  }
+}

@@ -1,0 +1,386 @@
+{
+  "id": "spring-rest-i18n-with-restcontrolleradvice-for-validation",
+  "slug": "i18n-with-restcontrolleradvice-for-validation",
+  "title": "i18n with @RestControllerAdvice for Validation",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "definition",
+      "heading": "Definition:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Internationalization (i18n) is the process of designing an application so it can support multiple languages and regional settings (e.g., date formats, currencies, etc.) without changing the codebase."
+        },
+        {
+          "type": "paragraph",
+          "text": "The term i18n comes from:"
+        },
+        {
+          "type": "paragraph",
+          "text": "“i” + 18 letters + “n” = i18n"
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    },
+    {
+      "id": "why-use-internationalization",
+      "heading": "Why Use Internationalization?",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Benefit",
+            "Description"
+          ],
+          "rows": [
+            [
+              "🌐 Global Reach",
+              "Serve users in their local languages"
+            ],
+            [
+              "🧠 Maintainability",
+              "Clean separation between logic and text"
+            ],
+            [
+              "🔄 Flexibility",
+              "Easily update language files without touching the code"
+            ],
+            [
+              "🔧 Reusability",
+              "One codebase supports multiple regions/languages"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "spring-boot-internationalization-support",
+      "heading": "Spring Boot Internationalization Support",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Boot supports i18n through:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MessageSource: Interface for resolving messages from .properties files.",
+            "LocaleResolver: Determines the user's locale (e.g., from request headers or cookies)."
+          ]
+        }
+      ],
+      "wordCount": 24,
+      "subsections": [
+        {
+          "id": "1-create-language-resource-files",
+          "heading": "1. Create Language Resource Files",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Inside src/main/resources, create property files like:"
+            }
+          ],
+          "wordCount": 6,
+          "subsections": []
+        },
+        {
+          "id": "messagesproperties-default",
+          "heading": "messages.properties (default)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "greeting=Hello\nfarewell=Goodbye",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "messages_frproperties-french",
+          "heading": "messages_fr.properties (French)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "greeting=Bonjour\nfarewell=Au revoir",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "messages_esproperties-spanish",
+          "heading": "messages_es.properties (Spanish)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "greeting=Hola\nfarewell=Adiós",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "2-configure-messagesource-bean",
+          "heading": "2. Configure MessageSource Bean",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Add this to your main Spring Boot config class or a new @Configuration class:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\npublic class InternationalizationConfig {\n\n    @Bean\n    public MessageSource messageSource() {\n        ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();\n        messageSource.setBasename(\"messages\"); // base name of properties file\n        messageSource.setDefaultEncoding(\"UTF-8\");\n        return messageSource;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "3-add-locale-resolver-optional",
+          "heading": "3. Add Locale Resolver (Optional)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "To detect the user's locale dynamically via HTTP request:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic LocaleResolver localeResolver() {\n    SessionLocaleResolver slr = new SessionLocaleResolver();\n    slr.setDefaultLocale(Locale.ENGLISH);\n    return slr;\n}\n\n@Bean\npublic LocaleChangeInterceptor localeChangeInterceptor() {\n    LocaleChangeInterceptor lci = new LocaleChangeInterceptor();\n    lci.setParamName(\"lang\"); // e.g., ?lang=fr\n    return lci;\n}\n\n@Override\npublic void addInterceptors(InterceptorRegistry registry) {\n    registry.addInterceptor(localeChangeInterceptor());\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 9,
+          "subsections": []
+        },
+        {
+          "id": "4-use-messagesource-in-controllers",
+          "heading": "4. Use MessageSource in Controllers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\npublic class GreetingController {\n\n    @Autowired\n    private MessageSource messageSource;\n\n    @GetMapping(\"/greeting\")\n    public String greeting(@RequestParam(name = \"lang\", required = false) Locale locale) {\n        return messageSource.getMessage(\"greeting\", null, locale);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "example-urls",
+      "heading": "Example URLs",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "URL",
+            "Result"
+          ],
+          "rows": [
+            [
+              "http://localhost:8080/greeting",
+              "Hello (default English)"
+            ],
+            [
+              "http://localhost:8080/greeting?lang=fr",
+              "Bonjour"
+            ],
+            [
+              "http://localhost:8080/greeting?lang=es",
+              "Hola"
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "You can localize validation messages too!"
+        }
+      ],
+      "wordCount": 16,
+      "subsections": [
+        {
+          "id": "example",
+          "heading": "Example:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In messages.properties:"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "name.notblank=Name cannot be blank",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "In messages_fr.properties:"
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "name.notblank=Le nom ne peut pas être vide",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "In DTO:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class UserDTO {\n    @NotBlank(message = \"{name.notblank}\")\n    private String name;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 6,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Component",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "messages.properties",
+              "Holds key-value language pairs"
+            ],
+            [
+              "MessageSource",
+              "Loads messages from property files"
+            ],
+            [
+              "LocaleResolver",
+              "Determines locale from request/session"
+            ],
+            [
+              "LocaleChangeInterceptor",
+              "Allows changing language via query param"
+            ],
+            [
+              "@RequestParam Locale locale",
+              "Accepts locale from user"
+            ],
+            [
+              "messageSource.getMessage(...)",
+              "Retrieves localized message"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Multi-language e-commerce platforms",
+            "Global mobile or web applications",
+            "Localized email or SMS templates",
+            "Date, time, and currency localization"
+          ]
+        }
+      ],
+      "wordCount": 18,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "",
+      "code": "greeting=Hello\nfarewell=Goodbye",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "greeting=Bonjour\nfarewell=Au revoir",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "greeting=Hola\nfarewell=Adiós",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\npublic class InternationalizationConfig {\n\n    @Bean\n    public MessageSource messageSource() {\n        ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();\n        messageSource.setBasename(\"messages\"); // base name of properties file\n        messageSource.setDefaultEncoding(\"UTF-8\");\n        return messageSource;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic LocaleResolver localeResolver() {\n    SessionLocaleResolver slr = new SessionLocaleResolver();\n    slr.setDefaultLocale(Locale.ENGLISH);\n    return slr;\n}\n\n@Bean\npublic LocaleChangeInterceptor localeChangeInterceptor() {\n    LocaleChangeInterceptor lci = new LocaleChangeInterceptor();\n    lci.setParamName(\"lang\"); // e.g., ?lang=fr\n    return lci;\n}\n\n@Override\npublic void addInterceptors(InterceptorRegistry registry) {\n    registry.addInterceptor(localeChangeInterceptor());\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\npublic class GreetingController {\n\n    @Autowired\n    private MessageSource messageSource;\n\n    @GetMapping(\"/greeting\")\n    public String greeting(@RequestParam(name = \"lang\", required = false) Locale locale) {\n        return messageSource.getMessage(\"greeting\", null, locale);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "name.notblank=Name cannot be blank",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "name.notblank=Le nom ne peut pas être vide",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class UserDTO {\n    @NotBlank(message = \"{name.notblank}\")\n    private String name;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Internationalization (i18n).md",
+    "wordCount": 205,
+    "sectionCount": 14
+  }
+}

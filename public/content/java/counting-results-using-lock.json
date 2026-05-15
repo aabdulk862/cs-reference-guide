@@ -1,0 +1,422 @@
+{
+  "id": "concurrency-counting-results-using-lock",
+  "slug": "counting-results-using-lock",
+  "title": "Counting Results Using Lock",
+  "category": "Java",
+  "sections": [
+    {
+      "id": "core-interfaces-and-classes",
+      "heading": "Core Interfaces and Classes",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Problem",
+            "Solution",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Need to execute tasks",
+              "Executor",
+              "Has execute(Runnable) to run a task"
+            ],
+            [
+              "Need better control",
+              "ExecutorService",
+              "Supports shutdown(), awaitTermination(), and more"
+            ],
+            [
+              "Need easy creation of executors",
+              "Executors",
+              "Factory class to create different types of thread pools"
+            ],
+            [
+              "Need result or progress tracking",
+              "Future",
+              "Returned by submit() to represent pending results"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 51,
+      "subsections": []
+    },
+    {
+      "id": "executor-vs-thread-example",
+      "heading": "Executor vs. Thread Example",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Instead of:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "Thread thread = new Thread(new UploadResult());\nthread.start();",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Use:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ExecutorService executor = Executors.newSingleThreadExecutor();\nexecutor.execute(new UploadResult());",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "This is more scalable and maintainable."
+        }
+      ],
+      "wordCount": 9,
+      "subsections": []
+    },
+    {
+      "id": "benefits-of-using-executor-framework",
+      "heading": "Benefits of Using Executor Framework",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "✅ Cleaner code — no need to extend Thread or manage them manually.",
+            "✅ More efficient — uses thread pools and avoids overhead of thread creation.",
+            "✅ Better control — can cancel, shutdown, monitor tasks.",
+            "✅ Scalable — fits into real-world applications like web servers, batch processing, etc."
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Method",
+            "Description"
+          ],
+          "rows": [
+            [
+              "newFixedThreadPool(int)",
+              "Fixed number of threads. Best for predictable workload."
+            ],
+            [
+              "newCachedThreadPool()",
+              "Dynamically grows if needed. Good for many short tasks."
+            ],
+            [
+              "newSingleThreadExecutor()",
+              "Executes tasks sequentially using a single worker thread."
+            ]
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Concurrency/image%201.png"
+        }
+      ],
+      "wordCount": 78,
+      "subsections": []
+    },
+    {
+      "id": "real-example-recap",
+      "heading": "Real Example Recap",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ExecutorService pool = Executors.newFixedThreadPool(2);\nfor (int i = 1; i <= 3; i++) {\n    pool.execute(new UploadResult(\"UploadResult:\" + i));\n}\npool.shutdown();\nwhile (!pool.isTerminated()) { }\nSystem.out.println(\"Finished all threads\");",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Creates a pool of 2 threads.",
+            "Submits 3 tasks.",
+            "Threads are reused — e.g., thread-2 executes task 2 and 3."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Output example:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "pool-1-thread-2 (Start) UploadResult:2\npool-1-thread-1 (Start) UploadResult:1\npool-1-thread-1 (End) UploadResult:1\npool-1-thread-2 (End) UploadResult:2\npool-1-thread-2 (Start) UploadResult:3\npool-1-thread-2 (End) UploadResult:3\nFinished all threads",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Callable is similar to Runnable but allows the task to return a result or throw an exception.",
+            "Future represents the result of an asynchronous computation. You can check whether the task is finished, cancel it, and get the result once it's done."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%202.png",
+          "alt": "image.png",
+          "originalPath": "Concurrency/image%202.png"
+        }
+      ],
+      "wordCount": 64,
+      "subsections": []
+    },
+    {
+      "id": "methods-of-future",
+      "heading": "Methods of Future:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "get(): Blocks and waits for the task to complete, then returns the result.",
+            "isDone(): Returns true if the task is completed.",
+            "isCancelled(): Returns true if the task was canceled.",
+            "cancel(): Attempts to cancel the task."
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    },
+    {
+      "id": "example-using-callable-with-future",
+      "heading": "Example: Using Callable with Future",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class UploadResult implements Callable<Boolean> {\n    @Override\n    public Boolean call() throws Exception {\n        // Simulate upload logic\n        try {\n            Thread.sleep(2000);\n            return Boolean.TRUE; // Successful upload\n        } catch (Exception e) {\n            return Boolean.FALSE; // Failed upload\n        }\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "In the main class:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ExecutorService exService = Executors.newSingleThreadExecutor();\nFuture<Boolean> future = exService.submit(new UploadResult());\ntry {\n    System.out.println(\"Upload completed: \" + future.get()); // Get the result\n} catch (InterruptedException | ExecutionException e) {\n    System.out.println(e.getMessage());\n}\nexService.shutdown();",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "This will print:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "Upload completed: true",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Here, get() blocks the main thread until the upload is complete and returns the result."
+        },
+        {
+          "type": "paragraph",
+          "text": "While synchronization using the synchronized keyword works, it has limitations:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Threads can be blocked indefinitely if they don't acquire the lock.",
+            "Synchronization can only be applied to methods or code blocks."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Lock (in java.util.concurrent.locks) offers more flexibility:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Allows acquiring and releasing locks at different places in code.",
+            "Can use tryLock() to avoid indefinite waiting."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%203.png",
+          "alt": "image.png",
+          "originalPath": "Concurrency/image%203.png"
+        }
+      ],
+      "wordCount": 76,
+      "subsections": []
+    },
+    {
+      "id": "methods-of-lock",
+      "heading": "Methods of Lock:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "lock(): Acquires the lock and blocks until it's available.",
+            "tryLock(): Attempts to acquire the lock without blocking.",
+            "unlock(): Releases the lock."
+          ]
+        }
+      ],
+      "wordCount": 21,
+      "subsections": []
+    },
+    {
+      "id": "reentrantlock-and-fairness",
+      "heading": "ReentrantLock and Fairness",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "ReentrantLock is a specific implementation of Lock that:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Supports fairness (ensures the longest-waiting thread gets the lock first).",
+            "Can be used in multiple methods for better flexibility in acquiring and releasing locks."
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ReentrantLock lock = new ReentrantLock(true); // Fair lock\nlock.lock();\n// Critical section code\nlock.unlock();\n",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Here's how we can safely increment a counter for result uploads using a lock to avoid race conditions:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "class UploadResultWithLock implements Runnable {\n    private ReentrantLock lock;\n    private int resultCount = 0;\n\n    public UploadResultWithLock(ReentrantLock lock) {\n        this.lock = lock;\n    }\n\n    @Override\n    public void run() {\n        try {\n            lock.lock();\n            // Simulate uploading result\n            Thread.sleep(2000);\n            resultCount++; // Increment count safely\n        } catch (InterruptedException e) {\n            System.out.println(e.getMessage());\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Main method with thread pool:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public static void main(String[] args) {\n    ExecutorService exServicePool = Executors.newFixedThreadPool(2);  // 2 threads\n    ReentrantLock lock = new ReentrantLock();  // Create lock\n    UploadResultWithLock uploadRunnable = new UploadResultWithLock(lock);\n\n    for (int i = 0; i < 3; i++) {\n        exServicePool.execute(uploadRunnable);  // Submit 3 tasks\n    }\n\n    exServicePool.shutdown();\n    while (!exServicePool.isTerminated()) { }  // Wait until all threads are finished\n    System.out.println(\"Finished all threads\");\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Output:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "pool-1-thread-2 (Start) - Results uploaded: 0\npool-1-thread-1 (Start) - Results uploaded: 0\npool-1-thread-2 (End) - Results uploaded: 1\npool-1-thread-2 (Start) - Results uploaded: 1\npool-1-thread-1 (End) - Results uploaded: 2\npool-1-thread-2 (End) - Results uploaded: 3\nFinished all threads",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Here, the ReentrantLock ensures thread safety when incrementing the resultCount."
+        }
+      ],
+      "wordCount": 66,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Concurrency/image%201.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%202.png",
+      "alt": "image.png",
+      "originalPath": "Concurrency/image%202.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency/image%203.png",
+      "alt": "image.png",
+      "originalPath": "Concurrency/image%203.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "Thread thread = new Thread(new UploadResult());\nthread.start();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ExecutorService executor = Executors.newSingleThreadExecutor();\nexecutor.execute(new UploadResult());",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ExecutorService pool = Executors.newFixedThreadPool(2);\nfor (int i = 1; i <= 3; i++) {\n    pool.execute(new UploadResult(\"UploadResult:\" + i));\n}\npool.shutdown();\nwhile (!pool.isTerminated()) { }\nSystem.out.println(\"Finished all threads\");",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "pool-1-thread-2 (Start) UploadResult:2\npool-1-thread-1 (Start) UploadResult:1\npool-1-thread-1 (End) UploadResult:1\npool-1-thread-2 (End) UploadResult:2\npool-1-thread-2 (Start) UploadResult:3\npool-1-thread-2 (End) UploadResult:3\nFinished all threads",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class UploadResult implements Callable<Boolean> {\n    @Override\n    public Boolean call() throws Exception {\n        // Simulate upload logic\n        try {\n            Thread.sleep(2000);\n            return Boolean.TRUE; // Successful upload\n        } catch (Exception e) {\n            return Boolean.FALSE; // Failed upload\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ExecutorService exService = Executors.newSingleThreadExecutor();\nFuture<Boolean> future = exService.submit(new UploadResult());\ntry {\n    System.out.println(\"Upload completed: \" + future.get()); // Get the result\n} catch (InterruptedException | ExecutionException e) {\n    System.out.println(e.getMessage());\n}\nexService.shutdown();",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Upload completed: true",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ReentrantLock lock = new ReentrantLock(true); // Fair lock\nlock.lock();\n// Critical section code\nlock.unlock();\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "class UploadResultWithLock implements Runnable {\n    private ReentrantLock lock;\n    private int resultCount = 0;\n\n    public UploadResultWithLock(ReentrantLock lock) {\n        this.lock = lock;\n    }\n\n    @Override\n    public void run() {\n        try {\n            lock.lock();\n            // Simulate uploading result\n            Thread.sleep(2000);\n            resultCount++; // Increment count safely\n        } catch (InterruptedException e) {\n            System.out.println(e.getMessage());\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public static void main(String[] args) {\n    ExecutorService exServicePool = Executors.newFixedThreadPool(2);  // 2 threads\n    ReentrantLock lock = new ReentrantLock();  // Create lock\n    UploadResultWithLock uploadRunnable = new UploadResultWithLock(lock);\n\n    for (int i = 0; i < 3; i++) {\n        exServicePool.execute(uploadRunnable);  // Submit 3 tasks\n    }\n\n    exServicePool.shutdown();\n    while (!exServicePool.isTerminated()) { }  // Wait until all threads are finished\n    System.out.println(\"Finished all threads\");\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "pool-1-thread-2 (Start) - Results uploaded: 0\npool-1-thread-1 (Start) - Results uploaded: 0\npool-1-thread-2 (End) - Results uploaded: 1\npool-1-thread-2 (Start) - Results uploaded: 1\npool-1-thread-1 (End) - Results uploaded: 2\npool-1-thread-2 (End) - Results uploaded: 3\nFinished all threads",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Concurrency/Concurrency.md",
+    "wordCount": 400,
+    "sectionCount": 8
+  }
+}

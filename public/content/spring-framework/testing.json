@@ -1,0 +1,432 @@
+{
+  "id": "testing-testing",
+  "slug": "testing",
+  "title": "Testing",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "introduction-to-testing",
+      "heading": "Introduction to Testing",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "why-test-the-service-layer",
+          "heading": "Why Test the Service Layer?",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "The service layer contains business logic and coordinates between the controller and the data layer.",
+                "Ensuring it behaves correctly under different scenarios is essential."
+              ]
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        },
+        {
+          "id": "dependencies-for-testing",
+          "heading": "Dependencies for Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "To test in Spring Boot, include the spring-boot-starter-test in your pom.xml:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n\t<groupId>org.springframework.boot</groupId>\n\t<artifactId>spring-boot-starter-test</artifactId>\n\t<scope>test</scope>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "this-starter-includes",
+          "heading": "This starter includes:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "JUnit 5 - Java testing framework.",
+                "Mockito - Mocking framework.",
+                "Hamcrest, AssertJ - Assertion libraries.",
+                "Spring Test, Spring Boot Test - Spring-specific testing tools."
+              ]
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "writing-unit-tests-using-junit",
+      "heading": "Writing Unit Tests Using JUnit",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-service-layer-class",
+          "heading": "Example Service Layer Class",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service(value=\"customerLoginService\")\npublic class CustomerLoginServiceImpl implements CustomerLoginService {\n\t@Autowired\n\tprivate CustomerLoginRepository customerLoginRepository;\n\n\tpublic String authenticateCustomer(CustomerLoginDTO customerLoginDTO) \n\tthrows InfyBankException {\n\t\tString toRet = null;\n\t\tCustomerLoginDTO customerLoginFromRepository = \n\t\tcustomerLoginRepository.getCustomerLoginByLoginName(customerLoginDTO.getLoginName());\n\n\t\tif (customerLoginDTO.getPassword()\n\t\t\t\t\t\t\t\t\t\t\t\t.equals(customerLoginFromRepository.getPassword())) {\n\t\t\ttoRet = \"SUCCESS\";\n\t\t} else {\n\t\t\tthrow new InfyBankException(\"Service.WRONG_CREDENTIALS\");\n\t\t}\n\t\treturn toRet;\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "test-class-with-junit",
+          "heading": "Test Class with JUnit",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@SpringBootTest\npublic class DemoSpringBootCoreApplicationTests {\n\t@Autowired\n\tCustomerLoginService customerLoginService;\n\n\t@Test\n\tpublic void authenticateCustomerTestValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica123\");\n\n\t\tString actual = customerLoginService.authenticateCustomer(customer);\n\t\tAssertions.assertEquals(\"SUCCESS\", actual);\n\t}\n\n\t@Test\n\tpublic void authenticateCustomerTestInValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica13\");\n\n\t    InfyBankException exception = Assertions.assertThrows(\n\t\t\tInfyBankException.class,\n\t\t\t() -> customerLoginService.authenticateCustomer(customer)\n\t\t);\n\t\tAssertions.assertEquals(\"Service.WRONG_CREDENTIALS\", exception.getMessage());\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "annotations-used",
+          "heading": "Annotations Used",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "@SpringBootTest: Loads the full application context for integration testing."
+              ]
+            }
+          ],
+          "wordCount": 9,
+          "subsections": []
+        },
+        {
+          "id": "problems-with-direct-unit-testing",
+          "heading": "Problems with Direct Unit Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "CustomerLoginServiceImpl depends on CustomerLoginRepository.",
+                "Direct testing would also require the repository to work correctly.",
+                "Unit tests should test in isolation, so we need to mock the repository."
+              ]
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "mockito-mocking-framework",
+      "heading": "Mockito: Mocking Framework",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "what-is-mocking",
+          "heading": "What is Mocking?",
+          "level": 3,
+          "content": [
+            {
+              "type": "blockquote",
+              "text": "Mocking means simulating the behavior of real objects to isolate the component under test."
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Testing/Testing/image.png",
+              "alt": "image.png",
+              "originalPath": "Testing/image.png"
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "mockito-annotations",
+          "heading": "Mockito Annotations",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Annotation",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "@Mock",
+                  "Creates a mock object."
+                ],
+                [
+                  "@InjectMocks",
+                  "Creates the object under test and injects the mock dependencies."
+                ]
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Mock\nCustomerLoginRepository customerLoginRepository;\n\n@InjectMocks\nCustomerLoginService customerLoginService = new CustomerLoginServiceImpl();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "configuring-behavior-with-mockito",
+      "heading": "Configuring Behavior with Mockito",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "syntax",
+          "heading": "Syntax",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "Mockito.when(mock.methodCall()).thenReturn(expectedValue);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "Mockito.when(customerRepository.getCustomerByCustomerId(1002)).thenReturn(null);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "matchers",
+          "heading": "Matchers",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Used to define flexible return conditions."
+              ]
+            },
+            {
+              "type": "table",
+              "headers": [
+                "Matcher",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "anyInt()",
+                  "Matches any int/Integer"
+                ],
+                [
+                  "anyBoolean()",
+                  "Matches any boolean/Boolean"
+                ],
+                [
+                  "anyDouble()",
+                  "Matches any double/Double"
+                ],
+                [
+                  "any()",
+                  "Matches any object"
+                ]
+              ]
+            },
+            {
+              "type": "blockquote",
+              "text": "🔴 Do not use matchers in return values. Only use exact values in .thenReturn(...)."
+            }
+          ],
+          "wordCount": 38,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "final-test-class-with-mockito",
+      "heading": "Final Test Class with Mockito",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@SpringBootTest\npublic class DemoSpringBootCoreApplicationTests {\n\n\t@Mock\n\tCustomerLoginRepository customerLoginRepository;\n\n\t@InjectMocks\n\tCustomerLoginService customerLoginService = new CustomerLoginServiceImpl();\n\n\t@Test\n\tpublic void authenticateCustomerTestValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica123\");\n\n\t\tMockito.when(customerLoginRepository.getCustomerLoginByLoginName(\"monica\"))\n\t\t       .thenReturn(customer);\n\n\t\tString actual = customerLoginService.authenticateCustomer(customer);\n\t\tAssertions.assertEquals(\"SUCCESS\", actual);\n\t}\n\n\t@Test\n\tpublic void authenticateCustomerTestInValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica12\");\n\n\t\tCustomerLoginDTO fromRepository = new CustomerLoginDTO();\n\t\tfromRepository.setLoginName(\"monica\");\n\t\tfromRepository.setPassword(\"monica123\");\n\n\t\tMockito.when(customerLoginRepository.getCustomerLoginByLoginName(\"monica\"))\n\t\t       .thenReturn(fromRepository);\n\n\t\tInfyBankException exception = Assertions.assertThrows(\n\t\t\tInfyBankException.class,\n\t\t\t() -> customerLoginService.authenticateCustomer(customer)\n\t\t);\n\t\tAssertions.assertEquals(\"Service.WRONG_CREDENTIALS\", exception.getMessage());\n\t}\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "key-concepts-demonstrated",
+          "heading": "Key Concepts Demonstrated",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Mocking repository to isolate the service.",
+                "Validating expected behavior for both success and failure cases.",
+                "Using Assertions.assertThrows() to test exceptions."
+              ]
+            }
+          ],
+          "wordCount": 20,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Concept",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Unit Testing",
+              "Testing a single unit (e.g., method/class) in isolation."
+            ],
+            [
+              "Mocking",
+              "Replacing dependencies with controlled stand-ins."
+            ],
+            [
+              "Mockito",
+              "A Java mocking framework used in unit tests."
+            ],
+            [
+              "@Mock",
+              "Declares a mock object."
+            ],
+            [
+              "@InjectMocks",
+              "Injects mock dependencies into the object under test."
+            ],
+            [
+              "@SpringBootTest",
+              "Loads the Spring application context for testing."
+            ],
+            [
+              "Matchers",
+              "Allow flexible stubbing behavior (anyInt(), any(), etc)."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Testing/Testing/image.png",
+      "alt": "image.png",
+      "originalPath": "Testing/image.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<dependency>\n\t<groupId>org.springframework.boot</groupId>\n\t<artifactId>spring-boot-starter-test</artifactId>\n\t<scope>test</scope>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service(value=\"customerLoginService\")\npublic class CustomerLoginServiceImpl implements CustomerLoginService {\n\t@Autowired\n\tprivate CustomerLoginRepository customerLoginRepository;\n\n\tpublic String authenticateCustomer(CustomerLoginDTO customerLoginDTO) \n\tthrows InfyBankException {\n\t\tString toRet = null;\n\t\tCustomerLoginDTO customerLoginFromRepository = \n\t\tcustomerLoginRepository.getCustomerLoginByLoginName(customerLoginDTO.getLoginName());\n\n\t\tif (customerLoginDTO.getPassword()\n\t\t\t\t\t\t\t\t\t\t\t\t.equals(customerLoginFromRepository.getPassword())) {\n\t\t\ttoRet = \"SUCCESS\";\n\t\t} else {\n\t\t\tthrow new InfyBankException(\"Service.WRONG_CREDENTIALS\");\n\t\t}\n\t\treturn toRet;\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@SpringBootTest\npublic class DemoSpringBootCoreApplicationTests {\n\t@Autowired\n\tCustomerLoginService customerLoginService;\n\n\t@Test\n\tpublic void authenticateCustomerTestValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica123\");\n\n\t\tString actual = customerLoginService.authenticateCustomer(customer);\n\t\tAssertions.assertEquals(\"SUCCESS\", actual);\n\t}\n\n\t@Test\n\tpublic void authenticateCustomerTestInValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica13\");\n\n\t    InfyBankException exception = Assertions.assertThrows(\n\t\t\tInfyBankException.class,\n\t\t\t() -> customerLoginService.authenticateCustomer(customer)\n\t\t);\n\t\tAssertions.assertEquals(\"Service.WRONG_CREDENTIALS\", exception.getMessage());\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Mock\nCustomerLoginRepository customerLoginRepository;\n\n@InjectMocks\nCustomerLoginService customerLoginService = new CustomerLoginServiceImpl();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Mockito.when(mock.methodCall()).thenReturn(expectedValue);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Mockito.when(customerRepository.getCustomerByCustomerId(1002)).thenReturn(null);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@SpringBootTest\npublic class DemoSpringBootCoreApplicationTests {\n\n\t@Mock\n\tCustomerLoginRepository customerLoginRepository;\n\n\t@InjectMocks\n\tCustomerLoginService customerLoginService = new CustomerLoginServiceImpl();\n\n\t@Test\n\tpublic void authenticateCustomerTestValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica123\");\n\n\t\tMockito.when(customerLoginRepository.getCustomerLoginByLoginName(\"monica\"))\n\t\t       .thenReturn(customer);\n\n\t\tString actual = customerLoginService.authenticateCustomer(customer);\n\t\tAssertions.assertEquals(\"SUCCESS\", actual);\n\t}\n\n\t@Test\n\tpublic void authenticateCustomerTestInValidCredentials() throws InfyBankException {\n\t\tCustomerLoginDTO customer = new CustomerLoginDTO();\n\t\tcustomer.setLoginName(\"monica\");\n\t\tcustomer.setPassword(\"monica12\");\n\n\t\tCustomerLoginDTO fromRepository = new CustomerLoginDTO();\n\t\tfromRepository.setLoginName(\"monica\");\n\t\tfromRepository.setPassword(\"monica123\");\n\n\t\tMockito.when(customerLoginRepository.getCustomerLoginByLoginName(\"monica\"))\n\t\t       .thenReturn(fromRepository);\n\n\t\tInfyBankException exception = Assertions.assertThrows(\n\t\t\tInfyBankException.class,\n\t\t\t() -> customerLoginService.authenticateCustomer(customer)\n\t\t);\n\t\tAssertions.assertEquals(\"Service.WRONG_CREDENTIALS\", exception.getMessage());\n\t}\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Testing/Testing.md",
+    "wordCount": 242,
+    "sectionCount": 20
+  }
+}

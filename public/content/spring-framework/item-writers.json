@@ -1,0 +1,261 @@
+{
+  "id": "spring-batch-item-writers",
+  "slug": "item-writers",
+  "title": "Item Writers",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch ItemWriters are used to write processed data to various destinations, including files, databases, XML, or JSON. Each writer is specialized for a particular type of output."
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    },
+    {
+      "id": "flat-file-itemwriter",
+      "heading": "Flat File ItemWriter",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: FlatFileItemWriter"
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to write data into flat files (CSV, TXT, etc.)."
+        }
+      ],
+      "wordCount": 12,
+      "subsections": [
+        {
+          "id": "components",
+          "heading": "Components",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Resource – Target file or location where the data will be written.",
+                "LineAggregator – Converts an object into a string format for writing. "
+              ]
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@StepScope\n@Bean\npublic FlatFileItemWriter<Employee> flatFileItemWriter(\n        @Value(\"#{jobParameters['outputFile']}\") FileSystemResource fileResource) {\n    return new FlatFileItemWriterBuilder<Employee>()\n            .name(\"employeeItemWriter\")\n            .resource(fileResource)\n            .delimited()\n            .delimiter(\";\")\n            .names(new String[] {\"empId\", \"empName\", \"email\", \"jobLoc\"})\n            .build();\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Ideal for exporting processed data to CSV or other delimited text files."
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "json-itemwriter",
+      "heading": "JSON ItemWriter",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: JsonFileItemWriter"
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to write data into JSON files."
+        }
+      ],
+      "wordCount": 9,
+      "subsections": [
+        {
+          "id": "key-component",
+          "heading": "Key Component",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "JsonObjectMarshaller – Converts a Java object into a JSON string. "
+              ]
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic JsonFileItemWriter<Employee> jsonFileItemWriter(\n        @Value(\"#{jobParameters['outputFile']}\") FileSystemResource fileResource) {\n    return new JsonFileItemWriter<>(fileResource,\n            new JacksonJsonObjectMarshaller<Employee>());\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Useful when the output must be in JSON format, e.g., for REST API consumption or data interchange."
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "jdbc-batch-itemwriter",
+      "heading": "JDBC Batch ItemWriter",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Class: JdbcBatchItemWriter"
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to write data into a relational database using JDBC."
+        }
+      ],
+      "wordCount": 12,
+      "subsections": [
+        {
+          "id": "configuration-requirements",
+          "heading": "Configuration Requirements",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "DataSource – Database connection.",
+                "SQL query – SQL statement for inserting or updating data.",
+                "ItemPreparedStatementSetter – Optional, used for mapping object fields to SQL parameters (if not using bean mapping)."
+              ]
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic JdbcBatchItemWriter<Employee> jdbcBatchItemWriter() {\n    return new JdbcBatchItemWriterBuilder<Employee>()\n            .dataSource(customDataSource())\n            .sql(\"INSERT INTO employee(empid, empname, email, jobloc) \" +\n                 \"VALUES (:empId, :empName, :email, :jobLoc)\")\n            .beanMapped() // Maps bean properties to SQL named parameters\n            .build();\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Usage: Efficient for batch inserts or updates into a database. Suitable for medium to large datasets."
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Output Type",
+            "Writer Class",
+            "Key Features"
+          ],
+          "rows": [
+            [
+              "Flat File",
+              "FlatFileItemWriter",
+              "Uses LineAggregator to map Object → String"
+            ],
+            [
+              "JSON",
+              "JsonFileItemWriter",
+              "Uses JsonObjectMarshaller for object → JSON"
+            ],
+            [
+              "Database",
+              "JdbcBatchItemWriter",
+              "Uses SQL + DataSource to insert/update records"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": [
+        {
+          "id": "key-notes",
+          "heading": "Key Notes",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "StepScope: For writers that depend on job parameters (e.g., dynamic file names), use @StepScope to defer bean creation until the step starts.",
+                "Writers are usually part of a chunk-oriented step, paired with ItemReader and ItemProcessor.",
+                "Spring Batch also provides other writers for JPA (JpaItemWriter) and Hibernate (HibernateItemWriter) for ORM-based database operations."
+              ]
+            }
+          ],
+          "wordCount": 51,
+          "subsections": []
+        }
+      ]
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@StepScope\n@Bean\npublic FlatFileItemWriter<Employee> flatFileItemWriter(\n        @Value(\"#{jobParameters['outputFile']}\") FileSystemResource fileResource) {\n    return new FlatFileItemWriterBuilder<Employee>()\n            .name(\"employeeItemWriter\")\n            .resource(fileResource)\n            .delimited()\n            .delimiter(\";\")\n            .names(new String[] {\"empId\", \"empName\", \"email\", \"jobLoc\"})\n            .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic JsonFileItemWriter<Employee> jsonFileItemWriter(\n        @Value(\"#{jobParameters['outputFile']}\") FileSystemResource fileResource) {\n    return new JsonFileItemWriter<>(fileResource,\n            new JacksonJsonObjectMarshaller<Employee>());\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic JdbcBatchItemWriter<Employee> jdbcBatchItemWriter() {\n    return new JdbcBatchItemWriterBuilder<Employee>()\n            .dataSource(customDataSource())\n            .sql(\"INSERT INTO employee(empid, empname, email, jobloc) \" +\n                 \"VALUES (:empId, :empName, :email, :jobLoc)\")\n            .beanMapped() // Maps bean properties to SQL named parameters\n            .build();\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Item Writers.md",
+    "wordCount": 255,
+    "sectionCount": 12
+  }
+}

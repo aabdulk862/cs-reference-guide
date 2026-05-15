@@ -1,0 +1,668 @@
+{
+  "id": "additional-reading-additional-reading",
+  "slug": "additional-reading",
+  "title": "Additional Reading",
+  "category": "Messaging",
+  "sections": [
+    {
+      "id": "apache-kafka-core-concepts-recap",
+      "heading": "Apache Kafka - Core Concepts Recap",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "kafka-overview",
+          "heading": "Kafka Overview",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Definition: Kafka is a distributed, reliable, and highly available publish-subscribe messaging system used to handle real-time data feeds.",
+                "Purpose: Designed for high-throughput, fault-tolerant, low-latency streaming of data across distributed systems."
+              ]
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        },
+        {
+          "id": "components-recap",
+          "heading": "Components Recap",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Component",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "Producer",
+                  "Sends data (messages) to Kafka topics."
+                ],
+                [
+                  "Topic",
+                  "Logical channels in Kafka to categorize and organize messages."
+                ],
+                [
+                  "Partition",
+                  "Subdivisions within a topic for parallelism and scalability."
+                ],
+                [
+                  "Consumer",
+                  "Reads messages from Kafka topics."
+                ],
+                [
+                  "Stream API",
+                  "Allows real-time processing and transformation of messages as they arrive."
+                ]
+              ]
+            }
+          ],
+          "wordCount": 46,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "mysql-to-kafka-topic",
+      "heading": "MySQL to Kafka Topic",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "requirement",
+          "heading": "Requirement",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "YouBuyy stores product master data in a MySQL DB. This data must be ingested into a Kafka Topic for other services to consume."
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "step-1-create-maven-project",
+          "heading": "Step 1: Create Maven Project",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Open Eclipse → File → New → Maven Project",
+                "Select \"Create a simple project\"",
+                "Provide: "
+              ]
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        },
+        {
+          "id": "step-2-add-pomxml-dependencies",
+          "heading": "Step 2: Add pom.xml Dependencies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependencies>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka_2.11</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-clients</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-streams</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>mysql</groupId>\n        <artifactId>mysql-connector-java</artifactId>\n        <version>5.1.6</version>\n    </dependency>\n</dependencies>\n\n<build>\n    <plugins>\n        <plugin>\n            <artifactId>maven-assembly-plugin</artifactId>\n            <configuration>\n                <archive>\n                    <manifest>\n                        <mainClass>com.project.KafkaPackage.GetDataFromMySQL</mainClass>\n                    </manifest>\n                </archive>\n                <descriptorRefs>\n                    <descriptorRef>jar-with-dependencies</descriptorRef>\n                </descriptorRefs>\n            </configuration>\n        </plugin>\n    </plugins>\n</build>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "step-3-java-producer-code-mysql-kafka",
+          "heading": "Step 3: Java Producer Code (MySQL → Kafka)",
+          "level": 3,
+          "content": [],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "highlights",
+          "heading": "Highlights:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Reads data from MySQL DB",
+                "Creates Kafka producer",
+                "Publishes records to Kafka topic"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "package com.project.KafkaPackage;\n\nimport java.sql.*;\nimport java.util.Properties;\nimport org.apache.kafka.clients.producer.*;\nimport org.apache.kafka.common.serialization.StringSerializer;\n\npublic class GetDataFromMySQL {\n    private static final String TOPIC = \"MySQLStoreData\";\n    private static final String BOOTSTRAP_SERVERS = \"localhost:9092\";\n\n    private static Producer<String, String> createProducer() {\n        Properties props = new Properties();\n        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);\n        props.put(ProducerConfig.CLIENT_ID_CONFIG, \"MySQLToKafka\");\n        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\n        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\n        return new KafkaProducer<>(props);\n    }\n\n    public static void runProducer() throws Exception {\n        Producer<String, String> producer = createProducer();\n        Connection connection = DriverManager.getConnection(\"jdbc:mysql://localhost/YouBuyy?user=root&password=Infy@123\");\n        Statement stmt = connection.createStatement();\n        ResultSet rs = stmt.executeQuery(\"SELECT * FROM YouBuyy.StoreData\");\n\n        while (rs.next()) {\n            ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC, rs.getString(1), rs.getString(2));\n            RecordMetadata metadata = producer.send(record).get();\n            System.out.println(\"Offset: \" + metadata.offset() + \" Partition: \" + metadata.partition());\n        }\n    }\n\n    public static void main(String[] args) throws Exception {\n        try {\n            runProducer();\n        } catch (InterruptedException e) {\n            e.printStackTrace();\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "execution-steps",
+      "heading": "Execution Steps:",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Build JAR: Run mvn clean install with goal assembly:single",
+            "Copy JAR to Kafka environment",
+            "Create Kafka Topic: kafka-topics.sh --create --topic MySQLStoreData --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1",
+            "Run App: java -jar target/KafkaPackage-jar-with-dependencies.jar",
+            "Verify Output: kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic MySQLStoreData --from-beginning"
+          ]
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    },
+    {
+      "id": "kafka-connect-api",
+      "heading": "Kafka Connect API",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "what-is-kafka-connect",
+          "heading": "What is Kafka Connect?",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Definition: A tool to stream data between Kafka and other systems (e.g., databases, cloud stores) in a scalable and fault-tolerant way.",
+                "Connector Types: "
+              ]
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "features",
+          "heading": "Features:",
+          "level": 3,
+          "content": [
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image.png",
+              "alt": "image.png",
+              "originalPath": "Additional%20Reading/image.png"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "use-cases",
+          "heading": "Use Cases:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Migrate full databases to Kafka",
+                "Connect Kafka to MongoDB, S3, Elasticsearch, etc."
+              ]
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        },
+        {
+          "id": "maven-dependency",
+          "heading": "Maven Dependency:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n    <groupId>org.apache.kafka</groupId>\n    <artifactId>connect-api</artifactId>\n    <version>1.0.0</version>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "kafka-consumer-groups",
+      "heading": "Kafka Consumer Groups",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "problem",
+          "heading": "Problem",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "One consumer is too slow to process millions of messages."
+            }
+          ],
+          "wordCount": 10,
+          "subsections": []
+        },
+        {
+          "id": "solution-use-consumer-groups",
+          "heading": "Solution: Use Consumer Groups",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Term",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "Consumer Group",
+                  "A group of consumer instances sharing the same group ID. Kafka ensures that each message is delivered to one consumer within the group."
+                ]
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%201.png",
+              "alt": "image.png",
+              "originalPath": "Additional%20Reading/image%201.png"
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        },
+        {
+          "id": "parallelism",
+          "heading": "Parallelism",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Kafka distributes partitions among consumers.",
+                "Each partition → exactly one consumer in a group.",
+                "If 2 consumers in group and 2 partitions → 1-to-1 assignment."
+              ]
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        },
+        {
+          "id": "best-practice",
+          "heading": "Best Practice",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Number of consumers ≤ number of partitions."
+            }
+          ],
+          "wordCount": 7,
+          "subsections": []
+        },
+        {
+          "id": "example",
+          "heading": "Example:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Group ID: First_Application"
+            },
+            {
+              "type": "paragraph",
+              "text": "Topic: DemoTopic with 2 partitions"
+            },
+            {
+              "type": "paragraph",
+              "text": "Consumers: consumer-1 reads from partition-0, consumer-2 from partition-1"
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%202.png",
+              "alt": "image.png",
+              "originalPath": "Additional%20Reading/image%202.png"
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%203.png",
+              "alt": "image.png",
+              "originalPath": "Additional%20Reading/image%203.png"
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "kafka-in-enterprise-architecture",
+      "heading": "Kafka in Enterprise Architecture",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "smack-stack",
+          "heading": "SMACK Stack",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Component",
+                "Role"
+              ],
+              "rows": [
+                [
+                  "Spark",
+                  "Stream processing"
+                ],
+                [
+                  "Mesos",
+                  "Cluster manager"
+                ],
+                [
+                  "Akka",
+                  "Reactive message-driven actor system"
+                ],
+                [
+                  "Cassandra",
+                  "Scalable NoSQL database"
+                ],
+                [
+                  "Kafka",
+                  "High-throughput real-time messaging"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "usage",
+          "heading": "Usage",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Kafka receives logs/events → Spark processes → stores in Cassandra",
+                "Akka adds asynchronous behavior",
+                "Mesos manages resource allocation "
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "kafka-performance-best-practices",
+      "heading": "Kafka Performance & Best Practices",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "config-tips",
+          "heading": "Config Tips:",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Parameter",
+                "Purpose"
+              ],
+              "rows": [
+                [
+                  "num.partitions",
+                  "Tune based on parallelism and throughput needs"
+                ],
+                [
+                  "batch.size",
+                  "Higher values = better batching performance"
+                ],
+                [
+                  "Async Producers",
+                  "Improve performance by reducing wait for acks"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        },
+        {
+          "id": "best-practices",
+          "heading": "Best Practices:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Use async mode in producers",
+                "Set partitions based on expected load",
+                "Consumer group size ≤ partitions",
+                "Monitor lag and balance partitions properly"
+              ]
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "learning-prompts",
+      "heading": "Learning Prompts",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-differences-between-apache-kafka-and-confluent-kafka",
+          "heading": "1. Differences Between Apache Kafka and Confluent Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Apache Kafka is the open-source core project used for building real-time streaming pipelines.",
+                "Confluent Kafka is a commercial distribution by Confluent Inc. It builds on Apache Kafka and adds features like Confluent Control Center (UI), Schema Registry, kSQL (SQL for streaming), pre-built connectors, enterprise-grade security (RBAC, audit logging), and 24/7 support.",
+                "Use case: Apache Kafka is suitable for DIY setups, while Confluent is ideal for enterprise deployments needing monitoring, security, and scaling tools."
+              ]
+            }
+          ],
+          "wordCount": 73,
+          "subsections": []
+        },
+        {
+          "id": "2-compare-apache-kafka-amazon-kinesis-google-pubsub-activemq",
+          "heading": "2. Compare Apache Kafka, Amazon Kinesis, Google Pub/Sub, ActiveMQ",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Apache Kafka: Distributed, high-throughput pub-sub system. Ideal for real-time analytics and event streaming. Self-managed or cloud-hosted.",
+                "Amazon Kinesis: AWS-native stream processing service. Easy integration with AWS ecosystem, serverless scaling.",
+                "Google Pub/Sub: Global, scalable messaging middleware. Push/pull support, integrates with Google Cloud.",
+                "ActiveMQ: Traditional message broker using JMS. Best for message queuing, not optimized for big data streaming."
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Example: Use Kafka or Kinesis for large-scale analytics, Pub/Sub for global event distribution, ActiveMQ for reliable message queuing in enterprise apps."
+            }
+          ],
+          "wordCount": 78,
+          "subsections": []
+        },
+        {
+          "id": "3-data-security-in-apache-kafka",
+          "heading": "3. Data Security in Apache Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Encryption: Supports TLS for data-in-transit encryption.",
+                "Authentication: Uses SASL (Kerberos, PLAIN, SCRAM, OAuth).",
+                "Authorization: ACLs (Access Control Lists) to control access to topics and consumer groups.",
+                "Audit Logging: Available in Confluent for tracking access and changes.",
+                "Schema Validation: Ensures producers send valid data (via Schema Registry)."
+              ]
+            }
+          ],
+          "wordCount": 46,
+          "subsections": []
+        },
+        {
+          "id": "4-performance-tuning-techniques-in-kafka",
+          "heading": "4. Performance Tuning Techniques in Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Increase partitions to parallelize reads/writes.",
+                "Use asynchronous producers to improve throughput.",
+                "Tune batch.size and linger.ms to optimize message batching.",
+                "Enable compression (e.g., Snappy, LZ4) to reduce network I/O.",
+                "Adjust fetch.min.bytes and fetch.max.wait.ms for efficient consumer pulls.",
+                "Optimize disk I/O by placing logs on SSDs and tuning OS buffers."
+              ]
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        },
+        {
+          "id": "5-best-practices-in-kafka",
+          "heading": "5. Best Practices in Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Design topics based on use cases, and plan partition count ahead.",
+                "Keep the number of consumers ≤ number of partitions.",
+                "Use idempotent producers for reliability.",
+                "Monitor broker health and set log retention policies.",
+                "Replicate data (min replication factor = 3) for fault tolerance.",
+                "Secure the cluster with authentication, encryption, and authorization."
+              ]
+            }
+          ],
+          "wordCount": 51,
+          "subsections": []
+        },
+        {
+          "id": "6-challenges-in-kafka",
+          "heading": "6. Challenges in Kafka",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Complex setup and operations for large clusters.",
+                "Managing schema evolution without a registry can cause consumer issues.",
+                "Data loss risk if replication or acks are misconfigured.",
+                "Back-pressure handling during spikes requires careful tuning.",
+                "Latency in end-to-end pipelines without proper batching or compression.",
+                "Scaling consumers without exceeding partition limits."
+              ]
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image.png",
+      "alt": "image.png",
+      "originalPath": "Additional%20Reading/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Additional%20Reading/image%201.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%202.png",
+      "alt": "image.png",
+      "originalPath": "Additional%20Reading/image%202.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional%20Reading/image%203.png",
+      "alt": "image.png",
+      "originalPath": "Additional%20Reading/image%203.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<dependencies>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka_2.11</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-clients</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>org.apache.kafka</groupId>\n        <artifactId>kafka-streams</artifactId>\n        <version>1.0.0</version>\n    </dependency>\n    <dependency>\n        <groupId>mysql</groupId>\n        <artifactId>mysql-connector-java</artifactId>\n        <version>5.1.6</version>\n    </dependency>\n</dependencies>\n\n<build>\n    <plugins>\n        <plugin>\n            <artifactId>maven-assembly-plugin</artifactId>\n            <configuration>\n                <archive>\n                    <manifest>\n                        <mainClass>com.project.KafkaPackage.GetDataFromMySQL</mainClass>\n                    </manifest>\n                </archive>\n                <descriptorRefs>\n                    <descriptorRef>jar-with-dependencies</descriptorRef>\n                </descriptorRefs>\n            </configuration>\n        </plugin>\n    </plugins>\n</build>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.project.KafkaPackage;\n\nimport java.sql.*;\nimport java.util.Properties;\nimport org.apache.kafka.clients.producer.*;\nimport org.apache.kafka.common.serialization.StringSerializer;\n\npublic class GetDataFromMySQL {\n    private static final String TOPIC = \"MySQLStoreData\";\n    private static final String BOOTSTRAP_SERVERS = \"localhost:9092\";\n\n    private static Producer<String, String> createProducer() {\n        Properties props = new Properties();\n        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BOOTSTRAP_SERVERS);\n        props.put(ProducerConfig.CLIENT_ID_CONFIG, \"MySQLToKafka\");\n        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\n        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\n        return new KafkaProducer<>(props);\n    }\n\n    public static void runProducer() throws Exception {\n        Producer<String, String> producer = createProducer();\n        Connection connection = DriverManager.getConnection(\"jdbc:mysql://localhost/YouBuyy?user=root&password=Infy@123\");\n        Statement stmt = connection.createStatement();\n        ResultSet rs = stmt.executeQuery(\"SELECT * FROM YouBuyy.StoreData\");\n\n        while (rs.next()) {\n            ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC, rs.getString(1), rs.getString(2));\n            RecordMetadata metadata = producer.send(record).get();\n            System.out.println(\"Offset: \" + metadata.offset() + \" Partition: \" + metadata.partition());\n        }\n    }\n\n    public static void main(String[] args) throws Exception {\n        try {\n            runProducer();\n        } catch (InterruptedException e) {\n            e.printStackTrace();\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.apache.kafka</groupId>\n    <artifactId>connect-api</artifactId>\n    <version>1.0.0</version>\n</dependency>",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Additional Reading/Additional Reading.md",
+    "wordCount": 718,
+    "sectionCount": 34
+  }
+}

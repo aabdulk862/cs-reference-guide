@@ -1,0 +1,401 @@
+{
+  "id": "logging-summary-of-key-concepts",
+  "slug": "summary-of-key-concepts",
+  "title": "Summary of Key Concepts",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "definitions",
+      "heading": "Definitions",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Logging: The process of tracking and recording activities, events, or errors in an application, useful for debugging, error tracking, and understanding system behavior.",
+            "Logback: A logging framework that is the default choice for Spring Boot applications for logging.",
+            "SLF4J (Simple Logging Facade for Java): A simple facade or abstraction for various logging frameworks (e.g., java.util.logging, log4j). SLF4J provides a common interface for different logging frameworks to be used in the application."
+          ]
+        }
+      ],
+      "wordCount": 71,
+      "subsections": []
+    },
+    {
+      "id": "importance-of-logging",
+      "heading": "Importance of Logging",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Problem Diagnosis: Helps quickly identify issues in the system during execution.",
+            "Debugging: Provides valuable insights into the flow of the application, enabling developers to trace errors.",
+            "Maintenance: Ensures that developers or system administrators can monitor the system after deployment."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image.png",
+          "alt": "image.png",
+          "originalPath": "Logging/image.png"
+        },
+        {
+          "type": "paragraph",
+          "text": "Spring Boot automatically configures logging for applications using Logback. By default:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Logs are written to the console at INFO level.",
+            "Logs for the application and libraries are printed automatically without any additional configuration."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Logging/image%201.png"
+        }
+      ],
+      "wordCount": 72,
+      "subsections": []
+    },
+    {
+      "id": "example-console-output-default-log",
+      "heading": "Example Console Output (Default Log)",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "INFO 2025-05-09 12:00:00 - Logging Message from Spring Boot",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "As developers, you may want to control what gets logged and how it is formatted. Spring Boot provides several ways to customize logging behavior:"
+        },
+        {
+          "type": "paragraph",
+          "text": "Logging in the Application Code"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Boot uses SLF4J (Simple Logging Facade for Java) as a standard API to log messages.",
+            "By default, Spring Boot configures Logback for logging."
+          ]
+        }
+      ],
+      "wordCount": 53,
+      "subsections": []
+    },
+    {
+      "id": "example-logging-in-the-registrationcontroller",
+      "heading": "Example: Logging in the RegistrationController",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "package com.infosys.irs.controller;\n\nimport org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.stereotype.Controller;\nimport org.springframework.web.bind.annotation.PostMapping;\nimport org.springframework.validation.BindingResult;\n\n@Controller\npublic class RegistrationController {\n\n    private static final Logger logger = LoggerFactory.getLogger(RegistrationController.class);\n\n    @PostMapping(value = \"registerUser\")\n    public ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, BindingResult result) {\n        ModelAndView modelAndView = new ModelAndView();\n        if (result.hasErrors()) {\n            modelAndView.addObject(\"message\", \"Validation Failed!\");\n        } else {\n            try {\n                registrationService.registerUser(user);\n                modelAndView.addObject(\"successMessage\", \"Registration Successful!\");\n            } catch (UserIdAlreadyPresentException e) {\n                logger.error(\"Error in user registration\", e);\n                modelAndView.addObject(\"message\", \"User ID already exists\");\n            }\n        }\n        return modelAndView;\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "logger.error(): Logs an error message along with an exception."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%202.png",
+          "alt": "image.png",
+          "originalPath": "Logging/image%202.png"
+        },
+        {
+          "type": "paragraph",
+          "text": "Aspect-Oriented Programming (AOP) for Logging"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use AOP to separate logging concerns from business logic.",
+            "This ensures that logging is handled in a modular way, making your code cleaner."
+          ]
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    },
+    {
+      "id": "example-loggingaspectjava",
+      "heading": "Example: LoggingAspect.java",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "package com.infosys.irs.utility;\n\nimport org.aspectj.lang.annotation.AfterThrowing;\nimport org.aspectj.lang.annotation.Aspect;\nimport org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.stereotype.Component;\n\n@Component\n@Aspect\npublic class LoggingAspect {\n\n    private static final Logger logger = LoggerFactory.getLogger(LoggingAspect.class);\n\n    @AfterThrowing(pointcut = \"execution(* com.infosys.irs.repository.*.*(..))\", throwing = \"exception\")\n    public void logExceptionFromRepository(Exception exception) {\n        logger.error(\"Repository exception: \", exception);\n    }\n\n    @AfterThrowing(pointcut = \"execution(* com.infosys.irs.service.*.*(..))\", throwing = \"exception\")\n    public void logExceptionFromService(Exception exception) {\n        if (exception.getMessage().contains(\"Service\")) {\n            logger.error(\"Service exception: \", exception);\n        }\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "@AfterThrowing: AOP annotation to log exceptions after they are thrown by methods in the repository or service layers."
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%203.png",
+          "alt": "image.png",
+          "originalPath": "Logging/image%203.png"
+        },
+        {
+          "type": "paragraph",
+          "text": "Spring Boot uses Logback by default to log messages. The output includes:"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Date and Time: When the log message is generated.",
+            "Log Level: INFO, ERROR, DEBUG, etc.",
+            "Thread Name: The thread where the log message was generated.",
+            "Logger Name: Name of the logger generating the log message.",
+            "Log Message: The actual message."
+          ]
+        }
+      ],
+      "wordCount": 70,
+      "subsections": []
+    },
+    {
+      "id": "example-log-message",
+      "heading": "Example Log Message:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "2025-05-09 12:00:00 INFO [main] com.infosys.irs.controller.RegistrationController - User registration successful",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Logging to a File: By default, Spring Boot logs to the console. To log to a file, configure the application.properties file."
+          ]
+        }
+      ],
+      "wordCount": 21,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "logging.file=application.log          # Log to a specific file\nlogging.path=/var/logs                # Log to a specific directory",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Custom Log Patterns: Customize the log pattern by using a logback-spring.xml configuration file."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "example-logback-configuration",
+      "heading": "Example (Logback Configuration):",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<configuration>\n    <appender name=\"STDOUT\" class=\"ch.qos.logback.core.ConsoleAppender\">\n        <encoder>\n            <pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>\n        </encoder>\n    </appender>\n\n    <root level=\"INFO\">\n        <appender-ref ref=\"STDOUT\" />\n    </root>\n</configuration>",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "This configuration changes the log format to only show the date, time, and message."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Logging Levels: You can specify the logging level for different packages or classes."
+        }
+      ],
+      "wordCount": 27,
+      "subsections": []
+    },
+    {
+      "id": "example",
+      "heading": "Example:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "logging.level.com.infosys=DEBUG  # Set logging level to DEBUG for a specific package",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "While Logback is the default logging framework, you can switch to Log4j2 by excluding Logback and adding Log4j2 dependencies."
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "example-pomxml-to-switch-to-log4j2",
+      "heading": "Example pom.xml to Switch to Log4j2:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependency>\n    <groupId>org.apache.logging.log4j</groupId>\n    <artifactId>log4j-spring-boot-starter</artifactId>\n</dependency>",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Boot automatically configures Log4j2 when it's included as a dependency."
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Aspect",
+            "Spring Boot",
+            "Non-Spring Boot"
+          ],
+          "rows": [
+            [
+              "Dependency Management",
+              "Managed by spring-boot-starter-logging",
+              "Need to add necessary jars manually"
+            ],
+            [
+              "Logging Configuration",
+              "Default Logback configuration",
+              "Need to configure logback.xml, log4j.xml, etc."
+            ],
+            [
+              "Ease of Switching Log Framework",
+              "Simple (exclude Logback and include Log4j2)",
+              "More complex (manual jar and config changes)"
+            ],
+            [
+              "Embedded Logging",
+              "Logs to console or file by default",
+              "Need to set up logging explicitly"
+            ]
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SLF4J provides a unified logging API in Spring Boot, with Logback being the default implementation.",
+            "Logback is configured automatically by Spring Boot to log messages at the INFO level by default to the console.",
+            "You can easily customize logging output (log to file, change log format, adjust log levels) through application.properties or custom configurations.",
+            "Spring Boot allows switching to other logging frameworks like Log4j2 by adding the necessary dependencies and configurations."
+          ]
+        }
+      ],
+      "wordCount": 142,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image.png",
+      "alt": "image.png",
+      "originalPath": "Logging/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Logging/image%201.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%202.png",
+      "alt": "image.png",
+      "originalPath": "Logging/image%202.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging/image%203.png",
+      "alt": "image.png",
+      "originalPath": "Logging/image%203.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "",
+      "code": "INFO 2025-05-09 12:00:00 - Logging Message from Spring Boot",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.infosys.irs.controller;\n\nimport org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.stereotype.Controller;\nimport org.springframework.web.bind.annotation.PostMapping;\nimport org.springframework.validation.BindingResult;\n\n@Controller\npublic class RegistrationController {\n\n    private static final Logger logger = LoggerFactory.getLogger(RegistrationController.class);\n\n    @PostMapping(value = \"registerUser\")\n    public ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, BindingResult result) {\n        ModelAndView modelAndView = new ModelAndView();\n        if (result.hasErrors()) {\n            modelAndView.addObject(\"message\", \"Validation Failed!\");\n        } else {\n            try {\n                registrationService.registerUser(user);\n                modelAndView.addObject(\"successMessage\", \"Registration Successful!\");\n            } catch (UserIdAlreadyPresentException e) {\n                logger.error(\"Error in user registration\", e);\n                modelAndView.addObject(\"message\", \"User ID already exists\");\n            }\n        }\n        return modelAndView;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.infosys.irs.utility;\n\nimport org.aspectj.lang.annotation.AfterThrowing;\nimport org.aspectj.lang.annotation.Aspect;\nimport org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.stereotype.Component;\n\n@Component\n@Aspect\npublic class LoggingAspect {\n\n    private static final Logger logger = LoggerFactory.getLogger(LoggingAspect.class);\n\n    @AfterThrowing(pointcut = \"execution(* com.infosys.irs.repository.*.*(..))\", throwing = \"exception\")\n    public void logExceptionFromRepository(Exception exception) {\n        logger.error(\"Repository exception: \", exception);\n    }\n\n    @AfterThrowing(pointcut = \"execution(* com.infosys.irs.service.*.*(..))\", throwing = \"exception\")\n    public void logExceptionFromService(Exception exception) {\n        if (exception.getMessage().contains(\"Service\")) {\n            logger.error(\"Service exception: \", exception);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "2025-05-09 12:00:00 INFO [main] com.infosys.irs.controller.RegistrationController - User registration successful",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "logging.file=application.log          # Log to a specific file\nlogging.path=/var/logs                # Log to a specific directory",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<configuration>\n    <appender name=\"STDOUT\" class=\"ch.qos.logback.core.ConsoleAppender\">\n        <encoder>\n            <pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</pattern>\n        </encoder>\n    </appender>\n\n    <root level=\"INFO\">\n        <appender-ref ref=\"STDOUT\" />\n    </root>\n</configuration>",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "logging.level.com.infosys=DEBUG  # Set logging level to DEBUG for a specific package",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.apache.logging.log4j</groupId>\n    <artifactId>log4j-spring-boot-starter</artifactId>\n</dependency>",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Logging/Logging.md",
+    "wordCount": 525,
+    "sectionCount": 10
+  }
+}

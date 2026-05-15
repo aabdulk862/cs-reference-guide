@@ -1,0 +1,318 @@
+{
+  "id": "streams-stream-api-summary",
+  "slug": "stream-api-summary",
+  "title": "Stream API Summary",
+  "category": "Messaging",
+  "sections": [
+    {
+      "id": "key-features",
+      "heading": "Key Features",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kafka Stream API allows you to:"
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Processing",
+              "Read data from Kafka and apply transformations or logic"
+            ],
+            [
+              "Filtering",
+              "Discard unwanted messages based on custom conditions"
+            ],
+            [
+              "Splitting",
+              "Branch a stream into multiple substreams (e.g., using .branch(...))"
+            ],
+            [
+              "Joining",
+              "Join two or more Kafka streams by key"
+            ],
+            [
+              "Windowing",
+              "Aggregate or analyze data over time intervals (e.g., every 1 minute)"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    },
+    {
+      "id": "definitions",
+      "heading": "Definitions",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Term",
+            "Definition"
+          ],
+          "rows": [
+            [
+              "Stream",
+              "A continuous flow of records from Kafka. Represented in Java using KStream."
+            ],
+            [
+              "Topic",
+              "A named channel in Kafka to which producers publish and from which consumers (or stream apps) read."
+            ],
+            [
+              "KStream",
+              "A Kafka abstraction for handling unbounded records (similar to logs)."
+            ],
+            [
+              "KTable",
+              "A changelog stream; represents an up-to-date view (e.g., last value per key)."
+            ],
+            [
+              "Predicate",
+              "A functional interface used to filter records based on boolean conditions."
+            ],
+            [
+              "KafkaStreams",
+              "The main class to start and manage the stream processing application."
+            ]
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "We want to:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Read from topic YouBuyyClickStreamData",
+            "Cleanse records where SessionTime > 30 seconds",
+            "Write filtered records to a new topic: CleansedYouBuyyClickStreamData"
+          ]
+        }
+      ],
+      "wordCount": 103,
+      "subsections": []
+    },
+    {
+      "id": "step-1-create-cleansed-topic",
+      "heading": "Step 1: Create Cleansed Topic",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "bin/kafka-topics.sh --create \\\n  --zookeeper localhost:2181 \\\n  --replication-factor 1 \\\n  --partitions 1 \\\n  --topic CleansedYouBuyyClickStreamData",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "step-2-stream-application-to-filter-records",
+      "heading": "Step 2: Stream Application to Filter Records",
+      "level": 3,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "project-youbuyystreamprocessingapplication",
+      "heading": "Project: YouBuyyStreamProcessingApplication",
+      "level": 3,
+      "content": [
+        {
+          "type": "blockquote",
+          "text": "Create using Maven; add the required Kafka Streams dependencies."
+        }
+      ],
+      "wordCount": 9,
+      "subsections": []
+    },
+    {
+      "id": "pomxml-dependencies",
+      "heading": "pom.xml Dependencies:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "xml",
+          "code": "<dependencies>\n  <dependency>\n    <groupId>org.apache.kafka</groupId>\n    <artifactId>kafka-streams</artifactId>\n    <version>2.8.0</version>\n  </dependency>\n</dependencies>",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "package com.project.kafka.StreamPackage;\n\nimport java.util.Properties;\nimport org.apache.kafka.common.serialization.Serdes;\nimport org.apache.kafka.streams.KafkaStreams;\nimport org.apache.kafka.streams.StreamsBuilder;\nimport org.apache.kafka.streams.StreamsConfig;\nimport org.apache.kafka.streams.kstream.KStream;\nimport org.apache.kafka.streams.kstream.Predicate;\n\npublic class FilterStream {\n    public static void main(final String[] args) throws Exception {\n\n        // 1. Configuration\n        Properties clickStreamConfig = new Properties();\n        clickStreamConfig.put(StreamsConfig.APPLICATION_ID_CONFIG, \"ClickStreamAnalysis\");\n        clickStreamConfig.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, \"localhost:9092\");\n        clickStreamConfig.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());\n        clickStreamConfig.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());\n\n        // 2. Build Stream Topology\n        StreamsBuilder builder = new StreamsBuilder();\n\n        // 3. Read Stream from Topic\n        KStream<String, String> streamData = builder.stream(args[0]); // e.g. YouBuyyClickStreamData\n\n        // 4. Filter records with SessionTime > 30 seconds\n        KStream<String, String> filteredRecords = streamData.filter(\n            new Predicate<String, String>() {\n                public boolean test(String key, String value) {\n                    String[] fields = value.split(\",\");\n                    int sessionTime = Integer.parseInt(fields[4]); // Assuming 5th field is session time\n                    return sessionTime > 30;\n                }\n            }\n        );\n\n        // 5. Write filtered records to new topic\n        filteredRecords.to(args[1]); // e.g. CleansedYouBuyyClickStreamData\n\n        // 6. Start the Stream\n        KafkaStreams streams = new KafkaStreams(builder.build(), clickStreamConfig);\n        streams.start();\n\n        System.out.println(\"Cleansing the records is complete.\");\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Step",
+            "Action"
+          ],
+          "rows": [
+            [
+              "1",
+              "Create Maven project YouBuyyStreamProcessingApplication"
+            ],
+            [
+              "2",
+              "Build using: mvn clean package or mvn compile assembly:single"
+            ],
+            [
+              "3",
+              "Move the executable JAR to Kafka environment"
+            ],
+            [
+              "4",
+              "Run with:"
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "java -jar YouBuyyStreamProcessingApplication.jar \\\n  YouBuyyClickStreamData \\\n  CleansedYouBuyyClickStreamData",
+          "runnable": false
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Streams/Streams/image.png",
+          "alt": "image.png",
+          "originalPath": "Streams/image.png"
+        },
+        {
+          "type": "blockquote",
+          "text": "Problem Statement: Filter attendance records where employees spent < 3.5 hours in office."
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    },
+    {
+      "id": "requirements",
+      "heading": "Requirements",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Create Kafka Topic"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "bash",
+          "code": "bin/kafka-topics.sh --create \\\n  --zookeeper localhost:2181 \\\n  --replication-factor 1 \\\n  --partitions 1 \\\n  --topic FilteredAttendanceData",
+          "runnable": false
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Build Stream Application "
+          ]
+        }
+      ],
+      "wordCount": 6,
+      "subsections": []
+    },
+    {
+      "id": "hint-for-java-logic",
+      "heading": "Hint for Java Logic:",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "String[] fields = value.split(\",\");\nint hoursWorked = calculateTimeInMinutes(fields[1], fields[3]); // e.g. 8:30 AM to 12:00 PM\nreturn hoursWorked < 210;",
+          "runnable": false
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Task",
+            "Kafka Streams Method"
+          ],
+          "rows": [
+            [
+              "Read topic as stream",
+              "builder.stream(\"topic-name\")"
+            ],
+            [
+              "Filter records",
+              ".filter((key, value) -> condition)"
+            ],
+            [
+              "Write to topic",
+              ".to(\"new-topic\")"
+            ],
+            [
+              "Start processing",
+              "KafkaStreams.start()"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 22,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Streams/Streams/image.png",
+      "alt": "image.png",
+      "originalPath": "Streams/image.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "bin/kafka-topics.sh --create \\\n  --zookeeper localhost:2181 \\\n  --replication-factor 1 \\\n  --partitions 1 \\\n  --topic CleansedYouBuyyClickStreamData",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependencies>\n  <dependency>\n    <groupId>org.apache.kafka</groupId>\n    <artifactId>kafka-streams</artifactId>\n    <version>2.8.0</version>\n  </dependency>\n</dependencies>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.project.kafka.StreamPackage;\n\nimport java.util.Properties;\nimport org.apache.kafka.common.serialization.Serdes;\nimport org.apache.kafka.streams.KafkaStreams;\nimport org.apache.kafka.streams.StreamsBuilder;\nimport org.apache.kafka.streams.StreamsConfig;\nimport org.apache.kafka.streams.kstream.KStream;\nimport org.apache.kafka.streams.kstream.Predicate;\n\npublic class FilterStream {\n    public static void main(final String[] args) throws Exception {\n\n        // 1. Configuration\n        Properties clickStreamConfig = new Properties();\n        clickStreamConfig.put(StreamsConfig.APPLICATION_ID_CONFIG, \"ClickStreamAnalysis\");\n        clickStreamConfig.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, \"localhost:9092\");\n        clickStreamConfig.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());\n        clickStreamConfig.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());\n\n        // 2. Build Stream Topology\n        StreamsBuilder builder = new StreamsBuilder();\n\n        // 3. Read Stream from Topic\n        KStream<String, String> streamData = builder.stream(args[0]); // e.g. YouBuyyClickStreamData\n\n        // 4. Filter records with SessionTime > 30 seconds\n        KStream<String, String> filteredRecords = streamData.filter(\n            new Predicate<String, String>() {\n                public boolean test(String key, String value) {\n                    String[] fields = value.split(\",\");\n                    int sessionTime = Integer.parseInt(fields[4]); // Assuming 5th field is session time\n                    return sessionTime > 30;\n                }\n            }\n        );\n\n        // 5. Write filtered records to new topic\n        filteredRecords.to(args[1]); // e.g. CleansedYouBuyyClickStreamData\n\n        // 6. Start the Stream\n        KafkaStreams streams = new KafkaStreams(builder.build(), clickStreamConfig);\n        streams.start();\n\n        System.out.println(\"Cleansing the records is complete.\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "java -jar YouBuyyStreamProcessingApplication.jar \\\n  YouBuyyClickStreamData \\\n  CleansedYouBuyyClickStreamData",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "bin/kafka-topics.sh --create \\\n  --zookeeper localhost:2181 \\\n  --replication-factor 1 \\\n  --partitions 1 \\\n  --topic FilteredAttendanceData",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "String[] fields = value.split(\",\");\nint hoursWorked = calculateTimeInMinutes(fields[1], fields[3]); // e.g. 8:30 AM to 12:00 PM\nreturn hoursWorked < 210;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Introduction to Apache Kafka/Streams/Streams.md",
+    "wordCount": 238,
+    "sectionCount": 8
+  }
+}

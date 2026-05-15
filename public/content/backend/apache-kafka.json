@@ -1,0 +1,262 @@
+{
+  "id": "backend-apache-kafka",
+  "slug": "apache-kafka",
+  "title": "Apache Kafka",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Apache Kafka is a distributed event streaming platform for high-throughput, fault-tolerant messaging",
+            "Core abstractions: Topics (logical streams), Partitions (parallelism units), Offsets (message positions)",
+            "Components: Producers (publish), Consumers (subscribe), Brokers (store), Consumer Groups (parallel consumption)",
+            "APIs: Producer API, Consumer API, Streams API, Connect API",
+            "KRaft mode (Kafka 3.3+) replaces ZooKeeper with built-in Raft-based metadata management",
+            "Retention: time-based (retention.ms) or size-based (retention.bytes); log compaction for key-based topics",
+            "Guarantees: at-least-once (default), exactly-once semantics (EOS) with idempotent producers and transactions"
+          ]
+        }
+      ],
+      "wordCount": 76,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kafka is the right choice when you need a durable, high-throughput event backbone connecting multiple producers and consumers in a decoupled architecture. Use Kafka for real-time event streaming between microservices, log aggregation from distributed systems, change data capture (CDC) from databases, clickstream analytics, and IoT sensor data ingestion. Kafka excels when you need message replay (consumers can re-read from any offset), ordering guarantees within partitions, and horizontal scalability by adding partitions and brokers. Choose Kafka over traditional message queues when you need persistent event logs, multiple independent consumers reading the same data, or stream processing with Kafka Streams or ksqlDB."
+        }
+      ],
+      "wordCount": 100,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "producer-configuration-and-usage",
+          "heading": "Producer Configuration and Usage",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// High-throughput producer configuration\nProperties props = new Properties();\nprops.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092\");\nprops.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nprops.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\nprops.put(ProducerConfig.ACKS_CONFIG, \"all\");           // Wait for all replicas\nprops.put(ProducerConfig.RETRIES_CONFIG, 3);\nprops.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true); // Exactly-once semantics\nprops.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);     // 16KB batch\nprops.put(ProducerConfig.LINGER_MS_CONFIG, 5);          // Wait 5ms to batch\n\nKafkaProducer<String, OrderEvent> producer = new KafkaProducer<>(props);\n\n// Async send with callback\nProducerRecord<String, OrderEvent> record = new ProducerRecord<>(\n    \"order-events\",           // topic\n    order.getCustomerId(),    // key (determines partition)\n    new OrderEvent(order)     // value\n);\n\nproducer.send(record, (metadata, exception) -> {\n    if (exception != null) {\n        log.error(\"Failed to send message\", exception);\n    } else {\n        log.info(\"Sent to partition {} offset {}\",\n            metadata.partition(), metadata.offset());\n    }\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "consumer-group-processing",
+          "heading": "Consumer Group Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Consumer configuration\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\nprops.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, \"earliest\");\nprops.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(props);\nconsumer.subscribe(List.of(\"order-events\"));\n\ntry {\n    while (running) {\n        ConsumerRecords<String, OrderEvent> records = consumer.poll(Duration.ofMillis(100));\n        for (ConsumerRecord<String, OrderEvent> record : records) {\n            processOrder(record.value());\n            log.info(\"Processed: partition={}, offset={}, key={}\",\n                record.partition(), record.offset(), record.key());\n        }\n        consumer.commitSync(); // Commit after successful processing\n    }\n} finally {\n    consumer.close();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "kafka-streams-processing",
+          "heading": "Kafka Streams Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Stream processing topology\nStreamsBuilder builder = new StreamsBuilder();\n\nKStream<String, OrderEvent> orders = builder.stream(\"order-events\");\n\n// Branch into fulfilled and cancelled streams\nMap<String, KStream<String, OrderEvent>> branches = orders\n    .split(Named.as(\"order-\"))\n    .branch((key, order) -> order.getStatus() == FULFILLED, Branched.as(\"fulfilled\"))\n    .branch((key, order) -> order.getStatus() == CANCELLED, Branched.as(\"cancelled\"))\n    .defaultBranch(Branched.as(\"other\"));\n\n// Aggregate revenue per customer in a time window\nKTable<Windowed<String>, Double> revenueByCustomer = branches.get(\"order-fulfilled\")\n    .groupByKey()\n    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))\n    .aggregate(\n        () -> 0.0,\n        (key, order, total) -> total + order.getAmount(),\n        Materialized.with(Serdes.String(), Serdes.Double())\n    );\n\nrevenueByCustomer.toStream()\n    .map((windowedKey, revenue) -> KeyValue.pair(windowedKey.key(), revenue))\n    .to(\"customer-hourly-revenue\");",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cli-commands",
+          "heading": "CLI Commands",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Create a topic with replication\nkafka-topics.sh --bootstrap-server localhost:9092 \\\n  --create --topic order-events \\\n  --partitions 12 --replication-factor 3\n\n# Describe topic configuration\nkafka-topics.sh --bootstrap-server localhost:9092 \\\n  --describe --topic order-events\n\n# Produce test messages\nkafka-console-producer.sh --bootstrap-server localhost:9092 \\\n  --topic order-events \\\n  --property \"key.separator=:\" \\\n  --property \"parse.key=true\"\n\n# Consume from beginning with group\nkafka-console-consumer.sh --bootstrap-server localhost:9092 \\\n  --topic order-events --from-beginning \\\n  --group test-consumer --property print.key=true\n\n# Check consumer group lag\nkafka-consumer-groups.sh --bootstrap-server localhost:9092 \\\n  --describe --group order-processing-group",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Kafka Cluster\"\n        B1[Broker 1]\n        B2[Broker 2]\n        B3[Broker 3]\n        \n        subgraph \"Topic: order-events (3 partitions)\"\n            P0[Partition 0<br/>Leader: B1]\n            P1[Partition 1<br/>Leader: B2]\n            P2[Partition 2<br/>Leader: B3]\n        end\n        \n        B1 --> P0\n        B2 --> P1\n        B3 --> P2\n    end\n    \n    subgraph \"Producers\"\n        PROD1[Order Service]\n        PROD2[Payment Service]\n    end\n    \n    subgraph \"Consumer Group: order-processing\"\n        C1[Consumer 1<br/>← P0]\n        C2[Consumer 2<br/>← P1]\n        C3[Consumer 3<br/>← P2]\n    end\n    \n    PROD1 -->|key: customerId| B1\n    PROD2 -->|key: orderId| B2\n    P0 --> C1\n    P1 --> C2\n    P2 --> C3"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant P as Producer\n    participant L as Leader Broker\n    participant F1 as Follower 1\n    participant F2 as Follower 2\n    participant C as Consumer\n\n    P->>L: Send message (acks=all)\n    L->>L: Write to local log\n    L->>F1: Replicate\n    L->>F2: Replicate\n    F1-->>L: ACK\n    F2-->>L: ACK\n    L-->>P: ProduceResponse (success)\n    C->>L: Fetch (offset=42)\n    L-->>C: Messages [42, 43, 44...]\n    C->>C: Process messages\n    C->>L: Commit offset=45"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Consumer lag accumulation: Consumers processing slower than producers causes growing lag. Monitor records-lag-max metric and scale consumer instances (up to partition count). Consider increasing max.poll.records or optimizing processing logic.",
+            "Partition count too low: Under-partitioned topics limit parallelism since each partition can only be consumed by one consumer in a group. Plan partition count based on target throughput, but note that partitions cannot be reduced after creation.",
+            "Large messages: Messages exceeding message.max.bytes (default 1MB) are rejected. For large payloads, store data in object storage (S3) and send only references through Kafka, or increase broker and producer max message size settings.",
+            "Rebalancing storms: Frequent consumer group rebalances cause processing pauses. Tune session.timeout.ms, heartbeat.interval.ms, and max.poll.interval.ms. Use cooperative sticky assignor (partition.assignment.strategy) to minimize partition movement.",
+            "Offset management errors: Auto-commit with processing failures leads to message loss. Manual commit before processing leads to duplicates on failure. Use idempotent processing with manual commit after successful processing, or enable exactly-once semantics with transactions."
+          ]
+        }
+      ],
+      "wordCount": 157,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Event-driven microservices: Kafka serves as the central nervous system connecting services through domain events (OrderCreated, PaymentProcessed, InventoryReserved), enabling loose coupling and eventual consistency across bounded contexts. Services can be deployed, scaled, and evolved independently while maintaining data consistency through event sourcing patterns.",
+            "Real-time fraud detection: Financial institutions stream transaction events through Kafka, applying windowed aggregations and pattern matching via Kafka Streams to detect anomalous spending patterns within milliseconds of transaction occurrence. The ability to replay events enables model retraining and backtesting against historical transaction data.",
+            "Change data capture (CDC): Debezium connectors capture database changes (inserts, updates, deletes) as Kafka events, enabling real-time data synchronization between systems, cache invalidation, and search index updates without polling. This eliminates dual-write problems and ensures downstream systems eventually converge with the source of truth.",
+            "Log aggregation and observability: Applications publish structured logs to Kafka topics, which are then consumed by Elasticsearch for search, Prometheus for metrics extraction, and S3 for long-term archival, all independently and at their own pace. Kafka's retention guarantees that no log data is lost even when downstream consumers experience temporary outages.",
+            "Stream processing pipelines: Organizations build real-time ETL pipelines using Kafka Connect for ingestion, Kafka Streams or Apache Flink for transformation, and Kafka Connect sinks for loading into data warehouses, enabling sub-minute data freshness for analytics dashboards that previously relied on nightly batch jobs."
+          ]
+        }
+      ],
+      "wordCount": 223,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does Kafka guarantee message ordering?\nA: Kafka guarantees ordering only within a single partition. Messages with the same key are routed to the same partition via consistent hashing, ensuring ordered processing for that key. Cross-partition ordering is not guaranteed. For global ordering, use a single partition (sacrificing parallelism) or implement sequence numbers with consumer-side reordering."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between at-least-once, at-most-once, and exactly-once delivery.\nA: At-most-once: commit offset before processing (may lose messages on failure). At-least-once: commit after processing (may reprocess on failure, default). Exactly-once: uses idempotent producers (enable.idempotence=true) and transactional APIs to atomically write to multiple partitions and commit offsets, ensuring each message is processed exactly once even across failures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens when a consumer in a group fails?\nA: When a consumer stops sending heartbeats (exceeds session.timeout.ms), the group coordinator triggers a rebalance. The failed consumer's partitions are redistributed among remaining consumers in the group. During rebalance, consumption pauses briefly. The new consumer resumes from the last committed offset, potentially reprocessing some messages (at-least-once semantics)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Kafka achieve high throughput?\nA: Kafka achieves high throughput through: sequential disk I/O (append-only logs), zero-copy transfer (sendfile syscall), batching (producers batch messages, brokers write batches), compression (snappy/lz4/zstd), page cache utilization (OS-level caching), and partition-level parallelism allowing horizontal scaling of both producers and consumers."
+        }
+      ],
+      "wordCount": 218,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Partition count planning: Target 10-30 MB/s per partition. For 300 MB/s throughput, use at least 10-30 partitions. Over-partitioning increases metadata overhead and end-to-end latency, so balance parallelism needs against operational complexity. Remember that partitions can be increased but never decreased, so start conservatively and scale up based on observed throughput requirements.",
+            "Monitoring essentials: Track UnderReplicatedPartitions (data loss risk), RequestHandlerAvgIdlePercent (broker saturation), consumer group lag (processing delays), and NetworkProcessorAvgIdlePercent (network thread saturation). Set up PagerDuty alerts for ISR shrinkage and consumer lag exceeding your SLA threshold, as these indicate imminent data loss or processing delays.",
+            "Retention and compaction: Use time-based retention for event logs (7-30 days typical) and log compaction for state topics (keeps latest value per key). Set min.compaction.lag.ms to ensure consumers have time to read before compaction removes old values. For audit logs, consider infinite retention with tiered storage to S3 for cost-effective long-term archival.",
+            "Disaster recovery: Use MirrorMaker 2 for cross-datacenter replication. Configure min.insync.replicas=2 with acks=all to prevent data loss when a broker fails. Test failover procedures regularly with chaos engineering. Document and rehearse the procedure for unclean leader election, which trades data loss for availability when all replicas are down.",
+            "Consumer tuning: Set max.poll.interval.ms higher than your worst-case processing time to prevent unnecessary rebalances. Use fetch.min.bytes and fetch.max.wait.ms to batch fetches efficiently. For latency-sensitive consumers, reduce fetch.max.wait.ms to 100ms; for throughput-oriented consumers, increase fetch.min.bytes to 1MB."
+          ]
+        }
+      ],
+      "wordCount": 229,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Framework - Spring Cloud Stream and Spring Kafka provide high-level Kafka integration",
+            "Java - Kafka clients and Kafka Streams are Java-native libraries",
+            "MongoDB - MongoDB Kafka Connector enables CDC from MongoDB to Kafka"
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// High-throughput producer configuration\nProperties props = new Properties();\nprops.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092\");\nprops.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nprops.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\nprops.put(ProducerConfig.ACKS_CONFIG, \"all\");           // Wait for all replicas\nprops.put(ProducerConfig.RETRIES_CONFIG, 3);\nprops.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true); // Exactly-once semantics\nprops.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);     // 16KB batch\nprops.put(ProducerConfig.LINGER_MS_CONFIG, 5);          // Wait 5ms to batch\n\nKafkaProducer<String, OrderEvent> producer = new KafkaProducer<>(props);\n\n// Async send with callback\nProducerRecord<String, OrderEvent> record = new ProducerRecord<>(\n    \"order-events\",           // topic\n    order.getCustomerId(),    // key (determines partition)\n    new OrderEvent(order)     // value\n);\n\nproducer.send(record, (metadata, exception) -> {\n    if (exception != null) {\n        log.error(\"Failed to send message\", exception);\n    } else {\n        log.info(\"Sent to partition {} offset {}\",\n            metadata.partition(), metadata.offset());\n    }\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Consumer configuration\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\nprops.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, \"earliest\");\nprops.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(props);\nconsumer.subscribe(List.of(\"order-events\"));\n\ntry {\n    while (running) {\n        ConsumerRecords<String, OrderEvent> records = consumer.poll(Duration.ofMillis(100));\n        for (ConsumerRecord<String, OrderEvent> record : records) {\n            processOrder(record.value());\n            log.info(\"Processed: partition={}, offset={}, key={}\",\n                record.partition(), record.offset(), record.key());\n        }\n        consumer.commitSync(); // Commit after successful processing\n    }\n} finally {\n    consumer.close();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Stream processing topology\nStreamsBuilder builder = new StreamsBuilder();\n\nKStream<String, OrderEvent> orders = builder.stream(\"order-events\");\n\n// Branch into fulfilled and cancelled streams\nMap<String, KStream<String, OrderEvent>> branches = orders\n    .split(Named.as(\"order-\"))\n    .branch((key, order) -> order.getStatus() == FULFILLED, Branched.as(\"fulfilled\"))\n    .branch((key, order) -> order.getStatus() == CANCELLED, Branched.as(\"cancelled\"))\n    .defaultBranch(Branched.as(\"other\"));\n\n// Aggregate revenue per customer in a time window\nKTable<Windowed<String>, Double> revenueByCustomer = branches.get(\"order-fulfilled\")\n    .groupByKey()\n    .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofHours(1)))\n    .aggregate(\n        () -> 0.0,\n        (key, order, total) -> total + order.getAmount(),\n        Materialized.with(Serdes.String(), Serdes.Double())\n    );\n\nrevenueByCustomer.toStream()\n    .map((windowedKey, revenue) -> KeyValue.pair(windowedKey.key(), revenue))\n    .to(\"customer-hourly-revenue\");",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Create a topic with replication\nkafka-topics.sh --bootstrap-server localhost:9092 \\\n  --create --topic order-events \\\n  --partitions 12 --replication-factor 3\n\n# Describe topic configuration\nkafka-topics.sh --bootstrap-server localhost:9092 \\\n  --describe --topic order-events\n\n# Produce test messages\nkafka-console-producer.sh --bootstrap-server localhost:9092 \\\n  --topic order-events \\\n  --property \"key.separator=:\" \\\n  --property \"parse.key=true\"\n\n# Consume from beginning with group\nkafka-console-consumer.sh --bootstrap-server localhost:9092 \\\n  --topic order-events --from-beginning \\\n  --group test-consumer --property print.key=true\n\n# Check consumer group lag\nkafka-consumer-groups.sh --bootstrap-server localhost:9092 \\\n  --describe --group order-processing-group",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/backend/apache-kafka.md",
+    "wordCount": 1037,
+    "sectionCount": 13
+  }
+}

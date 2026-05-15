@@ -1,0 +1,312 @@
+{
+  "id": "spring-rest-unit-testing",
+  "slug": "unit-testing",
+  "title": "Unit Testing",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "spring-boot-with-junit-and-mockito",
+      "heading": "Spring Boot with JUnit and Mockito",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "definitions",
+          "heading": "Definitions:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Unit Testing: The practice of testing individual units or components of a software application in isolation to ensure they work as expected.",
+                "JUnit: A popular testing framework for Java used to write and run unit tests.",
+                "Mockito: A mocking framework that allows you to create mock objects in unit tests, ensuring dependencies do not interfere with the unit being tested.",
+                "Spring Boot: A framework for building stand-alone, production-grade Spring-based applications with minimal effort. It provides built-in tools for unit testing.",
+                "MockMvc: A Spring framework component used for testing the web layer of an application, simulating HTTP requests and responses."
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image.png",
+              "alt": "image.png",
+              "originalPath": "../Spring%20Boot/Unit%20testing/image.png"
+            }
+          ],
+          "wordCount": 99,
+          "subsections": []
+        },
+        {
+          "id": "why-unit-testing-is-important",
+          "heading": "Why Unit Testing Is Important:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Early Bug Detection: Helps in identifying bugs during the development phase, reducing costs of fixing them later.",
+                "Ensures Code Quality: Guarantees the functionality of individual parts of the application works as intended.",
+                "Faster Development: Helps developers detect problems early, leading to faster development cycles and better overall quality."
+              ]
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "demo-steps-unit-testing-the-irs-application",
+      "heading": "Demo Steps: Unit Testing the IRS Application",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "import-project-and-rename",
+          "heading": "Import Project and Rename",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Open Spring Tool Suite (STS) and import the IRS project InfyGoBoot_Logback from Demo 5.",
+                "Rename the project to InfyGoBoot_UnitTesting."
+              ]
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "create-test-java-files",
+          "heading": "Create Test Java Files",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Navigate to src/test/java and create the necessary test files for unit testing."
+              ]
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        },
+        {
+          "id": "implement-registrationcontrollertestjava",
+          "heading": "Implement RegistrationControllerTest.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "package com.infosys.irs.controller;\n\nimport org.junit.Before;\nimport org.junit.Test;\nimport org.junit.runner.RunWith;\nimport org.mockito.InjectMocks;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\nimport org.springframework.boot.test.mock.mockito.MockBean;\nimport org.springframework.test.context.junit4.SpringRunner;\nimport org.springframework.test.web.servlet.MockMvc;\nimport com.infosys.irs.model.User;\nimport com.infosys.irs.repository.UserRepository;\nimport com.infosys.irs.service.RegistrationService;\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;\nimport static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;\n\n@RunWith(SpringRunner.class)\n@WebMvcTest(controllers = RegistrationController.class)\npublic class RegistrationControllerTest {\n\n    @MockBean\n    private UserRepository userRepository;\n\n    @MockBean\n    private RegistrationService registrationService;\n\n    @InjectMocks\n    private RegistrationController registrationController;\n\n    @Autowired\n    private MockMvc mockMvc;\n\n    private User user1;\n    private User user2;\n\n    private String command = \"command\";\n    private String dummy1 = \"dummy1\";\n    private String dummysuccess2 = \"dummysuccess2\";\n\n    public void user1() {\n        user1 = new User();\n        user1.setUserId(dummy1);\n        user1.setPassword(dummy1);\n        user1.setName(dummy1);\n        user1.setCity(dummy1);\n        user1.setEmail(dummy1);\n        user1.setPhone(dummy1);\n    }\n\n    public void user2() {\n        user2 = new User();\n        user2.setUserId(dummysuccess2);\n        user2.setPassword(dummysuccess2);\n        user2.setName(dummysuccess2);\n        user2.setCity(\"chennai\");\n        user2.setEmail(\"dummysuccess2@emaill.com\");\n        user2.setPhone(\"1234567890\");\n    }\n\n    @Before\n    public void setUp() {\n        user1();\n        user2();\n    }\n\n    @Test\n    public void testRegistrationGet() throws Exception {\n        this.mockMvc.perform(get(\"/register\"))\n            .andExpect(status().isOk())\n            .andExpect(model().attributeExists(command))\n            .andExpect(view().name(\"register\"))\n            .andDo(print());\n    }\n\n    @Test\n    public void testSubmitCustomerFailsValidation() throws Exception {\n        this.mockMvc.perform(post(\"/registerUser\")\n            .param(\"userId\", user1.getUserId())\n            .param(\"password\", user1.getPassword())\n            .param(\"name\", user1.getName())\n            .param(\"city\", user1.getCity())\n            .param(\"email\", user1.getEmail())\n            .param(\"phone\", user1.getPhone()))\n            .andExpect(model().attributeHasFieldErrors(command))\n            .andExpect(view().name(\"register\"))\n            .andExpect(status().isOk())\n            .andDo(print());\n    }\n\n    @Test\n    public void testSubmitCustomerPassesValidation() throws Exception {\n        this.mockMvc.perform(post(\"/registerUser\")\n            .param(\"userId\", user2.getUserId())\n            .param(\"password\", user2.getPassword())\n            .param(\"name\", user2.getName())\n            .param(\"city\", user2.getCity())\n            .param(\"email\", user2.getEmail())\n            .param(\"phone\", user2.getPhone()))\n            .andExpect(model().attributeHasNoErrors(command));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "implement-userrepositorytestjava",
+          "heading": "Implement UserRepositoryTest.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "package com.infosys.irs.repository;\n\nimport static org.assertj.core.api.Assertions.assertThat;\nimport org.junit.Before;\nimport org.junit.Test;\nimport org.junit.runner.RunWith;\nimport org.mockito.Mock;\nimport org.mockito.Mockito;\nimport org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;\nimport org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace;\nimport org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;\nimport org.springframework.test.context.junit4.SpringRunner;\nimport com.infosys.irs.entity.UserEntity;\nimport com.infosys.irs.model.User;\n\n@RunWith(SpringRunner.class)\n@DataJpaTest\n@AutoConfigureTestDatabase(replace = Replace.NONE)\npublic class UserRepositoryTest {\n\n    @Mock\n    private UserRepository userRepository;\n\n    private User user1;\n    private User user2;\n\n    private String dummy1 = \"dummy1\";\n    private String dummy2 = \"dummy2\";\n    private String userId = \"userId\";\n\n    public void user1() {\n        user1 = new User();\n        user1.setUserId(dummy1);\n        user1.setPassword(dummy1);\n        user1.setName(dummy1);\n        user1.setCity(dummy1);\n        user1.setEmail(dummy1);\n        user1.setPhone(dummy1);\n    }\n\n    public void user2() {\n        user2 = new User();\n        user2.setUserId(dummy2);\n        user2.setPassword(dummy2);\n        user2.setCity(dummy2);\n        user2.setEmail(dummy2);\n        user2.setPhone(dummy2);\n    }\n\n    @Before\n    public void setUp() {\n        user1();\n        user2();\n    }\n\n    @Test\n    public void saveAndFlushTest() {\n        UserEntity userEntity1 = new UserEntity();\n        userEntity1.setCity(user1.getCity());\n        userEntity1.setEmail(user1.getEmail());\n        userEntity1.setName(user1.getName());\n        userEntity1.setPassword(user1.getPassword());\n        userEntity1.setPhone(user1.getPhone());\n        userEntity1.setUserId(user1.getUserId());\n\n        UserEntity userEntity2 = new UserEntity();\n        userEntity2.setCity(user2.getCity());\n        userEntity2.setEmail(user2.getEmail());\n        userEntity2.setName(user2.getName());\n        userEntity2.setPassword(user2.getPassword());\n        userEntity2.setPhone(user2.getPhone());\n        userEntity2.setUserId(user2.getUserId());\n\n        Mockito.when(userRepository.saveAndFlush(userEntity1)).thenReturn(userEntity1);\n        UserEntity user = userRepository.saveAndFlush(userEntity1);\n        assertThat(user).hasFieldOrPropertyWithValue(userId, \"dummy1\");\n\n        Mockito.when(userRepository.saveAndFlush(userEntity2)).thenReturn(new UserEntity());\n        user = userRepository.saveAndFlush(userEntity2);\n        assertThat(user).hasFieldOrPropertyWithValue(userId, null);\n    }\n\n    @Test\n    public void findOneTest() {\n        UserEntity userEntity2 = new UserEntity();\n        userEntity2.setCity(user2.getCity());\n        userEntity2.setEmail(user2.getEmail());\n        userEntity2.setName(user2.getName());\n        userEntity2.setPassword(user2.getPassword());\n        userEntity2.setPhone(user2.getPhone());\n        userEntity2.setUserId(user2.getUserId());\n\n        Mockito.when(userRepository.getOne(user2.getUserId())).thenReturn(userEntity2);\n        UserEntity user = userRepository.getOne(user2.getUserId());\n        assertThat(user).hasFieldOrPropertyWithValue(userId, \"dummy2\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "implement-registrationservicetestjava",
+          "heading": "Implement RegistrationServiceTest.java",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "package com.infosys.irs.service;\n\nimport org.junit.Assert;\nimport org.junit.Before;\nimport org.junit.Rule;\nimport org.junit.Test;\nimport org.junit.rules.ExpectedException;\nimport org.mockito.InjectMocks;\nimport org.mockito.Mock;\nimport org.mockito.Mockito;\nimport org.mockito.MockitoAnnotations;\nimport org.springframework.test.context.ContextConfiguration;\nimport com.infosys.irs.entity.UserEntity;\nimport com.infosys.irs.exception.UserIdAlreadyPresentException;\nimport com.infosys.irs.model.User;\nimport com.infosys.irs.repository.UserRepository;\n\n@ContextConfiguration\npublic class RegistrationServiceTest {\n\n    @Mock\n    private UserRepository userRepository;\n\n    @InjectMocks\n    private RegistrationService registrationService;\n\n    @Rule\n    public ExpectedException expectedException = ExpectedException.none();\n\n    User user = new User();\n    UserEntity userEntity = new UserEntity();\n\n    public void inititalizeUserAndUserEntity() {\n        user.setCity(\"Chennai\");\n        user.setEmail(\"anithamalar@infygo.com\");\n        user.setName(\"anithamalar\");\n        user.setPassword(\"anithamalar_svs\");\n        user.setPhone(\"9840567854\");\n        user.setUserId(\"C1021\");\n\n        userEntity.setCity(user.getCity());\n        userEntity.setEmail(user.getEmail());\n        userEntity.setName(user.getName());\n        userEntity.setPassword(user.getPassword());\n        userEntity.setPhone(user.getPhone());\n        userEntity.setUserId(user.getUserId());\n    }\n\n    @Before\n    public void initialWork() {\n        MockitoAnnotations.initMocks(this);\n        inititalizeUserAndUserEntity();\n    }\n\n    @Test\n    public void testRegisterUserPositive() {\n        Mockito.when(userRepository.getOne(user.getName())).thenReturn(null);\n        Mockito.when(userRepository.saveAndFlush(userEntity)).thenReturn(userEntity);\n        try {\n            registrationService.registerUser(user);\n        } catch (Exception e) {\n            Assert.fail(\"Exception \" + e);\n        }\n    }\n\n    @Test\n    public void testRegisterUserNegative() throws UserIdAlreadyPresentException {\n        expectedException.expect(UserIdAlreadyPresentException.class);\n        expectedException.expectMessage(\"RegistrationService.USERID_PRESENT\");\n\n        Mockito.when(userRepository.existsById(Mockito.anyString())).thenReturn(true);\n        registrationService.registerUser(user);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "run-tests",
+          "heading": "Run Tests",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Right-click and select Run As -> JUnit Test for each test class (RegistrationControllerTest.java, UserRepositoryTest.java, RegistrationServiceTest.java) to observe the results."
+              ]
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image%201.png",
+              "alt": "image.png",
+              "originalPath": "../Spring%20Boot/Unit%20testing/image%201.png"
+            },
+            {
+              "type": "image",
+              "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image%202.png",
+              "alt": "image.png",
+              "originalPath": "../Spring%20Boot/Unit%20testing/image%202.png"
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "key-annotations-and-concepts",
+      "heading": "Key Annotations and Concepts:",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "@RunWith(SpringRunner.class): Tells JUnit to use Spring's testing support.",
+            "@WebMvcTest: Used for testing Spring MVC controllers, it configures the necessary components for MVC testing without starting the entire application context.",
+            "@MockBean: Creates and injects mock beans into the Spring application context for testing.",
+            "@InjectMocks: Injects the mock objects into the class to be tested.",
+            "MockMvc: Used for simulating HTTP requests and testing the web layer.",
+            "@DataJpaTest: Configures an in-memory database for testing JPA repositories.",
+            "@AutoConfigureTestDatabase: Specifies the database configuration for testing (e.g., using an embedded database).",
+            "@SpringBootTest: Starts the Spring application context for service layer testing."
+          ]
+        }
+      ],
+      "wordCount": 95,
+      "subsections": [
+        {
+          "id": "mockito-annotation-and-description",
+          "heading": "Mockito Annotation and Description",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Mockito Annotation",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "@Mock",
+                  "Creates a mock instance of a class or interface, allowing you to simulate behavior and interactions without needing an actual implementation."
+                ],
+                [
+                  "@Spy",
+                  "Creates a spy instance by wrapping around an existing object, enabling you to monitor and modify real method calls while still leveraging Mockito's verification features."
+                ],
+                [
+                  "@InjectMocks",
+                  "Injects mock or spy instances into the tested object, ensuring dependencies are automatically mocked or spied upon without manual wiring."
+                ],
+                [
+                  "@Captor",
+                  "Creates an argument captor to capture method arguments passed to a mock during test execution."
+                ],
+                [
+                  "@MockBean",
+                  "Creates a mock bean in the Spring application context, ideal for integration tests that require mocked dependencies."
+                ],
+                [
+                  "@SpyBean",
+                  "Creates a spy bean in the Spring application context, allowing real method calls to be monitored and modified within a Spring environment."
+                ],
+                [
+                  "@RunWith(MockitoJUnitRunner.class)",
+                  "Runs tests with the Mockito JUnit runner, enabling Mockito annotations in JUnit 4 tests."
+                ],
+                [
+                  "@ExtendWith(MockitoExtension.class)",
+                  "Extends tests with the Mockito JUnit 5 extension, providing a modern and flexible testing setup."
+                ],
+                [
+                  "@BeforeEach",
+                  "Initializes mocks before each test method in JUnit 5. This annotation is part of the JUnit framework and ensures a fresh setup for each test."
+                ],
+                [
+                  "@AfterEach",
+                  "Cleans up mocks after each test method in JUnit 5. This annotation, also part of JUnit, ensures that each test starts with a clean state."
+                ]
+              ]
+            }
+          ],
+          "wordCount": 212,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "conclusion",
+      "heading": "Conclusion",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "By following the steps above, you have successfully implemented unit tests for the RegistrationController, UserRepository, and RegistrationService in the IRS application. This ensures that each part of the application functions as expected before integration, leading to fewer bugs and a more maintainable codebase."
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image.png",
+      "alt": "image.png",
+      "originalPath": "../Spring%20Boot/Unit%20testing/image.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image%201.png",
+      "alt": "image.png",
+      "originalPath": "../Spring%20Boot/Unit%20testing/image%201.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring%20Boot/Unit%20testing/image%202.png",
+      "alt": "image.png",
+      "originalPath": "../Spring%20Boot/Unit%20testing/image%202.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "package com.infosys.irs.controller;\n\nimport org.junit.Before;\nimport org.junit.Test;\nimport org.junit.runner.RunWith;\nimport org.mockito.InjectMocks;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\nimport org.springframework.boot.test.mock.mockito.MockBean;\nimport org.springframework.test.context.junit4.SpringRunner;\nimport org.springframework.test.web.servlet.MockMvc;\nimport com.infosys.irs.model.User;\nimport com.infosys.irs.repository.UserRepository;\nimport com.infosys.irs.service.RegistrationService;\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;\nimport static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;\n\n@RunWith(SpringRunner.class)\n@WebMvcTest(controllers = RegistrationController.class)\npublic class RegistrationControllerTest {\n\n    @MockBean\n    private UserRepository userRepository;\n\n    @MockBean\n    private RegistrationService registrationService;\n\n    @InjectMocks\n    private RegistrationController registrationController;\n\n    @Autowired\n    private MockMvc mockMvc;\n\n    private User user1;\n    private User user2;\n\n    private String command = \"command\";\n    private String dummy1 = \"dummy1\";\n    private String dummysuccess2 = \"dummysuccess2\";\n\n    public void user1() {\n        user1 = new User();\n        user1.setUserId(dummy1);\n        user1.setPassword(dummy1);\n        user1.setName(dummy1);\n        user1.setCity(dummy1);\n        user1.setEmail(dummy1);\n        user1.setPhone(dummy1);\n    }\n\n    public void user2() {\n        user2 = new User();\n        user2.setUserId(dummysuccess2);\n        user2.setPassword(dummysuccess2);\n        user2.setName(dummysuccess2);\n        user2.setCity(\"chennai\");\n        user2.setEmail(\"dummysuccess2@emaill.com\");\n        user2.setPhone(\"1234567890\");\n    }\n\n    @Before\n    public void setUp() {\n        user1();\n        user2();\n    }\n\n    @Test\n    public void testRegistrationGet() throws Exception {\n        this.mockMvc.perform(get(\"/register\"))\n            .andExpect(status().isOk())\n            .andExpect(model().attributeExists(command))\n            .andExpect(view().name(\"register\"))\n            .andDo(print());\n    }\n\n    @Test\n    public void testSubmitCustomerFailsValidation() throws Exception {\n        this.mockMvc.perform(post(\"/registerUser\")\n            .param(\"userId\", user1.getUserId())\n            .param(\"password\", user1.getPassword())\n            .param(\"name\", user1.getName())\n            .param(\"city\", user1.getCity())\n            .param(\"email\", user1.getEmail())\n            .param(\"phone\", user1.getPhone()))\n            .andExpect(model().attributeHasFieldErrors(command))\n            .andExpect(view().name(\"register\"))\n            .andExpect(status().isOk())\n            .andDo(print());\n    }\n\n    @Test\n    public void testSubmitCustomerPassesValidation() throws Exception {\n        this.mockMvc.perform(post(\"/registerUser\")\n            .param(\"userId\", user2.getUserId())\n            .param(\"password\", user2.getPassword())\n            .param(\"name\", user2.getName())\n            .param(\"city\", user2.getCity())\n            .param(\"email\", user2.getEmail())\n            .param(\"phone\", user2.getPhone()))\n            .andExpect(model().attributeHasNoErrors(command));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.infosys.irs.repository;\n\nimport static org.assertj.core.api.Assertions.assertThat;\nimport org.junit.Before;\nimport org.junit.Test;\nimport org.junit.runner.RunWith;\nimport org.mockito.Mock;\nimport org.mockito.Mockito;\nimport org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;\nimport org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace;\nimport org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;\nimport org.springframework.test.context.junit4.SpringRunner;\nimport com.infosys.irs.entity.UserEntity;\nimport com.infosys.irs.model.User;\n\n@RunWith(SpringRunner.class)\n@DataJpaTest\n@AutoConfigureTestDatabase(replace = Replace.NONE)\npublic class UserRepositoryTest {\n\n    @Mock\n    private UserRepository userRepository;\n\n    private User user1;\n    private User user2;\n\n    private String dummy1 = \"dummy1\";\n    private String dummy2 = \"dummy2\";\n    private String userId = \"userId\";\n\n    public void user1() {\n        user1 = new User();\n        user1.setUserId(dummy1);\n        user1.setPassword(dummy1);\n        user1.setName(dummy1);\n        user1.setCity(dummy1);\n        user1.setEmail(dummy1);\n        user1.setPhone(dummy1);\n    }\n\n    public void user2() {\n        user2 = new User();\n        user2.setUserId(dummy2);\n        user2.setPassword(dummy2);\n        user2.setCity(dummy2);\n        user2.setEmail(dummy2);\n        user2.setPhone(dummy2);\n    }\n\n    @Before\n    public void setUp() {\n        user1();\n        user2();\n    }\n\n    @Test\n    public void saveAndFlushTest() {\n        UserEntity userEntity1 = new UserEntity();\n        userEntity1.setCity(user1.getCity());\n        userEntity1.setEmail(user1.getEmail());\n        userEntity1.setName(user1.getName());\n        userEntity1.setPassword(user1.getPassword());\n        userEntity1.setPhone(user1.getPhone());\n        userEntity1.setUserId(user1.getUserId());\n\n        UserEntity userEntity2 = new UserEntity();\n        userEntity2.setCity(user2.getCity());\n        userEntity2.setEmail(user2.getEmail());\n        userEntity2.setName(user2.getName());\n        userEntity2.setPassword(user2.getPassword());\n        userEntity2.setPhone(user2.getPhone());\n        userEntity2.setUserId(user2.getUserId());\n\n        Mockito.when(userRepository.saveAndFlush(userEntity1)).thenReturn(userEntity1);\n        UserEntity user = userRepository.saveAndFlush(userEntity1);\n        assertThat(user).hasFieldOrPropertyWithValue(userId, \"dummy1\");\n\n        Mockito.when(userRepository.saveAndFlush(userEntity2)).thenReturn(new UserEntity());\n        user = userRepository.saveAndFlush(userEntity2);\n        assertThat(user).hasFieldOrPropertyWithValue(userId, null);\n    }\n\n    @Test\n    public void findOneTest() {\n        UserEntity userEntity2 = new UserEntity();\n        userEntity2.setCity(user2.getCity());\n        userEntity2.setEmail(user2.getEmail());\n        userEntity2.setName(user2.getName());\n        userEntity2.setPassword(user2.getPassword());\n        userEntity2.setPhone(user2.getPhone());\n        userEntity2.setUserId(user2.getUserId());\n\n        Mockito.when(userRepository.getOne(user2.getUserId())).thenReturn(userEntity2);\n        UserEntity user = userRepository.getOne(user2.getUserId());\n        assertThat(user).hasFieldOrPropertyWithValue(userId, \"dummy2\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.infosys.irs.service;\n\nimport org.junit.Assert;\nimport org.junit.Before;\nimport org.junit.Rule;\nimport org.junit.Test;\nimport org.junit.rules.ExpectedException;\nimport org.mockito.InjectMocks;\nimport org.mockito.Mock;\nimport org.mockito.Mockito;\nimport org.mockito.MockitoAnnotations;\nimport org.springframework.test.context.ContextConfiguration;\nimport com.infosys.irs.entity.UserEntity;\nimport com.infosys.irs.exception.UserIdAlreadyPresentException;\nimport com.infosys.irs.model.User;\nimport com.infosys.irs.repository.UserRepository;\n\n@ContextConfiguration\npublic class RegistrationServiceTest {\n\n    @Mock\n    private UserRepository userRepository;\n\n    @InjectMocks\n    private RegistrationService registrationService;\n\n    @Rule\n    public ExpectedException expectedException = ExpectedException.none();\n\n    User user = new User();\n    UserEntity userEntity = new UserEntity();\n\n    public void inititalizeUserAndUserEntity() {\n        user.setCity(\"Chennai\");\n        user.setEmail(\"anithamalar@infygo.com\");\n        user.setName(\"anithamalar\");\n        user.setPassword(\"anithamalar_svs\");\n        user.setPhone(\"9840567854\");\n        user.setUserId(\"C1021\");\n\n        userEntity.setCity(user.getCity());\n        userEntity.setEmail(user.getEmail());\n        userEntity.setName(user.getName());\n        userEntity.setPassword(user.getPassword());\n        userEntity.setPhone(user.getPhone());\n        userEntity.setUserId(user.getUserId());\n    }\n\n    @Before\n    public void initialWork() {\n        MockitoAnnotations.initMocks(this);\n        inititalizeUserAndUserEntity();\n    }\n\n    @Test\n    public void testRegisterUserPositive() {\n        Mockito.when(userRepository.getOne(user.getName())).thenReturn(null);\n        Mockito.when(userRepository.saveAndFlush(userEntity)).thenReturn(userEntity);\n        try {\n            registrationService.registerUser(user);\n        } catch (Exception e) {\n            Assert.fail(\"Exception \" + e);\n        }\n    }\n\n    @Test\n    public void testRegisterUserNegative() throws UserIdAlreadyPresentException {\n        expectedException.expect(UserIdAlreadyPresentException.class);\n        expectedException.expectMessage(\"RegistrationService.USERID_PRESENT\");\n\n        Mockito.when(userRepository.existsById(Mockito.anyString())).thenReturn(true);\n        registrationService.registerUser(user);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/Unit Testing.md",
+    "wordCount": 547,
+    "sectionCount": 13
+  }
+}

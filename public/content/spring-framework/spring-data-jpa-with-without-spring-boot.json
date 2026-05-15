@@ -1,0 +1,410 @@
+{
+  "id": "spring-data-jpa-spring-data-jpa-with-without-spring-boot",
+  "slug": "spring-data-jpa-with-without-spring-boot",
+  "title": "Spring Data JPA with & without Spring Boot",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "why-spring-data-jpa",
+      "heading": "Why Spring Data JPA?",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Data JPA:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Reduces boilerplate code for database access.",
+            "Automatically provides CRUD operations by extending JpaRepository.",
+            "Integrates with Spring Boot for auto-configuration."
+          ]
+        }
+      ],
+      "wordCount": 22,
+      "subsections": []
+    },
+    {
+      "id": "benefits-with-spring-boot",
+      "heading": "Benefits with Spring Boot:",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "No need to configure EntityManager, TransactionManager, or DataSource manually.",
+            "Dependencies are managed via spring-boot-starter-data-jpa."
+          ]
+        }
+      ],
+      "wordCount": 14,
+      "subsections": []
+    },
+    {
+      "id": "setup-mysql-table",
+      "heading": "Setup MySQL Table",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Create database and table:"
+        },
+        {
+          "type": "code",
+          "language": "sql",
+          "code": "CREATE DATABASE db_irs;\n\nCREATE TABLE user_details (\n    userid VARCHAR(20) PRIMARY KEY,\n    password VARCHAR(20),\n    name VARCHAR(30),\n    city VARCHAR(30),\n    email VARCHAR(30),\n    phone VARCHAR(10)\n);\n\nINSERT INTO user_details VALUES\n(\"C1002\",\"John1234\",\"John\",\"Chennai\",\"John@gmail.com\",\"9878909876\"),\n(\"C1003\",\"Ruby12345\",\"Ruby\",\"Chennai\",\"Ruby@gmail.com\",\"7890987656\");",
+          "runnable": false
+        }
+      ],
+      "wordCount": 4,
+      "subsections": []
+    },
+    {
+      "id": "generate-spring-boot-project",
+      "heading": "Generate Spring Boot Project",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Go to Spring Initializr.",
+            "Select: ",
+            "Click \"Switch to Full Version\".",
+            "Provide metadata like: ",
+            "Add dependencies: ",
+            "Generate and unzip the project."
+          ]
+        }
+      ],
+      "wordCount": 20,
+      "subsections": []
+    },
+    {
+      "id": "import-and-setup-application",
+      "heading": "Import and Setup Application",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Import project into STS: File > Import > Existing Maven Project",
+            "Rename main class: ",
+            "Add the following logic in InfyGoApplication.java to get user input and call service."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Example: See full source in original prompt."
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    },
+    {
+      "id": "reuse-exception-and-model-classes",
+      "heading": "Reuse Exception and Model Classes",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Classes to reuse:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "User.java",
+            "InvalidCityException.java",
+            "InvalidEmailException.java",
+            "InvalidNameException.java",
+            "InvalidPasswordException.java",
+            "InvalidPhoneException.java",
+            "InvalidUserIdException.java"
+          ]
+        }
+      ],
+      "wordCount": 10,
+      "subsections": []
+    },
+    {
+      "id": "create-entity-class",
+      "heading": "Create Entity Class",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Entity\n@Table(name = \"USER_DETAILS\")\npublic class UserEntity {\n    @Id\n    @Column(name = \"userid\")\n    private String userId;\n    private String password, name, city, email, phone;\n\n    // Getters and setters...\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "custom-exception",
+      "heading": "Custom Exception",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public class UserIdAlreadyPresentException extends InfyGoBootException {\n    public UserIdAlreadyPresentException(String message) {\n        super(message);\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "create-repository",
+      "heading": "Create Repository",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public interface UserRepository extends JpaRepository<UserEntity, String> {\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "implement-service-layer",
+      "heading": "Implement Service Layer",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Validate User",
+            "Check Duplicate UserId",
+            "Map to Entity",
+            "Save to DB"
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "@Service\npublic class RegistrationService {\n    @Autowired\n    private UserRepository userRepository;\n\n    public String registerUser(User user) throws InfyGoBootException {\n        validateUser(user);\n        if (userRepository.existsById(user.getUserId())) {\n           throw new UserIdAlreadyPresentException(\"RegistrationService.USERID_PRESENT\");\n        }\n\n        UserEntity entity = new UserEntity();\n        // Set fields\n        userRepository.saveAndFlush(entity);\n        return \"UserRespository.REGISTRATION_SUCCESS\";\n    }\n\n    // Include validation logic with regex\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 11,
+      "subsections": []
+    },
+    {
+      "id": "application-properties",
+      "heading": "Application Properties",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "spring.datasource.url=jdbc:mysql://localhost:3306/db_irs\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=none",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "custom-messages",
+      "heading": "Custom Messages",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "File: configuration.properties"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "RegistrationService.INVALID_USER_ID=Invalid userId!\nRegistrationService.INVALID_PASSWORD=Invalid password!\n...\nUserRespository.REGISTRATION_SUCCESS=You are successfully registered with IRS!",
+          "runnable": false
+        }
+      ],
+      "wordCount": 2,
+      "subsections": []
+    },
+    {
+      "id": "run-and-verify",
+      "heading": "Run and Verify",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Run: Right-click > Run As > Spring Boot Ap",
+            "Console Input: Enter user details",
+            "Database Check: Confirm new row in user_details"
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Spring Data JPA/Spring%20Data%20JPA/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Spring%20Data%20JPA/image%201.png"
+        }
+      ],
+      "wordCount": 21,
+      "subsections": []
+    },
+    {
+      "id": "what-you-didnt-have-to-do",
+      "heading": "What You Didn't Have to Do:",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "✅ Add jars manually"
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Configure EntityManager/TransactionManager"
+        },
+        {
+          "type": "paragraph",
+          "text": "✅ Enable JPA repositories manually"
+        }
+      ],
+      "wordCount": 12,
+      "subsections": []
+    },
+    {
+      "id": "why-it-worked",
+      "heading": "Why It Worked?",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Boot auto-configures everything using spring-boot-starter-data-jpa.",
+            "JPA repositories in the package are automatically detected."
+          ]
+        }
+      ],
+      "wordCount": 14,
+      "subsections": []
+    },
+    {
+      "id": "example-use-case-recap",
+      "heading": "Example Use Case Recap",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Case: Register new user"
+        },
+        {
+          "type": "paragraph",
+          "text": "Layers Involved:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Model: User",
+            "Entity: UserEntity",
+            "Repository: UserRepository",
+            "Service: RegistrationService",
+            "Main App: InfyGoApplication.java"
+          ]
+        },
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Without Spring Boot",
+            "With Spring Boot"
+          ],
+          "rows": [
+            [
+              "Add dependencies",
+              "Manually add JPA & Hibernate",
+              "Use starter dependency"
+            ],
+            [
+              "Enable JPA",
+              "Manually with @EnableJpaRepositories",
+              "Auto-enabled"
+            ],
+            [
+              "Configure beans",
+              "Must configure EntityManager, etc.",
+              "Auto-configured"
+            ],
+            [
+              "DataSource config",
+              "Manual setup required",
+              "Auto-detected / minimal config"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Spring Data JPA/Spring%20Data%20JPA/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Spring%20Data%20JPA/image%201.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "CREATE DATABASE db_irs;\n\nCREATE TABLE user_details (\n    userid VARCHAR(20) PRIMARY KEY,\n    password VARCHAR(20),\n    name VARCHAR(30),\n    city VARCHAR(30),\n    email VARCHAR(30),\n    phone VARCHAR(10)\n);\n\nINSERT INTO user_details VALUES\n(\"C1002\",\"John1234\",\"John\",\"Chennai\",\"John@gmail.com\",\"9878909876\"),\n(\"C1003\",\"Ruby12345\",\"Ruby\",\"Chennai\",\"Ruby@gmail.com\",\"7890987656\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Entity\n@Table(name = \"USER_DETAILS\")\npublic class UserEntity {\n    @Id\n    @Column(name = \"userid\")\n    private String userId;\n    private String password, name, city, email, phone;\n\n    // Getters and setters...\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class UserIdAlreadyPresentException extends InfyGoBootException {\n    public UserIdAlreadyPresentException(String message) {\n        super(message);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface UserRepository extends JpaRepository<UserEntity, String> {\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class RegistrationService {\n    @Autowired\n    private UserRepository userRepository;\n\n    public String registerUser(User user) throws InfyGoBootException {\n        validateUser(user);\n        if (userRepository.existsById(user.getUserId())) {\n           throw new UserIdAlreadyPresentException(\"RegistrationService.USERID_PRESENT\");\n        }\n\n        UserEntity entity = new UserEntity();\n        // Set fields\n        userRepository.saveAndFlush(entity);\n        return \"UserRespository.REGISTRATION_SUCCESS\";\n    }\n\n    // Include validation logic with regex\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "spring.datasource.url=jdbc:mysql://localhost:3306/db_irs\nspring.datasource.username=root\nspring.datasource.password=root\nspring.jpa.hibernate.ddl-auto=none",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "RegistrationService.INVALID_USER_ID=Invalid userId!\nRegistrationService.INVALID_PASSWORD=Invalid password!\n...\nUserRespository.REGISTRATION_SUCCESS=You are successfully registered with IRS!",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Spring Data JPA/Spring Data JPA.md",
+    "wordCount": 222,
+    "sectionCount": 16
+  }
+}

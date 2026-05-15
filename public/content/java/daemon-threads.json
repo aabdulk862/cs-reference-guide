@@ -1,0 +1,645 @@
+{
+  "id": "multithreading-daemon-threads",
+  "slug": "daemon-threads",
+  "title": "Daemon Threads",
+  "category": "Java",
+  "sections": [
+    {
+      "id": "thread-creation-methods",
+      "heading": "Thread Creation Methods",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Java provides multiple ways to create threads:"
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "1-extending-thread-class",
+      "heading": "1. Extending Thread Class",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "class MyThread extends Thread {\n    public void run() {\n        System.out.println(\"Thread is running\");\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "2-implementing-runnable-interface",
+      "heading": "2. Implementing Runnable Interface",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "class MyRunnable implements Runnable {\n    public void run() {\n        System.out.println(\"Runnable is running\");\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Then:"
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "Thread t = new Thread(new MyRunnable());\nt.start();",
+          "runnable": false
+        },
+        {
+          "type": "table",
+          "headers": [
+            "State",
+            "Description"
+          ],
+          "rows": [
+            [
+              "New",
+              "Thread is created but not started."
+            ],
+            [
+              "Runnable",
+              "Ready to run; waiting for CPU."
+            ],
+            [
+              "Running",
+              "CPU is executing the thread."
+            ],
+            [
+              "Non-Runnable",
+              "Temporarily not eligible (e.g., sleeping, waiting, blocked)."
+            ],
+            [
+              "Dead",
+              "Thread has completed execution or was terminated."
+            ]
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%201.png",
+          "alt": "image.png",
+          "originalPath": "Multithreading/image%201.png"
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    },
+    {
+      "id": "thread-scheduling-techniques",
+      "heading": "Thread Scheduling Techniques",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Technique",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Preemptive",
+              "Higher priority threads can interrupt lower ones (e.g., Solaris)."
+            ],
+            [
+              "Time-Sliced",
+              "All threads share CPU time equally (e.g., Windows, Mac)."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 22,
+      "subsections": []
+    },
+    {
+      "id": "important-thread-methods",
+      "heading": "Important Thread Methods",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Method",
+            "Purpose"
+          ],
+          "rows": [
+            [
+              "start()",
+              "Starts thread execution."
+            ],
+            [
+              "run()",
+              "Contains the logic to be executed."
+            ],
+            [
+              "sleep(ms)",
+              "Pauses the thread for specified milliseconds."
+            ],
+            [
+              "join()",
+              "Waits for the thread to finish execution."
+            ],
+            [
+              "yield()",
+              "Suggests current thread give way to others of equal priority."
+            ],
+            [
+              "isAlive()",
+              "Returns true if thread is still running or waiting."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    },
+    {
+      "id": "-thread-priorities",
+      "heading": "🚦 Thread Priorities",
+      "level": 3,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Range: 1 (MIN_PRIORITY) to 10 (MAX_PRIORITY)",
+            "Default: 5 (NORM_PRIORITY)",
+            "Set priority using: thread.setPriority(Thread.MAX_PRIORITY); "
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "class BatchUploader extends Thread {\n    private String batchName;\n\n    public BatchUploader(String batchName) {\n        this.batchName = batchName;\n    }\n\n    public void run() {\n        System.out.println(\"Uploading marks for \" + batchName + \"...\");\n        try {\n            Thread.sleep(2000); // Simulating upload time\n        } catch (InterruptedException e) {\n            e.printStackTrace();\n        }\n        System.out.println(\"Upload completed for \" + batchName);\n    }\n}\n\npublic class MarkUploadSystem {\n    public static void main(String[] args) throws InterruptedException {\n        System.out.println(\"Starting mark uploads...\");\n\n        BatchUploader b1 = new BatchUploader(\"Batch A\");\n        BatchUploader b2 = new BatchUploader(\"Batch B\");\n        BatchUploader b3 = new BatchUploader(\"Batch C\");\n\n        b1.start();\n        b2.start();\n        b3.start();\n\n        b1.join();\n        b2.join();\n        b3.join();\n\n        System.out.println(\"All uploads complete. Generating reports...\");\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "output-sample",
+      "heading": "Output (Sample):",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "",
+          "code": "Starting mark uploads...\nUploading marks for Batch A...\nUploading marks for Batch B...\nUploading marks for Batch C...\nUpload completed for Batch B\nUpload completed for Batch C\nUpload completed for Batch A\nAll uploads complete. Generating reports...",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "When multiple threads access shared resources (like course seat count), race conditions can occur — leading to inconsistent states (e.g., negative seat counts)."
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    },
+    {
+      "id": "-problem-example",
+      "heading": "❌ Problem Example",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "// Without synchronization\nBooking successful!\nBooking successful!\nAvailable seats: 0\nAvailable seats: -1",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Multiple threads accessed the same method at once, leading to faulty behavior."
+        }
+      ],
+      "wordCount": 12,
+      "subsections": []
+    },
+    {
+      "id": "-solution-synchronized-keyword",
+      "heading": "✅ Solution: synchronized Keyword",
+      "level": 3,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Synchronization ensures that only one thread accesses a resource at a time."
+        },
+        {
+          "type": "paragraph",
+          "text": "Java achieves this using object monitors (locks). A thread acquires the monitor when entering a synchronized method/block, and releases it when exiting."
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    },
+    {
+      "id": "synchronized-method",
+      "heading": "Synchronized Method",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public synchronized void registerForCourse(int rollNo) {\n    // critical section\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "synchronized-block",
+      "heading": "Synchronized Block",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "synchronized(this) {\n    // critical section\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Using blocks is preferred when only part of the method needs synchronization."
+        }
+      ],
+      "wordCount": 12,
+      "subsections": []
+    },
+    {
+      "id": "updated-registration-method",
+      "heading": "Updated Registration Method",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public synchronized void registerForCourse(int rollNo) {\n    try {\n        if (this.numOfSeats - 1 < 0) {\n            throw new Exception(\"No more seats available\");\n        }\n        System.out.println(\"Booking successful!\");\n        this.numOfSeats--;\n        System.out.println(\"Available seats: \" + this.numOfSeats);\n    } catch (Exception e) {\n        System.out.println(\"Error: \" + e.getMessage());\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Output:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "Booking successful!\nAvailable seats: 0\nError: No more seats available for this course",
+          "runnable": false
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%203.png",
+          "alt": "image.png",
+          "originalPath": "Multithreading/image%203.png"
+        }
+      ],
+      "wordCount": 1,
+      "subsections": []
+    },
+    {
+      "id": "-problem-code",
+      "heading": "❌ Problem Code",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "private static String accountId;\n\npublic CustomerAccount() {\n    if(accountId == null){\n        accountId = \"ACC0001\" + Math.abs(rnd.nextInt());\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "-fixed-with-synchronized-block",
+      "heading": "✅ Fixed with Synchronized Block",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "synchronized (this) {\n    if(accountId == null){\n        accountId = \"ACC0001\" + Math.abs(rnd.nextInt());\n    }\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to coordinate actions between threads (e.g., waiting for cancellations before retrying registration)."
+        }
+      ],
+      "wordCount": 13,
+      "subsections": []
+    },
+    {
+      "id": "object-class-methods",
+      "heading": "Object Class Methods",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Method",
+            "Description"
+          ],
+          "rows": [
+            [
+              "wait()",
+              "Makes the thread wait and release the lock"
+            ],
+            [
+              "notify()",
+              "Wakes one waiting thread"
+            ],
+            [
+              "notifyAll()",
+              "Wakes all waiting threads"
+            ]
+          ]
+        },
+        {
+          "type": "blockquote",
+          "text": "Must be used within a synchronized context."
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    },
+    {
+      "id": "modified-registration-with-wait",
+      "heading": "Modified Registration With Wait",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public synchronized void registerForCourse(int rollNo) {\n    try {\n        if(this.numOfSeats - 1 < 0) {\n            this.wait(5000); // wait for 5 sec for possible cancellation\n            if(this.numOfSeats - 1 < 0)\n                throw new Exception(\"No more seats available\");\n        }\n        System.out.println(\"Booking successful!\");\n        this.numOfSeats--;\n        System.out.println(\"Available seats: \" + this.numOfSeats);\n    } catch (Exception e) {\n        System.out.println(\"Error: \" + e.getMessage());\n    }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "cancellation-method",
+      "heading": "Cancellation Method",
+      "level": 3,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": "public synchronized void cancelSeats() {\n    this.numOfSeats++;\n    System.out.println(\"Cancellation successful!\");\n    System.out.println(\"Available seats: \" + this.numOfSeats);\n    this.notify(); // notify waiting thread\n}",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Output:"
+        },
+        {
+          "type": "code",
+          "language": "",
+          "code": "Booking successful!\nAvailable seats: 0\nCancellation successful!\nAvailable seats: 1\nBooking successful!\nAvailable seats: 0",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Used to group and manage multiple threads together."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%204.png",
+          "alt": "image.png",
+          "originalPath": "Multithreading/image%204.png"
+        }
+      ],
+      "wordCount": 9,
+      "subsections": []
+    },
+    {
+      "id": "create-thread-group",
+      "heading": "Create Thread Group",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Constructor",
+            "Description"
+          ],
+          "rows": [
+            [
+              "ThreadGroup(String name)",
+              "With the given name, it creates a new thread group."
+            ],
+            [
+              "ThreadGroup(ThreadGroup parent, String name)",
+              "Under the given parent group, it creates a thread group with the name provided."
+            ]
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "ThreadGroup downloadTG = new ThreadGroup(\"DownloadThreads\");\nThread downloadThread1 = new Thread(downloadTG, \"Download Thread 1\");\nThread downloadThread2 = new Thread(downloadTG, \"Download Thread 2\");\nThread downloadThread3 = new Thread(downloadTG, \"Download Thread 3\");",
+          "runnable": false
+        }
+      ],
+      "wordCount": 32,
+      "subsections": []
+    },
+    {
+      "id": "useful-methods",
+      "heading": "Useful Methods",
+      "level": 3,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Method",
+            "Description"
+          ],
+          "rows": [
+            [
+              "int activeCount()",
+              "In the current group, the number of threads running will be returned."
+            ],
+            [
+              "void destroy()",
+              "The thread group and all its subgroups will be destroyed."
+            ],
+            [
+              "ThreadGroup getParent()",
+              "The parent group of this group will be returned."
+            ],
+            [
+              "void list()",
+              "In the standard console, it prints information about this group."
+            ],
+            [
+              "int activeGroupCount()",
+              "Returns the number of active groups in this thread group."
+            ],
+            [
+              "String getName()",
+              "The group name will be returned."
+            ],
+            [
+              "void interrupt()",
+              "All threads of this group will be Interrupted."
+            ]
+          ]
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%205.png",
+          "alt": "image.png",
+          "originalPath": "Multithreading/image%205.png"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Run in the background.",
+            "JVM does not wait for them to finish.",
+            "Set using setDaemon(true) before start()."
+          ]
+        },
+        {
+          "type": "code",
+          "language": "java",
+          "code": "Thread t = new Thread(...);\nt.setDaemon(true);\nt.start();",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Example: Garbage Collector"
+        }
+      ],
+      "wordCount": 101,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%201.png",
+      "alt": "image.png",
+      "originalPath": "Multithreading/image%201.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%203.png",
+      "alt": "image.png",
+      "originalPath": "Multithreading/image%203.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%204.png",
+      "alt": "image.png",
+      "originalPath": "Multithreading/image%204.png"
+    },
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading/image%205.png",
+      "alt": "image.png",
+      "originalPath": "Multithreading/image%205.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "class MyThread extends Thread {\n    public void run() {\n        System.out.println(\"Thread is running\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "class MyRunnable implements Runnable {\n    public void run() {\n        System.out.println(\"Runnable is running\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Thread t = new Thread(new MyRunnable());\nt.start();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "class BatchUploader extends Thread {\n    private String batchName;\n\n    public BatchUploader(String batchName) {\n        this.batchName = batchName;\n    }\n\n    public void run() {\n        System.out.println(\"Uploading marks for \" + batchName + \"...\");\n        try {\n            Thread.sleep(2000); // Simulating upload time\n        } catch (InterruptedException e) {\n            e.printStackTrace();\n        }\n        System.out.println(\"Upload completed for \" + batchName);\n    }\n}\n\npublic class MarkUploadSystem {\n    public static void main(String[] args) throws InterruptedException {\n        System.out.println(\"Starting mark uploads...\");\n\n        BatchUploader b1 = new BatchUploader(\"Batch A\");\n        BatchUploader b2 = new BatchUploader(\"Batch B\");\n        BatchUploader b3 = new BatchUploader(\"Batch C\");\n\n        b1.start();\n        b2.start();\n        b3.start();\n\n        b1.join();\n        b2.join();\n        b3.join();\n\n        System.out.println(\"All uploads complete. Generating reports...\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Starting mark uploads...\nUploading marks for Batch A...\nUploading marks for Batch B...\nUploading marks for Batch C...\nUpload completed for Batch B\nUpload completed for Batch C\nUpload completed for Batch A\nAll uploads complete. Generating reports...",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Without synchronization\nBooking successful!\nBooking successful!\nAvailable seats: 0\nAvailable seats: -1",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public synchronized void registerForCourse(int rollNo) {\n    // critical section\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "synchronized(this) {\n    // critical section\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public synchronized void registerForCourse(int rollNo) {\n    try {\n        if (this.numOfSeats - 1 < 0) {\n            throw new Exception(\"No more seats available\");\n        }\n        System.out.println(\"Booking successful!\");\n        this.numOfSeats--;\n        System.out.println(\"Available seats: \" + this.numOfSeats);\n    } catch (Exception e) {\n        System.out.println(\"Error: \" + e.getMessage());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Booking successful!\nAvailable seats: 0\nError: No more seats available for this course",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "private static String accountId;\n\npublic CustomerAccount() {\n    if(accountId == null){\n        accountId = \"ACC0001\" + Math.abs(rnd.nextInt());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "synchronized (this) {\n    if(accountId == null){\n        accountId = \"ACC0001\" + Math.abs(rnd.nextInt());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public synchronized void registerForCourse(int rollNo) {\n    try {\n        if(this.numOfSeats - 1 < 0) {\n            this.wait(5000); // wait for 5 sec for possible cancellation\n            if(this.numOfSeats - 1 < 0)\n                throw new Exception(\"No more seats available\");\n        }\n        System.out.println(\"Booking successful!\");\n        this.numOfSeats--;\n        System.out.println(\"Available seats: \" + this.numOfSeats);\n    } catch (Exception e) {\n        System.out.println(\"Error: \" + e.getMessage());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public synchronized void cancelSeats() {\n    this.numOfSeats++;\n    System.out.println(\"Cancellation successful!\");\n    System.out.println(\"Available seats: \" + this.numOfSeats);\n    this.notify(); // notify waiting thread\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "Booking successful!\nAvailable seats: 0\nCancellation successful!\nAvailable seats: 1\nBooking successful!\nAvailable seats: 0",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "ThreadGroup downloadTG = new ThreadGroup(\"DownloadThreads\");\nThread downloadThread1 = new Thread(downloadTG, \"Download Thread 1\");\nThread downloadThread2 = new Thread(downloadTG, \"Download Thread 2\");\nThread downloadThread3 = new Thread(downloadTG, \"Download Thread 3\");",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "Thread t = new Thread(...);\nt.setDaemon(true);\nt.start();",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Java Language Features/Multithreading/Multithreading.md",
+    "wordCount": 395,
+    "sectionCount": 19
+  }
+}

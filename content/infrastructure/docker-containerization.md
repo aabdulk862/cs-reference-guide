@@ -1,0 +1,343 @@
+# Docker & Containerization
+
+## Quick Reference
+
+- Docker packages applications and dependencies into lightweight, portable containers that run consistently across environments
+- Core concepts: Images (read-only templates), Containers (running instances), Dockerfile (build instructions), Registry (image storage)
+- Container lifecycle: `docker run` → running → `docker stop` → stopped → `docker rm` → removed
+- Image layers are cached and shared; each Dockerfile instruction creates a new layer
+- Docker uses Linux namespaces (PID, NET, MNT, UTS, IPC) and cgroups for isolation and resource limits
+- Default networking modes: bridge (isolated), host (shared), none (disabled), overlay (multi-host)
+- Volumes persist data beyond container lifecycle; bind mounts map host paths directly into containers
+- Docker Compose orchestrates multi-container applications with a single `docker-compose.yml` file
+- Multi-stage builds reduce final image size by separating build dependencies from runtime artifacts
+
+## When to Use
+
+Docker is the right choice when you need reproducible environments across development, testing, and production. Use containers when your application has complex dependency chains that differ between team members or deployment targets. Docker excels for microservice architectures where each service has independent scaling, deployment, and technology requirements. Choose Docker when you need fast startup times compared to virtual machines, efficient resource utilization through shared kernel access, and immutable infrastructure where deployments are predictable and rollbacks are trivial. Docker is also ideal for CI/CD pipelines where build environments must be consistent, for local development environments that mirror production, and for running legacy applications alongside modern services without dependency conflicts. Avoid Docker for applications requiring direct hardware access, GUI-heavy desktop applications, or when the operational overhead of container orchestration outweighs the benefits for simple single-server deployments.
+
+## Images
+
+Docker images are read-only templates composed of layered filesystems that contain everything needed to run an application: code, runtime, system tools, libraries, and configuration. Each image is built from a Dockerfile and stored as a series of layers using a union filesystem (overlay2 on modern Linux). Layers are content-addressable and shared between images, meaning if two images use the same base layer, it is stored only once on disk and in registries.
+
+Images follow a naming convention of `registry/repository:tag` (e.g., `docker.io/library/nginx:1.25-alpine`). The `latest` tag is a convention, not a guarantee of recency, and should be avoided in production. Image digests (`sha256:abc123...`) provide immutable references that guarantee exact content regardless of tag mutations. Base images like `alpine` (5MB), `debian-slim` (80MB), and `distroless` (2-20MB) offer different tradeoffs between size, available tooling, and security surface area.
+
+Image scanning tools like Trivy, Snyk, and Docker Scout analyze layers for known CVEs in OS packages and application dependencies. Production images should be rebuilt regularly to incorporate security patches from base image updates.
+
+## Containers
+
+Containers are running instances of images with a writable layer on top. Each container gets its own isolated process tree, network stack, and filesystem view while sharing the host kernel. Containers are ephemeral by design: any data written to the container's writable layer is lost when the container is removed. This immutability principle drives the use of volumes for persistent state and environment variables for configuration.
+
+Container resource limits are enforced through Linux cgroups. You can constrain CPU shares, memory limits (with OOM kill behavior), block I/O weight, and network bandwidth. Health checks define how Docker determines if a container is functioning correctly, enabling automatic restart policies and load balancer integration. Containers can be configured with restart policies (`no`, `on-failure`, `always`, `unless-stopped`) to handle crashes gracefully without external supervision.
+
+The container runtime (containerd, CRI-O) manages the container lifecycle: creating namespaces, setting up cgroups, mounting the filesystem, and executing the entrypoint process. When the entrypoint process exits, the container stops. This is why containers should run a single foreground process rather than background daemons.
+
+## Dockerfile Syntax
+
+A Dockerfile is a text file containing sequential instructions that define how to build an image. Each instruction creates a new layer, and Docker caches layers to speed up subsequent builds. Understanding layer caching is critical for build performance: place frequently changing instructions (like `COPY . .`) after stable ones (like `RUN apt-get install`).
+
+Key instructions include `FROM` (base image), `RUN` (execute commands during build), `COPY` and `ADD` (add files from build context), `WORKDIR` (set working directory), `ENV` (set environment variables), `EXPOSE` (document ports), `ENTRYPOINT` (main executable), and `CMD` (default arguments). The distinction between `ENTRYPOINT` and `CMD` is important: `ENTRYPOINT` defines the executable and `CMD` provides default arguments that can be overridden at runtime.
+
+Build arguments (`ARG`) allow parameterizing builds without baking secrets into layers. The `.dockerignore` file excludes files from the build context, reducing context transfer time and preventing sensitive files from being included in images. Labels (`LABEL`) add metadata for organization, automation, and compliance tracking.
+
+## Multi-Stage Builds
+
+Multi-stage builds use multiple `FROM` instructions in a single Dockerfile, allowing you to separate build-time dependencies from the final runtime image. This dramatically reduces image size by excluding compilers, build tools, and intermediate artifacts from the production image. Each stage can use a different base image optimized for its purpose.
+
+The pattern is straightforward: the first stage installs build tools and compiles the application, then a subsequent stage copies only the compiled artifacts into a minimal runtime image. Named stages (`FROM golang:1.21 AS builder`) allow selective copying (`COPY --from=builder /app/binary /usr/local/bin/`). You can also copy from external images without declaring them as stages.
+
+Multi-stage builds are essential for compiled languages (Go, Java, Rust, C++) where build toolchains are large but runtime dependencies are minimal. For Java applications, the build stage includes Maven or Gradle and the full JDK, while the runtime stage uses only the JRE. For Go applications, the final stage can be `scratch` (empty image) since Go produces statically linked binaries.
+
+## Docker Compose
+
+Docker Compose defines and runs multi-container applications using a declarative YAML file. It manages the complete lifecycle of interconnected services: building images, creating networks, mounting volumes, and starting containers in dependency order. Compose is essential for local development environments that mirror production topology and for integration testing where multiple services must interact.
+
+Services in a Compose file can reference Dockerfiles for building, pre-built images from registries, or a combination. Compose automatically creates a bridge network for the application, enabling service-to-service communication using service names as DNS hostnames. Dependencies between services are declared with `depends_on`, though this only controls startup order, not readiness. For readiness checks, use health checks combined with `condition: service_healthy`.
+
+Compose supports environment variable interpolation, multiple override files for environment-specific configuration, and profiles for selectively enabling services. The `docker compose watch` command (Compose 2.22+) enables hot-reload workflows by syncing file changes into running containers without rebuilding.
+
+## Networking
+
+Docker networking provides isolated communication channels between containers and the outside world. The default bridge network assigns each container a private IP and enables inter-container communication by container name (DNS resolution). Custom bridge networks offer better isolation, automatic DNS resolution, and the ability to connect and disconnect containers at runtime.
+
+Host networking removes network isolation entirely, giving the container direct access to the host's network interfaces. This eliminates NAT overhead and is useful for performance-sensitive applications, but sacrifices portability and isolation. The `none` network disables all networking, useful for batch processing containers that need no network access.
+
+Port mapping (`-p host:container`) exposes container ports on the host. Published ports go through Docker's userland proxy (or iptables rules), adding minimal latency. For multi-host networking in Swarm mode, overlay networks use VXLAN tunneling to create a flat network across multiple Docker hosts, enabling service discovery and load balancing across the cluster.
+
+## Volumes
+
+Volumes are Docker's mechanism for persisting data beyond the container lifecycle and sharing data between containers. Unlike bind mounts, volumes are managed entirely by Docker, stored in `/var/lib/docker/volumes/`, and can be backed by various storage drivers. Volumes are the preferred mechanism for production data persistence because they work on both Linux and Windows, can be managed via Docker CLI, and support remote storage drivers.
+
+Named volumes survive container removal and can be shared between multiple containers simultaneously. Anonymous volumes are created when a container declares a `VOLUME` in its Dockerfile but no explicit mount is provided. Bind mounts map a specific host directory into the container, useful for development workflows where source code changes should be immediately visible inside the container.
+
+Volume drivers extend Docker's storage capabilities to network-attached storage, cloud block storage (EBS, Azure Disk), and distributed filesystems (NFS, GlusterFS). The `tmpfs` mount type creates an in-memory filesystem that is never written to disk, suitable for sensitive data like secrets that should not persist.
+
+## Code Examples
+
+### Production-Ready Dockerfile with Multi-Stage Build
+
+```dockerfile
+# Stage 1: Build
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /app
+
+# Cache dependencies separately from source code
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copy source and build
+COPY src ./src
+RUN mvn package -DskipTests -B
+
+# Stage 2: Runtime
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy only the built artifact
+COPY --from=builder /app/target/*.jar app.jar
+
+# Set resource limits and JVM options
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+# Run as non-root user
+USER appuser
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+```
+
+### Docker Compose for Microservice Development
+
+```yaml
+version: "3.9"
+
+services:
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - ORDER_SERVICE_URL=http://order-service:8081
+      - INVENTORY_SERVICE_URL=http://inventory-service:8082
+    depends_on:
+      order-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    networks:
+      - backend
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/orders
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/inventory
+    depends_on:
+      mongo:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orderuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderuser -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - backend
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  mongo-data:
+
+networks:
+  backend:
+    driver: bridge
+```
+
+## Architecture and Diagrams
+
+```mermaid
+graph TB
+    subgraph "Docker Architecture"
+        CLI[Docker CLI] --> DAEMON[Docker Daemon<br/>dockerd]
+        DAEMON --> CONTAINERD[containerd]
+        CONTAINERD --> RUNC[runc]
+        
+        subgraph "Container Runtime"
+            RUNC --> NS[Linux Namespaces<br/>PID, NET, MNT, UTS, IPC]
+            RUNC --> CG[cgroups<br/>CPU, Memory, I/O]
+            RUNC --> UFS[Union Filesystem<br/>overlay2]
+        end
+        
+        DAEMON --> REGISTRY[Container Registry<br/>Docker Hub / ECR / GCR]
+        DAEMON --> NETWORK[Network Drivers<br/>bridge, host, overlay]
+        DAEMON --> STORAGE[Storage Drivers<br/>overlay2, devicemapper]
+    end
+    
+    subgraph "Image Layers"
+        BASE[Base Layer: alpine]
+        L1[Layer 1: apt-get install]
+        L2[Layer 2: COPY dependencies]
+        L3[Layer 3: COPY application]
+        RW[Writable Layer: container data]
+        
+        BASE --> L1 --> L2 --> L3 --> RW
+    end
+```
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant CLI as Docker CLI
+    participant D as Docker Daemon
+    participant R as Registry
+    participant C as Container
+
+    Dev->>CLI: docker build -t myapp:1.0 .
+    CLI->>D: Build request + context
+    D->>D: Execute Dockerfile instructions
+    D->>D: Create image layers
+    D-->>CLI: Image built (sha256:abc...)
+    
+    Dev->>CLI: docker push myapp:1.0
+    CLI->>D: Push request
+    D->>R: Upload layers (deduplicated)
+    R-->>D: Push complete
+    
+    Dev->>CLI: docker run -d -p 8080:8080 myapp:1.0
+    CLI->>D: Run request
+    D->>D: Create container from image
+    D->>C: Start process in namespaces
+    C-->>D: Container running
+    D-->>CLI: Container ID
+```
+
+## Common Pitfalls
+
+1. **Running as root inside containers**: By default, processes run as root (UID 0) inside containers. If an attacker escapes the container, they have root access on the host. Always create and switch to a non-root user with `RUN adduser` and `USER` instructions. Use `--read-only` filesystem where possible.
+
+2. **Using `latest` tag in production**: The `latest` tag is mutable and can point to different images over time, making deployments non-reproducible. Always use specific version tags or image digests in production Dockerfiles and Compose files to ensure deterministic deployments.
+
+3. **Ignoring layer cache ordering**: Placing frequently changing instructions (like `COPY . .`) before stable ones (like `RUN apt-get install`) invalidates the cache for all subsequent layers on every build. Order instructions from least to most frequently changing to maximize cache hits.
+
+4. **Storing secrets in images**: Environment variables set with `ENV` or files added with `COPY` are baked into image layers and visible to anyone with image access. Use Docker secrets, runtime environment variables, or secret management tools (Vault, AWS Secrets Manager) instead. Build-time secrets should use `--mount=type=secret` in BuildKit.
+
+5. **Not setting resource limits**: Containers without memory limits can consume all host memory, triggering the OOM killer on other containers or the host itself. Always set `--memory` and `--cpus` limits in production, and configure JVM heap sizes relative to container memory using `-XX:MaxRAMPercentage`.
+
+6. **Large build contexts**: Docker sends the entire build context to the daemon before building. Without a `.dockerignore` file, this includes `node_modules`, `.git`, build artifacts, and test data, slowing builds dramatically. Always maintain a comprehensive `.dockerignore`.
+
+## Real-World Use Cases
+
+- **Microservice deployment pipeline**: Each microservice has its own Dockerfile with multi-stage builds. CI/CD pipelines build images on every commit, run integration tests using Docker Compose to spin up dependencies, push tagged images to ECR, and deploy to Kubernetes. Rollbacks are instant by redeploying the previous image tag.
+
+- **Local development environment**: A `docker-compose.yml` defines the entire application stack (databases, message brokers, caches, services) so new developers can run `docker compose up` and have a working environment in minutes. Volume mounts enable hot-reload of source code without rebuilding images.
+
+- **Database migration testing**: Before running migrations in production, the CI pipeline spins up a container with the production database version, applies migrations, runs integration tests, and tears down. This catches migration issues before they reach production without requiring a dedicated staging database.
+
+- **Legacy application modernization**: Legacy applications with complex dependency requirements (specific OS versions, library versions, system configurations) are containerized to run alongside modern services. The container encapsulates the legacy environment while exposing standard HTTP or messaging interfaces.
+
+## Interview Questions
+
+**Q: What is the difference between a Docker image and a container?**
+A: An image is a read-only template composed of layered filesystems containing application code, runtime, and dependencies. A container is a running instance of an image with an additional writable layer on top. Multiple containers can be created from the same image, each with isolated processes, networking, and filesystem views. Images are built once and stored in registries; containers are ephemeral and created on demand.
+
+**Q: How do multi-stage builds reduce image size?**
+A: Multi-stage builds use multiple `FROM` instructions to separate build-time dependencies from runtime requirements. The build stage includes compilers, package managers, and source code, while the final stage copies only compiled artifacts into a minimal base image. For example, a Go application built in a `golang:1.21` stage (800MB) can produce a final image using `scratch` (0MB base) containing only the static binary, resulting in images under 20MB.
+
+**Q: Explain Docker networking modes and when to use each.**
+A: Bridge (default) creates an isolated network with NAT for external access, suitable for most applications. Host removes network isolation for maximum performance, used when NAT overhead is unacceptable. None disables networking entirely for security-sensitive batch jobs. Overlay creates multi-host networks using VXLAN for Docker Swarm or cross-host communication. Custom bridge networks are preferred over the default bridge because they provide automatic DNS resolution between containers.
+
+**Q: How do you handle persistent data in Docker?**
+A: Docker provides three options: volumes (managed by Docker, stored in `/var/lib/docker/volumes/`, portable and backup-friendly), bind mounts (map host directories directly, useful for development), and tmpfs mounts (in-memory only, for sensitive data). Volumes are preferred for production because they are managed by Docker, work across platforms, support remote storage drivers, and survive container recreation. Critical data should also be backed up externally since volumes are tied to the Docker host.
+
+**Q: What security best practices should you follow with Docker?**
+A: Run containers as non-root users, use minimal base images (alpine, distroless) to reduce attack surface, scan images for CVEs regularly, never store secrets in image layers, use read-only filesystems where possible, set resource limits to prevent DoS, use Docker Content Trust for image signing, keep the Docker daemon and host kernel updated, and limit container capabilities with `--cap-drop ALL` adding back only required capabilities.
+
+## Production Tips
+
+- **Image size optimization**: Use multi-stage builds, alpine or distroless base images, combine RUN instructions to reduce layers, clean package manager caches in the same layer (`apt-get install && rm -rf /var/lib/apt/lists/*`), and use `.dockerignore` aggressively. Smaller images mean faster pulls, less storage cost, and reduced attack surface.
+
+- **Health check design**: Implement meaningful health checks that verify the application can serve requests, not just that the process is running. For Spring Boot apps, use the `/actuator/health` endpoint. Set appropriate intervals (10-30s), timeouts (3-5s), and start periods (30-60s for JVM warmup) to avoid false positives during startup.
+
+- **Logging strategy**: Configure applications to log to stdout/stderr rather than files. Docker captures stdout/stderr through its logging driver, enabling centralized log collection via Fluentd, Logstash, or CloudWatch. Use structured JSON logging for machine parseability. Set `--log-opt max-size=10m --log-opt max-file=3` to prevent disk exhaustion from verbose containers.
+
+- **Graceful shutdown**: Ensure your application handles SIGTERM (sent by `docker stop`) to complete in-flight requests and close connections cleanly. Set `STOPSIGNAL` in the Dockerfile if your app uses a different signal. Configure `stop_grace_period` in Compose (default 10s) to allow sufficient shutdown time before SIGKILL.
+
+- **Registry management**: Use private registries (ECR, GCR, Harbor) for production images. Implement image lifecycle policies to automatically delete untagged images and images older than retention period. Tag images with both semantic versions and git commit SHAs for traceability.
+
+## Related Topics
+
+- [Kubernetes & EKS](./kubernetes-eks.md) - Container orchestration platform that manages Docker containers at scale
+- [CI/CD Pipelines](./ci-cd-pipelines.md) - Docker images are built and deployed through automated pipeline stages
+- [Linux Administration](./linux-administration.md) - Docker relies on Linux kernel features (namespaces, cgroups) for container isolation

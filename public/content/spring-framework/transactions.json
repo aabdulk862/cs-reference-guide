@@ -1,0 +1,355 @@
+{
+  "id": "transactions-transactions",
+  "slug": "transactions",
+  "title": "Transactions",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "transactions-in-tasklets",
+      "heading": "Transactions in Tasklets",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch ensures data integrity and consistency using Spring-managed transactions, especially during tasklet execution and chunk processing."
+        },
+        {
+          "type": "image",
+          "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Transactions/Transactions/image.png",
+          "alt": "image.png",
+          "originalPath": "Transactions/image.png"
+        }
+      ],
+      "wordCount": 17,
+      "subsections": []
+    },
+    {
+      "id": "key-concepts",
+      "heading": "Key Concepts",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The execute() method of a tasklet runs inside a single transaction.",
+            "If the tasklet returns RepeatStatus.CONTINUABLE, Spring Batch calls execute again, and each invocation runs in its own new transaction.",
+            "You can control transaction behavior (propagation, isolation, timeout) using the transaction-attributes element."
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    },
+    {
+      "id": "example-tasklet",
+      "heading": "Example Tasklet",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "java-example",
+          "heading": "Java Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\npublic class SampleTasklet implements Tasklet {\n\n    @Override\n    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {\n        System.out.println(\"Running inside a transaction...\");\n        return RepeatStatus.FINISHED;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "xml-with-transaction-attributes",
+          "heading": "XML with Transaction Attributes",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<tasklet ref=\"sampleTasklet\">\n    <transaction-attributes propagation=\"REQUIRED\" isolation=\"DEFAULT\" timeout=\"30\"/>\n</tasklet>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "when-tasklets-use-multiple-transactions",
+          "heading": "When Tasklets Use Multiple Transactions",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "return RepeatStatus.CONTINUABLE;",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "This tells Spring Batch:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Run execute() again",
+                "Each call = new transaction"
+              ]
+            }
+          ],
+          "wordCount": 12,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "transactions-in-chunk-oriented-steps",
+      "heading": "Transactions in Chunk-Oriented Steps",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "key-behavior",
+      "heading": "Key Behavior",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Behavior",
+            "Explanation"
+          ],
+          "rows": [
+            [
+              "One transaction per chunk",
+              "Each chunk’s read-process-write cycle occurs inside one transaction"
+            ],
+            [
+              "Processor/Writer exceptions → rollback",
+              "Rollback entire chunk and retry"
+            ],
+            [
+              "Reader exceptions → no rollback",
+              "Reader exceptions do not cause rollback (because data may be corrupted)"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    },
+    {
+      "id": "example-java",
+      "heading": "Example (Java)",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "java",
+          "code": ".stepBuilderFactory.get(\"step1\")\n    .<Input, Output>chunk(10)\n    .reader(reader())\n    .processor(processor())\n    .writer(writer())\n    .build();",
+          "runnable": false
+        },
+        {
+          "type": "paragraph",
+          "text": "Each chunk of 10 items will run inside a single transaction."
+        }
+      ],
+      "wordCount": 11,
+      "subsections": [
+        {
+          "id": "example-timeline",
+          "heading": "Example Timeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Chunk size = 10",
+                "Items 1–10 processed in one transaction",
+                "If writer fails → rollback whole chunk",
+                "Then retry processing the same 10 items again"
+              ]
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "avoiding-rollback",
+      "heading": "Avoiding Rollback",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Sometimes you want the step to continue even if a specific exception is thrown, without rolling back the transaction."
+        }
+      ],
+      "wordCount": 19,
+      "subsections": []
+    },
+    {
+      "id": "use-case-examples",
+      "heading": "Use Case Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Validation errors you want to treat as minor",
+            "Logging or auditing failures",
+            "Non-critical data issues"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "You can configure this using:"
+        }
+      ],
+      "wordCount": 20,
+      "subsections": [
+        {
+          "id": "xml-example",
+          "heading": "XML Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" skip-limit=\"5\">\n\n        <no-rollback-exception-classes>\n            <include class=\"org.springframework.batch.item.validator.ValidatorException\"/>\n        </no-rollback-exception-classes>\n\n    </chunk>\n</tasklet>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "java-example",
+          "heading": "Java Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": ".faultTolerant()\n.noRollback(ValidatorException.class)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "behavior",
+      "heading": "Behavior",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The step does not roll back when ValidatorException occurs.",
+            "However, you may still skip or continue depending on skip/retry settings."
+          ]
+        }
+      ],
+      "wordCount": 20,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Area",
+            "Behavior"
+          ],
+          "rows": [
+            [
+              "Tasklet Transactions",
+              "Each execute() = separate transaction"
+            ],
+            [
+              "Chunk Transactions",
+              "One transaction per chunk"
+            ],
+            [
+              "Reader Exceptions",
+              "No rollback"
+            ],
+            [
+              "Processor/Writer Exceptions",
+              "Rollback chunk"
+            ],
+            [
+              "No Rollback Exceptions",
+              "Allows skipping without rollback"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 30,
+      "subsections": []
+    }
+  ],
+  "images": [
+    {
+      "src": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Transactions/Transactions/image.png",
+      "alt": "image.png",
+      "originalPath": "Transactions/image.png"
+    }
+  ],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Component\npublic class SampleTasklet implements Tasklet {\n\n    @Override\n    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {\n        System.out.println(\"Running inside a transaction...\");\n        return RepeatStatus.FINISHED;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<tasklet ref=\"sampleTasklet\">\n    <transaction-attributes propagation=\"REQUIRED\" isolation=\"DEFAULT\" timeout=\"30\"/>\n</tasklet>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "return RepeatStatus.CONTINUABLE;",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": ".stepBuilderFactory.get(\"step1\")\n    .<Input, Output>chunk(10)\n    .reader(reader())\n    .processor(processor())\n    .writer(writer())\n    .build();",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<tasklet>\n    <chunk reader=\"reader\" writer=\"writer\" commit-interval=\"100\" skip-limit=\"5\">\n\n        <no-rollback-exception-classes>\n            <include class=\"org.springframework.batch.item.validator.ValidatorException\"/>\n        </no-rollback-exception-classes>\n\n    </chunk>\n</tasklet>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": ".faultTolerant()\n.noRollback(ValidatorException.class)",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Batch/Transactions/Transactions.md",
+    "wordCount": 235,
+    "sectionCount": 16
+  }
+}

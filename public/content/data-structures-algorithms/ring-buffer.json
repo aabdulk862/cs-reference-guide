@@ -1,0 +1,518 @@
+{
+  "id": "data-structures-and-algorithms-ring-buffer",
+  "slug": "ring-buffer",
+  "title": "Ring Buffer",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Ring Buffer",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A ring buffer (also known as a circular buffer) is a fixed-size data structure that uses a single, continuous block of memory to store elements in a circular manner. When the buffer reaches its end, new data wraps around to the beginning, overwriting old data if necessary. Ring buffers are widely used in scenarios requiring efficient FIFO (First-In, First-Out) data handling, such as streaming, real-time processing, and embedded systems. They are the foundation of high-performance I/O systems, network packet buffers, and lock-free concurrent data structures."
+        }
+      ],
+      "wordCount": 85,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enqueue: O(1) — write at tail, advance tail pointer",
+            "Dequeue: O(1) — read at head, advance head pointer",
+            "Peek: O(1) — read at head without advancing",
+            "IsFull check: O(1) — (tail + 1) % capacity == head or size == capacity",
+            "IsEmpty check: O(1) — head == tail or size == 0",
+            "Space: O(n) fixed allocation, no dynamic resizing",
+            "Wrap-around formula: index = (index + 1) % capacity",
+            "Java equivalent: ArrayDeque (resizable), custom implementation for fixed-size",
+            "Overwrite policy: configurable (overwrite oldest vs. reject new)",
+            "Memory layout: contiguous array, cache-friendly sequential access",
+            "Thread-safe variant: single-producer single-consumer (SPSC) requires no locks"
+          ]
+        }
+      ],
+      "wordCount": 99,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Ring buffers are the right choice when you need a fixed-size FIFO buffer with guaranteed O(1) operations and no memory allocation during operation. They excel in real-time systems where predictable latency is more important than unbounded capacity."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose ring buffers when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need bounded memory usage with predictable allocation",
+            "You are building producer-consumer pipelines with fixed buffer sizes",
+            "You need lock-free single-producer single-consumer (SPSC) communication",
+            "You are working in embedded systems with limited memory",
+            "You need to buffer streaming data (audio, video, network packets)",
+            "You want to avoid garbage collection pauses (no object allocation per operation)"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid ring buffers when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need unbounded growth (use ArrayList or LinkedList)",
+            "You need random access by index (use arrays)",
+            "Multiple producers or consumers need concurrent access (use ConcurrentLinkedQueue or Disruptor)",
+            "You need to search for elements (use HashMap or TreeSet)"
+          ]
+        }
+      ],
+      "wordCount": 137,
+      "subsections": []
+    },
+    {
+      "id": "key-features-of-ring-buffers",
+      "heading": "Key Features of Ring Buffers",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Fixed Size: A ring buffer has a predefined capacity and cannot grow dynamically.",
+            "Circular Structure: When the buffer reaches its end, it wraps around to the beginning, making efficient use of memory.",
+            "Efficient FIFO Operations: Supports fast insertions and deletions in constant time, making it ideal for queue-based applications.",
+            "Overwrite Behavior: Depending on the implementation, new data may overwrite old data when the buffer is full.",
+            "Uses Two Pointers: Typically implemented using a head (front of the buffer) and a tail (end of the buffer) pointer to track data insertion and removal."
+          ]
+        }
+      ],
+      "wordCount": 92,
+      "subsections": []
+    },
+    {
+      "id": "ring-buffer-structure",
+      "heading": "Ring Buffer Structure",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TD\n    subgraph \"Circular Buffer (capacity: 5)\"\n        S0[\"Slot 0\"] --> S1[\"Slot 1\"]\n        S1 --> S2[\"Slot 2\"]\n        S2 --> S3[\"Slot 3\"]\n        S3 --> S4[\"Slot 4\"]\n        S4 --> S0\n    end\n    HEAD[\"Head Pointer\"] -.-> S0\n    TAIL[\"Tail Pointer\"] -.-> S2"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "implementing-a-ring-buffer-in-java",
+      "heading": "Implementing a Ring Buffer in Java",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A ring buffer can be implemented using an array and two pointers (head and tail) to track the front and rear positions."
+        }
+      ],
+      "wordCount": 22,
+      "subsections": [
+        {
+          "id": "example-implementation",
+          "heading": "Example Implementation:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "class RingBuffer {\n    private int[] buffer;\n    private int head = 0;\n    private int tail = 0;\n    private int size = 0;\n    private int capacity;\n\n    public RingBuffer(int capacity) {\n        this.capacity = capacity;\n        this.buffer = new int[capacity];\n    }\n\n    public void enqueue(int value) {\n        if (size == capacity) {\n            System.out.println(\"Buffer is full. Overwriting oldest element.\");\n            head = (head + 1) % capacity;\n            size--;\n        }\n        buffer[tail] = value;\n        tail = (tail + 1) % capacity;\n        size++;\n    }\n\n    public int dequeue() {\n        if (size == 0) {\n            throw new RuntimeException(\"Buffer is empty!\");\n        }\n        int value = buffer[head];\n        head = (head + 1) % capacity;\n        size--;\n        return value;\n    }\n\n    public boolean isEmpty() {\n        return size == 0;\n    }\n\n    public boolean isFull() {\n        return size == capacity;\n    }\n\n    public void printBuffer() {\n        System.out.print(\"Buffer: \");\n        for (int i = 0; i < size; i++) {\n            System.out.print(buffer[(head + i) % capacity] + \" \");\n        }\n        System.out.println();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-usage",
+          "heading": "Example Usage:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class Main {\n    public static void main(String[] args) {\n        RingBuffer rb = new RingBuffer(3);\n\n        rb.enqueue(10);\n        rb.enqueue(20);\n        rb.enqueue(30);\n        rb.printBuffer();  // Output: Buffer: 10 20 30\n\n        rb.enqueue(40);  // Overwrites oldest element (10)\n        rb.printBuffer();  // Output: Buffer: 20 30 40\n\n        System.out.println(\"Dequeued: \" + rb.dequeue());  // Output: Dequeued: 20\n        rb.printBuffer();  // Output: Buffer: 30 40\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-world-applications-of-ring-buffers",
+      "heading": "Real-World Applications of Ring Buffers",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Streaming and Audio Processing: Used in audio processing to store audio samples in a fixed-size buffer for real-time playback.",
+            "Embedded Systems: Common in microcontroller applications where memory constraints require efficient data structures.",
+            "Networking: Used in packet buffering for network communication.",
+            "Logging Systems: Helps store logs efficiently without consuming excessive memory.",
+            "Concurrency Control: Used in multi-threaded applications where a producer-consumer model is needed."
+          ]
+        }
+      ],
+      "wordCount": 62,
+      "subsections": []
+    },
+    {
+      "id": "key-points-about-ring-buffers-in-java",
+      "heading": "Key Points About Ring Buffers in Java",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Efficient Memory Utilization: Since it reuses a fixed array, no dynamic memory allocations occur during runtime.",
+            "Constant Time Operations: Insertions and deletions are performed in O(1) time.",
+            "Avoids Fragmentation: Unlike linked lists, ring buffers avoid memory fragmentation since elements are stored contiguously.",
+            "Overwriting Mechanism: Can be implemented to overwrite old data when full or reject new data."
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    },
+    {
+      "id": "advantages-of-ring-buffers",
+      "heading": "Advantages of Ring Buffers",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Fast Insertions and Deletions: Unlike arrays that require shifting elements, a ring buffer maintains constant-time operations.",
+            "Fixed Memory Footprint: Useful in constrained environments where memory efficiency is important.",
+            "Efficient Circular Handling: Automatically wraps around when reaching the end, reducing memory wastage."
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    },
+    {
+      "id": "limitations-of-ring-buffers",
+      "heading": "Limitations of Ring Buffers",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Fixed Capacity: Cannot dynamically grow; once full, old data is overwritten or new data is rejected.",
+            "Complex Implementation: Requires careful handling of pointer movements to avoid buffer corruption.",
+            "Sequential Access: Unlike random-access structures, accessing arbitrary elements is not straightforward."
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    },
+    {
+      "id": "operations-on-ring-buffers-with-time-complexity",
+      "heading": "Operations on Ring Buffers with Time Complexity",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Operation",
+            "Description",
+            "Time Complexity"
+          ],
+          "rows": [
+            [
+              "Enqueue",
+              "Inserts an element at the tail and updates pointers.",
+              "O(1)"
+            ],
+            [
+              "Dequeue",
+              "Removes the element at the head and updates pointers.",
+              "O(1)"
+            ],
+            [
+              "Peek",
+              "Retrieves the element at the head without removing it.",
+              "O(1)"
+            ],
+            [
+              "IsEmpty",
+              "Checks if the buffer is empty.",
+              "O(1)"
+            ],
+            [
+              "IsFull",
+              "Checks if the buffer is full.",
+              "O(1)"
+            ],
+            [
+              "Print Buffer",
+              "Iterates through the elements for display.",
+              "O(n)"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 62,
+      "subsections": []
+    },
+    {
+      "id": "comparison-with-other-data-structures",
+      "heading": "Comparison with Other Data Structures",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Ring Buffer",
+            "Array",
+            "Queue (LinkedList)"
+          ],
+          "rows": [
+            [
+              "Memory Usage",
+              "Fixed, efficient",
+              "Fixed, may waste space",
+              "Extra space for pointers"
+            ],
+            [
+              "Access Time",
+              "FIFO, sequential",
+              "Random access O(1)",
+              "FIFO, sequential"
+            ],
+            [
+              "Insertion Time",
+              "O(1)",
+              "O(1) at end, O(n) at start/mid",
+              "O(1) at end"
+            ],
+            [
+              "Deletion Time",
+              "O(1)",
+              "O(n) (requires shifting)",
+              "O(1) at front"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A ring buffer is a circular queue that efficiently handles FIFO operations in O(1) time.",
+            "It uses a fixed-size array with head and tail pointers to track elements.",
+            "Commonly used in streaming, networking, embedded systems, and real-time applications.",
+            "Advantages include constant-time operations, efficient memory utilization, and automatic circular wrapping.",
+            "Limitations include fixed capacity and complexity in managing circular indexing."
+          ]
+        }
+      ],
+      "wordCount": 59,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "generic-ring-buffer-with-overwrite-policy",
+          "heading": "Generic Ring Buffer with Overwrite Policy",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A production-quality ring buffer that supports configurable behavior when full: either overwrite the oldest element or reject the new one."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class RingBuffer<T> {\n    private final Object[] buffer;\n    private int head = 0;\n    private int tail = 0;\n    private int size = 0;\n    private final int capacity;\n    private final boolean overwriteOnFull;\n\n    public RingBuffer(int capacity, boolean overwriteOnFull) {\n        this.capacity = capacity;\n        this.buffer = new Object[capacity];\n        this.overwriteOnFull = overwriteOnFull;\n    }\n\n    public boolean offer(T element) {\n        if (size == capacity) {\n            if (!overwriteOnFull) return false;\n            head = (head + 1) % capacity;  // Drop oldest\n            size--;\n        }\n        buffer[tail] = element;\n        tail = (tail + 1) % capacity;\n        size++;\n        return true;\n    }\n\n    @SuppressWarnings(\"unchecked\")\n    public T poll() {\n        if (size == 0) return null;\n        T element = (T) buffer[head];\n        buffer[head] = null;  // Help GC\n        head = (head + 1) % capacity;\n        size--;\n        return element;\n    }\n\n    public int size() { return size; }\n    public boolean isEmpty() { return size == 0; }\n    public boolean isFull() { return size == capacity; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 20,
+          "subsections": []
+        },
+        {
+          "id": "lock-free-spsc-ring-buffer",
+          "heading": "Lock-Free SPSC Ring Buffer",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A single-producer single-consumer ring buffer using volatile variables for thread-safe communication without locks. This pattern is used in high-performance messaging systems."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class SPSCRingBuffer<T> {\n    private final Object[] buffer;\n    private final int capacity;\n    private volatile long head = 0;  // Consumer reads from here\n    private volatile long tail = 0;  // Producer writes here\n\n    public SPSCRingBuffer(int capacity) {\n        this.capacity = capacity;\n        this.buffer = new Object[capacity];\n    }\n\n    // Called by producer thread only\n    public boolean offer(T element) {\n        long currentTail = tail;\n        if (currentTail - head >= capacity) return false;  // Full\n        buffer[(int)(currentTail % capacity)] = element;\n        tail = currentTail + 1;  // Volatile write publishes the element\n        return true;\n    }\n\n    // Called by consumer thread only\n    @SuppressWarnings(\"unchecked\")\n    public T poll() {\n        long currentHead = head;\n        if (currentHead >= tail) return null;  // Empty\n        T element = (T) buffer[(int)(currentHead % capacity)];\n        head = currentHead + 1;  // Volatile write releases the slot\n        return element;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Off-by-one in full/empty detection: The most common ring buffer bug is confusing full and empty states. When head == tail, the buffer could be either full or empty. Solutions: track size separately, waste one slot (full when (tail + 1) % capacity == head), or use a boolean flag.",
+            "Not handling the wrap-around correctly: Forgetting modulo arithmetic when advancing pointers causes array index out of bounds. Always use (index + 1) % capacity for pointer advancement.",
+            "Memory visibility in multi-threaded usage: Without proper synchronization (volatile, locks, or memory barriers), writes by the producer may not be visible to the consumer. In SPSC buffers, the tail write must use volatile or a store-release barrier to publish the written element.",
+            "Power-of-two optimization assumption: Many optimized ring buffers use bitwise AND (index & (capacity - 1)) instead of modulo for wrap-around, which only works when capacity is a power of two. Using this optimization with non-power-of-two sizes causes subtle corruption.",
+            "Not nulling references after dequeue: In garbage-collected languages, failing to null out dequeued slots prevents the GC from collecting the objects, causing memory leaks in long-running buffers.",
+            "Assuming thread safety from a single volatile: A single volatile variable does not make the entire ring buffer thread-safe for multiple producers or consumers. SPSC is safe with volatiles; MPMC requires CAS operations or locks."
+          ]
+        }
+      ],
+      "wordCount": 219,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q1: How does a ring buffer differ from a regular queue backed by an array?\nA regular array-backed queue either wastes space (elements pile up at the end) or requires O(n) shifting. A ring buffer reuses freed space by wrapping pointers around, maintaining O(1) operations without wasted space or shifting. The trade-off is fixed capacity."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q2: How would you implement a ring buffer that supports multiple producers and multiple consumers?\nUse compare-and-swap (CAS) operations on head and tail indices. Each producer atomically claims a slot by CAS-incrementing tail, writes the element, then marks the slot as ready. Each consumer atomically claims a slot by CAS-incrementing head, waits for the slot to be ready, then reads. This is the approach used by the LMAX Disruptor."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q3: Why are ring buffers preferred in real-time systems over dynamic data structures?\nRing buffers have deterministic O(1) operations with no memory allocation or deallocation during operation. Dynamic structures (ArrayList, LinkedList) may trigger garbage collection pauses or memory allocation delays, which violate real-time latency guarantees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q4: How do you handle the case where a ring buffer is full?\nThree strategies: (1) Block the producer until space is available (blocking queue semantics), (2) Overwrite the oldest element (lossy buffer, common in logging), (3) Reject the new element and return failure (backpressure signal). The choice depends on whether data loss is acceptable."
+        }
+      ],
+      "wordCount": 224,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Use power-of-two capacity for performance: When capacity is a power of two, the modulo operation index % capacity can be replaced with bitwise AND index & (capacity - 1), which is significantly faster on modern CPUs. Most high-performance ring buffer implementations enforce this constraint.",
+            "Pad to avoid false sharing in concurrent buffers: In multi-threaded ring buffers, head and tail variables accessed by different threads should be padded to separate cache lines (64 bytes on x86). False sharing occurs when both variables share a cache line, causing unnecessary cache invalidation between cores.",
+            "Use ring buffers for logging in latency-sensitive paths: Instead of writing logs synchronously (which may block on I/O), write log entries to a ring buffer and have a background thread drain them to disk. This bounds the latency impact of logging to a single array write.",
+            "Consider memory-mapped ring buffers for IPC: For inter-process communication, a ring buffer backed by a memory-mapped file allows zero-copy data transfer between processes. This is used in high-frequency trading systems and kernel bypass networking.",
+            "Monitor buffer utilization as a capacity planning metric: Track the high-water mark of buffer occupancy. If the buffer frequently reaches capacity, you need either a larger buffer, faster consumers, or backpressure mechanisms to prevent data loss."
+          ]
+        }
+      ],
+      "wordCount": 207,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Queue — Ring buffers implement queue semantics with fixed-size circular storage",
+            "Array — Ring buffers use arrays as their underlying storage mechanism",
+            "List — ArrayDeque is Java's resizable ring buffer implementation",
+            "Heap — Both use array-based storage with index arithmetic for structure",
+            "Big O Notation — Ring buffer operations demonstrate true O(1) worst-case complexity"
+          ]
+        }
+      ],
+      "wordCount": 54,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "class RingBuffer {\n    private int[] buffer;\n    private int head = 0;\n    private int tail = 0;\n    private int size = 0;\n    private int capacity;\n\n    public RingBuffer(int capacity) {\n        this.capacity = capacity;\n        this.buffer = new int[capacity];\n    }\n\n    public void enqueue(int value) {\n        if (size == capacity) {\n            System.out.println(\"Buffer is full. Overwriting oldest element.\");\n            head = (head + 1) % capacity;\n            size--;\n        }\n        buffer[tail] = value;\n        tail = (tail + 1) % capacity;\n        size++;\n    }\n\n    public int dequeue() {\n        if (size == 0) {\n            throw new RuntimeException(\"Buffer is empty!\");\n        }\n        int value = buffer[head];\n        head = (head + 1) % capacity;\n        size--;\n        return value;\n    }\n\n    public boolean isEmpty() {\n        return size == 0;\n    }\n\n    public boolean isFull() {\n        return size == capacity;\n    }\n\n    public void printBuffer() {\n        System.out.print(\"Buffer: \");\n        for (int i = 0; i < size; i++) {\n            System.out.print(buffer[(head + i) % capacity] + \" \");\n        }\n        System.out.println();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class Main {\n    public static void main(String[] args) {\n        RingBuffer rb = new RingBuffer(3);\n\n        rb.enqueue(10);\n        rb.enqueue(20);\n        rb.enqueue(30);\n        rb.printBuffer();  // Output: Buffer: 10 20 30\n\n        rb.enqueue(40);  // Overwrites oldest element (10)\n        rb.printBuffer();  // Output: Buffer: 20 30 40\n\n        System.out.println(\"Dequeued: \" + rb.dequeue());  // Output: Dequeued: 20\n        rb.printBuffer();  // Output: Buffer: 30 40\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class RingBuffer<T> {\n    private final Object[] buffer;\n    private int head = 0;\n    private int tail = 0;\n    private int size = 0;\n    private final int capacity;\n    private final boolean overwriteOnFull;\n\n    public RingBuffer(int capacity, boolean overwriteOnFull) {\n        this.capacity = capacity;\n        this.buffer = new Object[capacity];\n        this.overwriteOnFull = overwriteOnFull;\n    }\n\n    public boolean offer(T element) {\n        if (size == capacity) {\n            if (!overwriteOnFull) return false;\n            head = (head + 1) % capacity;  // Drop oldest\n            size--;\n        }\n        buffer[tail] = element;\n        tail = (tail + 1) % capacity;\n        size++;\n        return true;\n    }\n\n    @SuppressWarnings(\"unchecked\")\n    public T poll() {\n        if (size == 0) return null;\n        T element = (T) buffer[head];\n        buffer[head] = null;  // Help GC\n        head = (head + 1) % capacity;\n        size--;\n        return element;\n    }\n\n    public int size() { return size; }\n    public boolean isEmpty() { return size == 0; }\n    public boolean isFull() { return size == capacity; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class SPSCRingBuffer<T> {\n    private final Object[] buffer;\n    private final int capacity;\n    private volatile long head = 0;  // Consumer reads from here\n    private volatile long tail = 0;  // Producer writes here\n\n    public SPSCRingBuffer(int capacity) {\n        this.capacity = capacity;\n        this.buffer = new Object[capacity];\n    }\n\n    // Called by producer thread only\n    public boolean offer(T element) {\n        long currentTail = tail;\n        if (currentTail - head >= capacity) return false;  // Full\n        buffer[(int)(currentTail % capacity)] = element;\n        tail = currentTail + 1;  // Volatile write publishes the element\n        return true;\n    }\n\n    // Called by consumer thread only\n    @SuppressWarnings(\"unchecked\")\n    public T poll() {\n        long currentHead = head;\n        if (currentHead >= tail) return null;  // Empty\n        T element = (T) buffer[(int)(currentHead % capacity)];\n        head = currentHead + 1;  // Volatile write releases the slot\n        return element;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/data-structures-and-algorithms/ring-buffer.md",
+    "wordCount": 1548,
+    "sectionCount": 22
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "id": "spring-essentials-inversion-of-control",
+  "slug": "inversion-of-control",
+  "title": "Inversion of Control",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "key-definitions",
+      "heading": "Key Definitions",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Inversion of Control (IoC): ",
+            "Dependency Injection (DI): "
+          ]
+        }
+      ],
+      "wordCount": 7,
+      "subsections": []
+    },
+    {
+      "id": "initial-problem-in-the-infytel-application",
+      "heading": "Initial Problem in the InfyTel Application",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The application allows a customer to enroll in Prepaid or Postpaid plans.",
+            "The Customer class directly instantiates Prepaid or Postpaid, causing tight coupling."
+          ]
+        }
+      ],
+      "wordCount": 23,
+      "subsections": [
+        {
+          "id": "-tightly-coupled-code-example",
+          "heading": "❌ Tightly Coupled Code Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "class Prepaid {\n\tpublic Boolean enrollToPrepaid() {\n\t\treturn true;\n\t}\n}\n\nclass Customer {\n\tpublic void register() {\n\t\tPrepaid prepaid = new Prepaid();\n\t\tif (prepaid.enrollToPrepaid()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNPAID_BILL\");\n\t\t}\n\t}\n}",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "The above code: "
+              ]
+            }
+          ],
+          "wordCount": 3,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "attempted-improvement-via-abstraction",
+      "heading": "Attempted Improvement via Abstraction",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Create a common interface Plan, implemented by both Prepaid and Postpaid."
+          ]
+        }
+      ],
+      "wordCount": 11,
+      "subsections": [
+        {
+          "id": "-using-interface-for-loose-coupling",
+          "heading": "✅ Using Interface for Loose Coupling",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "interface Plan {\n\tpublic Boolean enrollToPlan();\n}\n\nclass Prepaid implements Plan {\n\tpublic Boolean enrollToPlan() {\n\t\treturn true;\n\t}\n}\n\nclass Postpaid implements Plan {\n\tpublic Boolean enrollToPlan() {\n\t\treturn true;\n\t}\n}\n\nclass Customer {\n\tpublic void register() {\n\t\tPlan plan = new Prepaid();  // Can switch to new Postpaid()\n\t\tif (plan.enrollToPlan()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n\t\t}\n\t}\n}",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Benefits: "
+              ]
+            }
+          ],
+          "wordCount": 1,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "true-inversion-of-control-ioc",
+      "heading": "True Inversion of Control (IoC)",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Instead of the Customer creating the Plan, the Plan is passed from the outside.",
+            "Object control is inverted – from Customer → Prepaid to Prepaid → Customer."
+          ]
+        }
+      ],
+      "wordCount": 27,
+      "subsections": [
+        {
+          "id": "-ioc-with-constructor-injection",
+          "heading": "✅ IoC with Constructor Injection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "class Customer {\n\tPlan plan;\n\n\tpublic Customer(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n\n\tpublic void register() {\n\t\tif (plan.enrollToPlan()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n\t\t}\n\t}\n}\n\nclass Tester {\n\tpublic static void main(String[] args) {\n\t\tPlan plan = new Prepaid();        // Can be changed to Postpaid without touching Customer\n\t\tCustomer customer = new Customer(plan);\n\t\tcustomer.register();\n\t}\n}\n",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "benefits-of-ioc",
+          "heading": "Benefits of IoC:",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Eliminates tight coupling.",
+                "Easier to unit test using mock dependencies.",
+                "Improves maintainability and flexibility."
+              ]
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "scaling-problem-with-ioc-and-manual-injection",
+      "heading": "Scaling Problem with IoC and Manual Injection",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Manually managing multiple dependencies becomes complex and error-prone.",
+            "Need for automation leads to Dependency Injection frameworks."
+          ]
+        }
+      ],
+      "wordCount": 16,
+      "subsections": []
+    },
+    {
+      "id": "dependency-injection-di-frameworks",
+      "heading": "Dependency Injection (DI) Frameworks",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Definition: DI frameworks take responsibility for: ",
+            "Popular DI Frameworks: ",
+            "Spring is the most widely used DI framework in Java applications."
+          ]
+        }
+      ],
+      "wordCount": 20,
+      "subsections": []
+    },
+    {
+      "id": "types-of-dependency-injection",
+      "heading": "Types of Dependency Injection",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Injection Type",
+            "Description"
+          ],
+          "rows": [
+            [
+              "Constructor Injection",
+              "Dependencies are passed via the class constructor."
+            ],
+            [
+              "Setter Injection",
+              "Dependencies are set using public setter methods."
+            ],
+            [
+              "Field Injection",
+              "Dependencies are injected directly into fields (discouraged in Spring)."
+            ]
+          ]
+        }
+      ],
+      "wordCount": 32,
+      "subsections": []
+    },
+    {
+      "id": "demo-constructor-and-setter-injection",
+      "heading": "Demo: Constructor and Setter Injection",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "constructor-injection",
+          "heading": "Constructor Injection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\nclass Customer {\n\tprivate Plan plan;\n\n\t@Autowired\n\tpublic Customer(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "setter-injection",
+          "heading": "Setter Injection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\nclass Customer {\n\tprivate Plan plan;\n\n\t@Autowired\n\tpublic void setPlan(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "In Spring: "
+              ]
+            }
+          ],
+          "wordCount": 2,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "conclusion",
+      "heading": "Conclusion",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Tight coupling in code leads to rigidity and poor testability.",
+            "Inversion of Control (IoC) inverts object creation to achieve better design.",
+            "Dependency Injection (DI) is a practical implementation of IoC.",
+            "Using frameworks like Spring, we automate dependency management, simplify testing, and increase modularity."
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "class Prepaid {\n\tpublic Boolean enrollToPrepaid() {\n\t\treturn true;\n\t}\n}\n\nclass Customer {\n\tpublic void register() {\n\t\tPrepaid prepaid = new Prepaid();\n\t\tif (prepaid.enrollToPrepaid()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNPAID_BILL\");\n\t\t}\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "interface Plan {\n\tpublic Boolean enrollToPlan();\n}\n\nclass Prepaid implements Plan {\n\tpublic Boolean enrollToPlan() {\n\t\treturn true;\n\t}\n}\n\nclass Postpaid implements Plan {\n\tpublic Boolean enrollToPlan() {\n\t\treturn true;\n\t}\n}\n\nclass Customer {\n\tpublic void register() {\n\t\tPlan plan = new Prepaid();  // Can switch to new Postpaid()\n\t\tif (plan.enrollToPlan()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n\t\t}\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "class Customer {\n\tPlan plan;\n\n\tpublic Customer(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n\n\tpublic void register() {\n\t\tif (plan.enrollToPlan()) {\n\t\t\tSystem.out.println(\"Customer enrolled to a plan\");\n\t\t} else {\n\t\t\tthrow new Exception(\"Exception.UNREGISTERED_CUSTOMER\");\n\t\t}\n\t}\n}\n\nclass Tester {\n\tpublic static void main(String[] args) {\n\t\tPlan plan = new Prepaid();        // Can be changed to Postpaid without touching Customer\n\t\tCustomer customer = new Customer(plan);\n\t\tcustomer.register();\n\t}\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\nclass Customer {\n\tprivate Plan plan;\n\n\t@Autowired\n\tpublic Customer(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\nclass Customer {\n\tprivate Plan plan;\n\n\t@Autowired\n\tpublic void setPlan(Plan plan) {\n\t\tthis.plan = plan;\n\t}\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Essentials/Inversion of Control.md",
+    "wordCount": 199,
+    "sectionCount": 15
+  }
+}

@@ -1,0 +1,365 @@
+{
+  "id": "infrastructure-cicd-pipelines",
+  "slug": "cicd-pipelines",
+  "title": "CI/CD Pipelines",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CI/CD stands for Continuous Integration / Continuous Delivery (or Deployment), automating build, test, and release workflows",
+            "GitLab CI/CD uses .gitlab-ci.yml at the repository root; Jenkins uses Jenkinsfile (Declarative or Scripted syntax)",
+            "Pipeline stages execute sequentially; jobs within a stage run in parallel by default",
+            "Artifacts are files produced by one job and consumed by downstream jobs or stored for download",
+            "Common deployment strategies: rolling update, blue-green, canary, feature flags, and recreate",
+            "Runners (GitLab) or agents/nodes (Jenkins) execute pipeline jobs in isolated environments",
+            "Pipeline triggers: push events, merge requests, schedules (cron), API calls, and upstream pipeline completion"
+          ]
+        }
+      ],
+      "wordCount": 96,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "CI/CD pipelines are essential for any team shipping software to production with confidence and speed. Use CI/CD when you need automated testing on every commit to catch regressions early, when you want repeatable and auditable deployments that eliminate manual error, or when multiple developers contribute to the same codebase and need fast feedback on integration issues. GitLab CI/CD is ideal when your source code already lives in GitLab and you want a tightly integrated experience with built-in container registry, environments, and review apps. Jenkins is the right choice when you need maximum flexibility, have complex multi-branch pipelines spanning multiple repositories, or operate in an environment with strict plugin requirements and legacy integrations. Adopt CI/CD pipelines when manual deployments cause downtime, when release cycles are too slow, or when you lack visibility into what code is running in production."
+        }
+      ],
+      "wordCount": 138,
+      "subsections": []
+    },
+    {
+      "id": "gitlab-cicd",
+      "heading": "GitLab CI/CD",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "GitLab CI/CD is a built-in continuous integration and delivery platform that runs pipelines defined in a .gitlab-ci.yml file at the root of your repository. Every push or merge request triggers the pipeline, which consists of stages containing one or more jobs. GitLab provides shared runners on its SaaS platform or allows you to register self-managed runners on your own infrastructure. The tight integration with GitLab's merge request workflow enables features like review apps, environment tracking, and deployment approvals directly within the merge request interface."
+        },
+        {
+          "type": "paragraph",
+          "text": "GitLab pipelines support parent-child pipelines for monorepo architectures, multi-project pipelines for cross-repository dependencies, and directed acyclic graph (DAG) execution using the needs keyword to optimize job scheduling beyond simple stage ordering. Variables can be defined at the project, group, or pipeline level, with masking and protection for sensitive values. GitLab also provides a container registry, package registry, and built-in security scanning (SAST, DAST, dependency scanning) that integrate directly into the pipeline without external tooling."
+        },
+        {
+          "type": "paragraph",
+          "text": "The environment and deployment tracking features allow teams to see exactly which commit is deployed to each environment, roll back to previous deployments with a single click, and configure manual approval gates for production releases. Auto DevOps provides a pre-built pipeline template that automatically detects your application framework and applies appropriate build, test, and deploy stages."
+        }
+      ],
+      "wordCount": 214,
+      "subsections": []
+    },
+    {
+      "id": "jenkins-pipeline-syntax",
+      "heading": "Jenkins Pipeline Syntax",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Jenkins pipelines are defined using either Declarative or Scripted syntax in a Jenkinsfile stored in the repository root. Declarative pipelines provide a structured, opinionated syntax with predefined sections (pipeline, agent, stages, steps, post), making them easier to read and maintain. Scripted pipelines use full Groovy scripting for maximum flexibility but sacrifice readability and are harder to validate statically."
+        },
+        {
+          "type": "paragraph",
+          "text": "Declarative pipelines enforce a strict hierarchy: the pipeline block contains agent (where to run), stages (what to run), and optional environment, options, parameters, triggers, and post blocks. Each stage contains steps that execute shell commands, invoke plugins, or call shared library functions. The when directive provides conditional execution based on branch name, environment variables, changelog patterns, or custom expressions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Jenkins shared libraries allow teams to extract common pipeline logic into reusable Groovy classes and functions stored in a separate repository. This promotes DRY principles across dozens or hundreds of pipelines. Libraries are loaded with @Library('my-shared-lib') _ and provide custom steps that encapsulate complex workflows like building Docker images, running security scans, or deploying to Kubernetes clusters."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Jenkins plugin ecosystem provides integrations with virtually every tool in the DevOps landscape. Key plugins include Pipeline (core), Blue Ocean (modern UI), Docker Pipeline (container builds), Kubernetes (dynamic agents), Credentials Binding (secrets management), and Git (SCM integration). However, plugin dependency management and version compatibility remain operational challenges that require careful governance."
+        }
+      ],
+      "wordCount": 226,
+      "subsections": []
+    },
+    {
+      "id": "stages",
+      "heading": "Stages",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Pipeline stages define the logical phases of your delivery workflow and execute in sequential order. A typical pipeline includes stages for build, test, security scan, package, deploy to staging, integration test, and deploy to production. Within a stage, multiple jobs can run in parallel to reduce overall pipeline duration. Stage gates (manual approvals or automated quality checks) control promotion between environments."
+        },
+        {
+          "type": "paragraph",
+          "text": "In GitLab CI/CD, stages are declared in the stages array at the top of .gitlab-ci.yml, and each job specifies which stage it belongs to. Jobs in the same stage run in parallel if sufficient runners are available. The needs keyword allows jobs to start as soon as their dependencies complete, regardless of stage ordering, creating a DAG execution model that can significantly reduce pipeline duration for complex workflows."
+        },
+        {
+          "type": "paragraph",
+          "text": "In Jenkins, stages are defined within the stages block of a Declarative pipeline. The parallel directive allows multiple branches of execution within a single stage. Stage-level when conditions enable conditional execution, and the input directive pauses execution for manual approval. Jenkins Blue Ocean provides a visual representation of stage progression with real-time log streaming for each stage."
+        },
+        {
+          "type": "paragraph",
+          "text": "Effective stage design balances feedback speed with thoroughness. Fast-failing stages (lint, compile, unit tests) should run first to provide immediate feedback. Expensive stages (integration tests, performance tests, security scans) run later to avoid wasting resources on code that fails basic checks. Production deployment stages should always include manual approval gates and automated rollback triggers."
+        }
+      ],
+      "wordCount": 240,
+      "subsections": []
+    },
+    {
+      "id": "artifacts",
+      "heading": "Artifacts",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Artifacts are files or directories produced during pipeline execution that persist beyond the job's lifetime. They serve two primary purposes: passing build outputs between pipeline stages (inter-job dependencies) and preserving deliverables for download, deployment, or audit. Common artifacts include compiled binaries, Docker images, test reports, coverage reports, dependency manifests, and deployment packages."
+        },
+        {
+          "type": "paragraph",
+          "text": "In GitLab CI/CD, artifacts are declared per-job using the artifacts keyword with paths (files to preserve), expire_in (retention duration), reports (structured test/coverage/security reports), and when (on success, failure, or always). GitLab automatically passes artifacts from earlier stages to later stages. The dependencies keyword limits which upstream artifacts a job receives, reducing download time for jobs that only need specific outputs."
+        },
+        {
+          "type": "paragraph",
+          "text": "In Jenkins, artifacts are archived using the archiveArtifacts step with an Ant-style file pattern. The stash and unstash steps pass files between stages within the same pipeline run, while archiveArtifacts persists files permanently on the Jenkins controller. The copyArtifacts plugin enables cross-pipeline artifact sharing. Jenkins also integrates with external artifact repositories like Nexus, Artifactory, or S3 for production-grade artifact management."
+        },
+        {
+          "type": "paragraph",
+          "text": "Artifact management best practices include setting appropriate retention policies to control storage costs, using fingerprinting or checksums to verify artifact integrity, storing build metadata (commit SHA, build number, timestamp) alongside artifacts for traceability, and separating ephemeral build artifacts from release artifacts that require long-term retention for compliance or rollback purposes."
+        }
+      ],
+      "wordCount": 222,
+      "subsections": []
+    },
+    {
+      "id": "deployment-strategies",
+      "heading": "Deployment Strategies",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Deployment strategies determine how new application versions are released to production, balancing speed, safety, and resource utilization. The choice of strategy depends on your application architecture, traffic patterns, rollback requirements, and tolerance for downtime or degraded service during releases."
+        },
+        {
+          "type": "paragraph",
+          "text": "Rolling Update replaces instances gradually, taking down a subset of old instances and bringing up new ones until all instances run the new version. This is the default strategy in Kubernetes and provides zero-downtime deployments with minimal resource overhead. The trade-off is that during the rollout, both old and new versions serve traffic simultaneously, requiring backward-compatible changes (especially for database schemas and API contracts)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Blue-Green Deployment maintains two identical production environments (blue and green). Traffic routes entirely to one environment while the other receives the new deployment. After validation, traffic switches to the new environment instantly via load balancer or DNS change. This provides instant rollback (switch back to the old environment) but requires double the infrastructure resources and careful handling of database migrations that must be compatible with both versions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Canary Deployment routes a small percentage of traffic (typically 1-5%) to the new version while the majority continues hitting the stable version. Metrics are compared between canary and baseline to detect regressions before full rollout. If the canary shows degraded performance or elevated error rates, it is automatically rolled back. This strategy provides the safest production validation but requires sophisticated traffic splitting and metric comparison infrastructure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Feature Flags decouple deployment from release by deploying new code to all instances but hiding it behind runtime toggles. Features are gradually enabled for specific user segments, percentages, or environments. This enables trunk-based development, instant kill switches for problematic features, and A/B testing. The trade-off is increased code complexity and the operational burden of managing flag lifecycle and cleanup."
+        }
+      ],
+      "wordCount": 295,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "gitlab-cicd-pipeline",
+          "heading": "GitLab CI/CD Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# .gitlab-ci.yml - Full pipeline example\nstages:\n  - build\n  - test\n  - security\n  - package\n  - deploy\n\nvariables:\n  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA\n  GRADLE_OPTS: \"-Dorg.gradle.daemon=false\"\n\n# Build stage\nbuild:\n  stage: build\n  image: gradle:8.4-jdk17\n  script:\n    - gradle assemble --no-daemon\n  artifacts:\n    paths:\n      - build/libs/*.jar\n    expire_in: 1 hour\n\n# Parallel test jobs\nunit-tests:\n  stage: test\n  image: gradle:8.4-jdk17\n  script:\n    - gradle test --no-daemon\n  artifacts:\n    reports:\n      junit: build/test-results/test/*.xml\n    when: always\n\nintegration-tests:\n  stage: test\n  image: gradle:8.4-jdk17\n  services:\n    - postgres:15\n    - redis:7\n  variables:\n    POSTGRES_DB: testdb\n    POSTGRES_USER: test\n    POSTGRES_PASSWORD: test\n    SPRING_DATASOURCE_URL: \"jdbc:postgresql://postgres:5432/testdb\"\n  script:\n    - gradle integrationTest --no-daemon\n  artifacts:\n    reports:\n      junit: build/test-results/integrationTest/*.xml\n\n# Security scanning\nsast:\n  stage: security\n  image: semgrep/semgrep:latest\n  script:\n    - semgrep scan --config auto --json > sast-report.json\n  artifacts:\n    reports:\n      sast: sast-report.json\n  allow_failure: true\n\n# Docker image build and push\npackage:\n  stage: package\n  image: docker:24\n  services:\n    - docker:24-dind\n  script:\n    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY\n    - docker build -t $DOCKER_IMAGE .\n    - docker push $DOCKER_IMAGE\n\n# Deployment with environment tracking\ndeploy-staging:\n  stage: deploy\n  image: bitnami/kubectl:latest\n  environment:\n    name: staging\n    url: https://staging.example.com\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n staging\n    - kubectl rollout status deployment/app -n staging --timeout=300s\n  only:\n    - main\n\ndeploy-production:\n  stage: deploy\n  image: bitnami/kubectl:latest\n  environment:\n    name: production\n    url: https://app.example.com\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n production\n    - kubectl rollout status deployment/app -n production --timeout=300s\n  when: manual\n  only:\n    - main",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "jenkins-declarative-pipeline",
+          "heading": "Jenkins Declarative Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "groovy",
+              "code": "// Jenkinsfile - Declarative pipeline\npipeline {\n    agent {\n        kubernetes {\n            yaml '''\n                apiVersion: v1\n                kind: Pod\n                spec:\n                  containers:\n                  - name: gradle\n                    image: gradle:8.4-jdk17\n                    command: ['sleep', '99d']\n                  - name: docker\n                    image: docker:24\n                    command: ['sleep', '99d']\n                    volumeMounts:\n                    - name: docker-sock\n                      mountPath: /var/run/docker.sock\n                  volumes:\n                  - name: docker-sock\n                    hostPath:\n                      path: /var/run/docker.sock\n            '''\n        }\n    }\n\n    environment {\n        DOCKER_REGISTRY = 'registry.example.com'\n        IMAGE_NAME = \"${DOCKER_REGISTRY}/app:${env.BUILD_NUMBER}\"\n        GRADLE_OPTS = '-Dorg.gradle.daemon=false'\n    }\n\n    options {\n        timeout(time: 30, unit: 'MINUTES')\n        disableConcurrentBuilds()\n        buildDiscarder(logRotator(numToKeepStr: '10'))\n    }\n\n    stages {\n        stage('Build') {\n            steps {\n                container('gradle') {\n                    sh 'gradle assemble --no-daemon'\n                }\n            }\n        }\n\n        stage('Test') {\n            parallel {\n                stage('Unit Tests') {\n                    steps {\n                        container('gradle') {\n                            sh 'gradle test --no-daemon'\n                        }\n                    }\n                    post {\n                        always {\n                            junit 'build/test-results/test/*.xml'\n                        }\n                    }\n                }\n                stage('Integration Tests') {\n                    steps {\n                        container('gradle') {\n                            sh 'gradle integrationTest --no-daemon'\n                        }\n                    }\n                }\n            }\n        }\n\n        stage('Package') {\n            steps {\n                container('docker') {\n                    sh \"docker build -t ${IMAGE_NAME} .\"\n                    sh \"docker push ${IMAGE_NAME}\"\n                }\n            }\n        }\n\n        stage('Deploy Staging') {\n            when {\n                branch 'main'\n            }\n            steps {\n                sh \"kubectl set image deployment/app app=${IMAGE_NAME} -n staging\"\n                sh \"kubectl rollout status deployment/app -n staging --timeout=300s\"\n            }\n        }\n\n        stage('Deploy Production') {\n            when {\n                branch 'main'\n            }\n            input {\n                message 'Deploy to production?'\n                ok 'Deploy'\n                submitter 'admin,release-team'\n            }\n            steps {\n                sh \"kubectl set image deployment/app app=${IMAGE_NAME} -n production\"\n                sh \"kubectl rollout status deployment/app -n production --timeout=300s\"\n            }\n        }\n    }\n\n    post {\n        success {\n            slackSend(channel: '#deployments', message: \"Build ${env.BUILD_NUMBER} succeeded\")\n        }\n        failure {\n            slackSend(channel: '#deployments', color: 'danger',\n                      message: \"Build ${env.BUILD_NUMBER} failed: ${env.BUILD_URL}\")\n        }\n        always {\n            cleanWs()\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "canary-deployment-with-gitlab",
+          "heading": "Canary Deployment with GitLab",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Canary deployment using GitLab environments\ndeploy-canary:\n  stage: deploy\n  environment:\n    name: production/canary\n    url: https://app.example.com\n  script:\n    - kubectl apply -f k8s/canary-deployment.yaml\n    - kubectl set image deployment/app-canary app=$DOCKER_IMAGE -n production\n    - kubectl scale deployment/app-canary --replicas=1 -n production\n    # Route 5% traffic to canary via Istio\n    - kubectl apply -f k8s/virtual-service-canary.yaml\n  only:\n    - main\n\nverify-canary:\n  stage: deploy\n  needs: [deploy-canary]\n  script:\n    - sleep 300  # Wait 5 minutes for metrics\n    - |\n      ERROR_RATE=$(curl -s \"http://prometheus:9090/api/v1/query?query=rate(http_errors_total{deployment='canary'}[5m])\" | jq '.data.result[0].value[1]')\n      if (( $(echo \"$ERROR_RATE > 0.01\" | bc -l) )); then\n        echo \"Canary error rate too high: $ERROR_RATE\"\n        kubectl delete -f k8s/virtual-service-canary.yaml\n        kubectl scale deployment/app-canary --replicas=0 -n production\n        exit 1\n      fi\n  only:\n    - main\n\npromote-canary:\n  stage: deploy\n  needs: [verify-canary]\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n production\n    - kubectl rollout status deployment/app -n production --timeout=300s\n    - kubectl scale deployment/app-canary --replicas=0 -n production\n    - kubectl delete -f k8s/virtual-service-canary.yaml\n  when: manual\n  only:\n    - main",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"CI/CD Pipeline Flow\"\n        COMMIT[Developer Commit] --> BUILD[Build Stage]\n        BUILD --> TEST[Test Stage]\n        TEST --> SECURITY[Security Scan]\n        SECURITY --> PACKAGE[Package / Containerize]\n        PACKAGE --> STAGING[Deploy Staging]\n        STAGING --> GATE{Manual Approval}\n        GATE -->|Approved| PROD[Deploy Production]\n        GATE -->|Rejected| STOP[Pipeline Stopped]\n    end\n\n    subgraph \"Deployment Strategies\"\n        PROD --> ROLLING[Rolling Update]\n        PROD --> BG[Blue-Green]\n        PROD --> CANARY[Canary Release]\n    end\n\n    subgraph \"Feedback Loop\"\n        PROD --> MONITOR[Monitoring & Alerts]\n        MONITOR -->|Failure| ROLLBACK[Automatic Rollback]\n        MONITOR -->|Success| DONE[Release Complete]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant Dev as Developer\n    participant SCM as Git Repository\n    participant CI as CI Server\n    participant REG as Container Registry\n    participant K8S as Kubernetes\n    participant MON as Monitoring\n\n    Dev->>SCM: Push commit\n    SCM->>CI: Webhook trigger\n    CI->>CI: Build application\n    CI->>CI: Run unit tests\n    CI->>CI: Run integration tests\n    CI->>CI: Security scan (SAST)\n    CI->>REG: Push Docker image\n    CI->>K8S: Deploy to staging\n    K8S-->>CI: Rollout complete\n    CI->>CI: Run smoke tests\n    CI-->>Dev: Awaiting approval\n    Dev->>CI: Approve production deploy\n    CI->>K8S: Deploy to production (canary)\n    K8S-->>MON: Metrics flowing\n    MON-->>CI: Health check passed\n    CI->>K8S: Promote to full rollout\n    K8S-->>CI: Deployment complete\n    CI-->>Dev: Release notification"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Flaky tests blocking pipelines: Intermittent test failures erode trust in the pipeline and lead teams to ignore failures or disable tests. Quarantine flaky tests into a separate non-blocking stage, track flakiness rates, and prioritize fixing them. Never allow flaky tests to block production deployments indefinitely.",
+            "Secrets in pipeline configuration: Hardcoding credentials, API keys, or tokens in .gitlab-ci.yml or Jenkinsfile exposes them in version control. Always use CI/CD variable management (GitLab CI variables, Jenkins Credentials Binding) with masking enabled. Rotate secrets regularly and audit access.",
+            "Monolithic pipelines without caching: Rebuilding everything from scratch on every commit wastes time and resources. Use dependency caching (Gradle cache, npm cache, Docker layer caching) to reduce build times. In GitLab, use the cache keyword; in Jenkins, use the cache step or persistent volumes.",
+            "Missing rollback procedures: Teams that only plan for forward deployment are unprepared when a release causes production issues. Every deployment stage should have a documented and tested rollback mechanism, whether that is reverting a Kubernetes deployment, switching blue-green environments, or disabling feature flags.",
+            "Insufficient environment parity: Differences between staging and production (different instance sizes, missing services, stale data) mean staging validation does not predict production behavior. Use infrastructure-as-code to ensure environments are as identical as possible, and run production-like load tests in staging."
+          ]
+        }
+      ],
+      "wordCount": 211,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Microservices monorepo pipeline: A team managing 15 microservices in a monorepo uses GitLab parent-child pipelines with changes rules to trigger only the pipelines for services affected by a commit. Each child pipeline builds, tests, and deploys its service independently, reducing average pipeline time from 45 minutes to 8 minutes.",
+            "Regulated financial services deployment: A banking application uses Jenkins with mandatory stages for SAST, DAST, license compliance, and change advisory board (CAB) approval. Artifacts include signed build manifests and audit logs. Production deployments require two-person approval and automatically generate compliance reports.",
+            "Multi-region canary rollout: An e-commerce platform deploys to a single region first (canary region), monitors error rates and latency for 30 minutes, then progressively rolls out to remaining regions. If any region shows degradation, the pipeline automatically halts and rolls back all regions to the previous version.",
+            "GitOps with GitLab and ArgoCD: Infrastructure and application manifests live in a GitLab repository. The CI pipeline builds and pushes images, then updates the Kubernetes manifest with the new image tag. ArgoCD detects the manifest change and synchronizes the cluster state, providing a complete audit trail of every deployment through Git history."
+          ]
+        }
+      ],
+      "wordCount": 189,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Continuous Delivery and Continuous Deployment?\nA: Continuous Delivery ensures every commit that passes the pipeline is deployable to production but requires a manual approval step before release. Continuous Deployment removes the manual gate entirely, automatically deploying every successful build to production. The choice depends on regulatory requirements, risk tolerance, and team maturity."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement a zero-downtime deployment?\nA: Use rolling updates or blue-green deployments with health checks. Ensure database migrations are backward-compatible (expand-contract pattern), configure readiness probes so traffic only routes to healthy instances, and implement connection draining so in-flight requests complete before old instances terminate. Test the deployment process regularly with production-like traffic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle database migrations in a CI/CD pipeline?\nA: Use the expand-contract pattern: first deploy a migration that adds new columns or tables without removing old ones (expand), deploy the application code that uses the new schema, then deploy a cleanup migration that removes deprecated columns (contract). Tools like Flyway or Liquibase version migrations and ensure they run exactly once. Never run destructive migrations in the same deployment as the code change."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What metrics would you monitor after a production deployment?\nA: Monitor error rate (HTTP 5xx), latency (p50, p95, p99), throughput (requests per second), saturation (CPU, memory, connection pools), and business metrics (conversion rate, checkout completions). Compare these against pre-deployment baselines. Set automated rollback triggers if error rate exceeds threshold or latency degrades beyond acceptable bounds."
+        }
+      ],
+      "wordCount": 244,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Pipeline duration budgets: Set a target maximum pipeline duration (e.g., 15 minutes for CI, 30 minutes including deployment) and treat exceeding it as a bug. Slow pipelines reduce developer productivity and encourage batching changes, which increases deployment risk. Profile stage durations and optimize the slowest stages first.",
+            "Immutable artifacts with provenance: Tag every artifact with the Git commit SHA, build timestamp, and pipeline ID. Store artifacts in an immutable registry (container registry with immutable tags, or Nexus with release repositories). This enables exact reproduction of any deployment and simplifies incident investigation.",
+            "Pipeline observability: Instrument your CI/CD system itself with metrics (pipeline duration, failure rate, queue time, runner utilization) and alerts. Track mean time to recovery (MTTR) for failed pipelines. Dashboard these metrics alongside application metrics to correlate deployment events with production behavior.",
+            "Deployment windows and freezes: Implement configurable deployment windows that prevent production releases during high-traffic periods, weekends, or company events. Use pipeline schedules for off-peak deployments and enforce code freezes before major releases through branch protection rules and pipeline when conditions."
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Docker & Containerization - CI/CD pipelines build and push container images as deployment artifacts",
+            "Kubernetes & EKS - Kubernetes is the primary deployment target for containerized CI/CD pipelines",
+            "Linux Administration - Pipeline runners execute on Linux hosts requiring shell scripting and system administration knowledge"
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "# .gitlab-ci.yml - Full pipeline example\nstages:\n  - build\n  - test\n  - security\n  - package\n  - deploy\n\nvariables:\n  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA\n  GRADLE_OPTS: \"-Dorg.gradle.daemon=false\"\n\n# Build stage\nbuild:\n  stage: build\n  image: gradle:8.4-jdk17\n  script:\n    - gradle assemble --no-daemon\n  artifacts:\n    paths:\n      - build/libs/*.jar\n    expire_in: 1 hour\n\n# Parallel test jobs\nunit-tests:\n  stage: test\n  image: gradle:8.4-jdk17\n  script:\n    - gradle test --no-daemon\n  artifacts:\n    reports:\n      junit: build/test-results/test/*.xml\n    when: always\n\nintegration-tests:\n  stage: test\n  image: gradle:8.4-jdk17\n  services:\n    - postgres:15\n    - redis:7\n  variables:\n    POSTGRES_DB: testdb\n    POSTGRES_USER: test\n    POSTGRES_PASSWORD: test\n    SPRING_DATASOURCE_URL: \"jdbc:postgresql://postgres:5432/testdb\"\n  script:\n    - gradle integrationTest --no-daemon\n  artifacts:\n    reports:\n      junit: build/test-results/integrationTest/*.xml\n\n# Security scanning\nsast:\n  stage: security\n  image: semgrep/semgrep:latest\n  script:\n    - semgrep scan --config auto --json > sast-report.json\n  artifacts:\n    reports:\n      sast: sast-report.json\n  allow_failure: true\n\n# Docker image build and push\npackage:\n  stage: package\n  image: docker:24\n  services:\n    - docker:24-dind\n  script:\n    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY\n    - docker build -t $DOCKER_IMAGE .\n    - docker push $DOCKER_IMAGE\n\n# Deployment with environment tracking\ndeploy-staging:\n  stage: deploy\n  image: bitnami/kubectl:latest\n  environment:\n    name: staging\n    url: https://staging.example.com\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n staging\n    - kubectl rollout status deployment/app -n staging --timeout=300s\n  only:\n    - main\n\ndeploy-production:\n  stage: deploy\n  image: bitnami/kubectl:latest\n  environment:\n    name: production\n    url: https://app.example.com\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n production\n    - kubectl rollout status deployment/app -n production --timeout=300s\n  when: manual\n  only:\n    - main",
+      "runnable": false
+    },
+    {
+      "language": "groovy",
+      "code": "// Jenkinsfile - Declarative pipeline\npipeline {\n    agent {\n        kubernetes {\n            yaml '''\n                apiVersion: v1\n                kind: Pod\n                spec:\n                  containers:\n                  - name: gradle\n                    image: gradle:8.4-jdk17\n                    command: ['sleep', '99d']\n                  - name: docker\n                    image: docker:24\n                    command: ['sleep', '99d']\n                    volumeMounts:\n                    - name: docker-sock\n                      mountPath: /var/run/docker.sock\n                  volumes:\n                  - name: docker-sock\n                    hostPath:\n                      path: /var/run/docker.sock\n            '''\n        }\n    }\n\n    environment {\n        DOCKER_REGISTRY = 'registry.example.com'\n        IMAGE_NAME = \"${DOCKER_REGISTRY}/app:${env.BUILD_NUMBER}\"\n        GRADLE_OPTS = '-Dorg.gradle.daemon=false'\n    }\n\n    options {\n        timeout(time: 30, unit: 'MINUTES')\n        disableConcurrentBuilds()\n        buildDiscarder(logRotator(numToKeepStr: '10'))\n    }\n\n    stages {\n        stage('Build') {\n            steps {\n                container('gradle') {\n                    sh 'gradle assemble --no-daemon'\n                }\n            }\n        }\n\n        stage('Test') {\n            parallel {\n                stage('Unit Tests') {\n                    steps {\n                        container('gradle') {\n                            sh 'gradle test --no-daemon'\n                        }\n                    }\n                    post {\n                        always {\n                            junit 'build/test-results/test/*.xml'\n                        }\n                    }\n                }\n                stage('Integration Tests') {\n                    steps {\n                        container('gradle') {\n                            sh 'gradle integrationTest --no-daemon'\n                        }\n                    }\n                }\n            }\n        }\n\n        stage('Package') {\n            steps {\n                container('docker') {\n                    sh \"docker build -t ${IMAGE_NAME} .\"\n                    sh \"docker push ${IMAGE_NAME}\"\n                }\n            }\n        }\n\n        stage('Deploy Staging') {\n            when {\n                branch 'main'\n            }\n            steps {\n                sh \"kubectl set image deployment/app app=${IMAGE_NAME} -n staging\"\n                sh \"kubectl rollout status deployment/app -n staging --timeout=300s\"\n            }\n        }\n\n        stage('Deploy Production') {\n            when {\n                branch 'main'\n            }\n            input {\n                message 'Deploy to production?'\n                ok 'Deploy'\n                submitter 'admin,release-team'\n            }\n            steps {\n                sh \"kubectl set image deployment/app app=${IMAGE_NAME} -n production\"\n                sh \"kubectl rollout status deployment/app -n production --timeout=300s\"\n            }\n        }\n    }\n\n    post {\n        success {\n            slackSend(channel: '#deployments', message: \"Build ${env.BUILD_NUMBER} succeeded\")\n        }\n        failure {\n            slackSend(channel: '#deployments', color: 'danger',\n                      message: \"Build ${env.BUILD_NUMBER} failed: ${env.BUILD_URL}\")\n        }\n        always {\n            cleanWs()\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Canary deployment using GitLab environments\ndeploy-canary:\n  stage: deploy\n  environment:\n    name: production/canary\n    url: https://app.example.com\n  script:\n    - kubectl apply -f k8s/canary-deployment.yaml\n    - kubectl set image deployment/app-canary app=$DOCKER_IMAGE -n production\n    - kubectl scale deployment/app-canary --replicas=1 -n production\n    # Route 5% traffic to canary via Istio\n    - kubectl apply -f k8s/virtual-service-canary.yaml\n  only:\n    - main\n\nverify-canary:\n  stage: deploy\n  needs: [deploy-canary]\n  script:\n    - sleep 300  # Wait 5 minutes for metrics\n    - |\n      ERROR_RATE=$(curl -s \"http://prometheus:9090/api/v1/query?query=rate(http_errors_total{deployment='canary'}[5m])\" | jq '.data.result[0].value[1]')\n      if (( $(echo \"$ERROR_RATE > 0.01\" | bc -l) )); then\n        echo \"Canary error rate too high: $ERROR_RATE\"\n        kubectl delete -f k8s/virtual-service-canary.yaml\n        kubectl scale deployment/app-canary --replicas=0 -n production\n        exit 1\n      fi\n  only:\n    - main\n\npromote-canary:\n  stage: deploy\n  needs: [verify-canary]\n  script:\n    - kubectl set image deployment/app app=$DOCKER_IMAGE -n production\n    - kubectl rollout status deployment/app -n production --timeout=300s\n    - kubectl scale deployment/app-canary --replicas=0 -n production\n    - kubectl delete -f k8s/virtual-service-canary.yaml\n  when: manual\n  only:\n    - main",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/cs-reference-guide/content/infrastructure/ci-cd-pipelines.md",
+    "wordCount": 2291,
+    "sectionCount": 17
+  }
+}

@@ -1,0 +1,301 @@
+{
+  "id": "spring-rest-benefits-of-hateoas",
+  "slug": "benefits-of-hateoas",
+  "title": "Benefits of HATEOAS",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "core-idea",
+      "heading": "Core Idea",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Instead of hard-coding URLs on the client side, the server includes hyperlinks in its responses that guide the client on what actions can be taken next."
+        }
+      ],
+      "wordCount": 26,
+      "subsections": [
+        {
+          "id": "without-hateoas",
+          "heading": "Without HATEOAS:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Client has to know all the endpoint URLs ahead of time."
+            },
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\"\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 11,
+          "subsections": []
+        },
+        {
+          "id": "with-hateoas",
+          "heading": "With HATEOAS:",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The response includes links to related resources or actions."
+            },
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\",\n  \"_links\": {\n    \"self\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    },\n    \"all-users\": {\n      \"href\": \"http://localhost:8080/users\"\n    },\n    \"update-user\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    }\n  }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Spring Boot supports HATEOAS through the spring-boot-starter-hateoas dependency."
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "add-dependency-in-pomxml",
+          "heading": "Add Dependency (in pom.xml):",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-hateoas</artifactId>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "create-a-resourcemodel-class",
+          "heading": "Create a Resource/Model Class",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class User {\n    private Long id;\n    private String name;\n\n    // Constructors, getters, setters\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "create-a-resource-assembler-optional-but-clean",
+          "heading": "Create a Resource Assembler (Optional but Clean):",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\npublic class UserModelAssembler implements RepresentationModelAssembler<User, EntityModel<User>> {\n\n    @Override\n    public EntityModel<User> toModel(User user) {\n        return EntityModel.of(user,\n          linkTo(methodOn(UserController.class).getUserById(user.getId())).withSelfRel(),\n          linkTo(methodOn(UserController.class).getAllUsers()).withRel(\"all-users\"));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "controller-example",
+          "heading": "Controller Example:",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/users\")\npublic class UserController {\n\n    @Autowired\n    private UserModelAssembler assembler;\n\n    @GetMapping(\"/{id}\")\n    public EntityModel<User> getUserById(@PathVariable Long id) {\n        User user = new User(id, \"John Doe\"); // Example data\n        return assembler.toModel(user);\n    }\n\n    @GetMapping\n    public CollectionModel<EntityModel<User>> getAllUsers() {\n        List<User> users = List.of(new User(1L, \"John\"), new User(2L, \"Jane\"));\n\n        List<EntityModel<User>> userModels = users.stream()\n                .map(assembler::toModel)\n                .toList();\n\n        return CollectionModel.of(userModels,\n                linkTo(methodOn(UserController.class).getAllUsers()).withSelfRel());\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "endpoint",
+          "heading": "Endpoint",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "GET http://localhost:8080/users/1",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-output-json",
+          "heading": "Example Output (JSON)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\",\n  \"_links\": {\n    \"self\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    },\n    \"all-users\": {\n      \"href\": \"http://localhost:8080/users\"\n    }\n  }\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Spring HATEOAS typically uses HAL (Hypertext Application Language):"
+            },
+            {
+              "type": "paragraph",
+              "text": "HAL Example Response:"
+            },
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"id\": 1,\n  \"name\": \"John\",\n  \"_links\": {\n    \"self\": { \"href\": \"/users/1\" },\n    \"all-users\": { \"href\": \"/users\" }\n  }\n}\n",
+              "runnable": false
+            },
+            {
+              "type": "table",
+              "headers": [
+                "Benefit",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "🔗 Navigability",
+                  "Clients can discover actions and navigate APIs using provided links"
+                ],
+                [
+                  "🚫 Decoupling",
+                  "Avoids hard-coded URLs in clients"
+                ],
+                [
+                  "📈 API Evolution",
+                  "Easier to evolve the API without breaking the client"
+                ],
+                [
+                  "🔐 Contextual Actions",
+                  "Links can vary based on roles, permissions, or state"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 56,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "best-practices",
+      "heading": "Best Practices",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Provide self links for all resources.",
+            "Use standard link relations: \"self\", \"next\", \"prev\", \"update\", \"delete\".",
+            "Combine with content negotiation (HAL, JSON, XML) if needed.",
+            "Avoid overloading with too many links — keep them meaningful and necessary."
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Concept",
+            "Description"
+          ],
+          "rows": [
+            [
+              "HATEOAS",
+              "Hypermedia-driven REST API style"
+            ],
+            [
+              "Purpose",
+              "Guide client actions via embedded links"
+            ],
+            [
+              "Tools",
+              "Spring HATEOAS, EntityModel, CollectionModel, linkTo, methodOn"
+            ],
+            [
+              "Benefits",
+              "API flexibility, reduced coupling, enhanced discoverability"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "json",
+      "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\"\n}",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\",\n  \"_links\": {\n    \"self\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    },\n    \"all-users\": {\n      \"href\": \"http://localhost:8080/users\"\n    },\n    \"update-user\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-hateoas</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class User {\n    private Long id;\n    private String name;\n\n    // Constructors, getters, setters\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\npublic class UserModelAssembler implements RepresentationModelAssembler<User, EntityModel<User>> {\n\n    @Override\n    public EntityModel<User> toModel(User user) {\n        return EntityModel.of(user,\n          linkTo(methodOn(UserController.class).getUserById(user.getId())).withSelfRel(),\n          linkTo(methodOn(UserController.class).getAllUsers()).withRel(\"all-users\"));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/users\")\npublic class UserController {\n\n    @Autowired\n    private UserModelAssembler assembler;\n\n    @GetMapping(\"/{id}\")\n    public EntityModel<User> getUserById(@PathVariable Long id) {\n        User user = new User(id, \"John Doe\"); // Example data\n        return assembler.toModel(user);\n    }\n\n    @GetMapping\n    public CollectionModel<EntityModel<User>> getAllUsers() {\n        List<User> users = List.of(new User(1L, \"John\"), new User(2L, \"Jane\"));\n\n        List<EntityModel<User>> userModels = users.stream()\n                .map(assembler::toModel)\n                .toList();\n\n        return CollectionModel.of(userModels,\n                linkTo(methodOn(UserController.class).getAllUsers()).withSelfRel());\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "GET http://localhost:8080/users/1",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n  \"id\": 1,\n  \"name\": \"John Doe\",\n  \"_links\": {\n    \"self\": {\n      \"href\": \"http://localhost:8080/users/1\"\n    },\n    \"all-users\": {\n      \"href\": \"http://localhost:8080/users\"\n    }\n  }\n}\n",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n  \"id\": 1,\n  \"name\": \"John\",\n  \"_links\": {\n    \"self\": { \"href\": \"/users/1\" },\n    \"all-users\": { \"href\": \"/users\" }\n  }\n}\n",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Rest/HATEOAS.md",
+    "wordCount": 174,
+    "sectionCount": 11
+  }
+}

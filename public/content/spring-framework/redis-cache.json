@@ -1,0 +1,520 @@
+{
+  "id": "spring-boot-redis-cache",
+  "slug": "redis-cache",
+  "title": "Redis Cache",
+  "category": "Spring Framework",
+  "sections": [
+    {
+      "id": "overview",
+      "heading": "Overview",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "To improve application performance and reduce unnecessary database hits, InfyGo integrates Redis caching with its Spring Boot application. Redis stores previously retrieved data, enabling subsequent requests to be served from the cache."
+        },
+        {
+          "type": "paragraph",
+          "text": "This guide covers:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "How to create a Spring Boot app with caching enabled",
+            "Integration of Redis as the cache provider",
+            "Real-time user registration example using cache"
+          ]
+        }
+      ],
+      "wordCount": 58,
+      "subsections": []
+    },
+    {
+      "id": "key-concepts-and-definitions",
+      "heading": "Key Concepts and Definitions",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "caching",
+          "heading": "Caching",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A technique to store copies of frequently accessed data in a temporary storage (cache), reducing data retrieval time and load on backend systems."
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "redis",
+          "heading": "Redis",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "An in-memory data store that supports various data structures like strings, lists, sets, and is commonly used as a cache, message broker, or database."
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        },
+        {
+          "id": "spring-boot-caching",
+          "heading": "Spring Boot Caching",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Spring Boot provides declarative caching using annotations such as @Cacheable, @CachePut, and @CacheEvict."
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "implementation-steps",
+      "heading": "Implementation Steps",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "install-redis",
+          "heading": "Install Redis",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Download Redis for Windows (e.g., Redis-x64-3.2.100).",
+                "Navigate to installation directory: D:\\\\Software\\\\Redis-x64-3.2.100",
+                "Run Redis server:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "redis-server.exe",
+              "runnable": false
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "create-spring-boot-project",
+          "heading": "Create Spring Boot Project",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Use Spring Initializr to create the project with:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Spring Web",
+                "Spring Boot Starter Cache",
+                "Spring Data Redis"
+              ]
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "enable-caching-in-main-class",
+          "heading": "Enable Caching in Main Class",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "package com.infosys.irs;\n\nimport org.springframework.boot.SpringApplication;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\nimport org.springframework.cache.annotation.EnableCaching;\nimport org.springframework.context.annotation.PropertySource;\n\n@EnableCaching\n@SpringBootApplication\n@PropertySource(\"classpath:configuration.properties\")\npublic class InfyGoBootCachingApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(InfyGoBootCachingApplication.class, args);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "modify-controller-for-caching-timing-insight",
+          "heading": "Modify Controller for Caching Timing Insight",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "RegistrationController.java:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@PostMapping(value = \"registerUser\")\npublic ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, BindingResult result, ModelMap model) {\n    ...\n    long startTime = System.currentTimeMillis();\n    UserEntity userEntity = registrationService.findUser(user.getUserId()).orElse(null);\n    long endTime = System.currentTimeMillis();\n    System.out.println(\"Time taken: \" + (endTime - startTime) + \"ms\");\n    ...\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 1,
+          "subsections": []
+        },
+        {
+          "id": "registration-service-with-redis-caching",
+          "heading": "Registration Service with Redis Caching",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\npublic class RegistrationService {\n\n    @Autowired\n    private UserRepository userRepository;\n\n    public void registerUser(User user) {\n        UserEntity entity = new UserEntity();\n        // Set properties\n        userRepository.saveAndFlush(entity);\n    }\n\n    @Cacheable(\"users\")\n    public Optional<UserEntity> findUser(String userId) {\n        System.out.println(\"Entered findUser method\");\n        return userRepository.findById(userId);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Note: @Cacheable only works when the method is called externally (i.e., not through self-invocation)."
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "yaml-configuration-applicationyml",
+          "heading": "YAML Configuration (application.yml)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "spring:\n  mvc:\n    view:\n      prefix: /WEB-INF/pages/\n      suffix: .jsp\n  datasource:\n    url: jdbc:mysql://localhost:3306/db_irs\n    username: root\n    password: root\n  cache:\n    type: redis\n  redis:\n    host: 127.0.0.1\n    port: 6379\n\nserver:\n  servlet:\n    context-path: /InfyGoBoot\n  port: 4343\n\nlogging:\n  file: Errorlog.log\n  level:\n    root: warn\n    com.infoys.ars: error\n  pattern:\n    file: \"%d{yyyy-MM-dd HH:mm:ss,SSS} %5p [%t] %c [%M] - %m%n\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "add-dependencies-to-pomxml",
+          "heading": "Add Dependencies to pom.xml",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-cache</artifactId>\n</dependency>\n<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-redis</artifactId>\n</dependency>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "running-testing",
+      "heading": "Running & Testing",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "run-the-application",
+          "heading": "Run the Application",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Right-click the project → Run As → Spring Boot App",
+                "Navigate to: http://localhost:4343/InfyGoBoot",
+                "Click SIGN UP to register a new user"
+              ]
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "observe-console-logs",
+          "heading": "Observe Console Logs",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Notice log: Entered findUser method (only on first call)",
+                "Redis cache serves repeated queries → reduced execution time"
+              ]
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "step-10-verify-redis-cache",
+          "heading": "Step 10: Verify Redis Cache",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Open Redis CLI:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "redis-cli.exe",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Run:"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "KEYS *",
+              "runnable": false
+            }
+          ],
+          "wordCount": 4,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "important-notes",
+      "heading": "Important Notes",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "required-dependencies",
+          "heading": "Required Dependencies",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "spring-boot-starter-cache: Enables core caching abstraction",
+                "spring-boot-starter-data-redis: Configures Redis integration"
+              ]
+            }
+          ],
+          "wordCount": 9,
+          "subsections": []
+        },
+        {
+          "id": "auto-configuration",
+          "heading": "Auto Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Spring Boot auto-configures RedisCacheManager when spring.cache.type=redis is set",
+                "Default host: localhost, port: 6379"
+              ]
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        },
+        {
+          "id": "cache-annotations",
+          "heading": "Cache Annotations",
+          "level": 3,
+          "content": [
+            {
+              "type": "table",
+              "headers": [
+                "Annotation",
+                "Description"
+              ],
+              "rows": [
+                [
+                  "@Cacheable",
+                  "Caches result of method if not already cached"
+                ],
+                [
+                  "@CachePut",
+                  "Updates cache without skipping method execution"
+                ],
+                [
+                  "@CacheEvict",
+                  "Removes entries from cache"
+                ],
+                [
+                  "@Caching",
+                  "Combines multiple cache annotations"
+                ],
+                [
+                  "@CacheConfig",
+                  "Sets cache configuration at class level"
+                ],
+                [
+                  "@EnableCaching",
+                  "Enables Spring’s annotation-driven cache management"
+                ]
+              ]
+            }
+          ],
+          "wordCount": 41,
+          "subsections": []
+        },
+        {
+          "id": "supported-cache-providers-auto-detected-order",
+          "heading": "Supported Cache Providers (Auto-detected order)",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Generic",
+                "JCache (JSR-107)",
+                "EhCache 2.x / 3",
+                "Hazelcast",
+                "Infinispan",
+                "Couchbase",
+                "Redis",
+                "Caffeine",
+                "Guava (deprecated)",
+                "Simple (ConcurrentMap-based)"
+              ]
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "spring-boot-vs-non-spring-boot-caching",
+      "heading": "Spring Boot vs Non-Spring Boot Caching",
+      "level": 2,
+      "content": [
+        {
+          "type": "table",
+          "headers": [
+            "Feature",
+            "Without Spring Boot",
+            "With Spring Boot"
+          ],
+          "rows": [
+            [
+              "Cache libraries",
+              "Manually add required jars",
+              "Starters auto-import compatible jars"
+            ],
+            [
+              "Cache Manager config",
+              "Explicit configuration",
+              "Auto-configured based on dependencies"
+            ],
+            [
+              "Enable caching",
+              "@EnableCaching required",
+              "Auto-detected with starter dependencies"
+            ],
+            [
+              "Redis connection setup",
+              "Manual",
+              "Auto-configured via application.yml"
+            ]
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    },
+    {
+      "id": "summary",
+      "heading": "Summary",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Caching helps improve application performance and scalability.",
+            "Redis is a high-performance, in-memory data store commonly used with Spring Boot.",
+            "Spring Boot makes caching integration simple using annotations and auto-configuration.",
+            "Minimal code changes with significant performance gains."
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "redis-server.exe",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "package com.infosys.irs;\n\nimport org.springframework.boot.SpringApplication;\nimport org.springframework.boot.autoconfigure.SpringBootApplication;\nimport org.springframework.cache.annotation.EnableCaching;\nimport org.springframework.context.annotation.PropertySource;\n\n@EnableCaching\n@SpringBootApplication\n@PropertySource(\"classpath:configuration.properties\")\npublic class InfyGoBootCachingApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(InfyGoBootCachingApplication.class, args);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@PostMapping(value = \"registerUser\")\npublic ModelAndView addCustomer(@Valid @ModelAttribute(\"command\") User user, BindingResult result, ModelMap model) {\n    ...\n    long startTime = System.currentTimeMillis();\n    UserEntity userEntity = registrationService.findUser(user.getUserId()).orElse(null);\n    long endTime = System.currentTimeMillis();\n    System.out.println(\"Time taken: \" + (endTime - startTime) + \"ms\");\n    ...\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class RegistrationService {\n\n    @Autowired\n    private UserRepository userRepository;\n\n    public void registerUser(User user) {\n        UserEntity entity = new UserEntity();\n        // Set properties\n        userRepository.saveAndFlush(entity);\n    }\n\n    @Cacheable(\"users\")\n    public Optional<UserEntity> findUser(String userId) {\n        System.out.println(\"Entered findUser method\");\n        return userRepository.findById(userId);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "spring:\n  mvc:\n    view:\n      prefix: /WEB-INF/pages/\n      suffix: .jsp\n  datasource:\n    url: jdbc:mysql://localhost:3306/db_irs\n    username: root\n    password: root\n  cache:\n    type: redis\n  redis:\n    host: 127.0.0.1\n    port: 6379\n\nserver:\n  servlet:\n    context-path: /InfyGoBoot\n  port: 4343\n\nlogging:\n  file: Errorlog.log\n  level:\n    root: warn\n    com.infoys.ars: error\n  pattern:\n    file: \"%d{yyyy-MM-dd HH:mm:ss,SSS} %5p [%t] %c [%M] - %m%n\"",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-cache</artifactId>\n</dependency>\n<dependency>\n    <groupId>org.springframework.boot</groupId>\n    <artifactId>spring-boot-starter-data-redis</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "redis-cli.exe",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "KEYS *",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Computer Science/Infosys/Spring Boot/Redis Cache.md",
+    "wordCount": 363,
+    "sectionCount": 24
+  }
+}
