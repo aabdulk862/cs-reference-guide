@@ -8,6 +8,8 @@ describe('generateBreadcrumbs', () => {
     array: 'Array',
     algorithms: 'Algorithms',
     'binary-search': 'Binary Search',
+    backend: 'Backend',
+    java: 'Java',
   };
 
   it('returns empty array for empty segments', () => {
@@ -15,33 +17,38 @@ describe('generateBreadcrumbs', () => {
     expect(result).toEqual([]);
   });
 
-  it('generates single breadcrumb for one segment', () => {
-    const result = generateBreadcrumbs(['topic'], displayNames);
-    expect(result).toHaveLength(1);
+  it('generates breadcrumbs for topic/category/topic path', () => {
+    const result = generateBreadcrumbs(['topic', 'data-structures', 'array'], displayNames);
+    expect(result).toHaveLength(2);
+
     expect(result[0]).toEqual<BreadcrumbItem>({
-      label: 'Topics',
-      path: '/topic',
+      label: 'Data Structures',
+      path: '/category/data-structures',
+      isLast: false,
+    });
+    expect(result[1]).toEqual<BreadcrumbItem>({
+      label: 'Array',
+      path: '/topic/data-structures/array',
       isLast: true,
     });
   });
 
-  it('generates breadcrumbs for category → topic path', () => {
-    const result = generateBreadcrumbs(['topic', 'data-structures', 'array'], displayNames);
-    expect(result).toHaveLength(3);
-
+  it('generates single breadcrumb for topic/category (no topic slug)', () => {
+    const result = generateBreadcrumbs(['topic', 'backend'], displayNames);
+    expect(result).toHaveLength(1);
     expect(result[0]).toEqual<BreadcrumbItem>({
-      label: 'Topics',
-      path: '/topic',
-      isLast: false,
+      label: 'Backend',
+      path: '/category/backend',
+      isLast: true,
     });
-    expect(result[1]).toEqual<BreadcrumbItem>({
-      label: 'Data Structures',
-      path: '/topic/data-structures',
-      isLast: false,
-    });
-    expect(result[2]).toEqual<BreadcrumbItem>({
-      label: 'Array',
-      path: '/topic/data-structures/array',
+  });
+
+  it('generates breadcrumb for /category/:slug path', () => {
+    const result = generateBreadcrumbs(['category', 'backend'], displayNames);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual<BreadcrumbItem>({
+      label: 'Backend',
+      path: '/category/backend',
       isLast: true,
     });
   });
@@ -58,27 +65,29 @@ describe('generateBreadcrumbs', () => {
   });
 
   it('falls back to title case for unknown slugs', () => {
-    const result = generateBreadcrumbs(['unknown-category', 'some-topic'], {});
+    const result = generateBreadcrumbs(['topic', 'unknown-category', 'some-topic'], {});
     expect(result[0].label).toBe('Unknown Category');
     expect(result[1].label).toBe('Some Topic');
   });
 
-  it('breadcrumb array length equals path depth', () => {
-    const segments = ['topic', 'data-structures', 'array'];
-    const result = generateBreadcrumbs(segments, displayNames);
-    expect(result).toHaveLength(segments.length);
+  it('category breadcrumb links to /category/ route', () => {
+    const result = generateBreadcrumbs(['topic', 'backend', 'java'], displayNames);
+    expect(result[0].path).toBe('/category/backend');
   });
 
-  it('each breadcrumb label matches the corresponding segment display name', () => {
-    const segments = ['topic', 'data-structures', 'array'];
-    const result = generateBreadcrumbs(segments, displayNames);
-
-    segments.forEach((segment, index) => {
-      expect(result[index].label).toBe(displayNames[segment]);
-    });
+  it('topic breadcrumb links to full /topic/ route', () => {
+    const result = generateBreadcrumbs(['topic', 'backend', 'java'], displayNames);
+    expect(result[1].path).toBe('/topic/backend/java');
   });
 
-  it('builds cumulative paths correctly', () => {
+  it('handles non-topic paths with default cumulative behavior', () => {
+    const result = generateBreadcrumbs(['settings'], {});
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe('/settings');
+    expect(result[0].isLast).toBe(true);
+  });
+
+  it('builds cumulative paths for generic routes', () => {
     const result = generateBreadcrumbs(['a', 'b', 'c'], {});
     expect(result[0].path).toBe('/a');
     expect(result[1].path).toBe('/a/b');

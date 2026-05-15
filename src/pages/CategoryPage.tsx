@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { get } from '../utils/storage';
+import { Breadcrumbs } from '../components/navigation/Breadcrumbs';
 import NotFound from './NotFound';
 
 /** Manifest types matching the content-manifest.json structure */
@@ -55,11 +56,11 @@ function getTopicCompletionStatus(
   topicId: string,
   progressData: ProgressData
 ): CompletionStatus {
-  const sections = progressData.completedSections[topicId];
+  const sections = progressData.completedSections?.[topicId];
   if (!sections || sections.length === 0) {
     return 'not-started';
   }
-  const progress = progressData.topicProgress[topicId] ?? 0;
+  const progress = progressData.topicProgress?.[topicId] ?? 0;
   if (progress >= 100) {
     return 'complete';
   }
@@ -97,11 +98,18 @@ export default function CategoryPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const progressData = get<ProgressData>('progress', {
+  const rawProgress = get<ProgressData>('progress', {
     completedSections: {},
     topicProgress: {},
     overallProgress: 0,
   });
+
+  // Ensure all fields exist even if localStorage has partial data
+  const progressData: ProgressData = {
+    completedSections: rawProgress.completedSections ?? {},
+    topicProgress: rawProgress.topicProgress ?? {},
+    overallProgress: rawProgress.overallProgress ?? 0,
+  };
 
   // Fetch content manifest
   useEffect(() => {
@@ -155,6 +163,7 @@ export default function CategoryPage() {
 
   return (
     <div className="page-category">
+      <Breadcrumbs displayNames={{ [categorySlug!]: category.name }} />
       <h2 className="page-category__title">{category.name}</h2>
       <p className="page-category__count">
         {category.topics.length} {category.topics.length === 1 ? 'topic' : 'topics'}

@@ -14,12 +14,15 @@ export interface CodeBlockProps {
  * Displays code in a pre/code block with language annotation,
  * a language label in the header, and a copy button that shows
  * "Copied ✓" confirmation for 2 seconds after activation.
+ * On mobile, includes a fullscreen expand button for easier reading.
  *
  * Validates: Requirement 3.3
  */
 export function CodeBlock({ code, language, runnable = false }: CodeBlockProps) {
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -62,10 +65,26 @@ export function CodeBlock({ code, language, runnable = false }: CodeBlockProps) 
     }
   }, [code]);
 
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      if (next) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+      return next;
+    });
+  }, []);
+
   const highlightedCode = applyBasicHighlighting(code, language);
 
   return (
-    <div className="codeblock-container" data-language={language}>
+    <div
+      ref={containerRef}
+      className={`codeblock-container${isFullscreen ? ' codeblock-container--fullscreen' : ''}`}
+      data-language={language}
+    >
       <div className="codeblock-header">
         <span className="codeblock-language">{language}</span>
         <div className="codeblock-actions">
@@ -74,6 +93,14 @@ export function CodeBlock({ code, language, runnable = false }: CodeBlockProps) 
               ▶ Runnable
             </span>
           )}
+          <button
+            type="button"
+            className="codeblock-expand-btn"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'View code fullscreen'}
+          >
+            {isFullscreen ? '✕' : '⛶'}
+          </button>
           <button
             type="button"
             className={`codeblock-copy-btn ${copyState === 'copied' ? 'codeblock-copy-btn--copied' : ''}`}
@@ -90,6 +117,11 @@ export function CodeBlock({ code, language, runnable = false }: CodeBlockProps) 
           dangerouslySetInnerHTML={{ __html: highlightedCode }}
         />
       </pre>
+      {isFullscreen && (
+        <div className="codeblock-fullscreen-footer">
+          <span className="codeblock-fullscreen-hint">Scroll to view • Tap ✕ to close</span>
+        </div>
+      )}
     </div>
   );
 }

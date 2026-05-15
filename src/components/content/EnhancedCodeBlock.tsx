@@ -21,6 +21,7 @@ export type CopyButtonStatus = 'idle' | 'copied' | 'error';
  */
 export function EnhancedCodeBlock({ language, code, runnable = false }: EnhancedCodeBlockProps) {
   const [copyStatus, setCopyStatus] = useState<CopyButtonStatus>('idle');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCopy = useCallback(async () => {
@@ -50,6 +51,18 @@ export function EnhancedCodeBlock({ language, code, runnable = false }: Enhanced
     }
   }, [code]);
 
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      if (next) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+      return next;
+    });
+  }, []);
+
   const highlightedCode = applyBasicHighlighting(code, language);
 
   const copyButtonLabel = copyStatus === 'copied'
@@ -69,7 +82,10 @@ export function EnhancedCodeBlock({ language, code, runnable = false }: Enhanced
   }${copyStatus === 'error' ? ' codeblock-copy-btn--error' : ''}`;
 
   return (
-    <div className="codeblock-container" data-language={language}>
+    <div
+      className={`codeblock-container${isFullscreen ? ' codeblock-container--fullscreen' : ''}`}
+      data-language={language}
+    >
       <div className="codeblock-header">
         {language ? (
           <span className="codeblock-language">{language}</span>
@@ -82,6 +98,14 @@ export function EnhancedCodeBlock({ language, code, runnable = false }: Enhanced
               ▶ Runnable
             </span>
           )}
+          <button
+            type="button"
+            className="codeblock-expand-btn"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'View code fullscreen'}
+          >
+            {isFullscreen ? '✕' : '⛶'}
+          </button>
           <button
             type="button"
             className={copyButtonClass}
@@ -98,6 +122,13 @@ export function EnhancedCodeBlock({ language, code, runnable = false }: Enhanced
           dangerouslySetInnerHTML={{ __html: highlightedCode }}
         />
       </pre>
+      {isFullscreen && (
+        <div className="codeblock-fullscreen-footer">
+          <span className="codeblock-fullscreen-hint">
+            Scroll freely · Tap ✕ to close
+          </span>
+        </div>
+      )}
     </div>
   );
 }

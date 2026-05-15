@@ -109,6 +109,7 @@ export default function Dashboard() {
   const [topicsStarted, setTopicsStarted] = useState<number>(0);
   const [overallPercentage, setOverallPercentage] = useState<number>(0);
   const [recentTopics, setRecentTopics] = useState<RecentTopic[]>([]);
+  const [categories, setCategories] = useState<ManifestCategory[]>([]);
 
   // Set document meta for non-topic page (app name + generic description)
   useDocumentMeta({
@@ -130,6 +131,7 @@ export default function Dashboard() {
         }
         const data: ContentManifest = await response.json();
         setTotalTopics(data.totalTopics);
+        setCategories(data.categories);
 
         // Count topics that have any progress (at least one section completed)
         const completedCount = Object.keys(progressData.completedSections).filter(
@@ -211,6 +213,27 @@ export default function Dashboard() {
       <section className="dashboard-review" aria-label="Due for review">
         <DueForReview />
       </section>
+
+      {/* Browse Categories */}
+      {categories.length > 0 && (
+        <section className="dashboard-categories" aria-labelledby="categories-heading">
+          <h3 id="categories-heading">Browse Categories</h3>
+          <div className="dashboard-categories__grid">
+            {categories.map((category) => (
+              <Link
+                key={category.id}
+                to={`/category/${category.id}`}
+                className="dashboard-categories__card"
+              >
+                <span className="dashboard-categories__name">{category.name}</span>
+                <span className="dashboard-categories__count">
+                  {category.topics.length} {category.topics.length === 1 ? 'topic' : 'topics'}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Bookmarks */}
       <section className="dashboard-bookmarks" aria-labelledby="bookmarks-heading">
