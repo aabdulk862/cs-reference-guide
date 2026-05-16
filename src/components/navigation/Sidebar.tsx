@@ -128,17 +128,26 @@ export function SidebarNavigation() {
     }
   }, [subtopicSlug, categorySlug, topicSlug]);
 
-  // Load visited topics from progress state
+  // Load completed topics from manual completion state
   useEffect(() => {
+    const completed = get<string[]>('completed-topics', []);
+    // Extract topic slugs from completion IDs (e.g., "backend/java" → "java")
+    const visited = new Set<string>();
+    for (const id of completed) {
+      // Completion IDs are like "category/topic" or "category/topic/subtopic"
+      const parts = id.split('/');
+      if (parts.length >= 2) {
+        visited.add(parts[1]); // topic slug
+      }
+    }
+    // Also check old progress data for backward compatibility
     const progress = get<ProgressData>(PROGRESS_KEY, {});
     if (progress.topicProgress) {
-      const visited = new Set<string>(
-        Object.entries(progress.topicProgress)
-          .filter(([, percentage]) => percentage > 0)
-          .map(([topicId]) => topicId)
-      );
-      setVisitedTopics(visited);
+      for (const [topicId, percentage] of Object.entries(progress.topicProgress)) {
+        if (percentage > 0) visited.add(topicId);
+      }
     }
+    setVisitedTopics(visited);
   }, []);
 
   // Persist expanded state (categories + topics) to localStorage

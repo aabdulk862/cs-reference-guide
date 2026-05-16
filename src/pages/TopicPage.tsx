@@ -6,14 +6,7 @@
  * 2. Multi-page overview: when topic has subtopics, renders index content + subtopic links
  * 3. Single-file topic: existing behavior for topics without subtopics
  *
- * Lazy-loads topic content JSON on navigation, then renders:
- * 1. Breadcrumbs (navigation context)
- * 2. ViewToggle (full / cheat-sheet / eli5)
- * 3. QuickReferenceCard (first key points from content)
- * 4. Progress bar (sections viewed / total sections)
- * 5. ContentCards for each section
- *
- * The selected view mode filters content via the content-views utility.
+ * Completion is manual — a "Mark as complete" button at the bottom of each page.
  *
  * Requirements: 3.3, 3.4, 3.5, 3.6, 3.7
  */
@@ -79,23 +72,28 @@ interface ContentManifest {
   buildTimestamp: string;
 }
 
-/** Progress storage key prefix */
-const PROGRESS_KEY = 'progress';
+/** Storage key for manual completion state */
+const COMPLETED_KEY = 'completed-topics';
 
-/** Retrieve viewed sections for a topic from localStorage */
-function getViewedSections(topicId: string): Set<string> {
-  const progress = get<Record<string, string[]>>(PROGRESS_KEY, {});
-  const sectionIds = progress[topicId] ?? [];
-  return new Set(sectionIds);
+/** Get the set of completed topic/subtopic IDs */
+function getCompletedTopics(): Set<string> {
+  const completed = get<string[]>(COMPLETED_KEY, []);
+  return new Set(completed);
 }
 
-/** Mark a section as viewed for a topic in localStorage */
-function markSectionViewed(topicId: string, sectionId: string): void {
-  const progress = get<Record<string, string[]>>(PROGRESS_KEY, {});
-  const existing = new Set(progress[topicId] ?? []);
-  existing.add(sectionId);
-  progress[topicId] = Array.from(existing);
-  set(PROGRESS_KEY, progress);
+/** Toggle completion for a topic/subtopic ID */
+function toggleCompletion(topicId: string): boolean {
+  const completed = get<string[]>(COMPLETED_KEY, []);
+  const completedSet = new Set(completed);
+  if (completedSet.has(topicId)) {
+    completedSet.delete(topicId);
+    set(COMPLETED_KEY, Array.from(completedSet));
+    return false;
+  } else {
+    completedSet.add(topicId);
+    set(COMPLETED_KEY, Array.from(completedSet));
+    return true;
+  }
 }
 
 /** Extract quick reference items from the first few sections */
@@ -103,12 +101,11 @@ function extractQuickReferenceItems(sections: ContentSection[]): string[] {
   const items: string[] = [];
   for (const section of sections) {
     if (items.length >= 7) break;
-    // Extract the first paragraph text from each section as a key point
     for (const node of section.content) {
       if (items.length >= 7) break;
       if (node.type === 'paragraph' && node.text.trim().length > 0) {
         items.push(node.text);
-        break; // Only take the first paragraph per section
+        break;
       }
     }
   }
@@ -117,10 +114,6 @@ function extractQuickReferenceItems(sections: ContentSection[]): string[] {
 
 /**
  * Filter sections at the topic level for cheat-sheet and eli5 views.
- * For cheat-sheet: applies a shared 500-word budget across all sections,
- * returning only sections that fit within the budget.
- * For eli5: returns only the first section with 3 sentences total.
- * For full: returns all sections unchanged.
  */
 function filterSectionsByView(
   sections: ContentSection[],
@@ -131,103 +124,58 @@ function filterSectionsByView(
   }
 
   if (view === 'eli5') {
-    // ELI5: find the first section(s) that have paragraph content and show 3 sentences total
     if (sections.length === 0) return [];
-    
     let sentencesRemaining = 3;
     const result: ContentSection[] = [];
 
     for (const section of sections) {
       if (sentencesRemaining <= 0) break;
-
       const truncatedContent = truncateToELI5(section.content, sentencesRemaining);
       if (truncatedContent.length === 0) continue;
 
-      // Count sentences consumed
       let sentencesUsed = 0;
       for (const node of truncatedContent) {
         if (node.type === 'paragraph' || node.type === 'blockquote') {
           const text = node.type === 'paragraph' ? node.text : node.text;
-          // Count sentence-ending punctuation
           const sentences = text.trim().split(/[.!?]+(?:\s|$)/).filter((s: string) => s.trim().length > 0);
           sentencesUsed += sentences.length;
         }
       }
 
-      result.push({
-        ...section,
-        content: truncatedContent,
-        subsections: [],
-      });
-
+      result.push({ ...section, content: truncatedContent, subsections: [] });
       sentencesRemaining -= sentencesUsed;
     }
-
     return result;
   }
 
-  // Cheat-sheet: apply a shared 500-word budget across all sections
+  // Cheat-sheet
   const result: ContentSection[] = [];
   let wordsRemaining = 500;
 
   for (const section of sections) {
     if (wordsRemaining <= 0) break;
-
     const truncatedContent = truncateToCheatSheet(section.content, wordsRemaining);
     if (truncatedContent.length === 0) continue;
 
-    // Count how many words were used by this section's truncated content
     let sectionWords = 0;
     for (const node of truncatedContent) {
-      if (node.type === 'code') continue; // code blocks don't count
+      if (node.type === 'code') continue;
       if (node.type === 'paragraph') sectionWords += countWordsInText(node.text);
       else if (node.type === 'blockquote') sectionWords += countWordsInText(node.text);
       else if (node.type === 'list') sectionWords += node.items.reduce((sum, item) => sum + countWordsInText(item), 0);
     }
 
-    result.push({
-      ...section,
-      content: truncatedContent,
-      subsections: [],
-    });
-
+    result.push({ ...section, content: truncatedContent, subsections: [] });
     wordsRemaining -= sectionWords;
   }
-
   return result;
 }
 
-/** Count words in a text string */
 function countWordsInText(text: string): number {
   if (!text.trim()) return 0;
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-/** Flatten sections to count total (including subsections) */
-function countAllSections(sections: ContentSection[]): number {
-  let count = 0;
-  for (const section of sections) {
-    count += 1;
-    if (section.subsections && section.subsections.length > 0) {
-      count += countAllSections(section.subsections);
-    }
-  }
-  return count;
-}
-
-/** Collect all section IDs (including subsections) */
-function collectAllSectionIds(sections: ContentSection[]): string[] {
-  const ids: string[] = [];
-  for (const section of sections) {
-    ids.push(section.id);
-    if (section.subsections && section.subsections.length > 0) {
-      ids.push(...collectAllSectionIds(section.subsections));
-    }
-  }
-  return ids;
-}
-
-/** Calculate total word count across all sections (including subsections) */
 function getTotalWordCount(sections: ContentSection[]): number {
   let total = 0;
   for (const section of sections) {
@@ -239,10 +187,6 @@ function getTotalWordCount(sections: ContentSection[]): number {
   return total;
 }
 
-/**
- * Find a topic in the manifest by category slug and topic slug.
- * Returns the topic entry if found, or undefined.
- */
 function findTopicInManifest(
   manifest: ContentManifest,
   categorySlug: string,
@@ -270,32 +214,24 @@ export default function TopicPage() {
   const [notFound, setNotFound] = useState(false);
   const [subtopicNotFound, setSubtopicNotFound] = useState(false);
   const [activeView, setActiveView] = useState<ContentView>('full');
-  const [viewedSections, setViewedSections] = useState<Set<string>>(new Set());
+  const [isCompleted, setIsCompleted] = useState(false);
 
   // Fetch manifest on mount
   useEffect(() => {
     let cancelled = false;
-
     async function loadManifest() {
       try {
         const response = await fetch('/content-manifest.json');
         if (!response.ok) return;
         const data: ContentManifest = await response.json();
-        if (!cancelled) {
-          setManifest(data);
-        }
-      } catch {
-        // Manifest not available — continue without it
-      }
+        if (!cancelled) setManifest(data);
+      } catch { /* Manifest not available */ }
     }
-
     loadManifest();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Fetch topic/subtopic content JSON on mount or when route params change
+  // Fetch topic/subtopic content JSON
   useEffect(() => {
     if (!categorySlug || !topicSlug) {
       setError('Invalid topic path.');
@@ -309,7 +245,6 @@ export default function TopicPage() {
     setNotFound(false);
     setSubtopicNotFound(false);
 
-    // Determine the content path based on whether we're viewing a subtopic
     const contentPath = subtopicSlug
       ? `/content/${categorySlug}/${topicSlug}/${subtopicSlug}.json`
       : `/content/${categorySlug}/${topicSlug}.json`;
@@ -318,13 +253,7 @@ export default function TopicPage() {
       .then((response) => {
         if (!response.ok) {
           if (response.status === 404) {
-            if (subtopicSlug) {
-              // Subtopic not found — could be invalid subtopic or subtopic on single-file topic
-              throw new Error('SUBTOPIC_NOT_FOUND');
-            } else {
-              // Topic not found
-              throw new Error('TOPIC_NOT_FOUND');
-            }
+            throw new Error(subtopicSlug ? 'SUBTOPIC_NOT_FOUND' : 'TOPIC_NOT_FOUND');
           }
           throw new Error(`Failed to load topic: ${response.status}`);
         }
@@ -333,48 +262,38 @@ export default function TopicPage() {
       .then((data: TopicData) => {
         if (!cancelled) {
           setTopicData(data);
-          setViewedSections(getViewedSections(data.id));
+          // Check completion state
+          const completionId = subtopicSlug
+            ? `${categorySlug}/${topicSlug}/${subtopicSlug}`
+            : `${categorySlug}/${topicSlug}`;
+          setIsCompleted(getCompletedTopics().has(completionId));
           setLoading(false);
         }
       })
       .catch((err: Error) => {
         if (!cancelled) {
-          if (err.message === 'TOPIC_NOT_FOUND') {
-            setNotFound(true);
-          } else if (err.message === 'SUBTOPIC_NOT_FOUND') {
-            setSubtopicNotFound(true);
-          } else {
-            setError(err.message);
-          }
+          if (err.message === 'TOPIC_NOT_FOUND') setNotFound(true);
+          else if (err.message === 'SUBTOPIC_NOT_FOUND') setSubtopicNotFound(true);
+          else setError(err.message);
           setLoading(false);
         }
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [categorySlug, topicSlug, subtopicSlug]);
 
-  // Handle view mode change from ViewToggle
   const handleViewChange = useCallback((view: ContentView) => {
     setActiveView(view);
   }, []);
 
-  // Track section visibility (mark as viewed when scrolled into view)
-  const handleSectionViewed = useCallback(
-    (sectionId: string) => {
-      if (!topicData) return;
-      markSectionViewed(topicData.id, sectionId);
-      setViewedSections((prev) => {
-        const next = new Set(prev);
-        next.add(sectionId);
-        return next;
-      });
-    },
-    [topicData]
-  );
+  const handleToggleComplete = useCallback(() => {
+    const completionId = subtopicSlug
+      ? `${categorySlug}/${topicSlug}/${subtopicSlug}`
+      : `${categorySlug}/${topicSlug}`;
+    const newState = toggleCompletion(completionId);
+    setIsCompleted(newState);
+  }, [categorySlug, topicSlug, subtopicSlug]);
 
-  // Determine if the topic has subtopics from the manifest
   const manifestTopic = useMemo(() => {
     if (!manifest || !categorySlug || !topicSlug) return undefined;
     return findTopicInManifest(manifest, categorySlug, topicSlug);
@@ -384,7 +303,6 @@ export default function TopicPage() {
     return manifestTopic?.subtopics && manifestTopic.subtopics.length > 0;
   }, [manifestTopic]);
 
-  // Extract first section summary for meta description (must be called unconditionally)
   const firstSectionSummary = useMemo(() => {
     if (!topicData || !topicData.sections.length) return '';
     const firstSection = topicData.sections[0];
@@ -396,13 +314,11 @@ export default function TopicPage() {
     return firstSection.heading || '';
   }, [topicData]);
 
-  // Set document meta for SEO (must be called unconditionally)
   useDocumentMeta({
     title: topicData?.title ?? 'CS Reference Guide',
     description: firstSectionSummary,
   });
 
-  // Loading state
   if (loading) {
     return (
       <div className="page-topic page-topic--loading" role="status" aria-live="polite">
@@ -411,7 +327,6 @@ export default function TopicPage() {
     );
   }
 
-  // Topic not found error
   if (notFound) {
     return (
       <div className="page-topic page-topic--error" role="alert">
@@ -422,11 +337,8 @@ export default function TopicPage() {
     );
   }
 
-  // Subtopic not found error — check if it's a subtopic on a single-file topic
   if (subtopicNotFound) {
-    // If manifest is loaded and topic has no subtopics, it's a single-file topic
     const isSingleFileTopic = manifest && manifestTopic && !hasSubtopics;
-
     return (
       <div className="page-topic page-topic--error" role="alert">
         <h2>{isSingleFileTopic ? 'Page not found' : 'Subtopic not found'}</h2>
@@ -442,7 +354,6 @@ export default function TopicPage() {
     );
   }
 
-  // Generic error state
   if (error || !topicData) {
     return (
       <div className="page-topic page-topic--error" role="alert">
@@ -452,17 +363,14 @@ export default function TopicPage() {
     );
   }
 
-  // Build display name overrides for breadcrumbs
   const breadcrumbDisplayNames: Record<string, string> = {};
   if (topicSlug) {
-    // Use manifest topic title if available, otherwise use fetched data title
     breadcrumbDisplayNames[topicSlug] = manifestTopic?.title ?? topicData.title;
   }
   if (subtopicSlug && topicData) {
     breadcrumbDisplayNames[subtopicSlug] = topicData.title;
   }
 
-  // --- Subtopic view ---
   if (subtopicSlug) {
     return (
       <SubtopicView
@@ -472,13 +380,12 @@ export default function TopicPage() {
         breadcrumbDisplayNames={breadcrumbDisplayNames}
         activeView={activeView}
         onViewChange={handleViewChange}
-        viewedSections={viewedSections}
-        onSectionViewed={handleSectionViewed}
+        isCompleted={isCompleted}
+        onToggleComplete={handleToggleComplete}
       />
     );
   }
 
-  // --- Multi-page topic overview ---
   if (hasSubtopics && manifestTopic?.subtopics) {
     return (
       <MultiPageOverview
@@ -489,21 +396,20 @@ export default function TopicPage() {
         breadcrumbDisplayNames={breadcrumbDisplayNames}
         activeView={activeView}
         onViewChange={handleViewChange}
-        viewedSections={viewedSections}
-        onSectionViewed={handleSectionViewed}
+        isCompleted={isCompleted}
+        onToggleComplete={handleToggleComplete}
       />
     );
   }
 
-  // --- Single-file topic (existing behavior) ---
   return (
     <SingleFileView
       topicData={topicData}
       breadcrumbDisplayNames={breadcrumbDisplayNames}
       activeView={activeView}
       onViewChange={handleViewChange}
-      viewedSections={viewedSections}
-      onSectionViewed={handleSectionViewed}
+      isCompleted={isCompleted}
+      onToggleComplete={handleToggleComplete}
     />
   );
 }
@@ -517,8 +423,8 @@ interface SubtopicViewProps {
   breadcrumbDisplayNames: Record<string, string>;
   activeView: ContentView;
   onViewChange: (view: ContentView) => void;
-  viewedSections: Set<string>;
-  onSectionViewed: (sectionId: string) => void;
+  isCompleted: boolean;
+  onToggleComplete: () => void;
 }
 
 function SubtopicView({
@@ -528,13 +434,9 @@ function SubtopicView({
   breadcrumbDisplayNames,
   activeView,
   onViewChange,
-  viewedSections,
-  onSectionViewed,
+  isCompleted,
+  onToggleComplete,
 }: SubtopicViewProps) {
-  const totalSections = countAllSections(topicData.sections);
-  const allSectionIds = collectAllSectionIds(topicData.sections);
-  const viewedCount = allSectionIds.filter((id) => viewedSections.has(id)).length;
-  const progressPercent = totalSections > 0 ? Math.floor((viewedCount / totalSections) * 100) : 0;
   const quickRefItems = extractQuickReferenceItems(topicData.sections);
   const totalWordCount = getTotalWordCount(topicData.sections);
   const readingTime = calculateReadingTime(totalWordCount);
@@ -542,51 +444,29 @@ function SubtopicView({
 
   return (
     <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
-      {/* Breadcrumbs */}
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
-      {/* Back to overview link */}
-      <Link
-        to={`/topic/${categorySlug}/${topicSlug}`}
-        className="topic-back-link"
-      >
+      <Link to={`/topic/${categorySlug}/${topicSlug}`} className="topic-back-link">
         ← Back to overview
       </Link>
 
-      {/* Topic Title and Reading Time */}
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
       </header>
 
-      {/* View Toggle */}
       <ViewToggle onChange={onViewChange} />
-
-      {/* Quick Reference Card */}
       <QuickReferenceCard items={quickRefItems} />
 
-      {/* Progress Bar */}
-      <TopicProgressBar
-        viewed={viewedCount}
-        total={totalSections}
-        percent={progressPercent}
-      />
+      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
 
-      {/* Table of Contents sidebar */}
-      {showTableOfContents && (
-        <TableOfContents sections={topicData.sections} />
-      )}
-
-      {/* Content Cards */}
       <div className="topic-content-sections">
         {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <TrackedContentCard
-            key={section.id}
-            section={section}
-            onViewed={onSectionViewed}
-          />
+          <ContentCard key={section.id} section={section} />
         ))}
       </div>
+
+      <MarkCompleteButton isCompleted={isCompleted} onToggle={onToggleComplete} />
     </div>
   );
 }
@@ -601,8 +481,8 @@ interface MultiPageOverviewProps {
   breadcrumbDisplayNames: Record<string, string>;
   activeView: ContentView;
   onViewChange: (view: ContentView) => void;
-  viewedSections: Set<string>;
-  onSectionViewed: (sectionId: string) => void;
+  isCompleted: boolean;
+  onToggleComplete: () => void;
 }
 
 function MultiPageOverview({
@@ -613,13 +493,9 @@ function MultiPageOverview({
   breadcrumbDisplayNames,
   activeView,
   onViewChange,
-  viewedSections,
-  onSectionViewed,
+  isCompleted,
+  onToggleComplete,
 }: MultiPageOverviewProps) {
-  const totalSections = countAllSections(topicData.sections);
-  const allSectionIds = collectAllSectionIds(topicData.sections);
-  const viewedCount = allSectionIds.filter((id) => viewedSections.has(id)).length;
-  const progressPercent = totalSections > 0 ? Math.floor((viewedCount / totalSections) * 100) : 0;
   const quickRefItems = extractQuickReferenceItems(topicData.sections);
   const totalWordCount = getTotalWordCount(topicData.sections);
   const readingTime = calculateReadingTime(totalWordCount);
@@ -627,45 +503,24 @@ function MultiPageOverview({
 
   return (
     <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
-      {/* Breadcrumbs */}
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
-      {/* Topic Title and Reading Time */}
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
       </header>
 
-      {/* View Toggle */}
       <ViewToggle onChange={onViewChange} />
-
-      {/* Quick Reference Card */}
       <QuickReferenceCard items={quickRefItems} />
 
-      {/* Progress Bar */}
-      <TopicProgressBar
-        viewed={viewedCount}
-        total={totalSections}
-        percent={progressPercent}
-      />
+      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
 
-      {/* Table of Contents sidebar */}
-      {showTableOfContents && (
-        <TableOfContents sections={topicData.sections} />
-      )}
-
-      {/* Index/Overview Content Cards */}
       <div className="topic-content-sections">
         {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <TrackedContentCard
-            key={section.id}
-            section={section}
-            onViewed={onSectionViewed}
-          />
+          <ContentCard key={section.id} section={section} />
         ))}
       </div>
 
-      {/* Subtopic Links */}
       <nav className="topic-subtopics" aria-label="Subtopics">
         <h2 className="topic-subtopics__heading">Subtopics</h2>
         <ul className="topic-subtopics__list">
@@ -684,6 +539,8 @@ function MultiPageOverview({
           ))}
         </ul>
       </nav>
+
+      <MarkCompleteButton isCompleted={isCompleted} onToggle={onToggleComplete} />
     </div>
   );
 }
@@ -695,8 +552,8 @@ interface SingleFileViewProps {
   breadcrumbDisplayNames: Record<string, string>;
   activeView: ContentView;
   onViewChange: (view: ContentView) => void;
-  viewedSections: Set<string>;
-  onSectionViewed: (sectionId: string) => void;
+  isCompleted: boolean;
+  onToggleComplete: () => void;
 }
 
 function SingleFileView({
@@ -704,13 +561,9 @@ function SingleFileView({
   breadcrumbDisplayNames,
   activeView,
   onViewChange,
-  viewedSections,
-  onSectionViewed,
+  isCompleted,
+  onToggleComplete,
 }: SingleFileViewProps) {
-  const totalSections = countAllSections(topicData.sections);
-  const allSectionIds = collectAllSectionIds(topicData.sections);
-  const viewedCount = allSectionIds.filter((id) => viewedSections.has(id)).length;
-  const progressPercent = totalSections > 0 ? Math.floor((viewedCount / totalSections) * 100) : 0;
   const quickRefItems = extractQuickReferenceItems(topicData.sections);
   const totalWordCount = getTotalWordCount(topicData.sections);
   const readingTime = calculateReadingTime(totalWordCount);
@@ -718,116 +571,47 @@ function SingleFileView({
 
   return (
     <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
-      {/* 1. Breadcrumbs */}
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
-      {/* Topic Title and Reading Time */}
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
       </header>
 
-      {/* 2. View Toggle */}
       <ViewToggle onChange={onViewChange} />
-
-      {/* 3. Quick Reference Card */}
       <QuickReferenceCard items={quickRefItems} />
 
-      {/* 4. Progress Bar */}
-      <TopicProgressBar
-        viewed={viewedCount}
-        total={totalSections}
-        percent={progressPercent}
-      />
+      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
 
-      {/* Table of Contents sidebar (shown when > 5 sections) */}
-      {showTableOfContents && (
-        <TableOfContents sections={topicData.sections} />
-      )}
-
-      {/* 5. Content Cards */}
       <div className="topic-content-sections">
         {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <TrackedContentCard
-            key={section.id}
-            section={section}
-            onViewed={onSectionViewed}
-          />
+          <ContentCard key={section.id} section={section} />
         ))}
       </div>
+
+      <MarkCompleteButton isCompleted={isCompleted} onToggle={onToggleComplete} />
     </div>
   );
 }
 
-// ─── Shared Components ───────────────────────────────────────────────────────
+// ─── Mark Complete Button ────────────────────────────────────────────────────
 
-/**
- * Progress bar showing sections viewed / total sections.
- * Requirement 3.6: visual progress indicators within each Topic.
- */
-interface TopicProgressBarProps {
-  viewed: number;
-  total: number;
-  percent: number;
+interface MarkCompleteButtonProps {
+  isCompleted: boolean;
+  onToggle: () => void;
 }
 
-function TopicProgressBar({ viewed, total, percent }: TopicProgressBarProps) {
+function MarkCompleteButton({ isCompleted, onToggle }: MarkCompleteButtonProps) {
   return (
-    <div className="topic-progress" role="region" aria-label="Topic progress">
-      <div className="topic-progress__label">
-        {viewed} of {total} sections completed
-      </div>
-      <div
-        className="topic-progress__bar"
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${percent}% complete`}
+    <div className="topic-completion">
+      <button
+        type="button"
+        className={`topic-completion__btn ${isCompleted ? 'topic-completion__btn--completed' : ''}`}
+        onClick={onToggle}
+        aria-pressed={isCompleted}
       >
-        <div
-          className="topic-progress__fill"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Wrapper around ContentCard that fires onViewed when the card
- * scrolls into view (using IntersectionObserver at 90% threshold).
- */
-interface TrackedContentCardProps {
-  section: ContentSection;
-  onViewed: (sectionId: string) => void;
-}
-
-function TrackedContentCard({ section, onViewed }: TrackedContentCardProps) {
-  const handleRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (!node) return;
-
-      const observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting && entry.intersectionRatio >= 0.9) {
-              onViewed(section.id);
-              observer.disconnect();
-            }
-          }
-        },
-        { threshold: 0.9 }
-      );
-
-      observer.observe(node);
-    },
-    [section.id, onViewed]
-  );
-
-  return (
-    <div ref={handleRef} className="tracked-content-card">
-      <ContentCard section={section} />
+        {isCompleted ? '✓ Completed' : 'Mark as complete'}
+      </button>
     </div>
   );
 }
