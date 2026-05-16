@@ -371,6 +371,6 @@ A: Split the list in half using the slow/fast pointer technique to find the midd
 ## Related Topics
 
 - [Hash Tables](./hash-tables.md) — Separate chaining collision resolution uses linked lists within each hash bucket
-- [Arrays and Strings](./arrays-and-strings/index.md) — Contrasting contiguous vs. pointer-based storage trade-offs
+- [Arrays and Strings](../arrays-and-strings/index.md) — Contrasting contiguous vs. pointer-based storage trade-offs
 - [Queue](./queue.md) — LinkedList implements the Deque interface for double-ended queue operations
 - [Big O Notation](./big-o-notation.md) — Comparing O(1) insertion/deletion vs. O(n) access in linked structures

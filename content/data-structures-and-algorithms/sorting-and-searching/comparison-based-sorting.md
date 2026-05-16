@@ -290,4 +290,4 @@ A: Quickselect uses the same partition step as quicksort but only recurses into 
 - [Non-Comparison and Linear Sorting](./non-comparison-and-linear-sorting.md) — Breaking the Ω(n log n) barrier with value-based sorting
 - [Binary Search Patterns](./binary-search-patterns.md) — Searching in sorted arrays produced by these algorithms
 - [Arrays and Strings](../arrays-and-strings/index.md) — Array manipulation techniques used in sorting
-- [Heap](../heap.md) — Heap data structure underlying heapsort and partial sort
+- [Heap](../fundamental-data-structures/heap.md) — Heap data structure underlying heapsort and partial sort

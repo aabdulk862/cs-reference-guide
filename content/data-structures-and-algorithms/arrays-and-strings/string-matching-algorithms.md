@@ -351,4 +351,4 @@ A: Aho-Corasick builds a trie from all patterns, then adds failure links (simila
 - [String Manipulation](./string-manipulation.md) — Foundational string operations that matching algorithms build upon
 - [Two Pointers and Sliding Window](./two-pointers-and-sliding-window.md) — Sliding window as a simplified matching pattern
 - [Prefix Sums and Hashing](./prefix-sums-and-hashing.md) — Rolling hash techniques used in Rabin-Karp
-- [Trie](../trie.md) — Trie structure forms the basis of Aho-Corasick automaton
+- [Trie](../fundamental-data-structures/trie.md) — Trie structure forms the basis of Aho-Corasick automaton

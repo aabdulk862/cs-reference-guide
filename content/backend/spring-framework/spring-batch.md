@@ -16,25 +16,25 @@ Spring Batch is the standard choice for Java-based batch processing where you ne
 
 ## Code Examples
 
-### Complete Job Configuration with Chunk Processing
+### Complete Job Configuration with Chunk Processing (Spring Batch 5.x / Spring Boot 3.x)
 
 ```java
 @Configuration
 @EnableBatchProcessing
 public class ImportJobConfig {
 
-    private final JobBuilderFactory jobBuilderFactory;
-    private final StepBuilderFactory stepBuilderFactory;
+    private final JobRepository jobRepository;
+    private final PlatformTransactionManager transactionManager;
 
-    public ImportJobConfig(JobBuilderFactory jobBuilderFactory,
-                           StepBuilderFactory stepBuilderFactory) {
-        this.jobBuilderFactory = jobBuilderFactory;
-        this.stepBuilderFactory = stepBuilderFactory;
+    public ImportJobConfig(JobRepository jobRepository,
+                           PlatformTransactionManager transactionManager) {
+        this.jobRepository = jobRepository;
+        this.transactionManager = transactionManager;
     }
 
     @Bean
     public Job importCustomerJob(Step importStep, Step notificationStep) {
-        return jobBuilderFactory.get("importCustomerJob")
+        return new JobBuilder("importCustomerJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
                 .validator(new DefaultJobParametersValidator(
                     new String[]{"inputFile"}, new String[]{}))
@@ -48,8 +48,8 @@ public class ImportJobConfig {
     public Step importStep(ItemReader<CustomerRecord> reader,
                            ItemProcessor<CustomerRecord, Customer> processor,
                            ItemWriter<Customer> writer) {
-        return stepBuilderFactory.get("importStep")
-                .<CustomerRecord, Customer>chunk(100)
+        return new StepBuilder("importStep", jobRepository)
+                .<CustomerRecord, Customer>chunk(100, transactionManager)
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
@@ -64,8 +64,8 @@ public class ImportJobConfig {
 
     @Bean
     public Step notificationStep(Tasklet notificationTasklet) {
-        return stepBuilderFactory.get("notificationStep")
-                .tasklet(notificationTasklet)
+        return new StepBuilder("notificationStep", jobRepository)
+                .tasklet(notificationTasklet, transactionManager)
                 .build();
     }
 }
@@ -137,7 +137,7 @@ public JdbcBatchItemWriter<Customer> jdbcWriter(DataSource dataSource) {
 @Bean
 public Job conditionalJob(Step extractStep, Step transformStep,
                           Step errorStep, Step loadStep) {
-    return jobBuilderFactory.get("conditionalJob")
+    return new JobBuilder("conditionalJob", jobRepository)
             .start(extractStep)
                 .on("FAILED").to(errorStep)
             .from(extractStep)
@@ -166,7 +166,7 @@ public JobExecutionDecider decider() {
 ```java
 @Bean
 public Step partitionedStep(Step workerStep, Partitioner partitioner) {
-    return stepBuilderFactory.get("partitionedStep")
+    return new StepBuilder("partitionedStep", jobRepository)
             .partitioner("workerStep", partitioner)
             .step(workerStep)
             .gridSize(4) // number of partitions
@@ -323,5 +323,5 @@ A: Start with multithreaded steps (`TaskExecutor` on the step) to process multip
 ## Related Topics
 
 - [Spring Boot](./spring-boot.md) — Spring Batch auto-configuration and job launching via Spring Boot
-- [Spring Framework](./spring-framework.md) — Transaction management and dependency injection foundation
+- [Spring Framework](./core-container.md) — Transaction management and dependency injection foundation
 - [Apache Kafka](./apache-kafka.md) — Event-driven batch triggers and Kafka-based ItemReader/Writer implementations

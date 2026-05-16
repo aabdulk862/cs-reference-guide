@@ -291,7 +291,7 @@ def handler(event, context):
 
 ## Common Pitfalls
 
-- **Cold start death spiral in VPC Lambdas**: Functions in a VPC require ENI attachment, adding 5-10 seconds to cold starts. This compounds under burst traffic — 100 concurrent cold starts each needing an ENI can exhaust subnet IP addresses. Use VPC endpoints for AWS services and only place functions in VPC when accessing private resources like RDS
+- **Cold start death spiral in VPC Lambdas**: Placing Lambda functions inside a VPC historically added 5-10 seconds of cold start time due to ENI attachment. Since the 2019 Hyperplane improvement, VPC cold starts add only ~100-200ms additional latency. However, burst traffic with many concurrent cold starts can still exhaust subnet IP addresses. Use VPC endpoints for AWS services and only place functions in VPC when accessing private resources (RDS, ElastiCache, internal services)
 - **Ignoring Lambda execution environment reuse**: Global variables persist between invocations in the same execution environment. Database connections initialized outside the handler are reused (good for performance), but mutable state can leak between requests if not carefully managed. Always reset request-specific state inside the handler
 - **Step Functions state size limits**: Each state can pass a maximum of 256KB between transitions. Large payloads must be stored in S3 with only a reference passed through the workflow. Failing to account for this causes runtime failures on large orders or batch operations
 - **EventBridge rule explosion**: Creating one rule per customer or per entity leads to thousands of rules that are hard to manage and slow to update. Use content-based filtering within a single rule with pattern matching instead of proliferating rules

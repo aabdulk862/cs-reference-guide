@@ -285,6 +285,6 @@ A: `RestTemplate` is synchronous and blocking — the calling thread waits for t
 ## Related Topics
 
 - [Spring Boot](./spring-boot.md) — Spring REST is built on Spring Boot's web auto-configuration and embedded server
-- [Spring Framework](./spring-framework.md) — Core Spring MVC provides the DispatcherServlet and handler mapping infrastructure
-- [Security](./security.md) — OAuth2 and JWT authentication for securing REST endpoints
+- [Spring Framework](./core-container.md) — Core Spring MVC provides the DispatcherServlet and handler mapping infrastructure
+- [Security](./spring-security.md) — OAuth2 and JWT authentication for securing REST endpoints
 - [Spring Batch](./spring-batch.md) — REST endpoints can trigger batch jobs via JobLauncher

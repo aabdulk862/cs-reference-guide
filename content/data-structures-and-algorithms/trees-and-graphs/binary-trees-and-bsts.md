@@ -380,5 +380,5 @@ A: Use in-order traversal (which visits BST nodes in sorted order) and count nod
 
 - [Balanced Trees and Self-Balancing](./balanced-trees-and-self-balancing.md) — Guaranteed O(log n) through rotation-based balancing
 - [Graph Representations and Traversal](./graph-representations-and-traversal.md) — Trees are special cases of graphs; traversal techniques generalize
-- [Heap](../heap.md) — Complete binary trees stored in arrays for priority queue operations
-- [Trie](../trie.md) — Specialized trees for string prefix operations
+- [Heap](../fundamental-data-structures/heap.md) — Complete binary trees stored in arrays for priority queue operations
+- [Trie](../fundamental-data-structures/trie.md) — Specialized trees for string prefix operations

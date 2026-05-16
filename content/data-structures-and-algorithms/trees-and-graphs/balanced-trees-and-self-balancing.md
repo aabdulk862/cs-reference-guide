@@ -388,4 +388,4 @@ A: A splay tree moves every accessed node to the root through a sequence of rota
 - [Binary Trees and BSTs](./binary-trees-and-bsts.md) — Foundation that balanced trees build upon
 - [Graph Representations and Traversal](./graph-representations-and-traversal.md) — Trees as special cases of graphs
 - [Sorting and Searching](../sorting-and-searching/index.md) — Tree-based sorting and search operations
-- [Heap](../heap.md) — Alternative tree structure for priority queue operations
+- [Heap](../fundamental-data-structures/heap.md) — Alternative tree structure for priority queue operations

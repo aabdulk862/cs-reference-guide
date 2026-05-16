@@ -318,6 +318,6 @@ A: Spring Boot resolves properties in a defined order where later sources overri
 
 ## Related Topics
 
-- [Spring Framework](./spring-framework.md) — Spring Boot builds on top of the core Spring Framework IoC container and modules
+- [Spring Framework](./core-container.md) — Spring Boot builds on top of the core Spring Framework IoC container and modules
 - [Spring REST](./spring-rest.md) — Building RESTful APIs with Spring Boot's web layer
 - [Spring Batch](./spring-batch.md) — Batch processing framework that integrates with Spring Boot for scheduled data jobs

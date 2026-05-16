@@ -391,10 +391,10 @@ Draw the recursion tree. Count total nodes (each represents one function call). 
 
 ## Related Topics
 
-- [Array](./array.md) — Understanding array operation complexities is fundamental to Big O analysis
+- [Array Fundamentals](../arrays-and-strings/array-fundamentals.md) — Understanding array operation complexities is fundamental to Big O analysis
 - [Heap](./heap.md) — Heap operations demonstrate O(log n) behavior in priority queue implementations
-- [Graph](./graph.md) — Graph algorithms showcase O(V + E) traversal complexity
-- [Tree](./tree.md) — Balanced trees achieve O(log n) search through height-bounded structures
+- [Graph Representations and Traversal](../trees-and-graphs/graph-representations-and-traversal.md) — Graph algorithms showcase O(V + E) traversal complexity
+- [Binary Trees and BSTs](../trees-and-graphs/binary-trees-and-bsts.md) — Balanced trees achieve O(log n) search through height-bounded structures
 - [Hash Tables](./hash-tables.md) — Hash tables demonstrate amortized O(1) vs. TreeMap O(log n) tradeoffs
 
 ---

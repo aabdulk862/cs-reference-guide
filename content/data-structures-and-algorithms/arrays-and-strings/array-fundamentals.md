@@ -238,4 +238,4 @@ A: Use Floyd's cycle detection algorithm. Treat the array as a function mapping 
 - [Two Pointers and Sliding Window](./two-pointers-and-sliding-window.md) — Core traversal patterns built on array access
 - [Prefix Sums and Hashing](./prefix-sums-and-hashing.md) — Precomputation techniques for array range queries
 - [Sorting and Searching](../sorting-and-searching/index.md) — Algorithms that operate on array structures
-- [Heap](../heap.md) — Heaps are implemented using arrays with parent-child index relationships
+- [Heap](../fundamental-data-structures/heap.md) — Heaps are implemented using arrays with parent-child index relationships

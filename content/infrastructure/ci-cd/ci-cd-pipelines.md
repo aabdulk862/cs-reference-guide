@@ -445,6 +445,6 @@ A: Monitor error rate (HTTP 5xx), latency (p50, p95, p99), throughput (requests 
 
 ## Related Topics
 
-- [Docker & Containerization](./docker/index.md) - CI/CD pipelines build and push container images as deployment artifacts
-- [Kubernetes & EKS](./kubernetes/index.md) - Kubernetes is the primary deployment target for containerized CI/CD pipelines
-- [Linux Administration](./linux-administration.md) - Pipeline runners execute on Linux hosts requiring shell scripting and system administration knowledge
+- [Docker & Containerization](../docker/index.md) - CI/CD pipelines build and push container images as deployment artifacts
+- [Kubernetes & EKS](../kubernetes/index.md) - Kubernetes is the primary deployment target for containerized CI/CD pipelines
+- [Linux Administration](../linux/linux-administration.md) - Pipeline runners execute on Linux hosts requiring shell scripting and system administration knowledge

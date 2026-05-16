@@ -24,7 +24,6 @@ Volume management becomes essential when containers handle persistent state: dat
 
 ```yaml
 # docker-compose.yml demonstrating network isolation
-version: "3.9"
 
 services:
   api:

@@ -373,4 +373,4 @@ A: Iterate over all vertices. For each unvisited vertex, start a BFS or DFS and 
 - [Binary Trees and BSTs](./binary-trees-and-bsts.md) — Trees are acyclic connected graphs with hierarchical structure
 - [Shortest Path Algorithms](./shortest-path-algorithms.md) — Weighted graph traversal for optimal paths
 - [Advanced Graph Algorithms](./advanced-graph-algorithms.md) — Topological sort, MST, and SCC build on traversal
-- [Queue](../queue.md) — BFS uses queues for level-order exploration
+- [Queue](../fundamental-data-structures/queue.md) — BFS uses queues for level-order exploration

@@ -279,7 +279,7 @@ A: PgBouncer offers three modes: session (connection held for entire client sess
 
 ## Related Topics
 
-- [SQL Fundamentals](./sql-fundamentals.md) — Core SQL concepts that PostgreSQL extends with advanced features like JSONB, arrays, and range types
-- [SQL Performance Tuning](./sql-performance-tuning.md) — General query optimization principles applied with PostgreSQL-specific tools like pg_stat_statements and EXPLAIN ANALYZE
-- [Transactions and Consistency](./transactions-and-consistency.md) — PostgreSQL's MVCC implementation and isolation levels in the context of broader consistency guarantees
-- [Database Design Patterns](./database-design-patterns.md) — Schema design approaches that leverage PostgreSQL-specific features like JSONB columns and partial indexes
+- [SQL Fundamentals](../sql-foundations/sql-fundamentals.md) — Core SQL concepts that PostgreSQL extends with advanced features like JSONB, arrays, and range types
+- [SQL Performance Tuning](../sql-foundations/sql-performance-tuning.md) — General query optimization principles applied with PostgreSQL-specific tools like pg_stat_statements and EXPLAIN ANALYZE
+- [Transactions and Consistency](../sql-foundations/transactions-and-consistency.md) — PostgreSQL's MVCC implementation and isolation levels in the context of broader consistency guarantees
+- [Database Design Patterns](../sql-foundations/database-design-patterns.md) — Schema design approaches that leverage PostgreSQL-specific features like JSONB columns and partial indexes

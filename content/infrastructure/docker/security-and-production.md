@@ -159,7 +159,6 @@ public class GracefulShutdownHandler {
 
 ```yaml
 # docker-compose.yml with external secrets
-version: '3.8'
 
 services:
   api-gateway:

@@ -383,7 +383,7 @@ A: Oracle's optimizer is more sophisticated in several ways: it supports adaptiv
 
 ## Related Topics
 
-- [SQL Fundamentals](./sql-fundamentals.md) — Core SQL concepts that Oracle extends with proprietary syntax like CONNECT BY, MODEL, and PIVOT
-- [SQL Performance Tuning](./sql-performance-tuning.md) — General optimization principles applied with Oracle-specific tools like AWR, ASH, and the SQL Tuning Advisor
-- [Transactions and Consistency](./transactions-and-consistency.md) — Oracle's undo-based read consistency model compared to PostgreSQL's MVCC tuple versioning
-- [Database Design Patterns](./database-design-patterns.md) — Schema design approaches leveraging Oracle-specific features like interval partitioning and virtual columns
+- [SQL Fundamentals](../sql-foundations/sql-fundamentals.md) — Core SQL concepts that Oracle extends with proprietary syntax like CONNECT BY, MODEL, and PIVOT
+- [SQL Performance Tuning](../sql-foundations/sql-performance-tuning.md) — General optimization principles applied with Oracle-specific tools like AWR, ASH, and the SQL Tuning Advisor
+- [Transactions and Consistency](../sql-foundations/transactions-and-consistency.md) — Oracle's undo-based read consistency model compared to PostgreSQL's MVCC tuple versioning
+- [Database Design Patterns](../sql-foundations/database-design-patterns.md) — Schema design approaches leveraging Oracle-specific features like interval partitioning and virtual columns

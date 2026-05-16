@@ -494,4 +494,4 @@ A: Active-active: both regions serve production traffic simultaneously. Advantag
 - [AWS Core Services](./aws-core-services.md) — Individual service capabilities that these patterns compose
 - [Infrastructure as Code](../ci-cd/infrastructure-as-code.md) — Implementing multi-region and DR infrastructure reproducibly
 - [Serverless Patterns](./serverless-patterns.md) — Serverless architectures within cloud patterns
-- [Security](../../backend/security.md) — Security pillar of the Well-Architected Framework in depth
+- [Security](../../security/security/security.md) — Security pillar of the Well-Architected Framework in depth

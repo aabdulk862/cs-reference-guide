@@ -57,7 +57,7 @@ Sets are the right choice when you need to maintain a collection of unique eleme
     - **Add**: O(1) for unordered sets (with good hash functions), O(log n) for ordered sets.
     - **Remove**: O(1) for unordered sets, O(log n) for ordered sets.
     - **Contains**: O(1) for unordered sets, O(log n) for ordered sets.
-    - **Size**: O(1) for unordered sets, O(n) for ordered sets (due to traversal in some cases).
+    - **Size**: O(1) for all standard Set implementations (size is maintained as a counter).
 
 ---
 
@@ -187,7 +187,7 @@ public class TreeSetExample {
 - **Add**: O(log n), because inserting involves finding the correct position and potentially rebalancing the tree.
 - **Remove**: O(log n), as it requires finding and deleting an element, and potentially rebalancing.
 - **Contains**: O(log n), as it requires a search through the tree.
-- **Size**: O(n), because traversal of the tree to count elements can take linear time.
+- **Size**: O(1), because TreeSet maintains an internal size counter that is updated on each add/remove operation.
 
 ---
 
@@ -337,7 +337,7 @@ Use two pointers advancing through both arrays simultaneously. If elements are e
 ## Related Topics
 
 - [Hash Tables](./hash-tables.md) — HashSet is internally backed by a HashMap with dummy values
-- [Tree](./tree.md) — TreeSet uses a red-black tree for sorted element storage
-- [Array](./array.md) — Sets can be used to deduplicate array elements efficiently
-- [Graph](./graph.md) — Sets track visited nodes in graph traversal algorithms
+- [Binary Trees and BSTs](../trees-and-graphs/binary-trees-and-bsts.md) — TreeSet uses a red-black tree for sorted element storage
+- [Array Fundamentals](../arrays-and-strings/array-fundamentals.md) — Sets can be used to deduplicate array elements efficiently
+- [Graph Representations and Traversal](../trees-and-graphs/graph-representations-and-traversal.md) — Sets track visited nodes in graph traversal algorithms
 - [Big O Notation](./big-o-notation.md) — Understanding O(1) amortized vs. O(log n) guaranteed complexity

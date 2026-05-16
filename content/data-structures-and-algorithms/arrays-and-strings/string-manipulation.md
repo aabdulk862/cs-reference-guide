@@ -294,4 +294,4 @@ A: Compare characters column by column across all strings. Start at index 0 and 
 - [String Matching Algorithms](./string-matching-algorithms.md) — KMP, Rabin-Karp, and advanced pattern matching
 - [Two Pointers and Sliding Window](./two-pointers-and-sliding-window.md) — Sliding window applied to substring problems
 - [Prefix Sums and Hashing](./prefix-sums-and-hashing.md) — Rolling hash for string comparison
-- [Trie](../trie.md) — Specialized tree structure for string prefix operations
+- [Trie](../fundamental-data-structures/trie.md) — Specialized tree structure for string prefix operations

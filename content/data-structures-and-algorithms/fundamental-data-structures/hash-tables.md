@@ -317,7 +317,7 @@ A: HashMap is not thread-safe; concurrent modification causes infinite loops, lo
 
 ## Related Topics
 
-- [Arrays and Strings](./arrays-and-strings/index.md) — Hash tables use arrays internally for bucket storage and are essential for string-based problems
+- [Arrays and Strings](../arrays-and-strings/index.md) — Hash tables use arrays internally for bucket storage and are essential for string-based problems
 - [Linked Lists](./linked-lists.md) — Separate chaining collision resolution uses linked lists within each bucket
 - [Big O Notation](./big-o-notation.md) — Understanding amortized O(1) analysis and worst-case degradation in hash tables
 - [Sets](./sets.md) — Sets are implemented as hash tables where only keys matter (HashSet wraps HashMap)

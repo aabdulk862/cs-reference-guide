@@ -279,6 +279,6 @@ A: Java resolves conflicts with three rules: (1) class methods always win over i
 
 ## Related Topics
 
-- [Java](./java.md) — Core Java language fundamentals and OOP concepts
-- [Spring Framework](./spring-framework.md) — Heavily uses lambdas and functional interfaces in configuration and reactive programming
-- [Spring Boot](./spring-boot.md) — Stream API used extensively in service layer data transformations
+- [Java](./core-language.md) — Core Java language fundamentals and OOP concepts
+- [Spring Framework](../spring-framework/index.md) — Heavily uses lambdas and functional interfaces in configuration and reactive programming
+- [Spring Boot](../spring-framework/spring-boot.md) — Stream API used extensively in service layer data transformations

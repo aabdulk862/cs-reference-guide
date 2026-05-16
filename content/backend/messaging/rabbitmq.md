@@ -310,4 +310,4 @@ A: RabbitMQ offers three partition handling strategies. `pause-minority`: nodes 
 
 - [Apache Kafka](./apache-kafka.md) — Event streaming platform with log-based persistence, complementing RabbitMQ's queue-based model
 - [Messaging Patterns and Architecture](./messaging-patterns.md) — Architectural patterns and decision frameworks for choosing messaging platforms
-- [Spring Cloud and Microservices](../spring-framework/spring-cloud.md) — Spring Cloud Stream provides declarative RabbitMQ integration
+- [Spring Cloud and Microservices](../spring-framework/spring-microservices.md) — Spring Cloud Stream provides declarative RabbitMQ integration

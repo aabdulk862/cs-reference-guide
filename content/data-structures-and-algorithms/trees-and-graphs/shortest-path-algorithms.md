@@ -346,4 +346,4 @@ A: Use 0-1 BFS with a deque (double-ended queue). When relaxing an edge with wei
 - [Graph Representations and Traversal](./graph-representations-and-traversal.md) — Graph structure and BFS/DFS that shortest path algorithms build upon
 - [Advanced Graph Algorithms](./advanced-graph-algorithms.md) — MST algorithms use similar relaxation techniques
 - [Binary Trees and BSTs](./binary-trees-and-bsts.md) — Priority queues (heaps) used in Dijkstra's implementation
-- [Heap](../heap.md) — Binary heap provides the priority queue for Dijkstra's algorithm
+- [Heap](../fundamental-data-structures/heap.md) — Binary heap provides the priority queue for Dijkstra's algorithm

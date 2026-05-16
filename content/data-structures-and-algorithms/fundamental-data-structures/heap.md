@@ -283,8 +283,8 @@ Bottom-up heapify starts from the last non-leaf node and sifts down. Nodes at de
 
 ## Related Topics
 
-- [Array](./array.md) — Heaps are implemented using arrays with index-based parent-child relationships
-- [Tree](./tree.md) — Heaps are complete binary trees with the heap ordering property
+- [Array Fundamentals](../arrays-and-strings/array-fundamentals.md) — Heaps are implemented using arrays with index-based parent-child relationships
+- [Binary Trees and BSTs](../trees-and-graphs/binary-trees-and-bsts.md) — Heaps are complete binary trees with the heap ordering property
 - [Queue](./queue.md) — Priority queues are the primary application of heap data structures
-- [Graph](./graph.md) — Dijkstra's and Prim's algorithms use heaps for efficient vertex selection
+- [Graph Representations and Traversal](../trees-and-graphs/graph-representations-and-traversal.md) — Dijkstra's and Prim's algorithms use heaps for efficient vertex selection
 - [Big O Notation](./big-o-notation.md) — Understanding logarithmic complexity of heap operations

@@ -234,4 +234,4 @@ A: Kafka achieves high throughput through: sequential disk I/O (append-only logs
 
 - [RabbitMQ](./rabbitmq.md) — Traditional message broker with sophisticated routing, complementing Kafka's streaming model
 - [Messaging Patterns and Architecture](./messaging-patterns.md) — When to choose Kafka vs. RabbitMQ and event-driven architecture patterns
-- [Spring Cloud and Microservices](../spring-framework/spring-cloud.md) — Spring Cloud Stream provides declarative Kafka integration
+- [Spring Cloud and Microservices](../spring-framework/spring-microservices.md) — Spring Cloud Stream provides declarative Kafka integration

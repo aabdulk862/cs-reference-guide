@@ -239,6 +239,6 @@ A: The aggregation pipeline processes documents through sequential stages (match
 
 ## Related Topics
 
-- [SQL Performance Tuning](./sql-performance-tuning.md) — Complementary relational database optimization techniques for hybrid architectures
-- [Database Design Patterns](./database-design-patterns.md) — Schema design principles applicable to both document and relational databases
-- [Transactions and Consistency](./transactions-and-consistency.md) — MongoDB multi-document transactions and consistency guarantees
+- [SQL Performance Tuning](../sql-foundations/sql-performance-tuning.md) — Complementary relational database optimization techniques for hybrid architectures
+- [Database Design Patterns](../sql-foundations/database-design-patterns.md) — Schema design principles applicable to both document and relational databases
+- [Transactions and Consistency](../sql-foundations/transactions-and-consistency.md) — MongoDB multi-document transactions and consistency guarantees

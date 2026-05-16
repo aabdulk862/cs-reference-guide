@@ -4,7 +4,7 @@
 
 - S3 (Simple Storage Service) provides object storage with 99.999999999% (11 nines) durability and 99.99% availability for Standard class
 - Storage classes: Standard, Intelligent-Tiering, Standard-IA, One Zone-IA, Glacier Instant Retrieval, Glacier Flexible, Glacier Deep Archive
-- S3 is eventually consistent for overwrite PUTs and DELETEs; read-after-write consistent for new object PUTs (strong consistency since Dec 2020)
+- S3 provides strong read-after-write consistency for all operations (PUT, GET, DELETE, list) since December 2020 — no eventual consistency for any operation
 - Maximum object size is 5TB; multipart upload required for objects over 5GB, recommended for objects over 100MB
 - Bucket policies and ACLs control access; Block Public Access settings override all other policies to prevent accidental exposure
 - S3 Event Notifications trigger Lambda, SQS, or SNS on object creation, deletion, or restoration events
@@ -48,7 +48,6 @@ export class SecureStorageStack extends cdk.Stack {
       versioned: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true, // Deny non-HTTPS requests
-      minimumTLSVersion: s3.ObjectLockMode.GOVERNANCE,
 
       // Lifecycle rules for cost optimization
       lifecycleRules: [

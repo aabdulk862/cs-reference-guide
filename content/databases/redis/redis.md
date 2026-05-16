@@ -492,7 +492,7 @@ A: A hot key is a single Redis key receiving disproportionate read/write traffic
 
 ## Related Topics
 
-- [Messaging Patterns](../backend/messaging/messaging-patterns.md) — Redis Pub/Sub and Streams as lightweight messaging alternatives
-- [REST API Design](../backend/rest-api-design.md) — Rate limiting and caching patterns that Redis enables for APIs
-- [Cloud Architecture Patterns](../cloud/cloud/cloud-architecture-patterns.md) — Redis in multi-region caching and session management architectures
-- [Web Performance](../frontend/web-performance.md) — Server-side caching with Redis reducing API latency for frontend performance
+- [Messaging Patterns](../../backend/messaging/messaging-patterns.md) — Redis Pub/Sub and Streams as lightweight messaging alternatives
+- [REST API Design](../../backend/api-design/rest-api-design.md) — Rate limiting and caching patterns that Redis enables for APIs
+- [SQL Performance Tuning](../sql-foundations/sql-performance-tuning.md) — Complementary database optimization techniques for hybrid architectures
+- [Transactions and Consistency](../sql-foundations/transactions-and-consistency.md) — Redis persistence and consistency guarantees compared to traditional databases
