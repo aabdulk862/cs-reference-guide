@@ -9,3 +9,4 @@ This learning path covers the foundational principles of CI/CD, then dives into 
 1. [CI/CD Fundamentals](./ci-cd-fundamentals.md) — Core principles of continuous integration and delivery, automation strategies, and testing practices
 2. [CI/CD Pipelines](./ci-cd-pipelines.md) — Pipeline architecture, stage design, deployment strategies, and tooling for production-grade workflows
 3. [Infrastructure as Code](./infrastructure-as-code.md) — Terraform, CloudFormation, and Pulumi for automated infrastructure provisioning
+4. [Terraform](./terraform.md) — HCL deep dive, state management, modules, workspaces, and CI/CD integration with Atlantis and Terraform Cloud

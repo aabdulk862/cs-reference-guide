@@ -167,6 +167,7 @@ export default function Dashboard() {
   return (
     <div className="page-dashboard">
       <h2>Dashboard</h2>
+      <p className="page-dashboard__subtitle">Track your progress and pick up where you left off.</p>
 
       {/* Resume Prompt */}
       <section className="dashboard-widget" aria-label="Resume prompt">
@@ -235,17 +236,20 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Bookmarks */}
-      <section className="dashboard-bookmarks" aria-labelledby="bookmarks-heading">
-        <h3 id="bookmarks-heading">Bookmarks</h3>
-        <BookmarksList bookmarks={bookmarks} />
-      </section>
+      {/* Bookmarks & Recently Studied — side by side on larger screens */}
+      <div className="dashboard-bottom-grid">
+        {/* Bookmarks */}
+        <section className="dashboard-bookmarks" aria-labelledby="bookmarks-heading">
+          <h3 id="bookmarks-heading">Bookmarks</h3>
+          <BookmarksList bookmarks={bookmarks} />
+        </section>
 
-      {/* Recently Studied */}
-      <section className="dashboard-recent" aria-labelledby="recent-heading">
-        <h3 id="recent-heading">Recently Studied</h3>
-        <RecentlyStudied recentTopics={recentTopics} />
-      </section>
+        {/* Recently Studied */}
+        <section className="dashboard-recent" aria-labelledby="recent-heading">
+          <h3 id="recent-heading">Recently Studied</h3>
+          <RecentlyStudied recentTopics={recentTopics} />
+        </section>
+      </div>
     </div>
   );
 }

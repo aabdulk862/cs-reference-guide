@@ -1,0 +1,360 @@
+{
+  "id": "angular-angular-components-templates",
+  "slug": "components-and-templates",
+  "title": "Angular Components & Templates",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Components are the fundamental building blocks of Angular applications — each combines a TypeScript class, an HTML template, and optional CSS styles into a reusable UI unit decorated with @Component()",
+            "Angular provides eight lifecycle hooks executed in order: ngOnChanges → ngOnInit → ngDoCheck → ngAfterContentInit → ngAfterContentChecked → ngAfterViewInit → ngAfterViewChecked → ngOnDestroy",
+            "The OnPush change detection strategy skips component subtree checks unless inputs change by reference, an event fires within the component, or an Observable bound via async pipe emits",
+            "Standalone components (Angular 14+) eliminate the need for NgModule declarations by setting standalone: true and importing dependencies directly in the component decorator",
+            "Structural directives (*ngIf, *ngFor, *ngSwitch) manipulate the DOM by adding or removing elements, while attribute directives modify appearance or behavior of existing elements",
+            "Pipes transform displayed values in templates — pure pipes recalculate only when input reference changes, impure pipes run on every change detection cycle"
+          ]
+        }
+      ],
+      "wordCount": 149,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Angular components and templates form the view layer of every Angular application. You should deeply understand this topic when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building enterprise applications where component architecture decisions affect long-term maintainability and team velocity across dozens of feature modules",
+            "Optimizing rendering performance in data-heavy dashboards where hundreds of components update simultaneously and default change detection becomes a bottleneck",
+            "Designing reusable component libraries shared across multiple applications, requiring careful API design with @Input(), @Output(), and content projection patterns",
+            "Migrating legacy AngularJS applications to modern Angular, where understanding standalone components and the module-free architecture simplifies the transition path",
+            "Working on applications with complex parent-child communication patterns where ViewChild, ContentChild, and service-based communication each have distinct trade-offs"
+          ]
+        }
+      ],
+      "wordCount": 112,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "component-with-lifecycle-hooks-and-inputoutput",
+          "heading": "Component with Lifecycle Hooks and Input/Output",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, Input, Output, EventEmitter, OnInit, OnChanges, OnDestroy, SimpleChanges, ChangeDetectionStrategy } from '@angular/core';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n}\n\n@Component({\n  selector: 'app-product-card',\n  standalone: true,\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div class=\"product-card\" [class.featured]=\"featured\">\n      <h3>{{ product.name }}</h3>\n      <p class=\"price\">{{ product.price | currency:'USD':'symbol':'1.2-2' }}</p>\n      <p class=\"category\">{{ product.category | titlecase }}</p>\n      <button (click)=\"onAddToCart()\" [disabled]=\"!inStock\">\n        {{ inStock ? 'Add to Cart' : 'Out of Stock' }}\n      </button>\n    </div>\n  `,\n  styles: [`\n    .product-card { border: 1px solid #e0e0e0; padding: 16px; border-radius: 8px; }\n    .featured { border-color: #1976d2; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2); }\n    .price { font-size: 1.25rem; font-weight: 600; color: #2e7d32; }\n  `]\n})\nexport class ProductCardComponent implements OnInit, OnChanges, OnDestroy {\n  @Input({ required: true }) product!: Product;\n  @Input() featured = false;\n  @Input() inStock = true;\n\n  @Output() addToCart = new EventEmitter<Product>();\n  @Output() viewed = new EventEmitter<string>();\n\n  private viewTimer: ReturnType<typeof setTimeout> | null = null;\n\n  ngOnChanges(changes: SimpleChanges): void {\n    if (changes['product'] && !changes['product'].firstChange) {\n      console.log('Product changed from', changes['product'].previousValue?.name,\n                  'to', changes['product'].currentValue?.name);\n    }\n  }\n\n  ngOnInit(): void {\n    // Track that user viewed this product after 2 seconds\n    this.viewTimer = setTimeout(() => {\n      this.viewed.emit(this.product.id);\n    }, 2000);\n  }\n\n  ngOnDestroy(): void {\n    if (this.viewTimer) {\n      clearTimeout(this.viewTimer);\n    }\n  }\n\n  onAddToCart(): void {\n    this.addToCart.emit(this.product);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "content-projection-with-ng-content",
+          "heading": "Content Projection with ng-content",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, ContentChild, AfterContentInit, TemplateRef } from '@angular/core';\n\n@Component({\n  selector: 'app-card',\n  standalone: true,\n  template: `\n    <div class=\"card\">\n      <div class=\"card-header\">\n        <ng-content select=\"[card-header]\"></ng-content>\n      </div>\n      <div class=\"card-body\">\n        <ng-content></ng-content>\n      </div>\n      <div class=\"card-footer\" *ngIf=\"hasFooter\">\n        <ng-content select=\"[card-footer]\"></ng-content>\n      </div>\n    </div>\n  `\n})\nexport class CardComponent implements AfterContentInit {\n  @ContentChild('footerTemplate') footerTemplate?: TemplateRef<unknown>;\n  hasFooter = false;\n\n  ngAfterContentInit(): void {\n    this.hasFooter = !!this.footerTemplate;\n  }\n}\n\n// Usage in parent template:\n// <app-card>\n//   <h2 card-header>User Profile</h2>\n//   <p>Main content goes here as default slot</p>\n//   <ng-template #footerTemplate>\n//     <button card-footer>Save Changes</button>\n//   </ng-template>\n// </app-card>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "viewchild-and-template-references",
+          "heading": "ViewChild and Template References",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, ViewChild, AfterViewInit, ElementRef } from '@angular/core';\nimport { MatPaginator } from '@angular/material/paginator';\nimport { MatSort } from '@angular/material/sort';\nimport { MatTableDataSource } from '@angular/material/table';\n\n@Component({\n  selector: 'app-data-table',\n  standalone: true,\n  template: `\n    <input #searchInput\n           (keyup)=\"applyFilter($event)\"\n           placeholder=\"Search...\">\n\n    <table mat-table [dataSource]=\"dataSource\" matSort>\n      <ng-container matColumnDef=\"name\">\n        <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>\n        <td mat-cell *matCellDef=\"let element\">{{ element.name }}</td>\n      </ng-container>\n\n      <tr mat-header-row *matHeaderRowDef=\"displayedColumns\"></tr>\n      <tr mat-row *matRowDef=\"let row; columns: displayedColumns;\"></tr>\n    </table>\n\n    <mat-paginator [pageSizeOptions]=\"[5, 10, 25]\" showFirstLastButtons>\n    </mat-paginator>\n  `\n})\nexport class DataTableComponent implements AfterViewInit {\n  @ViewChild(MatPaginator) paginator!: MatPaginator;\n  @ViewChild(MatSort) sort!: MatSort;\n  @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;\n\n  displayedColumns = ['name', 'email', 'role', 'status'];\n  dataSource = new MatTableDataSource<User>([]);\n\n  ngAfterViewInit(): void {\n    // ViewChild references are only available after view initialization\n    this.dataSource.paginator = this.paginator;\n    this.dataSource.sort = this.sort;\n\n    // Focus search input on load\n    this.searchInput.nativeElement.focus();\n  }\n\n  applyFilter(event: Event): void {\n    const filterValue = (event.target as HTMLInputElement).value;\n    this.dataSource.filter = filterValue.trim().toLowerCase();\n\n    if (this.dataSource.paginator) {\n      this.dataSource.paginator.firstPage();\n    }\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "structural-directives-and-template-syntax",
+          "heading": "Structural Directives and Template Syntax",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "@Component({\n  selector: 'app-order-dashboard',\n  standalone: true,\n  imports: [CommonModule],\n  template: `\n    <!-- *ngIf with else template -->\n    <div *ngIf=\"orders.length > 0; else emptyState\">\n      <h2>Orders ({{ orders.length }})</h2>\n\n      <!-- *ngFor with trackBy for performance -->\n      <div *ngFor=\"let order of orders; trackBy: trackByOrderId; let i = index; let isOdd = odd\"\n           [class.odd-row]=\"isOdd\">\n        <span>{{ i + 1 }}. Order #{{ order.id }}</span>\n\n        <!-- *ngSwitch for status display -->\n        <span [ngSwitch]=\"order.status\">\n          <span *ngSwitchCase=\"'pending'\" class=\"badge warning\">Pending</span>\n          <span *ngSwitchCase=\"'shipped'\" class=\"badge info\">Shipped</span>\n          <span *ngSwitchCase=\"'delivered'\" class=\"badge success\">Delivered</span>\n          <span *ngSwitchDefault class=\"badge\">Unknown</span>\n        </span>\n\n        <!-- Conditional attribute binding -->\n        <button [attr.aria-label]=\"'View order ' + order.id\"\n                [disabled]=\"order.status === 'cancelled'\"\n                (click)=\"viewOrder(order)\">\n          View Details\n        </button>\n      </div>\n    </div>\n\n    <ng-template #emptyState>\n      <div class=\"empty\">\n        <p>No orders found. Start shopping!</p>\n      </div>\n    </ng-template>\n  `\n})\nexport class OrderDashboardComponent {\n  orders: Order[] = [];\n\n  trackByOrderId(index: number, order: Order): string {\n    return order.id;\n  }\n\n  viewOrder(order: Order): void {\n    // navigation logic\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-pipe-pure-vs-impure",
+          "heading": "Custom Pipe (Pure vs Impure)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Pipe, PipeTransform } from '@angular/core';\n\n// Pure pipe — only recalculates when input reference changes\n@Pipe({\n  name: 'fileSize',\n  standalone: true,\n  pure: true  // default\n})\nexport class FileSizePipe implements PipeTransform {\n  transform(bytes: number, decimals = 2): string {\n    if (bytes === 0) return '0 Bytes';\n    const k = 1024;\n    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];\n    const i = Math.floor(Math.log(bytes) / Math.log(k));\n    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];\n  }\n}\n\n// Impure pipe — recalculates on every change detection cycle\n// Use sparingly as it impacts performance\n@Pipe({\n  name: 'filterBy',\n  standalone: true,\n  pure: false\n})\nexport class FilterByPipe implements PipeTransform {\n  transform<T>(items: T[], field: keyof T, value: unknown): T[] {\n    if (!items || !field) return items;\n    return items.filter(item => item[field] === value);\n  }\n}\n\n// Usage in template:\n// {{ file.size | fileSize:1 }}  → \"2.4 MB\"\n// <div *ngFor=\"let user of users | filterBy:'role':'admin'\">",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "standalone-component-with-lazy-loaded-dependencies",
+          "heading": "Standalone Component with Lazy-Loaded Dependencies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component } from '@angular/core';\nimport { CommonModule } from '@angular/common';\nimport { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';\nimport { MatInputModule } from '@angular/material/input';\nimport { MatButtonModule } from '@angular/material/button';\nimport { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';\n\n@Component({\n  selector: 'app-contact-form',\n  standalone: true,\n  imports: [\n    CommonModule,\n    ReactiveFormsModule,\n    MatInputModule,\n    MatButtonModule,\n    MatSnackBarModule\n  ],\n  template: `\n    <form [formGroup]=\"contactForm\" (ngSubmit)=\"onSubmit()\">\n      <mat-form-field appearance=\"outline\">\n        <mat-label>Email</mat-label>\n        <input matInput formControlName=\"email\" type=\"email\">\n        <mat-error *ngIf=\"contactForm.get('email')?.hasError('required')\">\n          Email is required\n        </mat-error>\n        <mat-error *ngIf=\"contactForm.get('email')?.hasError('email')\">\n          Invalid email format\n        </mat-error>\n      </mat-form-field>\n\n      <mat-form-field appearance=\"outline\">\n        <mat-label>Message</mat-label>\n        <textarea matInput formControlName=\"message\" rows=\"5\"></textarea>\n        <mat-error *ngIf=\"contactForm.get('message')?.hasError('minlength')\">\n          Message must be at least 20 characters\n        </mat-error>\n      </mat-form-field>\n\n      <button mat-raised-button color=\"primary\"\n              type=\"submit\"\n              [disabled]=\"contactForm.invalid || submitting\">\n        {{ submitting ? 'Sending...' : 'Send Message' }}\n      </button>\n    </form>\n  `\n})\nexport class ContactFormComponent {\n  contactForm: FormGroup;\n  submitting = false;\n\n  constructor(private fb: FormBuilder, private snackBar: MatSnackBar) {\n    this.contactForm = this.fb.group({\n      email: ['', [Validators.required, Validators.email]],\n      message: ['', [Validators.required, Validators.minLength(20)]]\n    });\n  }\n\n  onSubmit(): void {\n    if (this.contactForm.valid) {\n      this.submitting = true;\n      // API call would go here\n    }\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Change Detection Flow\"\n        A[Zone.js Patches Async APIs] --> B[Event Triggers Change Detection]\n        B --> C{Detection Strategy?}\n        C -->|Default| D[Check ALL Components Top-Down]\n        C -->|OnPush| E{Input Reference Changed?}\n        E -->|Yes| F[Check This Component + Children]\n        E -->|No| G{Event in Component?}\n        G -->|Yes| F\n        G -->|No| H{Async Pipe Emitted?}\n        H -->|Yes| F\n        H -->|No| I[Skip Component Subtree]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Component Lifecycle\"\n        A[constructor] --> B[ngOnChanges]\n        B --> C[ngOnInit]\n        C --> D[ngDoCheck]\n        D --> E[ngAfterContentInit]\n        E --> F[ngAfterContentChecked]\n        F --> G[ngAfterViewInit]\n        G --> H[ngAfterViewChecked]\n        H --> I{More Changes?}\n        I -->|Yes| B\n        I -->|Destroy| J[ngOnDestroy]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Content Projection Slots\"\n        A[Parent Template] --> B[app-card Component]\n        B --> C[\"select='[card-header]'\"]\n        B --> D[\"Default Slot (no select)\"]\n        B --> E[\"select='[card-footer]'\"]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Forgetting to unsubscribe from Observables in ngOnDestroy. Every subscription created in a component must be cleaned up when the component is destroyed. Leaked subscriptions cause memory leaks and unexpected behavior. Use the takeUntilDestroyed() operator (Angular 16+), the async pipe, or maintain a Subscription object and call unsubscribe() in ngOnDestroy. The async pipe is preferred because it handles subscription lifecycle automatically."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mutating @Input objects instead of creating new references with OnPush. When using ChangeDetectionStrategy.OnPush, Angular only checks the component when input references change. If you mutate an array or object property, the reference stays the same and the view won't update. Always create new arrays/objects: use spread operators ([...items, newItem]), Object.assign({}, obj, changes), or immutable update patterns. This is the most common source of \"my view isn't updating\" bugs in OnPush components."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using impure pipes for filtering or sorting lists. Impure pipes execute on every change detection cycle, which can run hundreds of times per second during user interaction. Filtering a list of 1000 items in an impure pipe creates severe performance degradation. Instead, compute filtered/sorted results in the component class (triggered by input changes or explicit method calls) and bind to the pre-computed result."
+        },
+        {
+          "type": "paragraph",
+          "text": "Accessing ViewChild references before ngAfterViewInit. @ViewChild and @ViewChildren queries are not resolved until after the view is initialized. Attempting to access them in ngOnInit or the constructor results in undefined. Always use ngAfterViewInit for initial ViewChild access, and be aware that @ContentChild is available in ngAfterContentInit instead."
+        },
+        {
+          "type": "paragraph",
+          "text": "*Not using trackBy with ngFor on large lists. Without trackBy, Angular destroys and recreates DOM elements for the entire list whenever the array reference changes, even if most items are identical. This causes poor performance and loss of DOM state (scroll position, focus, animations). Always provide a trackBy function that returns a unique identifier for each item."
+        },
+        {
+          "type": "paragraph",
+          "text": "Circular dependency between parent and child components. When a parent component injects a child component's service, or when two components reference each other, Angular's DI system throws circular dependency errors. Break cycles by using forwardRef(), restructuring the dependency graph, or introducing a shared service that both components inject independently."
+        }
+      ],
+      "wordCount": 347,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enterprise Dashboard with Dynamic Widget Grid. A financial services company built a configurable dashboard where users arrange widgets (charts, tables, alerts) in a grid layout. Each widget is a standalone component with OnPush change detection, receiving data through @Input() from a central data service. Content projection allows each widget to define its own header actions and footer controls while sharing a common card shell. The trackBy function on the widget list prevents unnecessary re-renders when users rearrange widgets via drag-and-drop."
+        },
+        {
+          "type": "paragraph",
+          "text": "Design System Component Library. A large organization maintains a shared Angular component library used across 15 applications. Components like <ds-button>, <ds-modal>, and <ds-data-table> use multi-slot content projection to remain flexible while enforcing consistent styling. The library uses @Input() with TypeScript literal types for variant props (type: 'primary' | 'secondary' | 'danger') and @Output() events for parent communication. All components are standalone with explicit imports, enabling tree-shaking in consuming applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-Time Trading Platform. A trading application displays live price feeds for thousands of instruments. Components use OnPush change detection with Observables piped through the async pipe to minimize unnecessary DOM updates. Custom pure pipes format currency values and calculate percentage changes. ViewChild references to chart components allow imperative updates when WebSocket messages arrive faster than Angular's change detection cycle."
+        }
+      ],
+      "wordCount": 208,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between OnPush and Default change detection strategies. When would you choose OnPush?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Default change detection checks every component in the tree from root to leaves on every async event (click, HTTP response, timer). OnPush only checks a component when one of three conditions is met: an @Input() reference changes, an event originates within the component's template, or an Observable bound via async pipe emits a new value. Choose OnPush for performance-critical components, especially in lists or dashboards with many components. The trade-off is that you must follow immutable data patterns — mutating objects won't trigger updates. In practice, most production Angular applications should default to OnPush for all components and only use Default when debugging update issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is content projection and how does multi-slot projection work?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Content projection (transclusion) allows a parent component to pass template content into a child component's designated slots. Single-slot projection uses <ng-content></ng-content> to accept any content. Multi-slot projection uses CSS selectors on ng-content: <ng-content select=\"[header]\"></ng-content> only captures elements with the header attribute. This pattern is essential for building reusable wrapper components (cards, modals, layouts) that enforce structure while remaining flexible about content. The projected content's change detection is owned by the parent component, not the child — this is important for understanding when projected content updates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the differences between ViewChild and ContentChild?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: @ViewChild queries elements defined in the component's own template (its view). @ContentChild queries elements projected into the component via <ng-content> (its content). ViewChild is available in ngAfterViewInit, while ContentChild is available in ngAfterContentInit (which runs earlier). Use ViewChild to access child components, DOM elements, or template references you control. Use ContentChild to interact with content that consumers of your component provide. Both support static resolution ({ static: true }) for access in ngOnInit when the queried element isn't behind a structural directive."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do standalone components change Angular's architecture? What are the migration benefits?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Standalone components (Angular 14+) remove the requirement to declare components in an NgModule. By setting standalone: true, a component directly imports its dependencies (other components, directives, pipes, modules) in its own decorator. Benefits include: reduced boilerplate (no module files for simple features), clearer dependency graphs (each component declares exactly what it needs), better tree-shaking (unused components aren't bundled), and simpler lazy loading (route directly to a component without a module). Migration is incremental — standalone and module-based components coexist. The Angular team recommends standalone as the default for new projects starting with Angular 15+."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain pure vs impure pipes and their performance implications."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Pure pipes (default) only re-execute their transform method when the input value's reference changes. Angular caches the result and skips execution if the reference is the same. Impure pipes (pure: false) execute on every change detection cycle regardless of whether inputs changed. Pure pipes are safe for most transformations (formatting dates, currencies, strings). Impure pipes are needed when the pipe depends on external state or must detect mutations within objects/arrays. However, impure pipes are a performance anti-pattern for expensive operations — prefer computing values in the component class and binding to the result. A common mistake is making a filter pipe impure; instead, recompute the filtered list when the source data or filter criteria change."
+        }
+      ],
+      "wordCount": 545,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enable OnPush globally and use the Angular DevTools profiler to identify components that re-render unnecessarily. In production applications with 50+ components on screen, default change detection can consume 30-50ms per cycle on mid-range devices. Profile with Angular DevTools' change detection flame chart to find components that check frequently but rarely update. Convert these to OnPush first for maximum impact. Combine with ChangeDetectorRef.markForCheck() for cases where you need to trigger updates from outside the normal detection flow (e.g., WebSocket callbacks outside NgZone)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use trackBy functions consistently and audit them during code review. Missing trackBy on lists with more than 20 items causes measurable jank during updates. Establish a team convention that every *ngFor must include trackBy pointing to a unique identifier. Create a custom ESLint rule or use @angular-eslint/template-use-track-by-function to enforce this automatically in CI pipelines."
+        },
+        {
+          "type": "paragraph",
+          "text": "Lazy-load heavy standalone components with dynamic imports. For components that include large dependencies (chart libraries, rich text editors, map widgets), use dynamic import() with @defer blocks (Angular 17+) or ngComponentOutlet with lazy resolution. This keeps the initial bundle small and loads heavy components only when they enter the viewport or when the user navigates to them. Measure the impact with Lighthouse and bundle analyzer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement ngOnDestroy cleanup patterns consistently using takeUntilDestroyed. In Angular 16+, use takeUntilDestroyed(this.destroyRef) in the injection context to automatically complete Observables when the component is destroyed. For earlier versions, use a Subject with takeUntil pattern. Audit for leaked subscriptions by checking if component count in memory grows during navigation — use Chrome DevTools memory snapshots to detect retained component instances."
+        }
+      ],
+      "wordCount": 258,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Angular Services & Dependency Injection — How components receive data and communicate through the DI system",
+            "Angular Routing & Modules — Lazy loading components and organizing them into feature modules",
+            "React Hooks & Components — Compare Angular's component model with React's functional approach",
+            "TypeScript Advanced Types — Leveraging TypeScript's type system for strongly-typed Angular components"
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { Component, Input, Output, EventEmitter, OnInit, OnChanges, OnDestroy, SimpleChanges, ChangeDetectionStrategy } from '@angular/core';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n}\n\n@Component({\n  selector: 'app-product-card',\n  standalone: true,\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div class=\"product-card\" [class.featured]=\"featured\">\n      <h3>{{ product.name }}</h3>\n      <p class=\"price\">{{ product.price | currency:'USD':'symbol':'1.2-2' }}</p>\n      <p class=\"category\">{{ product.category | titlecase }}</p>\n      <button (click)=\"onAddToCart()\" [disabled]=\"!inStock\">\n        {{ inStock ? 'Add to Cart' : 'Out of Stock' }}\n      </button>\n    </div>\n  `,\n  styles: [`\n    .product-card { border: 1px solid #e0e0e0; padding: 16px; border-radius: 8px; }\n    .featured { border-color: #1976d2; box-shadow: 0 2px 8px rgba(25, 118, 210, 0.2); }\n    .price { font-size: 1.25rem; font-weight: 600; color: #2e7d32; }\n  `]\n})\nexport class ProductCardComponent implements OnInit, OnChanges, OnDestroy {\n  @Input({ required: true }) product!: Product;\n  @Input() featured = false;\n  @Input() inStock = true;\n\n  @Output() addToCart = new EventEmitter<Product>();\n  @Output() viewed = new EventEmitter<string>();\n\n  private viewTimer: ReturnType<typeof setTimeout> | null = null;\n\n  ngOnChanges(changes: SimpleChanges): void {\n    if (changes['product'] && !changes['product'].firstChange) {\n      console.log('Product changed from', changes['product'].previousValue?.name,\n                  'to', changes['product'].currentValue?.name);\n    }\n  }\n\n  ngOnInit(): void {\n    // Track that user viewed this product after 2 seconds\n    this.viewTimer = setTimeout(() => {\n      this.viewed.emit(this.product.id);\n    }, 2000);\n  }\n\n  ngOnDestroy(): void {\n    if (this.viewTimer) {\n      clearTimeout(this.viewTimer);\n    }\n  }\n\n  onAddToCart(): void {\n    this.addToCart.emit(this.product);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Component, ContentChild, AfterContentInit, TemplateRef } from '@angular/core';\n\n@Component({\n  selector: 'app-card',\n  standalone: true,\n  template: `\n    <div class=\"card\">\n      <div class=\"card-header\">\n        <ng-content select=\"[card-header]\"></ng-content>\n      </div>\n      <div class=\"card-body\">\n        <ng-content></ng-content>\n      </div>\n      <div class=\"card-footer\" *ngIf=\"hasFooter\">\n        <ng-content select=\"[card-footer]\"></ng-content>\n      </div>\n    </div>\n  `\n})\nexport class CardComponent implements AfterContentInit {\n  @ContentChild('footerTemplate') footerTemplate?: TemplateRef<unknown>;\n  hasFooter = false;\n\n  ngAfterContentInit(): void {\n    this.hasFooter = !!this.footerTemplate;\n  }\n}\n\n// Usage in parent template:\n// <app-card>\n//   <h2 card-header>User Profile</h2>\n//   <p>Main content goes here as default slot</p>\n//   <ng-template #footerTemplate>\n//     <button card-footer>Save Changes</button>\n//   </ng-template>\n// </app-card>",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Component, ViewChild, AfterViewInit, ElementRef } from '@angular/core';\nimport { MatPaginator } from '@angular/material/paginator';\nimport { MatSort } from '@angular/material/sort';\nimport { MatTableDataSource } from '@angular/material/table';\n\n@Component({\n  selector: 'app-data-table',\n  standalone: true,\n  template: `\n    <input #searchInput\n           (keyup)=\"applyFilter($event)\"\n           placeholder=\"Search...\">\n\n    <table mat-table [dataSource]=\"dataSource\" matSort>\n      <ng-container matColumnDef=\"name\">\n        <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>\n        <td mat-cell *matCellDef=\"let element\">{{ element.name }}</td>\n      </ng-container>\n\n      <tr mat-header-row *matHeaderRowDef=\"displayedColumns\"></tr>\n      <tr mat-row *matRowDef=\"let row; columns: displayedColumns;\"></tr>\n    </table>\n\n    <mat-paginator [pageSizeOptions]=\"[5, 10, 25]\" showFirstLastButtons>\n    </mat-paginator>\n  `\n})\nexport class DataTableComponent implements AfterViewInit {\n  @ViewChild(MatPaginator) paginator!: MatPaginator;\n  @ViewChild(MatSort) sort!: MatSort;\n  @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;\n\n  displayedColumns = ['name', 'email', 'role', 'status'];\n  dataSource = new MatTableDataSource<User>([]);\n\n  ngAfterViewInit(): void {\n    // ViewChild references are only available after view initialization\n    this.dataSource.paginator = this.paginator;\n    this.dataSource.sort = this.sort;\n\n    // Focus search input on load\n    this.searchInput.nativeElement.focus();\n  }\n\n  applyFilter(event: Event): void {\n    const filterValue = (event.target as HTMLInputElement).value;\n    this.dataSource.filter = filterValue.trim().toLowerCase();\n\n    if (this.dataSource.paginator) {\n      this.dataSource.paginator.firstPage();\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "@Component({\n  selector: 'app-order-dashboard',\n  standalone: true,\n  imports: [CommonModule],\n  template: `\n    <!-- *ngIf with else template -->\n    <div *ngIf=\"orders.length > 0; else emptyState\">\n      <h2>Orders ({{ orders.length }})</h2>\n\n      <!-- *ngFor with trackBy for performance -->\n      <div *ngFor=\"let order of orders; trackBy: trackByOrderId; let i = index; let isOdd = odd\"\n           [class.odd-row]=\"isOdd\">\n        <span>{{ i + 1 }}. Order #{{ order.id }}</span>\n\n        <!-- *ngSwitch for status display -->\n        <span [ngSwitch]=\"order.status\">\n          <span *ngSwitchCase=\"'pending'\" class=\"badge warning\">Pending</span>\n          <span *ngSwitchCase=\"'shipped'\" class=\"badge info\">Shipped</span>\n          <span *ngSwitchCase=\"'delivered'\" class=\"badge success\">Delivered</span>\n          <span *ngSwitchDefault class=\"badge\">Unknown</span>\n        </span>\n\n        <!-- Conditional attribute binding -->\n        <button [attr.aria-label]=\"'View order ' + order.id\"\n                [disabled]=\"order.status === 'cancelled'\"\n                (click)=\"viewOrder(order)\">\n          View Details\n        </button>\n      </div>\n    </div>\n\n    <ng-template #emptyState>\n      <div class=\"empty\">\n        <p>No orders found. Start shopping!</p>\n      </div>\n    </ng-template>\n  `\n})\nexport class OrderDashboardComponent {\n  orders: Order[] = [];\n\n  trackByOrderId(index: number, order: Order): string {\n    return order.id;\n  }\n\n  viewOrder(order: Order): void {\n    // navigation logic\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Pipe, PipeTransform } from '@angular/core';\n\n// Pure pipe — only recalculates when input reference changes\n@Pipe({\n  name: 'fileSize',\n  standalone: true,\n  pure: true  // default\n})\nexport class FileSizePipe implements PipeTransform {\n  transform(bytes: number, decimals = 2): string {\n    if (bytes === 0) return '0 Bytes';\n    const k = 1024;\n    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];\n    const i = Math.floor(Math.log(bytes) / Math.log(k));\n    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];\n  }\n}\n\n// Impure pipe — recalculates on every change detection cycle\n// Use sparingly as it impacts performance\n@Pipe({\n  name: 'filterBy',\n  standalone: true,\n  pure: false\n})\nexport class FilterByPipe implements PipeTransform {\n  transform<T>(items: T[], field: keyof T, value: unknown): T[] {\n    if (!items || !field) return items;\n    return items.filter(item => item[field] === value);\n  }\n}\n\n// Usage in template:\n// {{ file.size | fileSize:1 }}  → \"2.4 MB\"\n// <div *ngFor=\"let user of users | filterBy:'role':'admin'\">",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Component } from '@angular/core';\nimport { CommonModule } from '@angular/common';\nimport { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';\nimport { MatInputModule } from '@angular/material/input';\nimport { MatButtonModule } from '@angular/material/button';\nimport { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';\n\n@Component({\n  selector: 'app-contact-form',\n  standalone: true,\n  imports: [\n    CommonModule,\n    ReactiveFormsModule,\n    MatInputModule,\n    MatButtonModule,\n    MatSnackBarModule\n  ],\n  template: `\n    <form [formGroup]=\"contactForm\" (ngSubmit)=\"onSubmit()\">\n      <mat-form-field appearance=\"outline\">\n        <mat-label>Email</mat-label>\n        <input matInput formControlName=\"email\" type=\"email\">\n        <mat-error *ngIf=\"contactForm.get('email')?.hasError('required')\">\n          Email is required\n        </mat-error>\n        <mat-error *ngIf=\"contactForm.get('email')?.hasError('email')\">\n          Invalid email format\n        </mat-error>\n      </mat-form-field>\n\n      <mat-form-field appearance=\"outline\">\n        <mat-label>Message</mat-label>\n        <textarea matInput formControlName=\"message\" rows=\"5\"></textarea>\n        <mat-error *ngIf=\"contactForm.get('message')?.hasError('minlength')\">\n          Message must be at least 20 characters\n        </mat-error>\n      </mat-form-field>\n\n      <button mat-raised-button color=\"primary\"\n              type=\"submit\"\n              [disabled]=\"contactForm.invalid || submitting\">\n        {{ submitting ? 'Sending...' : 'Send Message' }}\n      </button>\n    </form>\n  `\n})\nexport class ContactFormComponent {\n  contactForm: FormGroup;\n  submitting = false;\n\n  constructor(private fb: FormBuilder, private snackBar: MatSnackBar) {\n    this.contactForm = this.fb.group({\n      email: ['', [Validators.required, Validators.email]],\n      message: ['', [Validators.required, Validators.minLength(20)]]\n    });\n  }\n\n  onSubmit(): void {\n    if (this.contactForm.valid) {\n      this.submitting = true;\n      // API call would go here\n    }\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/components-and-templates.md",
+    "wordCount": 1674,
+    "sectionCount": 15
+  }
+}

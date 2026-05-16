@@ -1,0 +1,371 @@
+{
+  "id": "oracle-performance-diagnostics",
+  "slug": "performance-diagnostics",
+  "title": "Performance Diagnostics",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Performance Diagnostics",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Oracle Database provides the most comprehensive performance diagnostics ecosystem of any relational database, with built-in tools that automatically collect performance data (AWR), analyze active sessions in real-time (ASH), generate optimization recommendations (ADDM), and tune individual SQL statements (SQL Tuning Advisor). Unlike PostgreSQL where performance analysis requires manual EXPLAIN ANALYZE and third-party tools, Oracle's diagnostic infrastructure operates continuously in the background, maintaining a historical record of database performance that enables root cause analysis of problems that occurred hours or days ago. The Automatic Workload Repository (AWR) captures snapshots of over 1,000 performance statistics every hour, while Active Session History (ASH) samples every active session once per second — together they provide both macro-level trends and micro-level session analysis. Understanding Oracle's wait event model is fundamental to performance diagnosis: every session is either on CPU or waiting for a specific resource (I/O, lock, latch, network), and the wait event hierarchy tells you exactly where time is being spent. The Cost-Based Optimizer (CBO) in Oracle is the most sophisticated query optimizer in any commercial database, using column statistics, histograms, system statistics, and adaptive plans to generate execution strategies — but it requires accurate statistics and sometimes manual guidance through hints."
+        }
+      ],
+      "wordCount": 197,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AWR (Automatic Workload Repository): Captures hourly performance snapshots; stores SQL statistics, wait events, system metrics, and segment statistics; retained for 8 days by default (configurable)",
+            "ASH (Active Session History): Samples all active sessions every second; stores session state, SQL_ID, wait event, blocking session, and execution plan; 1-second granularity for real-time analysis",
+            "ADDM (Automatic Database Diagnostic Monitor): Analyzes AWR snapshots automatically; generates findings with quantified impact and actionable recommendations; runs after every AWR snapshot",
+            "SQL Tuning Advisor: Analyzes individual SQL statements; recommends SQL profiles, indexes, restructured SQL, and materialized views; can be run on-demand or automatically (STA)",
+            "Execution plans: EXPLAIN PLAN, DBMS_XPLAN.DISPLAY_CURSOR for actual plans; shows access paths, join methods, partition pruning, and parallel execution",
+            "Optimizer hints: /*+ FULL(t) */, /*+ INDEX(t idx) */, /*+ PARALLEL(t,8) */, /*+ USE_HASH(a b) */ — override CBO decisions when statistics are misleading",
+            "Wait events: Categorized into classes (User I/O, System I/O, Concurrency, Application, Network); top wait events indicate the primary bottleneck",
+            "SQL Monitor: Real-time execution monitoring for long-running SQL; shows per-operation timing, rows processed, and I/O statistics as the query executes",
+            "VSESSION / VSQL: Dynamic performance views showing current session activity and SQL execution statistics in real-time",
+            "Statspack: Free alternative to AWR (no Diagnostics Pack license required); captures similar statistics but with less automation"
+          ]
+        }
+      ],
+      "wordCount": 210,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use AWR reports when investigating performance problems that occurred in the past — \"the system was slow yesterday at 3 PM.\" Generate an AWR report spanning the problem period and compare it to a baseline period. The report's \"Top 5 Timed Events\" section immediately identifies whether the bottleneck was CPU, I/O, locking, or network. AWR is also essential for capacity planning: trending DB Time, I/O throughput, and CPU usage over weeks reveals growth patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "ASH is the tool for real-time performance investigation — \"the system is slow right now, what's happening?\" Query V$ACTIVE_SESSION_HISTORY to see what every active session is doing this second: which SQL they're executing, what they're waiting for, and who's blocking them. ASH is also invaluable for analyzing brief performance spikes that don't show up in hourly AWR snapshots — a 30-second lock contention event is visible in ASH but averaged away in AWR."
+        },
+        {
+          "type": "paragraph",
+          "text": "ADDM should be reviewed after every significant performance incident. It automatically identifies the top performance issues, quantifies their impact (e.g., \"SQL_ID abc123 consumed 45% of DB Time\"), and provides specific recommendations. ADDM catches issues that manual analysis might miss: undersized SGA, excessive parsing, I/O bottlenecks, and connection storms."
+        },
+        {
+          "type": "paragraph",
+          "text": "SQL Tuning Advisor is appropriate for individual high-impact SQL statements identified through AWR or ASH. It performs comprehensive analysis including alternative execution plans, missing indexes, stale statistics, and SQL profile recommendations. Use it for the top 10 SQL statements by elapsed time or buffer gets — these represent the highest-impact optimization targets."
+        },
+        {
+          "type": "paragraph",
+          "text": "Optimizer hints should be used sparingly and only when you've confirmed the CBO is making a suboptimal decision due to data skew, correlation between columns, or stale statistics that cannot be fixed through normal means. Document every hint with a comment explaining why it's necessary — hints are technical debt that must be re-evaluated when statistics or data distributions change."
+        }
+      ],
+      "wordCount": 307,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "awr-report-generation-and-analysis",
+          "heading": "AWR Report Generation and Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Generate AWR report between two snapshots\n-- First, find available snapshots\nSELECT snap_id, begin_interval_time, end_interval_time\nFROM dba_hist_snapshot\nWHERE begin_interval_time > SYSDATE - 1\nORDER BY snap_id;\n\n-- Generate HTML AWR report\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_REPORT_HTML(\n        l_dbid     => (SELECT dbid FROM v$database),\n        l_inst_num => 1,\n        l_bid      => 1000,  -- begin snapshot\n        l_eid      => 1005   -- end snapshot\n    )\n);\n\n-- AWR SQL report for a specific SQL_ID\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_SQL_REPORT_HTML(\n        l_dbid     => (SELECT dbid FROM v$database),\n        l_inst_num => 1,\n        l_bid      => 1000,\n        l_eid      => 1005,\n        l_sqlid    => 'abc123def456'\n    )\n);\n\n-- Top SQL by elapsed time from AWR\nSELECT\n    sql_id,\n    SUM(elapsed_time_delta) / 1e6 AS elapsed_sec,\n    SUM(executions_delta) AS executions,\n    ROUND(SUM(elapsed_time_delta) / NULLIF(SUM(executions_delta), 0) / 1e6, 3) AS avg_sec,\n    SUM(buffer_gets_delta) AS buffer_gets,\n    SUM(disk_reads_delta) AS disk_reads\nFROM dba_hist_sqlstat\nWHERE snap_id BETWEEN 1000 AND 1005\nGROUP BY sql_id\nORDER BY elapsed_sec DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- Compare two AWR periods (baseline vs problem)\n-- AWR Diff Report\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_DIFF_REPORT_HTML(\n        l_dbid1 => (SELECT dbid FROM v$database), l_inst_num1 => 1,\n        l_bid1 => 900, l_eid1 => 905,    -- baseline period\n        l_dbid2 => (SELECT dbid FROM v$database), l_inst_num2 => 1,\n        l_bid2 => 1000, l_eid2 => 1005   -- problem period\n    )\n);\n\n-- Modify AWR retention and interval\nBEGIN\n    DBMS_WORKLOAD_REPOSITORY.MODIFY_SNAPSHOT_SETTINGS(\n        retention => 30 * 24 * 60,  -- 30 days retention (minutes)\n        interval  => 30             -- snapshot every 30 minutes\n    );\nEND;\n/",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "active-session-history-ash-analysis",
+          "heading": "Active Session History (ASH) Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Current active sessions: what are they doing right now?\nSELECT\n    s.sid, s.serial#, s.username,\n    s.sql_id, s.event, s.wait_class,\n    s.blocking_session, s.seconds_in_wait,\n    sq.sql_text\nFROM v$session s\nLEFT JOIN v$sql sq ON s.sql_id = sq.sql_id AND s.sql_child_number = sq.child_number\nWHERE s.status = 'ACTIVE'\n  AND s.type = 'USER';\n\n-- ASH: Top SQL in the last hour\nSELECT\n    sql_id,\n    COUNT(*) AS ash_samples,\n    ROUND(COUNT(*) / (SELECT COUNT(DISTINCT sample_time) FROM v$active_session_history\n                      WHERE sample_time > SYSDATE - 1/24) * 100, 2) AS pct_db_time,\n    MAX(sql_plan_hash_value) AS plan_hash,\n    session_state\nFROM v$active_session_history\nWHERE sample_time > SYSDATE - 1/24\nGROUP BY sql_id, session_state\nORDER BY ash_samples DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- ASH: Wait event analysis for a specific time window\nSELECT\n    event, wait_class,\n    COUNT(*) AS samples,\n    ROUND(COUNT(*) * 100 / SUM(COUNT(*)) OVER(), 2) AS pct\nFROM v$active_session_history\nWHERE sample_time BETWEEN\n    TO_TIMESTAMP('2024-03-15 14:00:00', 'YYYY-MM-DD HH24:MI:SS') AND\n    TO_TIMESTAMP('2024-03-15 14:30:00', 'YYYY-MM-DD HH24:MI:SS')\nGROUP BY event, wait_class\nORDER BY samples DESC;\n\n-- ASH: Find blocking chains\nSELECT\n    level, LPAD(' ', 2 * (level - 1)) || sid AS tree,\n    blocking_session, event, sql_id,\n    sample_time\nFROM v$active_session_history\nWHERE sample_time > SYSDATE - 1/24\nSTART WITH blocking_session IS NULL\n    AND event LIKE '%enq%'\nCONNECT BY PRIOR sid = blocking_session\n    AND PRIOR sample_id = sample_id;\n\n-- Historical ASH (DBA_HIST_ACTIVE_SESS_HISTORY) for past analysis\nSELECT\n    sql_id, event,\n    COUNT(*) AS samples,\n    MIN(sample_time) AS first_seen,\n    MAX(sample_time) AS last_seen\nFROM dba_hist_active_sess_history\nWHERE sample_time BETWEEN\n    TO_TIMESTAMP('2024-03-14 09:00:00', 'YYYY-MM-DD HH24:MI:SS') AND\n    TO_TIMESTAMP('2024-03-14 10:00:00', 'YYYY-MM-DD HH24:MI:SS')\n  AND sql_id = 'abc123def456'\nGROUP BY sql_id, event\nORDER BY samples DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "execution-plans-and-sql-tuning",
+          "heading": "Execution Plans and SQL Tuning",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Get actual execution plan for a running/recent SQL\nSELECT * FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(\n    sql_id => 'abc123def456',\n    cursor_child_no => 0,\n    format => 'ALLSTATS LAST ADVANCED +PEEKED_BINDS'\n));\n\n-- EXPLAIN PLAN (estimated, not actual)\nEXPLAIN PLAN FOR\nSELECT /*+ GATHER_PLAN_STATISTICS */\n    c.customer_name, SUM(o.amount) AS total\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nWHERE o.order_date > ADD_MONTHS(SYSDATE, -12)\nGROUP BY c.customer_name\nORDER BY total DESC;\n\nSELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(format => 'ALL'));\n\n-- SQL Tuning Advisor\nDECLARE\n    l_task_name VARCHAR2(30) := 'tune_slow_query';\n    l_sql_id   VARCHAR2(13) := 'abc123def456';\nBEGIN\n    -- Create tuning task\n    l_task_name := DBMS_SQLTUNE.CREATE_TUNING_TASK(\n        sql_id      => l_sql_id,\n        scope       => DBMS_SQLTUNE.SCOPE_COMPREHENSIVE,\n        time_limit  => 300,  -- 5 minutes analysis time\n        task_name   => l_task_name\n    );\n\n    -- Execute the task\n    DBMS_SQLTUNE.EXECUTE_TUNING_TASK(task_name => l_task_name);\nEND;\n/\n\n-- View recommendations\nSELECT DBMS_SQLTUNE.REPORT_TUNING_TASK('tune_slow_query') FROM DUAL;\n\n-- Accept a SQL Profile recommendation\nBEGIN\n    DBMS_SQLTUNE.ACCEPT_SQL_PROFILE(\n        task_name => 'tune_slow_query',\n        name      => 'profile_slow_query',\n        force_match => TRUE  -- apply to similar SQL with different literals\n    );\nEND;\n/\n\n-- SQL Monitor: Real-time execution monitoring\nSELECT DBMS_SQL_MONITOR.REPORT_SQL_MONITOR(\n    sql_id       => 'abc123def456',\n    type         => 'HTML',\n    report_level => 'ALL'\n) FROM DUAL;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "optimizer-hints",
+          "heading": "Optimizer Hints",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Force full table scan (when index scan is suboptimal for large result sets)\nSELECT /*+ FULL(o) */ order_id, amount\nFROM orders o\nWHERE status IN ('PENDING', 'PROCESSING', 'SHIPPED');\n\n-- Force specific index usage\nSELECT /*+ INDEX(o idx_orders_customer_date) */ order_id, amount\nFROM orders o\nWHERE customer_id = :cust_id AND order_date > SYSDATE - 30;\n\n-- Control join method\nSELECT /*+ USE_HASH(o c) LEADING(c o) */\n    c.name, o.amount\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nWHERE c.region = 'EMEA';\n\n-- Parallel execution\nSELECT /*+ PARALLEL(o, 8) PARALLEL(c, 4) */\n    c.segment, SUM(o.amount)\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nGROUP BY c.segment;\n\n-- Prevent optimizer from merging subquery (force specific execution order)\nSELECT /*+ NO_MERGE(recent_orders) */\n    c.name, recent_orders.total\nFROM customers c\nJOIN (\n    SELECT /*+ NO_MERGE */ customer_id, SUM(amount) AS total\n    FROM orders\n    WHERE order_date > SYSDATE - 30\n    GROUP BY customer_id\n) recent_orders ON recent_orders.customer_id = c.id;\n\n-- Adaptive plan hints (Oracle 12c+)\nSELECT /*+ ADAPTIVE_PLAN */ *\nFROM orders o JOIN customers c ON o.customer_id = c.id\nWHERE o.status = :status;\n\n-- Cardinality hint (when statistics are misleading)\nSELECT /*+ CARDINALITY(o, 1000) */\n    o.order_id, o.amount\nFROM orders o\nWHERE o.status = :status AND o.region = :region;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "wait-event-analysis",
+          "heading": "Wait Event Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- System-wide wait event summary\nSELECT\n    wait_class,\n    event,\n    total_waits,\n    ROUND(time_waited_micro / 1e6, 2) AS time_waited_sec,\n    ROUND(average_wait_micro / 1e3, 2) AS avg_wait_ms\nFROM v$system_event\nWHERE wait_class != 'Idle'\nORDER BY time_waited_micro DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- Session-level wait events (find what a specific session is waiting for)\nSELECT\n    sid, event, wait_class,\n    state, seconds_in_wait,\n    p1text, p1, p2text, p2, p3text, p3\nFROM v$session_wait\nWHERE sid = :target_sid;\n\n-- I/O statistics by datafile (identify hot files)\nSELECT\n    f.file_name,\n    s.phyrds AS physical_reads,\n    s.phywrts AS physical_writes,\n    s.readtim / NULLIF(s.phyrds, 0) * 10 AS avg_read_ms,\n    s.writetim / NULLIF(s.phywrts, 0) * 10 AS avg_write_ms\nFROM v$filestat s\nJOIN dba_data_files f ON s.file# = f.file_id\nORDER BY s.phyrds + s.phywrts DESC;\n\n-- Latch contention analysis\nSELECT\n    name, gets, misses, sleeps,\n    ROUND(misses / NULLIF(gets, 0) * 100, 4) AS miss_pct,\n    immediate_gets, immediate_misses\nFROM v$latch\nWHERE misses > 0\nORDER BY sleeps DESC\nFETCH FIRST 10 ROWS ONLY;\n\n-- Enqueue (lock) waits\nSELECT\n    s.sid, s.serial#, s.username,\n    l.type, l.id1, l.id2, l.lmode, l.request,\n    s.sql_id, s.event, s.blocking_session\nFROM v$lock l\nJOIN v$session s ON l.sid = s.sid\nWHERE l.request > 0  -- sessions waiting for a lock\nORDER BY s.seconds_in_wait DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Oracle Performance Diagnostics Stack\"\n        direction TB\n        subgraph \"Real-Time Layer\"\n            VSESSION[V$SESSION<br/>Current Sessions]\n            VSQL[V$SQL<br/>SQL Statistics]\n            ASH_MEM[V$ACTIVE_SESSION_HISTORY<br/>1-second sampling, in-memory]\n            SQLMON[SQL Monitor<br/>Real-time execution]\n        end\n\n        subgraph \"Historical Layer\"\n            AWR[AWR Snapshots<br/>Hourly captures]\n            ASH_DISK[DBA_HIST_ACTIVE_SESS_HISTORY<br/>Persisted ASH samples]\n            SQLSTAT[DBA_HIST_SQLSTAT<br/>Historical SQL stats]\n        end\n\n        subgraph \"Analysis Layer\"\n            ADDM[ADDM<br/>Automatic Diagnostics]\n            STA[SQL Tuning Advisor<br/>SQL Optimization]\n            SPA[SQL Plan Analyzer<br/>Plan Regression]\n            PROFILE[SQL Profiles<br/>Plan Corrections]\n        end\n    end\n\n    ASH_MEM -->|\"Flush to disk\"| ASH_DISK\n    VSQL -->|\"Snapshot\"| SQLSTAT\n    AWR -->|\"Triggers\"| ADDM\n    ADDM -->|\"Identifies\"| STA\n    STA -->|\"Recommends\"| PROFILE"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant DBA as DBA\n    participant AWR as AWR Repository\n    participant ADDM as ADDM Engine\n    participant STA as SQL Tuning Advisor\n    participant CBO as Cost-Based Optimizer\n\n    Note over AWR: Hourly snapshot captured\n    AWR->>ADDM: Trigger analysis\n    ADDM->>ADDM: Analyze wait events, SQL, I/O\n    ADDM->>DBA: Finding: SQL_ID xyz consumes 40% DB Time\n\n    DBA->>STA: Create tuning task for SQL_ID xyz\n    STA->>STA: Test alternative plans\n    STA->>STA: Check for missing indexes\n    STA->>STA: Evaluate SQL restructuring\n    STA->>DBA: Recommend SQL Profile (3x improvement)\n\n    DBA->>CBO: Accept SQL Profile\n    CBO->>CBO: Apply profile to future executions\n    Note over CBO: Query now uses optimal plan"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Ignoring ADDM recommendations: ADDM runs automatically after every AWR snapshot and provides quantified, actionable recommendations. Many DBAs generate AWR reports manually but never check ADDM findings. ADDM catches issues like \"Top SQL consuming 60% of DB Time could benefit from an index\" or \"PGA memory is undersized causing excessive temp I/O.\" Make reviewing ADDM findings part of your daily routine — SELECT * FROM dba_advisor_findings WHERE task_name LIKE 'ADDM%' AND finding_id > 0."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using hints as a permanent fix without documentation: Optimizer hints bypass the CBO's decision-making, creating brittle SQL that doesn't adapt to data changes. A /*+ INDEX(t idx_name) */ hint that's optimal today may be terrible after the table grows 10x. Every hint should have a comment explaining why it's necessary, a JIRA ticket tracking it, and periodic review. Prefer SQL Profiles over hints — profiles guide the optimizer without hardcoding access paths and can be dropped without changing application SQL."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not gathering statistics after bulk operations: The CBO relies on accurate statistics for cost estimation. After bulk loads, partition exchanges, or large deletes, statistics become stale and the optimizer makes poor decisions. Always run DBMS_STATS.GATHER_TABLE_STATS after significant data changes. Use METHOD_OPT => 'FOR ALL COLUMNS SIZE AUTO' to let Oracle determine appropriate histogram buckets. For partitioned tables, gather statistics on the affected partition: GRANULARITY => 'PARTITION'."
+        },
+        {
+          "type": "paragraph",
+          "text": "Misinterpreting AWR \"Top 5 Timed Events\": The top wait events show where time is spent, not necessarily where the problem is. \"db file sequential read\" (single-block I/O) being the top event doesn't mean you have an I/O problem — it might mean you're doing too many single-block reads due to inefficient SQL (missing indexes causing excessive buffer gets). Always correlate wait events with the \"SQL ordered by\" sections to find the root cause SQL statements driving the waits."
+        },
+        {
+          "type": "paragraph",
+          "text": "Over-relying on SQL Monitor for short queries: SQL Monitor automatically activates for queries running longer than 5 seconds or consuming significant resources. For sub-second queries that execute millions of times, use V$SQL statistics (elapsed_time, buffer_gets, executions) and AWR SQL reports instead. The cumulative impact of a 10ms query executed 1M times per day (10,000 seconds of DB Time) far exceeds a single 30-second report query."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring bind variable peeking issues: Oracle peeks at bind variable values during hard parse to generate an optimal plan for those specific values. If the first execution uses an atypical value (e.g., a rare status code), the plan is optimized for that value and reused for all subsequent executions — even when typical values would benefit from a different plan. Use Adaptive Cursor Sharing (enabled by default in 12c+) or create SQL Plan Baselines to manage plan stability for queries with skewed data distributions."
+        }
+      ],
+      "wordCount": 446,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Banking core system performance investigation: A major bank's online banking system experienced 3x response time degradation every day between 2-4 PM. AWR comparison between the problem period and a normal period revealed \"log file sync\" wait event increased 500% — indicating commit-heavy batch processing competing with online transactions. ASH analysis showed a specific batch job (SQL_ID identified) performing single-row commits in a loop. Fix: restructured the batch to commit every 1,000 rows using FORALL bulk operations, reducing log file sync waits by 95% and restoring online response times."
+        },
+        {
+          "type": "paragraph",
+          "text": "Telecom billing system SQL tuning: A telecom company's monthly billing run grew from 4 hours to 18 hours over 6 months as the customer base grew. SQL Tuning Advisor identified the top billing query was using a nested loop join (appropriate for small result sets) but now processing 50M rows. The advisor recommended a SQL Profile that switched to a hash join with parallel execution. After accepting the profile, the billing run completed in 3 hours. They also implemented SQL Plan Baselines to prevent plan regression during future optimizer upgrades."
+        },
+        {
+          "type": "paragraph",
+          "text": "Insurance claims processing with ADDM: An insurance company's claims processing system showed intermittent slowdowns. ADDM findings revealed: (1) \"Hard parsing consuming 25% of DB Time\" — application not using bind variables for dynamic queries, (2) \"PGA over-allocation causing temp tablespace I/O\" — PGA_AGGREGATE_TARGET too low for concurrent report generation. Fixes: implemented bind variables in the application (reducing parse time by 90%), increased PGA target from 4GB to 16GB (eliminating temp I/O for sorts), and added a result cache for frequently-executed reference data queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-commerce flash sale preparation: Before major sales events, the operations team runs SQL Performance Analyzer (SPA) to test the impact of increased load on execution plans. They capture the current SQL workload, simulate 10x volume, and identify queries whose plans degrade under load. For identified regressions, they create SQL Plan Baselines locking the optimal plan. During the sale, they monitor with SQL Monitor in real-time, watching parallel query execution and I/O patterns. Post-sale, they compare AWR reports to pre-sale baselines to identify any new performance issues introduced by the traffic spike."
+        }
+      ],
+      "wordCount": 352,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the relationship between AWR, ASH, and ADDM. How do they work together for performance diagnosis?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: AWR captures hourly snapshots of cumulative database statistics — SQL execution stats, wait events, system metrics, and segment statistics. It provides the \"what happened over this period\" view. ASH samples every active session once per second, providing granular \"what was happening at this exact moment\" data — it's stored in memory (V$ACTIVE_SESSION_HISTORY) and periodically flushed to disk (DBA_HIST_ACTIVE_SESS_HISTORY). ADDM automatically analyzes AWR snapshots after each capture, comparing the period to baselines and generating findings with quantified impact and recommendations. The workflow: ADDM identifies \"SQL_ID xyz consumed 40% of DB Time\" (from AWR data), you drill into ASH to see exactly when it ran, what it waited for, and whether it was blocked. Then you use SQL Tuning Advisor on that specific SQL_ID for optimization recommendations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you diagnose and resolve a \"library cache latch\" contention issue?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Library cache latch contention indicates excessive hard parsing — the database is spending significant time compiling new SQL statements rather than reusing cached plans. Diagnosis: check V$SQLAREA for SQL statements with EXECUTIONS = 1 (unique, non-sharable SQL), which indicates literal values instead of bind variables. Check V$SYSSTAT for \"parse count (hard)\" vs \"parse count (total)\" — hard parses should be <5% of total. Resolution: (1) modify application to use bind variables, (2) enable CURSOR_SHARING = FORCE as a temporary workaround (replaces literals with system-generated binds), (3) increase shared pool size if the issue is plan aging due to insufficient cache. Long-term: implement a coding standard requiring bind variables and use static analysis tools to detect literal SQL in code reviews."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is a SQL Profile and how does it differ from an optimizer hint? When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A SQL Profile is metadata stored in the data dictionary that provides the optimizer with additional information (cardinality corrections, join order preferences) without modifying the SQL text. It's created by SQL Tuning Advisor and applied transparently — the application doesn't change. A hint is embedded in the SQL text and forces a specific execution strategy regardless of statistics. Key differences: profiles are adaptive (the optimizer still makes decisions, just with better information), hints are rigid (override the optimizer completely). Profiles don't require application changes, hints require SQL modification. Profiles can be dropped/disabled without touching code, hints require redeployment. Use profiles for production SQL you can't modify (vendor applications, ORM-generated queries). Use hints only in development/testing to verify a specific plan is better, then convert to a profile or SQL Plan Baseline for production."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you investigate a sudden increase in \"db file sequential read\" wait events?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: \"db file sequential read\" means single-block I/O reads — typically index lookups or table access by ROWID. A sudden increase indicates either: (1) a new/changed SQL statement performing excessive index lookups, (2) buffer cache pressure causing previously-cached blocks to be re-read from disk, or (3) a plan change causing an index scan where a full table scan was previously used. Investigation steps: Check AWR \"SQL ordered by Physical Reads\" to identify the SQL driving the I/O. Compare the current execution plan to the previous plan (DBA_HIST_SQL_PLAN). Check if buffer cache hit ratio dropped (indicating memory pressure). Check if the table/index grew significantly (data growth). If it's a plan change, create a SQL Plan Baseline with the previous good plan. If it's data growth, consider partitioning or a different index strategy."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Oracle's Adaptive Query Optimization features and when they help."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Adaptive Query Optimization (12c+) includes: (1) Adaptive Plans — the optimizer embeds alternative sub-plans and chooses at runtime based on actual cardinalities (e.g., starts with nested loop but switches to hash join if row count exceeds threshold), (2) Adaptive Statistics — automatic re-optimization of queries that had significant cardinality misestimates, storing corrected statistics for future executions, (3) SQL Plan Directives — persistent notes that tell the optimizer to gather additional statistics (dynamic sampling) for specific table/column combinations where estimates were wrong. These help when: data is skewed and histograms don't capture the distribution well, correlated columns cause multiplicative estimation errors, or complex predicates defeat the optimizer's independence assumption. They're most valuable for ad-hoc queries and data warehouse workloads where query patterns are unpredictable."
+        }
+      ],
+      "wordCount": 712,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Establish AWR baselines for critical periods: Create AWR baselines for normal operation periods (DBMS_WORKLOAD_REPOSITORY.CREATE_BASELINE). When performance degrades, generate AWR Diff reports comparing the problem period to the baseline. This immediately highlights what changed — new SQL statements, increased I/O, latch contention, or plan regressions. Maintain baselines for: typical weekday, month-end processing, and peak traffic periods."
+        },
+        {
+          "type": "paragraph",
+          "text": "Automate ADDM review with alerts: Create a scheduled job that queries DBA_ADVISOR_FINDINGS after each AWR snapshot and sends alerts for high-impact findings (impact > 20% of DB Time). Most organizations generate AWR reports reactively after users complain — proactive ADDM monitoring catches degradation before it impacts users. Integrate with your monitoring system (Prometheus, Datadog, OEM) for dashboard visibility."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use SQL Plan Baselines for plan stability: For critical SQL statements, create SQL Plan Baselines that lock the known-good execution plan. The optimizer can discover better plans but won't use them until a DBA verifies and evolves the baseline. This prevents plan regressions during statistics gathering, optimizer upgrades, or parameter changes. Essential for OLTP systems where plan stability is more important than theoretical optimization."
+        },
+        {
+          "type": "paragraph",
+          "text": "**Monitor VSQL for resource-intensive queries continuously**: Set up real-time monitoring on `VSQLto alert when any SQL_ID exceeds thresholds: buffer_gets/execution > 100,000, elapsed_time/execution > 5 seconds, or disk_reads/execution > 10,000. Catch performance regressions within minutes of deployment rather than waiting for the next AWR snapshot. UseV$SQL_MONITOR` for queries currently executing that exceed resource thresholds."
+        }
+      ],
+      "wordCount": 230,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Oracle Database — Core Oracle concepts, PL/SQL, partitioning, and flashback technology",
+            "High Availability — RAC, Data Guard, and GoldenGate for Oracle HA architectures",
+            "SQL Performance Tuning — General SQL optimization principles applicable across databases",
+            "PostgreSQL Performance Tuning — Comparative approach to performance tuning in PostgreSQL"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- Generate AWR report between two snapshots\n-- First, find available snapshots\nSELECT snap_id, begin_interval_time, end_interval_time\nFROM dba_hist_snapshot\nWHERE begin_interval_time > SYSDATE - 1\nORDER BY snap_id;\n\n-- Generate HTML AWR report\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_REPORT_HTML(\n        l_dbid     => (SELECT dbid FROM v$database),\n        l_inst_num => 1,\n        l_bid      => 1000,  -- begin snapshot\n        l_eid      => 1005   -- end snapshot\n    )\n);\n\n-- AWR SQL report for a specific SQL_ID\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_SQL_REPORT_HTML(\n        l_dbid     => (SELECT dbid FROM v$database),\n        l_inst_num => 1,\n        l_bid      => 1000,\n        l_eid      => 1005,\n        l_sqlid    => 'abc123def456'\n    )\n);\n\n-- Top SQL by elapsed time from AWR\nSELECT\n    sql_id,\n    SUM(elapsed_time_delta) / 1e6 AS elapsed_sec,\n    SUM(executions_delta) AS executions,\n    ROUND(SUM(elapsed_time_delta) / NULLIF(SUM(executions_delta), 0) / 1e6, 3) AS avg_sec,\n    SUM(buffer_gets_delta) AS buffer_gets,\n    SUM(disk_reads_delta) AS disk_reads\nFROM dba_hist_sqlstat\nWHERE snap_id BETWEEN 1000 AND 1005\nGROUP BY sql_id\nORDER BY elapsed_sec DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- Compare two AWR periods (baseline vs problem)\n-- AWR Diff Report\nSELECT * FROM TABLE(\n    DBMS_WORKLOAD_REPOSITORY.AWR_DIFF_REPORT_HTML(\n        l_dbid1 => (SELECT dbid FROM v$database), l_inst_num1 => 1,\n        l_bid1 => 900, l_eid1 => 905,    -- baseline period\n        l_dbid2 => (SELECT dbid FROM v$database), l_inst_num2 => 1,\n        l_bid2 => 1000, l_eid2 => 1005   -- problem period\n    )\n);\n\n-- Modify AWR retention and interval\nBEGIN\n    DBMS_WORKLOAD_REPOSITORY.MODIFY_SNAPSHOT_SETTINGS(\n        retention => 30 * 24 * 60,  -- 30 days retention (minutes)\n        interval  => 30             -- snapshot every 30 minutes\n    );\nEND;\n/",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Current active sessions: what are they doing right now?\nSELECT\n    s.sid, s.serial#, s.username,\n    s.sql_id, s.event, s.wait_class,\n    s.blocking_session, s.seconds_in_wait,\n    sq.sql_text\nFROM v$session s\nLEFT JOIN v$sql sq ON s.sql_id = sq.sql_id AND s.sql_child_number = sq.child_number\nWHERE s.status = 'ACTIVE'\n  AND s.type = 'USER';\n\n-- ASH: Top SQL in the last hour\nSELECT\n    sql_id,\n    COUNT(*) AS ash_samples,\n    ROUND(COUNT(*) / (SELECT COUNT(DISTINCT sample_time) FROM v$active_session_history\n                      WHERE sample_time > SYSDATE - 1/24) * 100, 2) AS pct_db_time,\n    MAX(sql_plan_hash_value) AS plan_hash,\n    session_state\nFROM v$active_session_history\nWHERE sample_time > SYSDATE - 1/24\nGROUP BY sql_id, session_state\nORDER BY ash_samples DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- ASH: Wait event analysis for a specific time window\nSELECT\n    event, wait_class,\n    COUNT(*) AS samples,\n    ROUND(COUNT(*) * 100 / SUM(COUNT(*)) OVER(), 2) AS pct\nFROM v$active_session_history\nWHERE sample_time BETWEEN\n    TO_TIMESTAMP('2024-03-15 14:00:00', 'YYYY-MM-DD HH24:MI:SS') AND\n    TO_TIMESTAMP('2024-03-15 14:30:00', 'YYYY-MM-DD HH24:MI:SS')\nGROUP BY event, wait_class\nORDER BY samples DESC;\n\n-- ASH: Find blocking chains\nSELECT\n    level, LPAD(' ', 2 * (level - 1)) || sid AS tree,\n    blocking_session, event, sql_id,\n    sample_time\nFROM v$active_session_history\nWHERE sample_time > SYSDATE - 1/24\nSTART WITH blocking_session IS NULL\n    AND event LIKE '%enq%'\nCONNECT BY PRIOR sid = blocking_session\n    AND PRIOR sample_id = sample_id;\n\n-- Historical ASH (DBA_HIST_ACTIVE_SESS_HISTORY) for past analysis\nSELECT\n    sql_id, event,\n    COUNT(*) AS samples,\n    MIN(sample_time) AS first_seen,\n    MAX(sample_time) AS last_seen\nFROM dba_hist_active_sess_history\nWHERE sample_time BETWEEN\n    TO_TIMESTAMP('2024-03-14 09:00:00', 'YYYY-MM-DD HH24:MI:SS') AND\n    TO_TIMESTAMP('2024-03-14 10:00:00', 'YYYY-MM-DD HH24:MI:SS')\n  AND sql_id = 'abc123def456'\nGROUP BY sql_id, event\nORDER BY samples DESC;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Get actual execution plan for a running/recent SQL\nSELECT * FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(\n    sql_id => 'abc123def456',\n    cursor_child_no => 0,\n    format => 'ALLSTATS LAST ADVANCED +PEEKED_BINDS'\n));\n\n-- EXPLAIN PLAN (estimated, not actual)\nEXPLAIN PLAN FOR\nSELECT /*+ GATHER_PLAN_STATISTICS */\n    c.customer_name, SUM(o.amount) AS total\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nWHERE o.order_date > ADD_MONTHS(SYSDATE, -12)\nGROUP BY c.customer_name\nORDER BY total DESC;\n\nSELECT * FROM TABLE(DBMS_XPLAN.DISPLAY(format => 'ALL'));\n\n-- SQL Tuning Advisor\nDECLARE\n    l_task_name VARCHAR2(30) := 'tune_slow_query';\n    l_sql_id   VARCHAR2(13) := 'abc123def456';\nBEGIN\n    -- Create tuning task\n    l_task_name := DBMS_SQLTUNE.CREATE_TUNING_TASK(\n        sql_id      => l_sql_id,\n        scope       => DBMS_SQLTUNE.SCOPE_COMPREHENSIVE,\n        time_limit  => 300,  -- 5 minutes analysis time\n        task_name   => l_task_name\n    );\n\n    -- Execute the task\n    DBMS_SQLTUNE.EXECUTE_TUNING_TASK(task_name => l_task_name);\nEND;\n/\n\n-- View recommendations\nSELECT DBMS_SQLTUNE.REPORT_TUNING_TASK('tune_slow_query') FROM DUAL;\n\n-- Accept a SQL Profile recommendation\nBEGIN\n    DBMS_SQLTUNE.ACCEPT_SQL_PROFILE(\n        task_name => 'tune_slow_query',\n        name      => 'profile_slow_query',\n        force_match => TRUE  -- apply to similar SQL with different literals\n    );\nEND;\n/\n\n-- SQL Monitor: Real-time execution monitoring\nSELECT DBMS_SQL_MONITOR.REPORT_SQL_MONITOR(\n    sql_id       => 'abc123def456',\n    type         => 'HTML',\n    report_level => 'ALL'\n) FROM DUAL;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Force full table scan (when index scan is suboptimal for large result sets)\nSELECT /*+ FULL(o) */ order_id, amount\nFROM orders o\nWHERE status IN ('PENDING', 'PROCESSING', 'SHIPPED');\n\n-- Force specific index usage\nSELECT /*+ INDEX(o idx_orders_customer_date) */ order_id, amount\nFROM orders o\nWHERE customer_id = :cust_id AND order_date > SYSDATE - 30;\n\n-- Control join method\nSELECT /*+ USE_HASH(o c) LEADING(c o) */\n    c.name, o.amount\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nWHERE c.region = 'EMEA';\n\n-- Parallel execution\nSELECT /*+ PARALLEL(o, 8) PARALLEL(c, 4) */\n    c.segment, SUM(o.amount)\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nGROUP BY c.segment;\n\n-- Prevent optimizer from merging subquery (force specific execution order)\nSELECT /*+ NO_MERGE(recent_orders) */\n    c.name, recent_orders.total\nFROM customers c\nJOIN (\n    SELECT /*+ NO_MERGE */ customer_id, SUM(amount) AS total\n    FROM orders\n    WHERE order_date > SYSDATE - 30\n    GROUP BY customer_id\n) recent_orders ON recent_orders.customer_id = c.id;\n\n-- Adaptive plan hints (Oracle 12c+)\nSELECT /*+ ADAPTIVE_PLAN */ *\nFROM orders o JOIN customers c ON o.customer_id = c.id\nWHERE o.status = :status;\n\n-- Cardinality hint (when statistics are misleading)\nSELECT /*+ CARDINALITY(o, 1000) */\n    o.order_id, o.amount\nFROM orders o\nWHERE o.status = :status AND o.region = :region;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- System-wide wait event summary\nSELECT\n    wait_class,\n    event,\n    total_waits,\n    ROUND(time_waited_micro / 1e6, 2) AS time_waited_sec,\n    ROUND(average_wait_micro / 1e3, 2) AS avg_wait_ms\nFROM v$system_event\nWHERE wait_class != 'Idle'\nORDER BY time_waited_micro DESC\nFETCH FIRST 20 ROWS ONLY;\n\n-- Session-level wait events (find what a specific session is waiting for)\nSELECT\n    sid, event, wait_class,\n    state, seconds_in_wait,\n    p1text, p1, p2text, p2, p3text, p3\nFROM v$session_wait\nWHERE sid = :target_sid;\n\n-- I/O statistics by datafile (identify hot files)\nSELECT\n    f.file_name,\n    s.phyrds AS physical_reads,\n    s.phywrts AS physical_writes,\n    s.readtim / NULLIF(s.phyrds, 0) * 10 AS avg_read_ms,\n    s.writetim / NULLIF(s.phywrts, 0) * 10 AS avg_write_ms\nFROM v$filestat s\nJOIN dba_data_files f ON s.file# = f.file_id\nORDER BY s.phyrds + s.phywrts DESC;\n\n-- Latch contention analysis\nSELECT\n    name, gets, misses, sleeps,\n    ROUND(misses / NULLIF(gets, 0) * 100, 4) AS miss_pct,\n    immediate_gets, immediate_misses\nFROM v$latch\nWHERE misses > 0\nORDER BY sleeps DESC\nFETCH FIRST 10 ROWS ONLY;\n\n-- Enqueue (lock) waits\nSELECT\n    s.sid, s.serial#, s.username,\n    l.type, l.id1, l.id2, l.lmode, l.request,\n    s.sql_id, s.event, s.blocking_session\nFROM v$lock l\nJOIN v$session s ON l.sid = s.sid\nWHERE l.request > 0  -- sessions waiting for a lock\nORDER BY s.seconds_in_wait DESC;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [
+    {
+      "expression": "SESSION / V",
+      "display": "inline"
+    },
+    {
+      "expression": "SQL for resource-intensive queries continuously**: Set up real-time monitoring on `V",
+      "display": "inline"
+    }
+  ],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/oracle/performance-diagnostics.md",
+    "wordCount": 2499,
+    "sectionCount": 15
+  }
+}

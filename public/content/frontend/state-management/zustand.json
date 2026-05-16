@@ -1,0 +1,342 @@
+{
+  "id": "state-management-zustand-lightweight-alternatives",
+  "slug": "zustand",
+  "title": "Zustand & Lightweight Alternatives",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Zustand creates stores as hooks with zero boilerplate — no providers, no context wrappers, no action types, just a function that returns state and actions",
+            "Zustand selectors prevent unnecessary re-renders by subscribing components only to the specific state slices they use: useStore(state => state.count)",
+            "Built-in middleware includes persist (localStorage/sessionStorage), devtools (Redux DevTools integration), immer (immutable updates), and subscribeWithSelector",
+            "Jotai provides atomic state management — each atom is an independent piece of state that components subscribe to individually, eliminating the need for selectors",
+            "Valtio uses JavaScript Proxies for transparent reactivity — mutate state directly and components re-render automatically, similar to Vue's reactivity system",
+            "Zustand stores are framework-agnostic at their core — the same store logic works in React, vanilla JS, and Node.js without modification",
+            "All three libraries (Zustand, Jotai, Valtio) are maintained by the same team (pmndrs) and share design philosophies: minimal API surface, TypeScript-first, and no unnecessary abstractions"
+          ]
+        }
+      ],
+      "wordCount": 148,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Lightweight state management libraries shine in specific contexts. Choose them when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building small to medium applications (5-20 routes) where Redux's ceremony (actions, reducers, selectors, middleware) adds complexity without proportional benefit",
+            "Managing a few pieces of global state (auth, theme, user preferences, shopping cart) that don't require complex async orchestration or time-travel debugging",
+            "Working on teams that value simplicity and fast onboarding — Zustand's API can be learned in 10 minutes versus Redux's multi-hour learning curve",
+            "Building component libraries or micro-frontends that need self-contained state without imposing a specific state management architecture on consumers",
+            "Prototyping rapidly where iteration speed matters more than architectural rigor — refactoring from Zustand to Redux later is straightforward if complexity grows",
+            "Needing fine-grained reactivity (Jotai/Valtio) in performance-critical UIs where even Redux's selector-based approach causes too many re-renders"
+          ]
+        }
+      ],
+      "wordCount": 131,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "zustand-store-creation-and-usage",
+          "heading": "Zustand Store Creation and Usage",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { create } from 'zustand';\nimport { devtools, persist, subscribeWithSelector } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface CartItem {\n  id: string;\n  name: string;\n  price: number;\n  quantity: number;\n}\n\ninterface CartStore {\n  items: CartItem[];\n  coupon: string | null;\n  // Actions colocated with state\n  addItem: (product: Omit<CartItem, 'quantity'>) => void;\n  removeItem: (id: string) => void;\n  updateQuantity: (id: string, quantity: number) => void;\n  applyCoupon: (code: string) => void;\n  clearCart: () => void;\n  // Computed (getter-style)\n  getTotal: () => number;\n  getItemCount: () => number;\n}\n\nexport const useCartStore = create<CartStore>()(\n  devtools(\n    persist(\n      immer((set, get) => ({\n        items: [],\n        coupon: null,\n\n        addItem: (product) =>\n          set((state) => {\n            const existing = state.items.find((i) => i.id === product.id);\n            if (existing) {\n              existing.quantity += 1;\n            } else {\n              state.items.push({ ...product, quantity: 1 });\n            }\n          }),\n\n        removeItem: (id) =>\n          set((state) => {\n            state.items = state.items.filter((i) => i.id !== id);\n          }),\n\n        updateQuantity: (id, quantity) =>\n          set((state) => {\n            const item = state.items.find((i) => i.id === id);\n            if (item) {\n              if (quantity <= 0) {\n                state.items = state.items.filter((i) => i.id !== id);\n              } else {\n                item.quantity = quantity;\n              }\n            }\n          }),\n\n        applyCoupon: (code) => set({ coupon: code }),\n\n        clearCart: () => set({ items: [], coupon: null }),\n\n        getTotal: () => {\n          const { items } = get();\n          return items.reduce((sum, item) => sum + item.price * item.quantity, 0);\n        },\n\n        getItemCount: () => {\n          const { items } = get();\n          return items.reduce((sum, item) => sum + item.quantity, 0);\n        },\n      })),\n      {\n        name: 'cart-storage',\n        partialize: (state) => ({ items: state.items, coupon: state.coupon }),\n      }\n    ),\n    { name: 'CartStore' }\n  )\n);\n\n// Usage in components — subscribe to specific slices\nfunction CartBadge() {\n  const itemCount = useCartStore((state) => state.getItemCount());\n  return <span className=\"badge\">{itemCount}</span>;\n}\n\nfunction CartTotal() {\n  const total = useCartStore((state) => state.getTotal());\n  const coupon = useCartStore((state) => state.coupon);\n  return (\n    <div>\n      <span>${total.toFixed(2)}</span>\n      {coupon && <span className=\"coupon\">Coupon: {coupon}</span>}\n    </div>\n  );\n}\n\nfunction AddToCartButton({ product }: { product: Product }) {\n  // Only subscribes to addItem — won't re-render when items change\n  const addItem = useCartStore((state) => state.addItem);\n  return <button onClick={() => addItem(product)}>Add to Cart</button>;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "zustand-with-async-actions-and-slices-pattern",
+          "heading": "Zustand with Async Actions and Slices Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { create } from 'zustand';\nimport { StateCreator } from 'zustand';\n\n// Slice pattern for large stores\ninterface AuthSlice {\n  user: User | null;\n  token: string | null;\n  isLoading: boolean;\n  login: (credentials: Credentials) => Promise<void>;\n  logout: () => void;\n  refreshToken: () => Promise<void>;\n}\n\ninterface NotificationSlice {\n  notifications: Notification[];\n  unreadCount: number;\n  addNotification: (notification: Notification) => void;\n  markAsRead: (id: string) => void;\n  clearAll: () => void;\n}\n\n// Each slice is defined independently\nconst createAuthSlice: StateCreator<\n  AuthSlice & NotificationSlice,\n  [['zustand/immer', never]],\n  [],\n  AuthSlice\n> = (set, get) => ({\n  user: null,\n  token: null,\n  isLoading: false,\n\n  login: async (credentials) => {\n    set({ isLoading: true });\n    try {\n      const response = await fetch('/api/auth/login', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(credentials),\n      });\n\n      if (!response.ok) throw new Error('Login failed');\n\n      const { user, token } = await response.json();\n      set({ user, token, isLoading: false });\n\n      // Cross-slice communication\n      get().addNotification({\n        id: crypto.randomUUID(),\n        message: `Welcome back, ${user.name}!`,\n        type: 'success',\n        read: false,\n        createdAt: new Date().toISOString(),\n      });\n    } catch (error) {\n      set({ isLoading: false });\n      throw error;\n    }\n  },\n\n  logout: () => {\n    set({ user: null, token: null });\n  },\n\n  refreshToken: async () => {\n    const { token } = get();\n    if (!token) return;\n\n    const response = await fetch('/api/auth/refresh', {\n      headers: { Authorization: `Bearer ${token}` },\n    });\n\n    if (response.ok) {\n      const { token: newToken } = await response.json();\n      set({ token: newToken });\n    } else {\n      get().logout();\n    }\n  },\n});\n\nconst createNotificationSlice: StateCreator<\n  AuthSlice & NotificationSlice,\n  [['zustand/immer', never]],\n  [],\n  NotificationSlice\n> = (set) => ({\n  notifications: [],\n  unreadCount: 0,\n\n  addNotification: (notification) =>\n    set((state) => {\n      state.notifications.unshift(notification);\n      state.unreadCount += 1;\n    }),\n\n  markAsRead: (id) =>\n    set((state) => {\n      const notification = state.notifications.find((n) => n.id === id);\n      if (notification && !notification.read) {\n        notification.read = true;\n        state.unreadCount -= 1;\n      }\n    }),\n\n  clearAll: () => set({ notifications: [], unreadCount: 0 }),\n});\n\n// Combine slices\nexport const useAppStore = create<AuthSlice & NotificationSlice>()(\n  immer((...args) => ({\n    ...createAuthSlice(...args),\n    ...createNotificationSlice(...args),\n  }))\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "jotai-atomic-state-management",
+          "heading": "Jotai — Atomic State Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';\nimport { atomWithStorage, atomWithQuery } from 'jotai/utils';\nimport { focusAtom } from 'jotai-optics';\n\n// Primitive atoms — independent pieces of state\nconst countAtom = atom(0);\nconst darkModeAtom = atomWithStorage('darkMode', false);\nconst searchQueryAtom = atom('');\n\n// Derived atom — computed from other atoms (read-only)\nconst doubleCountAtom = atom((get) => get(countAtom) * 2);\n\n// Writable derived atom — custom setter logic\nconst countWithMaxAtom = atom(\n  (get) => get(countAtom),\n  (get, set, newValue: number) => {\n    set(countAtom, Math.min(newValue, 100));  // Cap at 100\n  }\n);\n\n// Async atom — fetches data based on other atoms\nconst userAtom = atom<User | null>(null);\n\nconst userProfileAtom = atom(async (get) => {\n  const user = get(userAtom);\n  if (!user) return null;\n\n  const response = await fetch(`/api/users/${user.id}/profile`);\n  return response.json();\n});\n\n// Atom family — parameterized atoms for collections\nimport { atomFamily } from 'jotai/utils';\n\nconst todoAtomFamily = atomFamily((id: string) =>\n  atom<Todo>({ id, text: '', completed: false })\n);\n\nconst todoIdsAtom = atom<string[]>([]);\n\n// Derived atom combining family members\nconst completedTodosAtom = atom((get) => {\n  const ids = get(todoIdsAtom);\n  return ids\n    .map((id) => get(todoAtomFamily(id)))\n    .filter((todo) => todo.completed);\n});\n\n// Usage in components\nfunction TodoItem({ id }: { id: string }) {\n  const [todo, setTodo] = useAtom(todoAtomFamily(id));\n\n  const toggle = () => {\n    setTodo((prev) => ({ ...prev, completed: !prev.completed }));\n  };\n\n  return (\n    <li>\n      <input type=\"checkbox\" checked={todo.completed} onChange={toggle} />\n      <span>{todo.text}</span>\n    </li>\n  );\n}\n\nfunction TodoStats() {\n  // Only re-renders when completed todos change\n  const completedTodos = useAtomValue(completedTodosAtom);\n  return <p>{completedTodos.length} completed</p>;\n}\n\nfunction DarkModeToggle() {\n  const [darkMode, setDarkMode] = useAtom(darkModeAtom);\n  return (\n    <button onClick={() => setDarkMode(!darkMode)}>\n      {darkMode ? '☀️' : '🌙'}\n    </button>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "valtio-proxy-based-reactive-state",
+          "heading": "Valtio — Proxy-Based Reactive State",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { proxy, useSnapshot, subscribe, ref } from 'valtio';\nimport { derive } from 'valtio/utils';\nimport { devtools } from 'valtio/utils';\n\n// State is a plain mutable object wrapped in a proxy\ninterface AppState {\n  user: User | null;\n  cart: {\n    items: CartItem[];\n    isOpen: boolean;\n  };\n  theme: 'light' | 'dark';\n}\n\nexport const state = proxy<AppState>({\n  user: null,\n  cart: {\n    items: [],\n    isOpen: false,\n  },\n  theme: 'light',\n});\n\n// Enable Redux DevTools\ndevtools(state, { name: 'AppState' });\n\n// Actions — just mutate the proxy directly\nexport const actions = {\n  login: async (credentials: Credentials) => {\n    const response = await fetch('/api/auth/login', {\n      method: 'POST',\n      body: JSON.stringify(credentials),\n    });\n    const user = await response.json();\n    state.user = user;  // Direct mutation triggers re-renders\n  },\n\n  logout: () => {\n    state.user = null;\n    state.cart.items = [];\n  },\n\n  addToCart: (product: Product) => {\n    const existing = state.cart.items.find((i) => i.productId === product.id);\n    if (existing) {\n      existing.quantity += 1;  // Nested mutation works\n    } else {\n      state.cart.items.push({\n        id: crypto.randomUUID(),\n        productId: product.id,\n        name: product.name,\n        price: product.price,\n        quantity: 1,\n      });\n    }\n  },\n\n  removeFromCart: (id: string) => {\n    const index = state.cart.items.findIndex((i) => i.id === id);\n    if (index !== -1) {\n      state.cart.items.splice(index, 1);\n    }\n  },\n\n  toggleTheme: () => {\n    state.theme = state.theme === 'light' ? 'dark' : 'light';\n  },\n\n  toggleCart: () => {\n    state.cart.isOpen = !state.cart.isOpen;\n  },\n};\n\n// Derived state — automatically recomputes when dependencies change\nconst derived = derive({\n  cartTotal: (get) =>\n    get(state.cart).items.reduce((sum, item) => sum + item.price * item.quantity, 0),\n  cartItemCount: (get) =>\n    get(state.cart).items.reduce((sum, item) => sum + item.quantity, 0),\n  isAuthenticated: (get) => get(state).user !== null,\n});\n\n// Subscribe to changes outside React\nsubscribe(state.cart, () => {\n  // Persist cart to localStorage on every change\n  localStorage.setItem('cart', JSON.stringify(state.cart.items));\n});\n\n// Usage in components — useSnapshot creates a reactive read-only view\nfunction CartIcon() {\n  const snap = useSnapshot(state);\n  const derivedSnap = useSnapshot(derived);\n\n  return (\n    <button onClick={actions.toggleCart}>\n      🛒 {derivedSnap.cartItemCount}\n    </button>\n  );\n}\n\nfunction CartPanel() {\n  const snap = useSnapshot(state);\n\n  if (!snap.cart.isOpen) return null;\n\n  return (\n    <div className=\"cart-panel\">\n      {snap.cart.items.map((item) => (\n        <div key={item.id}>\n          <span>{item.name} × {item.quantity}</span>\n          <button onClick={() => actions.removeFromCart(item.id)}>Remove</button>\n        </div>\n      ))}\n    </div>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "testing-patterns-for-zustand-stores",
+          "heading": "Testing Patterns for Zustand Stores",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { act, renderHook } from '@testing-library/react';\nimport { useCartStore } from '../stores/cartStore';\n\n// Reset store between tests\nbeforeEach(() => {\n  useCartStore.setState({\n    items: [],\n    coupon: null,\n  });\n});\n\ndescribe('CartStore', () => {\n  it('adds item to empty cart', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n    });\n\n    expect(result.current.items).toHaveLength(1);\n    expect(result.current.items[0]).toMatchObject({\n      id: 'p1',\n      name: 'Widget',\n      price: 29.99,\n      quantity: 1,\n    });\n  });\n\n  it('increments quantity for existing item', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n    });\n\n    expect(result.current.items).toHaveLength(1);\n    expect(result.current.items[0].quantity).toBe(2);\n  });\n\n  it('computes total correctly', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 10 });\n      result.current.addItem({ id: 'p2', name: 'Gadget', price: 20 });\n      result.current.updateQuantity('p1', 3);\n    });\n\n    expect(result.current.getTotal()).toBe(50);  // (10 * 3) + (20 * 1)\n  });\n\n  // Testing outside React (vanilla)\n  it('works without React hooks', () => {\n    const { getState, setState } = useCartStore;\n\n    setState({ items: [{ id: 'p1', name: 'Test', price: 5, quantity: 2 }] });\n\n    expect(getState().items).toHaveLength(1);\n    expect(getState().getTotal()).toBe(10);\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Zustand vs Redux Architecture\"\n        direction LR\n        subgraph \"Redux\"\n            A1[Component] -->|dispatch| A2[Action]\n            A2 --> A3[Middleware]\n            A3 --> A4[Reducer]\n            A4 --> A5[Store]\n            A5 -->|selector| A1\n        end\n        subgraph \"Zustand\"\n            B1[Component] -->|call action| B2[Store Function]\n            B2 -->|set| B3[State]\n            B3 -->|selector subscription| B1\n        end\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Jotai Atom Dependency Graph\"\n        A[userAtom<br/>primitive] --> B[userProfileAtom<br/>async derived]\n        C[searchAtom<br/>primitive] --> D[filteredResultsAtom<br/>derived]\n        A --> D\n        D --> E[resultCountAtom<br/>derived]\n        F[todoIdsAtom] --> G[completedCountAtom]\n        H[todoAtomFamily] --> G\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"When to Use Which\"\n        A[Simple global state<br/>2-5 values] --> B[Zustand]\n        C[Fine-grained reactivity<br/>Many independent atoms] --> D[Jotai]\n        E[Mutable mental model<br/>Vue-like] --> F[Valtio]\n        G[Complex workflows<br/>Middleware, DevTools] --> H[Redux Toolkit]\n        I[Server state only<br/>Caching, refetching] --> J[TanStack Query]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Not using selectors in Zustand and subscribing to the entire store. Writing const state = useStore() without a selector subscribes the component to every state change in the store. If the store has 20 properties and only one changes, the component still re-renders. Always use selectors: useStore(s => s.specificField). For multiple fields, use useShallow from zustand/react/shallow to compare by shallow equality: useStore(useShallow(s => ({ a: s.a, b: s.b })))."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mixing Valtio's proxy state with React's immutable mental model. Valtio encourages direct mutation (state.count += 1), but developers accustomed to React's immutability rules sometimes spread state unnecessarily or create new objects when mutation would work. Conversely, passing Valtio proxy objects to libraries that expect plain objects (form libraries, serialization) causes issues. Use snapshot() to get a plain immutable copy when needed for external libraries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Creating too many Jotai atoms without cleanup. Atom families (atomFamily) create new atoms for each unique parameter. If parameters are dynamic (like list item IDs that change), old atoms accumulate in memory. Use atomFamily with a cleanup strategy or atomWithReset to clear stale atoms. For large lists, consider whether a single atom holding the array is simpler than individual atoms per item."
+        },
+        {
+          "type": "paragraph",
+          "text": "Persisting entire store state including derived values and functions. The persist middleware should only save source data, not computed values or action functions. Use partialize to select which state to persist: persist(store, { partialize: (state) => ({ items: state.items }) }). Persisting derived state causes stale data on rehydration when the computation logic changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not handling SSR correctly with Zustand/Jotai. In Next.js or other SSR frameworks, stores created at module level are shared across all requests on the server, causing state leakage between users. For SSR, create stores per-request using a provider pattern or use Jotai's Provider component to scope atoms to a specific React tree. Zustand's createStore (not create) returns a vanilla store that can be instantiated per-request."
+        },
+        {
+          "type": "paragraph",
+          "text": "Overcomplicating state that should be local. Not every piece of state needs a global store. Form input values, dropdown open/closed state, animation progress, and component-specific UI state should remain in useState. Global stores are for state shared across routes or between unrelated components. Putting everything in Zustand/Jotai makes components harder to test and reason about."
+        }
+      ],
+      "wordCount": 369,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Design Tool with Collaborative Editing. A Figma-like design tool uses Valtio for canvas state (element positions, selections, zoom level) because direct mutation maps naturally to drag-and-drop operations. When a user drags an element, the handler simply writes state.elements[id].x = newX — Valtio's proxy detects the change and re-renders only the affected element. A separate Zustand store manages application-level state (user session, project metadata, undo history) where the action-based model provides better structure for complex operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Dashboard with Independent Widget State. A monitoring dashboard uses Jotai atoms for each widget's configuration (time range, refresh interval, data source). Each widget subscribes only to its own atoms, so updating one widget's time range doesn't re-render the other 20 widgets on screen. Derived atoms compute aggregated metrics across widgets when needed. The atomic model eliminates the selector complexity that Redux would require for this level of granularity."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Storefront with Zustand. A mid-size e-commerce site uses Zustand for cart state (persisted to localStorage), user preferences (theme, currency, language), and recently viewed products. The store has ~15 state properties and ~20 actions — well within Zustand's sweet spot. The team chose Zustand over Redux because: no boilerplate files (actions, reducers, selectors are colocated), new developers are productive in hours not days, and the bundle size is 1KB vs Redux's 10KB+."
+        }
+      ],
+      "wordCount": 215,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare Zustand, Jotai, and Valtio. When would you choose each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: All three are lightweight alternatives to Redux from the same team, but with different mental models. Zustand: single store with selectors, closest to Redux's model but with 90% less boilerplate. Choose for applications that need a central store with clear actions but don't need Redux's middleware ecosystem. Jotai: atomic model where each piece of state is independent. Choose when you have many independent state values that different components subscribe to — avoids the \"selector optimization\" problem entirely because atoms are already granular. Valtio: proxy-based mutation model. Choose when your team prefers mutable state (coming from Vue/MobX) or when the domain involves frequent small mutations (canvas editors, real-time data). Performance characteristics are similar; the choice is primarily about developer ergonomics and mental model fit."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Zustand achieve re-render optimization without React Context?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Zustand stores state outside React's component tree using a vanilla JavaScript subscription model. When you call useStore(selector), the hook subscribes to the store and only triggers a re-render when the selector's return value changes (compared by Object.is by default, or shallow equality with useShallow). This avoids Context's fundamental limitation where any context value change re-renders all consumers. Zustand's approach means: no Provider wrapper needed, no re-render cascading, and selectors are just functions (not memoized components). The store itself is a closure holding state and a Set of listener functions — when set() is called, it notifies all listeners, each of which runs its selector and only triggers React's setState if the selected value changed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you handle server-side rendering with Zustand in Next.js?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The challenge is that module-level stores (create(...)) are singletons shared across all server requests. Solution: (1) For client-only state (cart, UI preferences), use the store normally but skip hydration — initialize from localStorage on the client. (2) For state that needs server data, create stores per-request using createStore() (vanilla, not a hook) and pass them via React context or Next.js page props. (3) Use Zustand's persist middleware with skipHydration: true and manually call useStore.persist.rehydrate() in a client-side effect. (4) For Next.js App Router, create the store in a client component boundary and pass initial data as props from server components. The key principle: never let server-rendered state leak between requests."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the performance implications of Valtio's proxy-based approach compared to immutable updates?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Valtio's proxies track which properties each component accesses during render (via useSnapshot). On state mutation, Valtio knows exactly which components read the changed property and only notifies those components. This is more granular than selector-based approaches where the selector function must run to determine if the output changed. The trade-off: proxy creation has overhead for deeply nested objects (each nested object gets its own proxy), and snapshot() creates a frozen copy on every access (though it's cached between mutations). For most applications, the performance difference is negligible. Valtio can be faster for fine-grained updates (changing one property in a large object) but slower for bulk updates (replacing an entire array) compared to immutable approaches that can short-circuit with reference equality."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you test components that use Zustand stores?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three approaches depending on test goals. (1) Reset store state in beforeEach: call useStore.setState(initialState) to ensure clean state per test. This tests the real store logic. (2) Mock the store entirely: use jest.mock() or Vitest's vi.mock() to replace the store module with controlled values. Useful for testing component rendering without store logic. (3) Test store logic independently: import the store, call actions via useStore.getState().actionName(), and assert state via useStore.getState() — no React rendering needed. For integration tests, prefer approach (1) because it tests the real interaction between component and store. For unit tests of complex components, approach (2) isolates the component from store implementation details."
+        }
+      ],
+      "wordCount": 633,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Zustand's subscribeWithSelector middleware for side effects outside React. When you need to react to state changes for analytics, persistence, or synchronization (WebSocket updates), subscribe to specific state slices rather than the entire store. Without subscribeWithSelector, the subscribe callback fires on every state change. With it, you can subscribe to a selector and only fire when that specific value changes — similar to Redux's middleware but simpler."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement optimistic updates with rollback in Zustand. For mutations that should feel instant (adding to cart, toggling favorites), update the store immediately and revert if the API call fails. Pattern: save current state, apply optimistic update, make API call, revert to saved state on error. Zustand's set function makes this clean: const prev = get(); set(optimistic); try { await api(); } catch { set(prev); }. This provides a snappy UX without the complexity of Redux's optimistic update patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Profile re-render counts with React DevTools Profiler when using any state library. Even with selectors, subtle issues cause unnecessary re-renders: returning new object/array references from selectors, subscribing to parent objects when you only need a child property, or using useShallow when deep equality is needed. The React Profiler's \"why did this render\" feature identifies components re-rendering due to state changes they don't actually use. Fix by narrowing selectors or splitting stores."
+        },
+        {
+          "type": "paragraph",
+          "text": "Consider TanStack Query alongside Zustand for server state. Zustand excels at client state (UI state, user preferences, local data) but doesn't provide caching, background refetching, or stale-while-revalidate for server data. Use TanStack Query (React Query) for server state and Zustand for client state — they complement each other without overlap. This separation keeps Zustand stores small and focused while getting production-grade data fetching behavior from TanStack Query."
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Redux & Redux Toolkit — When application complexity outgrows lightweight solutions",
+            "React Hooks & Components — Built-in state management with useState, useReducer, and Context",
+            "Web Performance — How state management choices impact rendering performance",
+            "TypeScript Advanced Types — Typing stores, atoms, and proxy state effectively"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { create } from 'zustand';\nimport { devtools, persist, subscribeWithSelector } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface CartItem {\n  id: string;\n  name: string;\n  price: number;\n  quantity: number;\n}\n\ninterface CartStore {\n  items: CartItem[];\n  coupon: string | null;\n  // Actions colocated with state\n  addItem: (product: Omit<CartItem, 'quantity'>) => void;\n  removeItem: (id: string) => void;\n  updateQuantity: (id: string, quantity: number) => void;\n  applyCoupon: (code: string) => void;\n  clearCart: () => void;\n  // Computed (getter-style)\n  getTotal: () => number;\n  getItemCount: () => number;\n}\n\nexport const useCartStore = create<CartStore>()(\n  devtools(\n    persist(\n      immer((set, get) => ({\n        items: [],\n        coupon: null,\n\n        addItem: (product) =>\n          set((state) => {\n            const existing = state.items.find((i) => i.id === product.id);\n            if (existing) {\n              existing.quantity += 1;\n            } else {\n              state.items.push({ ...product, quantity: 1 });\n            }\n          }),\n\n        removeItem: (id) =>\n          set((state) => {\n            state.items = state.items.filter((i) => i.id !== id);\n          }),\n\n        updateQuantity: (id, quantity) =>\n          set((state) => {\n            const item = state.items.find((i) => i.id === id);\n            if (item) {\n              if (quantity <= 0) {\n                state.items = state.items.filter((i) => i.id !== id);\n              } else {\n                item.quantity = quantity;\n              }\n            }\n          }),\n\n        applyCoupon: (code) => set({ coupon: code }),\n\n        clearCart: () => set({ items: [], coupon: null }),\n\n        getTotal: () => {\n          const { items } = get();\n          return items.reduce((sum, item) => sum + item.price * item.quantity, 0);\n        },\n\n        getItemCount: () => {\n          const { items } = get();\n          return items.reduce((sum, item) => sum + item.quantity, 0);\n        },\n      })),\n      {\n        name: 'cart-storage',\n        partialize: (state) => ({ items: state.items, coupon: state.coupon }),\n      }\n    ),\n    { name: 'CartStore' }\n  )\n);\n\n// Usage in components — subscribe to specific slices\nfunction CartBadge() {\n  const itemCount = useCartStore((state) => state.getItemCount());\n  return <span className=\"badge\">{itemCount}</span>;\n}\n\nfunction CartTotal() {\n  const total = useCartStore((state) => state.getTotal());\n  const coupon = useCartStore((state) => state.coupon);\n  return (\n    <div>\n      <span>${total.toFixed(2)}</span>\n      {coupon && <span className=\"coupon\">Coupon: {coupon}</span>}\n    </div>\n  );\n}\n\nfunction AddToCartButton({ product }: { product: Product }) {\n  // Only subscribes to addItem — won't re-render when items change\n  const addItem = useCartStore((state) => state.addItem);\n  return <button onClick={() => addItem(product)}>Add to Cart</button>;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { create } from 'zustand';\nimport { StateCreator } from 'zustand';\n\n// Slice pattern for large stores\ninterface AuthSlice {\n  user: User | null;\n  token: string | null;\n  isLoading: boolean;\n  login: (credentials: Credentials) => Promise<void>;\n  logout: () => void;\n  refreshToken: () => Promise<void>;\n}\n\ninterface NotificationSlice {\n  notifications: Notification[];\n  unreadCount: number;\n  addNotification: (notification: Notification) => void;\n  markAsRead: (id: string) => void;\n  clearAll: () => void;\n}\n\n// Each slice is defined independently\nconst createAuthSlice: StateCreator<\n  AuthSlice & NotificationSlice,\n  [['zustand/immer', never]],\n  [],\n  AuthSlice\n> = (set, get) => ({\n  user: null,\n  token: null,\n  isLoading: false,\n\n  login: async (credentials) => {\n    set({ isLoading: true });\n    try {\n      const response = await fetch('/api/auth/login', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(credentials),\n      });\n\n      if (!response.ok) throw new Error('Login failed');\n\n      const { user, token } = await response.json();\n      set({ user, token, isLoading: false });\n\n      // Cross-slice communication\n      get().addNotification({\n        id: crypto.randomUUID(),\n        message: `Welcome back, ${user.name}!`,\n        type: 'success',\n        read: false,\n        createdAt: new Date().toISOString(),\n      });\n    } catch (error) {\n      set({ isLoading: false });\n      throw error;\n    }\n  },\n\n  logout: () => {\n    set({ user: null, token: null });\n  },\n\n  refreshToken: async () => {\n    const { token } = get();\n    if (!token) return;\n\n    const response = await fetch('/api/auth/refresh', {\n      headers: { Authorization: `Bearer ${token}` },\n    });\n\n    if (response.ok) {\n      const { token: newToken } = await response.json();\n      set({ token: newToken });\n    } else {\n      get().logout();\n    }\n  },\n});\n\nconst createNotificationSlice: StateCreator<\n  AuthSlice & NotificationSlice,\n  [['zustand/immer', never]],\n  [],\n  NotificationSlice\n> = (set) => ({\n  notifications: [],\n  unreadCount: 0,\n\n  addNotification: (notification) =>\n    set((state) => {\n      state.notifications.unshift(notification);\n      state.unreadCount += 1;\n    }),\n\n  markAsRead: (id) =>\n    set((state) => {\n      const notification = state.notifications.find((n) => n.id === id);\n      if (notification && !notification.read) {\n        notification.read = true;\n        state.unreadCount -= 1;\n      }\n    }),\n\n  clearAll: () => set({ notifications: [], unreadCount: 0 }),\n});\n\n// Combine slices\nexport const useAppStore = create<AuthSlice & NotificationSlice>()(\n  immer((...args) => ({\n    ...createAuthSlice(...args),\n    ...createNotificationSlice(...args),\n  }))\n);",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';\nimport { atomWithStorage, atomWithQuery } from 'jotai/utils';\nimport { focusAtom } from 'jotai-optics';\n\n// Primitive atoms — independent pieces of state\nconst countAtom = atom(0);\nconst darkModeAtom = atomWithStorage('darkMode', false);\nconst searchQueryAtom = atom('');\n\n// Derived atom — computed from other atoms (read-only)\nconst doubleCountAtom = atom((get) => get(countAtom) * 2);\n\n// Writable derived atom — custom setter logic\nconst countWithMaxAtom = atom(\n  (get) => get(countAtom),\n  (get, set, newValue: number) => {\n    set(countAtom, Math.min(newValue, 100));  // Cap at 100\n  }\n);\n\n// Async atom — fetches data based on other atoms\nconst userAtom = atom<User | null>(null);\n\nconst userProfileAtom = atom(async (get) => {\n  const user = get(userAtom);\n  if (!user) return null;\n\n  const response = await fetch(`/api/users/${user.id}/profile`);\n  return response.json();\n});\n\n// Atom family — parameterized atoms for collections\nimport { atomFamily } from 'jotai/utils';\n\nconst todoAtomFamily = atomFamily((id: string) =>\n  atom<Todo>({ id, text: '', completed: false })\n);\n\nconst todoIdsAtom = atom<string[]>([]);\n\n// Derived atom combining family members\nconst completedTodosAtom = atom((get) => {\n  const ids = get(todoIdsAtom);\n  return ids\n    .map((id) => get(todoAtomFamily(id)))\n    .filter((todo) => todo.completed);\n});\n\n// Usage in components\nfunction TodoItem({ id }: { id: string }) {\n  const [todo, setTodo] = useAtom(todoAtomFamily(id));\n\n  const toggle = () => {\n    setTodo((prev) => ({ ...prev, completed: !prev.completed }));\n  };\n\n  return (\n    <li>\n      <input type=\"checkbox\" checked={todo.completed} onChange={toggle} />\n      <span>{todo.text}</span>\n    </li>\n  );\n}\n\nfunction TodoStats() {\n  // Only re-renders when completed todos change\n  const completedTodos = useAtomValue(completedTodosAtom);\n  return <p>{completedTodos.length} completed</p>;\n}\n\nfunction DarkModeToggle() {\n  const [darkMode, setDarkMode] = useAtom(darkModeAtom);\n  return (\n    <button onClick={() => setDarkMode(!darkMode)}>\n      {darkMode ? '☀️' : '🌙'}\n    </button>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { proxy, useSnapshot, subscribe, ref } from 'valtio';\nimport { derive } from 'valtio/utils';\nimport { devtools } from 'valtio/utils';\n\n// State is a plain mutable object wrapped in a proxy\ninterface AppState {\n  user: User | null;\n  cart: {\n    items: CartItem[];\n    isOpen: boolean;\n  };\n  theme: 'light' | 'dark';\n}\n\nexport const state = proxy<AppState>({\n  user: null,\n  cart: {\n    items: [],\n    isOpen: false,\n  },\n  theme: 'light',\n});\n\n// Enable Redux DevTools\ndevtools(state, { name: 'AppState' });\n\n// Actions — just mutate the proxy directly\nexport const actions = {\n  login: async (credentials: Credentials) => {\n    const response = await fetch('/api/auth/login', {\n      method: 'POST',\n      body: JSON.stringify(credentials),\n    });\n    const user = await response.json();\n    state.user = user;  // Direct mutation triggers re-renders\n  },\n\n  logout: () => {\n    state.user = null;\n    state.cart.items = [];\n  },\n\n  addToCart: (product: Product) => {\n    const existing = state.cart.items.find((i) => i.productId === product.id);\n    if (existing) {\n      existing.quantity += 1;  // Nested mutation works\n    } else {\n      state.cart.items.push({\n        id: crypto.randomUUID(),\n        productId: product.id,\n        name: product.name,\n        price: product.price,\n        quantity: 1,\n      });\n    }\n  },\n\n  removeFromCart: (id: string) => {\n    const index = state.cart.items.findIndex((i) => i.id === id);\n    if (index !== -1) {\n      state.cart.items.splice(index, 1);\n    }\n  },\n\n  toggleTheme: () => {\n    state.theme = state.theme === 'light' ? 'dark' : 'light';\n  },\n\n  toggleCart: () => {\n    state.cart.isOpen = !state.cart.isOpen;\n  },\n};\n\n// Derived state — automatically recomputes when dependencies change\nconst derived = derive({\n  cartTotal: (get) =>\n    get(state.cart).items.reduce((sum, item) => sum + item.price * item.quantity, 0),\n  cartItemCount: (get) =>\n    get(state.cart).items.reduce((sum, item) => sum + item.quantity, 0),\n  isAuthenticated: (get) => get(state).user !== null,\n});\n\n// Subscribe to changes outside React\nsubscribe(state.cart, () => {\n  // Persist cart to localStorage on every change\n  localStorage.setItem('cart', JSON.stringify(state.cart.items));\n});\n\n// Usage in components — useSnapshot creates a reactive read-only view\nfunction CartIcon() {\n  const snap = useSnapshot(state);\n  const derivedSnap = useSnapshot(derived);\n\n  return (\n    <button onClick={actions.toggleCart}>\n      🛒 {derivedSnap.cartItemCount}\n    </button>\n  );\n}\n\nfunction CartPanel() {\n  const snap = useSnapshot(state);\n\n  if (!snap.cart.isOpen) return null;\n\n  return (\n    <div className=\"cart-panel\">\n      {snap.cart.items.map((item) => (\n        <div key={item.id}>\n          <span>{item.name} × {item.quantity}</span>\n          <button onClick={() => actions.removeFromCart(item.id)}>Remove</button>\n        </div>\n      ))}\n    </div>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { act, renderHook } from '@testing-library/react';\nimport { useCartStore } from '../stores/cartStore';\n\n// Reset store between tests\nbeforeEach(() => {\n  useCartStore.setState({\n    items: [],\n    coupon: null,\n  });\n});\n\ndescribe('CartStore', () => {\n  it('adds item to empty cart', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n    });\n\n    expect(result.current.items).toHaveLength(1);\n    expect(result.current.items[0]).toMatchObject({\n      id: 'p1',\n      name: 'Widget',\n      price: 29.99,\n      quantity: 1,\n    });\n  });\n\n  it('increments quantity for existing item', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 29.99 });\n    });\n\n    expect(result.current.items).toHaveLength(1);\n    expect(result.current.items[0].quantity).toBe(2);\n  });\n\n  it('computes total correctly', () => {\n    const { result } = renderHook(() => useCartStore());\n\n    act(() => {\n      result.current.addItem({ id: 'p1', name: 'Widget', price: 10 });\n      result.current.addItem({ id: 'p2', name: 'Gadget', price: 20 });\n      result.current.updateQuantity('p1', 3);\n    });\n\n    expect(result.current.getTotal()).toBe(50);  // (10 * 3) + (20 * 1)\n  });\n\n  // Testing outside React (vanilla)\n  it('works without React hooks', () => {\n    const { getState, setState } = useCartStore;\n\n    setState({ items: [{ id: 'p1', name: 'Test', price: 5, quantity: 2 }] });\n\n    expect(getState().items).toHaveLength(1);\n    expect(getState().getTotal()).toBe(10);\n  });\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/zustand.md",
+    "wordCount": 1824,
+    "sectionCount": 14
+  }
+}

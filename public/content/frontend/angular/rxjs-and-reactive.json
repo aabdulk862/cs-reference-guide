@@ -1,0 +1,374 @@
+{
+  "id": "angular-rxjs-reactive-patterns-in-angular",
+  "slug": "rxjs-and-reactive",
+  "title": "RxJS & Reactive Patterns in Angular",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "RxJS Observables are the foundation of Angular's async architecture — HttpClient, Router events, Reactive Forms, and component communication all return Observables",
+            "The async pipe subscribes to Observables in templates, automatically unsubscribes on component destruction, and triggers change detection on new values",
+            "switchMap cancels the previous inner Observable when a new outer value arrives — essential for typeahead search, route parameter changes, and form autocomplete",
+            "mergeMap (flatMap) processes all inner Observables concurrently without cancellation — use for fire-and-forget operations like analytics events or parallel API calls",
+            "concatMap queues inner Observables sequentially, waiting for each to complete before starting the next — use for ordered operations like sequential file uploads",
+            "combineLatest emits when any source Observable emits, combining the latest values from all sources — use for derived state that depends on multiple async inputs",
+            "BehaviorSubject holds a current value and emits it immediately to new subscribers — the backbone of service-based state management in Angular",
+            "shareReplay(1) multicasts an Observable and replays the last emission to late subscribers — prevents duplicate HTTP requests when multiple components subscribe",
+            "takeUntilDestroyed() (Angular 16+) automatically completes Observables when the injection context is destroyed, replacing manual takeUntil + destroy$ patterns",
+            "The distinctUntilChanged operator prevents downstream processing when values haven't actually changed — critical for performance in reactive chains"
+          ]
+        }
+      ],
+      "wordCount": 211,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "RxJS mastery separates competent Angular developers from expert ones. Deep reactive knowledge is essential when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building real-time applications (chat, dashboards, collaborative editing) where WebSocket streams, server-sent events, and polling intervals must be composed, throttled, and error-handled without memory leaks",
+            "Implementing complex search interfaces with typeahead, debouncing, cancellation of stale requests, and caching of recent results — all achievable in a single Observable pipeline",
+            "Managing component state that derives from multiple async sources (route parameters + user preferences + API data) where combineLatest or withLatestFrom elegantly express the dependency relationships",
+            "Optimizing performance by controlling when and how often expensive operations execute using debounceTime, throttleTime, distinctUntilChanged, and auditTime",
+            "Handling error recovery gracefully — retrying failed HTTP requests with exponential backoff, falling back to cached data, or showing degraded UI without crashing the entire Observable chain",
+            "Coordinating complex async workflows like multi-step wizards, optimistic updates with rollback, or parallel data loading with progress tracking"
+          ]
+        }
+      ],
+      "wordCount": 151,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "typeahead-search-with-switchmap-and-debouncing",
+          "heading": "Typeahead Search with switchMap and Debouncing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, inject, DestroyRef } from '@angular/core';\nimport { FormControl, ReactiveFormsModule } from '@angular/forms';\nimport { takeUntilDestroyed } from '@angular/core/rxjs-interop';\nimport { Observable, of } from 'rxjs';\nimport {\n  debounceTime, distinctUntilChanged, switchMap,\n  catchError, filter, tap, startWith\n} from 'rxjs/operators';\n\ninterface SearchResult {\n  id: string;\n  title: string;\n  category: string;\n  relevanceScore: number;\n}\n\ninterface SearchState {\n  results: SearchResult[];\n  loading: boolean;\n  error: string | null;\n  query: string;\n}\n\n@Component({\n  selector: 'app-search',\n  standalone: true,\n  imports: [ReactiveFormsModule, AsyncPipe, NgFor, NgIf],\n  template: `\n    <input [formControl]=\"searchControl\" placeholder=\"Search...\">\n    <div *ngIf=\"state$ | async as state\">\n      <div *ngIf=\"state.loading\" class=\"spinner\">Searching...</div>\n      <div *ngIf=\"state.error\" class=\"error\">{{ state.error }}</div>\n      <ul *ngIf=\"state.results.length > 0\">\n        <li *ngFor=\"let result of state.results\">\n          {{ result.title }} ({{ result.category }})\n        </li>\n      </ul>\n      <p *ngIf=\"!state.loading && !state.error && state.results.length === 0 && state.query\">\n        No results for \"{{ state.query }}\"\n      </p>\n    </div>\n  `\n})\nexport class SearchComponent {\n  private searchService = inject(SearchService);\n  private destroyRef = inject(DestroyRef);\n\n  searchControl = new FormControl('');\n\n  state$: Observable<SearchState> = this.searchControl.valueChanges.pipe(\n    startWith(''),\n    debounceTime(300),\n    distinctUntilChanged(),\n    switchMap(query => {\n      if (!query || query.trim().length < 2) {\n        return of({ results: [], loading: false, error: null, query: query || '' });\n      }\n      return this.searchService.search(query).pipe(\n        map(results => ({ results, loading: false, error: null, query })),\n        startWith({ results: [], loading: true, error: null, query }),\n        catchError(err => of({\n          results: [],\n          loading: false,\n          error: 'Search failed. Please try again.',\n          query\n        }))\n      );\n    }),\n    takeUntilDestroyed(this.destroyRef)\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "combinelatest-for-derived-state",
+          "heading": "combineLatest for Derived State",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Injectable, inject } from '@angular/core';\nimport { ActivatedRoute } from '@angular/router';\nimport { BehaviorSubject, Observable, combineLatest } from 'rxjs';\nimport { map, switchMap, distinctUntilChanged, shareReplay, filter } from 'rxjs/operators';\n\ninterface ProductFilter {\n  category: string | null;\n  priceRange: [number, number];\n  inStock: boolean;\n  sortBy: 'price' | 'name' | 'rating';\n  sortOrder: 'asc' | 'desc';\n}\n\ninterface ProductListState {\n  products: Product[];\n  filteredProducts: Product[];\n  totalCount: number;\n  appliedFilters: ProductFilter;\n  loading: boolean;\n}\n\n@Injectable({ providedIn: 'root' })\nexport class ProductListService {\n  private http = inject(HttpClient);\n\n  private filters$ = new BehaviorSubject<ProductFilter>({\n    category: null,\n    priceRange: [0, 10000],\n    inStock: false,\n    sortBy: 'name',\n    sortOrder: 'asc'\n  });\n\n  private products$ = new BehaviorSubject<Product[]>([]);\n  private loading$ = new BehaviorSubject<boolean>(false);\n\n  // Derived state: filtered and sorted products\n  readonly filteredProducts$: Observable<Product[]> = combineLatest([\n    this.products$,\n    this.filters$\n  ]).pipe(\n    map(([products, filters]) => this.applyFilters(products, filters)),\n    distinctUntilChanged((prev, curr) =>\n      JSON.stringify(prev) === JSON.stringify(curr)\n    ),\n    shareReplay(1)\n  );\n\n  // Complete view model combining all state\n  readonly viewModel$: Observable<ProductListState> = combineLatest([\n    this.products$,\n    this.filteredProducts$,\n    this.filters$,\n    this.loading$\n  ]).pipe(\n    map(([products, filtered, filters, loading]) => ({\n      products,\n      filteredProducts: filtered,\n      totalCount: products.length,\n      appliedFilters: filters,\n      loading\n    })),\n    shareReplay(1)\n  );\n\n  loadProducts(categorySlug?: string): void {\n    this.loading$.next(true);\n    const url = categorySlug\n      ? `/api/products?category=${categorySlug}`\n      : '/api/products';\n\n    this.http.get<Product[]>(url).pipe(\n      catchError(err => {\n        console.error('Failed to load products', err);\n        return of([]);\n      }),\n      finalize(() => this.loading$.next(false))\n    ).subscribe(products => this.products$.next(products));\n  }\n\n  updateFilter(partial: Partial<ProductFilter>): void {\n    this.filters$.next({ ...this.filters$.value, ...partial });\n  }\n\n  private applyFilters(products: Product[], filters: ProductFilter): Product[] {\n    let result = [...products];\n\n    if (filters.category) {\n      result = result.filter(p => p.category === filters.category);\n    }\n    if (filters.inStock) {\n      result = result.filter(p => p.stockCount > 0);\n    }\n    result = result.filter(p =>\n      p.price >= filters.priceRange[0] && p.price <= filters.priceRange[1]\n    );\n\n    result.sort((a, b) => {\n      const modifier = filters.sortOrder === 'asc' ? 1 : -1;\n      if (filters.sortBy === 'price') return (a.price - b.price) * modifier;\n      if (filters.sortBy === 'rating') return (a.rating - b.rating) * modifier;\n      return a.name.localeCompare(b.name) * modifier;\n    });\n\n    return result;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "error-handling-and-retry-strategies",
+          "heading": "Error Handling and Retry Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Injectable, inject } from '@angular/core';\nimport { HttpClient, HttpErrorResponse } from '@angular/common/http';\nimport { Observable, throwError, timer, of, EMPTY } from 'rxjs';\nimport {\n  retry, retryWhen, catchError, switchMap, tap,\n  delay, take, concatMap, shareReplay, timeout\n} from 'rxjs/operators';\n\n@Injectable({ providedIn: 'root' })\nexport class ResilientApiService {\n  private http = inject(HttpClient);\n  private notificationService = inject(NotificationService);\n\n  // Exponential backoff retry with jitter\n  getWithRetry<T>(url: string, maxRetries = 3): Observable<T> {\n    return this.http.get<T>(url).pipe(\n      timeout(10000), // 10 second timeout per attempt\n      retry({\n        count: maxRetries,\n        delay: (error: HttpErrorResponse, retryCount: number) => {\n          // Don't retry client errors (4xx) except 429 (rate limited)\n          if (error.status >= 400 && error.status < 500 && error.status !== 429) {\n            return throwError(() => error);\n          }\n\n          // Exponential backoff with jitter\n          const baseDelay = Math.pow(2, retryCount) * 1000;\n          const jitter = Math.random() * 1000;\n          const totalDelay = baseDelay + jitter;\n\n          console.warn(\n            `Retry ${retryCount}/${maxRetries} for ${url} in ${totalDelay}ms`\n          );\n          return timer(totalDelay);\n        }\n      }),\n      catchError((error: HttpErrorResponse) => {\n        return this.handleError(error, url);\n      })\n    );\n  }\n\n  // Polling with backoff on errors\n  poll<T>(url: string, intervalMs: number): Observable<T> {\n    return timer(0, intervalMs).pipe(\n      switchMap(() => this.http.get<T>(url).pipe(\n        catchError(err => {\n          console.warn(`Poll failed for ${url}:`, err.message);\n          return EMPTY; // Skip this interval, try again next time\n        })\n      )),\n      distinctUntilChanged((prev, curr) =>\n        JSON.stringify(prev) === JSON.stringify(curr)\n      ),\n      shareReplay(1)\n    );\n  }\n\n  // Optimistic update with rollback\n  optimisticUpdate<T>(\n    currentValue: T,\n    optimisticValue: T,\n    apiCall$: Observable<T>,\n    onRollback: (original: T) => void\n  ): Observable<T> {\n    return apiCall$.pipe(\n      catchError(error => {\n        this.notificationService.error('Update failed, reverting changes');\n        onRollback(currentValue);\n        return throwError(() => error);\n      })\n    );\n  }\n\n  private handleError(error: HttpErrorResponse, url: string): Observable<never> {\n    let message: string;\n\n    if (error.status === 0) {\n      message = 'Network error — please check your connection';\n    } else if (error.status === 401) {\n      message = 'Session expired — please log in again';\n    } else if (error.status === 403) {\n      message = 'You do not have permission to access this resource';\n    } else if (error.status === 404) {\n      message = 'The requested resource was not found';\n    } else if (error.status === 429) {\n      message = 'Too many requests — please wait and try again';\n    } else if (error.status >= 500) {\n      message = 'Server error — our team has been notified';\n    } else {\n      message = `Unexpected error: ${error.message}`;\n    }\n\n    this.notificationService.error(message);\n    return throwError(() => new Error(message));\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "subjects-when-and-how-to-use-each-type",
+          "heading": "Subjects — When and How to Use Each Type",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Injectable } from '@angular/core';\nimport {\n  Subject, BehaviorSubject, ReplaySubject, AsyncSubject\n} from 'rxjs';\nimport { scan, distinctUntilChanged, map } from 'rxjs/operators';\n\n// Subject — no initial value, only emits to current subscribers\n// Use for: event buses, action dispatchers, one-time notifications\n@Injectable({ providedIn: 'root' })\nexport class EventBusService {\n  private events$ = new Subject<AppEvent>();\n\n  emit(event: AppEvent): void {\n    this.events$.next(event);\n  }\n\n  on<T extends AppEvent>(eventType: string): Observable<T> {\n    return this.events$.pipe(\n      filter((event): event is T => event.type === eventType)\n    );\n  }\n}\n\n// BehaviorSubject — requires initial value, emits current value to new subscribers\n// Use for: state containers, current user, active theme, connection status\n@Injectable({ providedIn: 'root' })\nexport class ConnectionStatusService {\n  private status$ = new BehaviorSubject<'online' | 'offline' | 'reconnecting'>('online');\n\n  readonly isOnline$ = this.status$.pipe(\n    map(s => s === 'online'),\n    distinctUntilChanged()\n  );\n\n  constructor() {\n    window.addEventListener('online', () => this.status$.next('online'));\n    window.addEventListener('offline', () => this.status$.next('offline'));\n  }\n\n  getCurrentStatus(): 'online' | 'offline' | 'reconnecting' {\n    return this.status$.value;\n  }\n}\n\n// ReplaySubject — replays N previous emissions to new subscribers\n// Use for: message history, audit logs, recent notifications\n@Injectable({ providedIn: 'root' })\nexport class NotificationHistoryService {\n  // Replay last 50 notifications to new subscribers\n  private notifications$ = new ReplaySubject<Notification>(50);\n\n  private unreadCount$ = this.notifications$.pipe(\n    scan((count, notification) => notification.read ? count - 1 : count + 1, 0)\n  );\n\n  push(notification: Notification): void {\n    this.notifications$.next(notification);\n  }\n\n  getHistory(): Observable<Notification> {\n    return this.notifications$.asObservable();\n  }\n}\n\n// AsyncSubject — emits only the LAST value, only on completion\n// Use for: one-time async initialization, configuration loading\n@Injectable({ providedIn: 'root' })\nexport class AppInitService {\n  private config$ = new AsyncSubject<RemoteConfig>();\n\n  initialize(): void {\n    this.http.get<RemoteConfig>('/api/config').subscribe({\n      next: config => {\n        this.config$.next(config);\n        this.config$.complete(); // Triggers emission to all subscribers\n      },\n      error: err => this.config$.error(err)\n    });\n  }\n\n  getConfig(): Observable<RemoteConfig> {\n    return this.config$.asObservable(); // Late subscribers get the config too\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "real-time-websocket-with-reconnection",
+          "heading": "Real-Time WebSocket with Reconnection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Injectable, inject } from '@angular/core';\nimport { webSocket, WebSocketSubject } from 'rxjs/webSocket';\nimport { Observable, timer, EMPTY, Subject } from 'rxjs';\nimport {\n  retryWhen, delay, tap, switchMap, catchError,\n  takeUntil, share, map, filter, distinctUntilChanged\n} from 'rxjs/operators';\n\ninterface WebSocketMessage<T = unknown> {\n  type: string;\n  payload: T;\n  timestamp: number;\n  correlationId?: string;\n}\n\n@Injectable({ providedIn: 'root' })\nexport class WebSocketService {\n  private socket$: WebSocketSubject<WebSocketMessage> | null = null;\n  private reconnectAttempts = 0;\n  private maxReconnectAttempts = 10;\n  private destroy$ = new Subject<void>();\n\n  private messages$: Observable<WebSocketMessage> | null = null;\n\n  connect(url: string): Observable<WebSocketMessage> {\n    if (!this.messages$) {\n      this.socket$ = webSocket<WebSocketMessage>({\n        url,\n        openObserver: {\n          next: () => {\n            console.log('WebSocket connected');\n            this.reconnectAttempts = 0;\n          }\n        },\n        closeObserver: {\n          next: (event) => {\n            console.log('WebSocket closed', event.code, event.reason);\n            this.socket$ = null;\n            this.messages$ = null;\n          }\n        }\n      });\n\n      this.messages$ = this.socket$.pipe(\n        retryWhen(errors => errors.pipe(\n          tap(err => {\n            this.reconnectAttempts++;\n            console.warn(\n              `WebSocket error, reconnect attempt ${this.reconnectAttempts}`,\n              err\n            );\n          }),\n          switchMap(() => {\n            if (this.reconnectAttempts > this.maxReconnectAttempts) {\n              return throwError(() => new Error('Max reconnection attempts exceeded'));\n            }\n            // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s\n            const delayMs = Math.min(\n              Math.pow(2, this.reconnectAttempts - 1) * 1000,\n              30000\n            );\n            return timer(delayMs);\n          })\n        )),\n        takeUntil(this.destroy$),\n        share() // Multicast to all subscribers\n      );\n    }\n\n    return this.messages$;\n  }\n\n  // Type-safe message filtering\n  on<T>(messageType: string): Observable<T> {\n    if (!this.messages$) {\n      throw new Error('WebSocket not connected. Call connect() first.');\n    }\n    return this.messages$.pipe(\n      filter(msg => msg.type === messageType),\n      map(msg => msg.payload as T),\n      distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))\n    );\n  }\n\n  send<T>(type: string, payload: T): void {\n    if (this.socket$) {\n      this.socket$.next({\n        type,\n        payload,\n        timestamp: Date.now(),\n        correlationId: crypto.randomUUID()\n      });\n    }\n  }\n\n  disconnect(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n    this.socket$?.complete();\n    this.socket$ = null;\n    this.messages$ = null;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "higher-order-mapping-operators-comparison",
+          "heading": "Higher-Order Mapping Operators Comparison",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, inject } from '@angular/core';\nimport { FormControl } from '@angular/forms';\nimport { Observable, from, of, interval, Subject } from 'rxjs';\nimport {\n  switchMap, mergeMap, concatMap, exhaustMap,\n  take, delay, tap, map\n} from 'rxjs/operators';\n\n@Component({ selector: 'app-operator-demo', template: '' })\nexport class OperatorDemoComponent {\n  private http = inject(HttpClient);\n\n  // switchMap — CANCELS previous, only latest matters\n  // Use case: search autocomplete, route parameter changes\n  searchResults$ = this.searchInput.valueChanges.pipe(\n    debounceTime(300),\n    switchMap(query => this.http.get<Result[]>(`/api/search?q=${query}`))\n    // If user types \"ang\" then \"angular\", the request for \"ang\" is cancelled\n  );\n\n  // mergeMap — CONCURRENT, all execute in parallel\n  // Use case: analytics events, notifications, independent operations\n  saveAllItems(items: Item[]): Observable<SaveResult[]> {\n    return from(items).pipe(\n      mergeMap(\n        item => this.http.post<SaveResult>('/api/items', item),\n        5 // concurrency limit: max 5 parallel requests\n      ),\n      toArray()\n    );\n  }\n\n  // concatMap — SEQUENTIAL, waits for each to complete\n  // Use case: ordered operations, sequential file uploads, queue processing\n  uploadFiles(files: File[]): Observable<UploadResult> {\n    return from(files).pipe(\n      concatMap((file, index) => {\n        const formData = new FormData();\n        formData.append('file', file);\n        return this.http.post<UploadResult>('/api/upload', formData).pipe(\n          tap(result => console.log(`Uploaded ${index + 1}/${files.length}`))\n        );\n      })\n    );\n  }\n\n  // exhaustMap — IGNORES new emissions while current is active\n  // Use case: form submission (prevent double-submit), login buttons\n  private submitAction$ = new Subject<FormData>();\n  submitResult$ = this.submitAction$.pipe(\n    exhaustMap(formData =>\n      this.http.post<SubmitResult>('/api/submit', formData).pipe(\n        catchError(err => of({ success: false, error: err.message }))\n      )\n    )\n    // Rapid clicks only trigger ONE request, subsequent clicks ignored\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Higher-Order Mapping Operators\"\n        direction LR\n        A[Source Observable<br/>emits: A, B, C] --> SW[switchMap]\n        A --> MM[mergeMap]\n        A --> CM[concatMap]\n        A --> EM[exhaustMap]\n\n        SW --> SW_R[Only C's result<br/>A, B cancelled]\n        MM --> MM_R[All results<br/>A, B, C parallel]\n        CM --> CM_R[All results<br/>A then B then C]\n        EM --> EM_R[Only A's result<br/>B, C ignored]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant U as User Input\n    participant D as debounceTime(300)\n    participant S as switchMap\n    participant API as Search API\n    participant T as Template (async pipe)\n\n    U->>D: \"a\" typed\n    U->>D: \"an\" typed (within 300ms)\n    U->>D: \"ang\" typed (within 300ms)\n    D->>S: \"ang\" (after 300ms quiet)\n    S->>API: GET /search?q=ang\n    U->>D: \"angu\" typed\n    D->>S: \"angu\" (after 300ms quiet)\n    S--xAPI: Cancel \"ang\" request\n    S->>API: GET /search?q=angu\n    API-->>S: Results for \"angu\"\n    S-->>T: Emit results\n    T->>T: Re-render list"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Observable Lifecycle & Memory Management\"\n        A[Component Created] --> B[Subscribe to Observable]\n        B --> C{Subscription Active}\n        C -->|Values arrive| D[Process & Render]\n        D --> C\n        C -->|Component Destroyed| E[Unsubscribe]\n        E --> F[Resources Released]\n\n        G[async pipe] --> H[Auto-subscribe on init]\n        H --> I[Auto-unsubscribe on destroy]\n\n        J[takeUntilDestroyed] --> K[Completes Observable<br/>on injection context destroy]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Subject Types\"\n        S[Subject] -->|No initial value<br/>No replay| S1[Late subscribers<br/>miss past values]\n        BS[BehaviorSubject] -->|Has initial value<br/>Replays current| BS1[New subscribers<br/>get latest immediately]\n        RS[ReplaySubject N] -->|No initial value<br/>Replays last N| RS1[New subscribers<br/>get N past values]\n        AS[AsyncSubject] -->|Emits only last<br/>Only on complete| AS1[All subscribers<br/>get final value]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Subscribing in components without unsubscribing — the #1 source of memory leaks in Angular. Every subscribe() call creates a subscription that lives until explicitly unsubscribed or the Observable completes. Components that subscribe in ngOnInit without cleaning up in ngOnDestroy leak memory, continue processing events after navigation, and can cause \"expression changed after checked\" errors. Solutions: use the async pipe (auto-unsubscribes), takeUntilDestroyed() (Angular 16+), or maintain a destroy$ Subject with takeUntil. The async pipe is preferred because it also handles change detection correctly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using subscribe() inside subscribe() — nested subscriptions. This anti-pattern creates unmanageable code, loses error propagation, and makes cleanup nearly impossible. Instead of subscribing to get a value and then subscribing to another Observable with that value, use higher-order mapping operators (switchMap, mergeMap, concatMap). These operators flatten nested Observables into a single stream, maintain proper error handling, and allow the entire chain to be managed with a single subscription."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choosing the wrong flattening operator. Using mergeMap for search autocomplete means stale results can arrive after newer results (race condition). Using switchMap for save operations means rapid saves cancel previous ones, potentially losing data. Using concatMap for real-time updates means a slow response blocks all subsequent updates. Match the operator to the semantics: switchMap for \"only latest matters,\" mergeMap for \"all are independent,\" concatMap for \"order matters,\" exhaustMap for \"ignore while busy.\""
+        },
+        {
+          "type": "paragraph",
+          "text": "Not sharing expensive Observables — duplicate HTTP requests. When multiple components subscribe to the same HttpClient Observable, each subscription triggers a separate HTTP request. Use shareReplay(1) to multicast the result and replay it to late subscribers. But beware: shareReplay without refCount: true keeps the subscription alive even after all subscribers unsubscribe. Use shareReplay({ bufferSize: 1, refCount: true }) for Observables that should clean up when no longer needed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring error handling in Observable chains. An unhandled error in an Observable chain terminates the entire stream permanently. For long-lived Observables (WebSocket connections, polling intervals, form value changes), an error kills the stream and no further values are processed. Always include catchError that returns a recovery Observable (like EMPTY or a default value) to keep the stream alive. Place catchError inside the switchMap/mergeMap inner Observable, not on the outer stream, to prevent the outer stream from dying."
+        },
+        {
+          "type": "paragraph",
+          "text": "Overusing BehaviorSubject when a simple Observable would suffice. Not every piece of reactive state needs a BehaviorSubject. If consumers don't need the \"current value\" synchronously (via .value) and don't need late subscribers to receive the last emission, a regular Subject or even a derived Observable is simpler. BehaviorSubjects require an initial value, which sometimes leads to awkward null initial states that every consumer must handle. Consider whether ReplaySubject(1) (no required initial value but still replays) better fits your use case."
+        },
+        {
+          "type": "paragraph",
+          "text": "Creating hot Observables unintentionally with shareReplay in services. A service method that returns this.http.get(...).pipe(shareReplay(1)) creates a cached Observable that never re-fetches. This is intentional for configuration but problematic for data that changes. Consumers calling the method expect fresh data but get stale cached results. Either expose the shared Observable as a class property (making the caching explicit) or don't share at all and let consumers manage their own caching needs."
+        }
+      ],
+      "wordCount": 517,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Real-Time Trading Dashboard with Multiple Data Streams. A financial trading platform combines WebSocket price feeds, order book updates, portfolio positions, and market news into a unified dashboard. Each data stream is an Observable managed by a dedicated service. The dashboard component uses combineLatest to merge the latest price with the user's position to calculate real-time P&L. throttleTime(100) prevents UI thrashing from high-frequency price updates (ticking 10+ times per second). distinctUntilChanged with a custom comparator skips re-renders when price changes are below the display precision. Error handling per stream ensures that a WebSocket disconnection on one feed doesn't crash the entire dashboard — degraded data shows with a staleness indicator."
+        },
+        {
+          "type": "paragraph",
+          "text": "Collaborative Document Editor with Conflict Resolution. A collaborative editing application uses Observables to manage local changes, remote changes from other users, and conflict resolution. Local keystrokes are captured as a Subject, debounced, and sent to the server via WebSocket. Incoming remote changes are merged with local state using combineLatest and a CRDT (Conflict-free Replicated Data Type) resolver. concatMap ensures that operations are applied in order. bufferTime(50) batches rapid local edits into single operations to reduce network traffic. The undo/redo stack is implemented as a scan operator that accumulates operations and can replay them in reverse."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Checkout with Parallel Validation. A checkout flow validates the shopping cart, shipping address, payment method, and inventory availability in parallel using forkJoin. If any validation fails, the UI shows specific errors without blocking other validations. timeout(5000) ensures no single validation hangs the checkout indefinitely. After successful validation, concatMap processes the order sequentially: reserve inventory → charge payment → create order → send confirmation. If payment fails after inventory reservation, a compensating transaction (release inventory) executes via catchError with a side effect. The entire flow is a single Observable chain that the component subscribes to once, with loading states derived from intermediate emissions."
+        }
+      ],
+      "wordCount": 307,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between switchMap, mergeMap, concatMap, and exhaustMap. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: These are higher-order mapping operators that handle inner Observable subscriptions differently. switchMap unsubscribes from the previous inner Observable when a new outer value arrives — use for search autocomplete, route changes, or any scenario where only the latest result matters. mergeMap subscribes to all inner Observables concurrently — use for independent parallel operations like saving multiple items or sending analytics events. concatMap queues inner Observables and processes them one at a time in order — use for sequential operations like file uploads or ordered API calls. exhaustMap ignores new outer values while an inner Observable is active — use for preventing double-submission on button clicks or login forms. The key decision factor is: do you want to cancel (switch), run in parallel (merge), queue (concat), or ignore (exhaust)?"
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you prevent memory leaks from Observable subscriptions in Angular components?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Multiple strategies exist, ordered by preference. First, use the async pipe in templates — it automatically subscribes on component init and unsubscribes on destroy, plus it works correctly with OnPush change detection. Second, use takeUntilDestroyed() from @angular/core/rxjs-interop (Angular 16+) which completes the Observable when the injection context is destroyed. Third, for older Angular versions, create a private destroy$ = new Subject<void>(), call this.destroy$.next() in ngOnDestroy, and add .pipe(takeUntil(this.destroy$)) to all subscriptions. Fourth, collect subscriptions in a Subscription object and call unsubscribe() in ngOnDestroy. The async pipe is preferred because it eliminates an entire class of bugs — you can't forget to unsubscribe if you never manually subscribe."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is shareReplay and when should you use it? What are the gotchas?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: shareReplay multicasts an Observable (shares a single subscription among multiple subscribers) and replays the specified number of past emissions to late subscribers. Common use: preventing duplicate HTTP requests when multiple components need the same data. Without sharing, each | async pipe on the same Observable triggers a separate HTTP call. Gotchas: (1) Without refCount: true, the source subscription stays active forever even after all subscribers unsubscribe — this leaks for Observables that never complete. Use shareReplay({ bufferSize: 1, refCount: true }) for cleanup. (2) Shared Observables cache errors too — if the source errors, all future subscribers receive the cached error. Add catchError before shareReplay to handle this. (3) shareReplay makes Observables \"hot\" — the source executes regardless of subscribers after the first subscription, which can be surprising for side-effectful operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement optimistic updates with rollback using RxJS?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Optimistic updates show the result immediately in the UI before the server confirms, then rollback if the server rejects. Implementation: (1) Store the current state before the update. (2) Apply the optimistic change to the UI state immediately (update BehaviorSubject). (3) Send the API request. (4) On success, optionally reconcile with the server response (server may add timestamps, IDs). (5) On error, revert the BehaviorSubject to the stored previous state and show an error notification. In RxJS, this looks like: tap(() => applyOptimistic()) → switchMap(() => apiCall$) → tap(() => reconcile()) with catchError(() => { rollback(); return EMPTY; }). For lists, use immutable updates so rollback is simply reassigning the previous array reference. Consider debouncing rapid optimistic updates and only sending the final state to avoid race conditions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain cold vs hot Observables. How does this affect Angular applications?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Cold Observables create a new producer (data source) for each subscriber — like a function that runs fresh each time. HttpClient returns cold Observables: each subscription makes a new HTTP request. Hot Observables share a single producer among all subscribers — like a live event stream. Subjects are hot: all subscribers receive the same emissions simultaneously. This distinction matters in Angular because: (1) Multiple | async pipes on the same cold Observable (like an HTTP call) trigger multiple requests — use shareReplay to make it hot. (2) Hot Observables (WebSockets, Subjects) emit regardless of subscribers, so late subscribers miss past values unless you use BehaviorSubject or ReplaySubject. (3) Unsubscribing from a cold Observable stops the producer (cancels the HTTP request), but unsubscribing from a hot Observable just removes the listener — the producer continues. Understanding this prevents duplicate requests, missed events, and resource leaks."
+        }
+      ],
+      "wordCount": 708,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use the async pipe as your default subscription strategy and reserve manual subscriptions for side effects only. The async pipe handles subscription lifecycle, works correctly with OnPush change detection (marks the component for check on new values), and eliminates memory leak bugs. When you need to perform side effects (logging, analytics, triggering other actions), subscribe in the component with takeUntilDestroyed() and keep the subscription logic minimal. If you find yourself subscribing to set a component property, refactor to use the async pipe with an Observable property instead. This pattern also makes components easier to test — you can verify the Observable output without rendering the template."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement global error handling for Observable streams using a centralized error service. Create an ErrorHandlerService that categorizes errors (network, auth, validation, server) and routes them to appropriate handlers (retry, redirect to login, show toast, log to monitoring). Inject this service into HTTP interceptors and service-level catchError operators. In production, integrate with error monitoring (Sentry, Datadog) by reporting unhandled Observable errors. Override Angular's ErrorHandler to catch errors that escape Observable chains. Monitor error rates per endpoint and set up alerts for sudden spikes that indicate service degradation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Profile Observable chains in production using custom operators for timing and logging. Create a tapDebug operator that logs emissions, errors, and completions with timestamps in development but becomes a no-op in production builds (tree-shaken via environment flags). For production performance monitoring, create a measureTime operator that records the duration between subscription and first emission, reporting to your APM tool. This helps identify slow Observable chains (complex combineLatest with many sources, expensive map transformations) that degrade user experience. Set performance budgets: search results within 200ms, page data within 500ms, and alert when p95 exceeds thresholds."
+        },
+        {
+          "type": "paragraph",
+          "text": "Design Observable APIs for composability — return Observables, don't subscribe internally. Services should return Observables that consumers subscribe to, rather than subscribing internally and exposing results via callbacks or Subjects. This gives consumers control over timing (when to subscribe), lifecycle (when to unsubscribe), and composition (combining with other Observables). The exception is fire-and-forget operations (analytics, logging) where the service owns the subscription lifecycle. For data-fetching services, expose both a method that returns a fresh Observable and a shared property for cached/live data, letting consumers choose based on their freshness requirements."
+        }
+      ],
+      "wordCount": 376,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Angular Services & Dependency Injection — Services are the primary home for RxJS logic in Angular applications",
+            "Angular Routing & Modules — Router events, route parameter Observables, and resolver patterns",
+            "Angular Components & Templates — async pipe usage, OnPush change detection with Observables",
+            "TypeScript Advanced Types — Generic type constraints for typed Observable utilities",
+            "State Management with Redux — NgRx uses RxJS Effects for side-effect management"
+          ]
+        }
+      ],
+      "wordCount": 66,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { Component, inject, DestroyRef } from '@angular/core';\nimport { FormControl, ReactiveFormsModule } from '@angular/forms';\nimport { takeUntilDestroyed } from '@angular/core/rxjs-interop';\nimport { Observable, of } from 'rxjs';\nimport {\n  debounceTime, distinctUntilChanged, switchMap,\n  catchError, filter, tap, startWith\n} from 'rxjs/operators';\n\ninterface SearchResult {\n  id: string;\n  title: string;\n  category: string;\n  relevanceScore: number;\n}\n\ninterface SearchState {\n  results: SearchResult[];\n  loading: boolean;\n  error: string | null;\n  query: string;\n}\n\n@Component({\n  selector: 'app-search',\n  standalone: true,\n  imports: [ReactiveFormsModule, AsyncPipe, NgFor, NgIf],\n  template: `\n    <input [formControl]=\"searchControl\" placeholder=\"Search...\">\n    <div *ngIf=\"state$ | async as state\">\n      <div *ngIf=\"state.loading\" class=\"spinner\">Searching...</div>\n      <div *ngIf=\"state.error\" class=\"error\">{{ state.error }}</div>\n      <ul *ngIf=\"state.results.length > 0\">\n        <li *ngFor=\"let result of state.results\">\n          {{ result.title }} ({{ result.category }})\n        </li>\n      </ul>\n      <p *ngIf=\"!state.loading && !state.error && state.results.length === 0 && state.query\">\n        No results for \"{{ state.query }}\"\n      </p>\n    </div>\n  `\n})\nexport class SearchComponent {\n  private searchService = inject(SearchService);\n  private destroyRef = inject(DestroyRef);\n\n  searchControl = new FormControl('');\n\n  state$: Observable<SearchState> = this.searchControl.valueChanges.pipe(\n    startWith(''),\n    debounceTime(300),\n    distinctUntilChanged(),\n    switchMap(query => {\n      if (!query || query.trim().length < 2) {\n        return of({ results: [], loading: false, error: null, query: query || '' });\n      }\n      return this.searchService.search(query).pipe(\n        map(results => ({ results, loading: false, error: null, query })),\n        startWith({ results: [], loading: true, error: null, query }),\n        catchError(err => of({\n          results: [],\n          loading: false,\n          error: 'Search failed. Please try again.',\n          query\n        }))\n      );\n    }),\n    takeUntilDestroyed(this.destroyRef)\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Injectable, inject } from '@angular/core';\nimport { ActivatedRoute } from '@angular/router';\nimport { BehaviorSubject, Observable, combineLatest } from 'rxjs';\nimport { map, switchMap, distinctUntilChanged, shareReplay, filter } from 'rxjs/operators';\n\ninterface ProductFilter {\n  category: string | null;\n  priceRange: [number, number];\n  inStock: boolean;\n  sortBy: 'price' | 'name' | 'rating';\n  sortOrder: 'asc' | 'desc';\n}\n\ninterface ProductListState {\n  products: Product[];\n  filteredProducts: Product[];\n  totalCount: number;\n  appliedFilters: ProductFilter;\n  loading: boolean;\n}\n\n@Injectable({ providedIn: 'root' })\nexport class ProductListService {\n  private http = inject(HttpClient);\n\n  private filters$ = new BehaviorSubject<ProductFilter>({\n    category: null,\n    priceRange: [0, 10000],\n    inStock: false,\n    sortBy: 'name',\n    sortOrder: 'asc'\n  });\n\n  private products$ = new BehaviorSubject<Product[]>([]);\n  private loading$ = new BehaviorSubject<boolean>(false);\n\n  // Derived state: filtered and sorted products\n  readonly filteredProducts$: Observable<Product[]> = combineLatest([\n    this.products$,\n    this.filters$\n  ]).pipe(\n    map(([products, filters]) => this.applyFilters(products, filters)),\n    distinctUntilChanged((prev, curr) =>\n      JSON.stringify(prev) === JSON.stringify(curr)\n    ),\n    shareReplay(1)\n  );\n\n  // Complete view model combining all state\n  readonly viewModel$: Observable<ProductListState> = combineLatest([\n    this.products$,\n    this.filteredProducts$,\n    this.filters$,\n    this.loading$\n  ]).pipe(\n    map(([products, filtered, filters, loading]) => ({\n      products,\n      filteredProducts: filtered,\n      totalCount: products.length,\n      appliedFilters: filters,\n      loading\n    })),\n    shareReplay(1)\n  );\n\n  loadProducts(categorySlug?: string): void {\n    this.loading$.next(true);\n    const url = categorySlug\n      ? `/api/products?category=${categorySlug}`\n      : '/api/products';\n\n    this.http.get<Product[]>(url).pipe(\n      catchError(err => {\n        console.error('Failed to load products', err);\n        return of([]);\n      }),\n      finalize(() => this.loading$.next(false))\n    ).subscribe(products => this.products$.next(products));\n  }\n\n  updateFilter(partial: Partial<ProductFilter>): void {\n    this.filters$.next({ ...this.filters$.value, ...partial });\n  }\n\n  private applyFilters(products: Product[], filters: ProductFilter): Product[] {\n    let result = [...products];\n\n    if (filters.category) {\n      result = result.filter(p => p.category === filters.category);\n    }\n    if (filters.inStock) {\n      result = result.filter(p => p.stockCount > 0);\n    }\n    result = result.filter(p =>\n      p.price >= filters.priceRange[0] && p.price <= filters.priceRange[1]\n    );\n\n    result.sort((a, b) => {\n      const modifier = filters.sortOrder === 'asc' ? 1 : -1;\n      if (filters.sortBy === 'price') return (a.price - b.price) * modifier;\n      if (filters.sortBy === 'rating') return (a.rating - b.rating) * modifier;\n      return a.name.localeCompare(b.name) * modifier;\n    });\n\n    return result;\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Injectable, inject } from '@angular/core';\nimport { HttpClient, HttpErrorResponse } from '@angular/common/http';\nimport { Observable, throwError, timer, of, EMPTY } from 'rxjs';\nimport {\n  retry, retryWhen, catchError, switchMap, tap,\n  delay, take, concatMap, shareReplay, timeout\n} from 'rxjs/operators';\n\n@Injectable({ providedIn: 'root' })\nexport class ResilientApiService {\n  private http = inject(HttpClient);\n  private notificationService = inject(NotificationService);\n\n  // Exponential backoff retry with jitter\n  getWithRetry<T>(url: string, maxRetries = 3): Observable<T> {\n    return this.http.get<T>(url).pipe(\n      timeout(10000), // 10 second timeout per attempt\n      retry({\n        count: maxRetries,\n        delay: (error: HttpErrorResponse, retryCount: number) => {\n          // Don't retry client errors (4xx) except 429 (rate limited)\n          if (error.status >= 400 && error.status < 500 && error.status !== 429) {\n            return throwError(() => error);\n          }\n\n          // Exponential backoff with jitter\n          const baseDelay = Math.pow(2, retryCount) * 1000;\n          const jitter = Math.random() * 1000;\n          const totalDelay = baseDelay + jitter;\n\n          console.warn(\n            `Retry ${retryCount}/${maxRetries} for ${url} in ${totalDelay}ms`\n          );\n          return timer(totalDelay);\n        }\n      }),\n      catchError((error: HttpErrorResponse) => {\n        return this.handleError(error, url);\n      })\n    );\n  }\n\n  // Polling with backoff on errors\n  poll<T>(url: string, intervalMs: number): Observable<T> {\n    return timer(0, intervalMs).pipe(\n      switchMap(() => this.http.get<T>(url).pipe(\n        catchError(err => {\n          console.warn(`Poll failed for ${url}:`, err.message);\n          return EMPTY; // Skip this interval, try again next time\n        })\n      )),\n      distinctUntilChanged((prev, curr) =>\n        JSON.stringify(prev) === JSON.stringify(curr)\n      ),\n      shareReplay(1)\n    );\n  }\n\n  // Optimistic update with rollback\n  optimisticUpdate<T>(\n    currentValue: T,\n    optimisticValue: T,\n    apiCall$: Observable<T>,\n    onRollback: (original: T) => void\n  ): Observable<T> {\n    return apiCall$.pipe(\n      catchError(error => {\n        this.notificationService.error('Update failed, reverting changes');\n        onRollback(currentValue);\n        return throwError(() => error);\n      })\n    );\n  }\n\n  private handleError(error: HttpErrorResponse, url: string): Observable<never> {\n    let message: string;\n\n    if (error.status === 0) {\n      message = 'Network error — please check your connection';\n    } else if (error.status === 401) {\n      message = 'Session expired — please log in again';\n    } else if (error.status === 403) {\n      message = 'You do not have permission to access this resource';\n    } else if (error.status === 404) {\n      message = 'The requested resource was not found';\n    } else if (error.status === 429) {\n      message = 'Too many requests — please wait and try again';\n    } else if (error.status >= 500) {\n      message = 'Server error — our team has been notified';\n    } else {\n      message = `Unexpected error: ${error.message}`;\n    }\n\n    this.notificationService.error(message);\n    return throwError(() => new Error(message));\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Injectable } from '@angular/core';\nimport {\n  Subject, BehaviorSubject, ReplaySubject, AsyncSubject\n} from 'rxjs';\nimport { scan, distinctUntilChanged, map } from 'rxjs/operators';\n\n// Subject — no initial value, only emits to current subscribers\n// Use for: event buses, action dispatchers, one-time notifications\n@Injectable({ providedIn: 'root' })\nexport class EventBusService {\n  private events$ = new Subject<AppEvent>();\n\n  emit(event: AppEvent): void {\n    this.events$.next(event);\n  }\n\n  on<T extends AppEvent>(eventType: string): Observable<T> {\n    return this.events$.pipe(\n      filter((event): event is T => event.type === eventType)\n    );\n  }\n}\n\n// BehaviorSubject — requires initial value, emits current value to new subscribers\n// Use for: state containers, current user, active theme, connection status\n@Injectable({ providedIn: 'root' })\nexport class ConnectionStatusService {\n  private status$ = new BehaviorSubject<'online' | 'offline' | 'reconnecting'>('online');\n\n  readonly isOnline$ = this.status$.pipe(\n    map(s => s === 'online'),\n    distinctUntilChanged()\n  );\n\n  constructor() {\n    window.addEventListener('online', () => this.status$.next('online'));\n    window.addEventListener('offline', () => this.status$.next('offline'));\n  }\n\n  getCurrentStatus(): 'online' | 'offline' | 'reconnecting' {\n    return this.status$.value;\n  }\n}\n\n// ReplaySubject — replays N previous emissions to new subscribers\n// Use for: message history, audit logs, recent notifications\n@Injectable({ providedIn: 'root' })\nexport class NotificationHistoryService {\n  // Replay last 50 notifications to new subscribers\n  private notifications$ = new ReplaySubject<Notification>(50);\n\n  private unreadCount$ = this.notifications$.pipe(\n    scan((count, notification) => notification.read ? count - 1 : count + 1, 0)\n  );\n\n  push(notification: Notification): void {\n    this.notifications$.next(notification);\n  }\n\n  getHistory(): Observable<Notification> {\n    return this.notifications$.asObservable();\n  }\n}\n\n// AsyncSubject — emits only the LAST value, only on completion\n// Use for: one-time async initialization, configuration loading\n@Injectable({ providedIn: 'root' })\nexport class AppInitService {\n  private config$ = new AsyncSubject<RemoteConfig>();\n\n  initialize(): void {\n    this.http.get<RemoteConfig>('/api/config').subscribe({\n      next: config => {\n        this.config$.next(config);\n        this.config$.complete(); // Triggers emission to all subscribers\n      },\n      error: err => this.config$.error(err)\n    });\n  }\n\n  getConfig(): Observable<RemoteConfig> {\n    return this.config$.asObservable(); // Late subscribers get the config too\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Injectable, inject } from '@angular/core';\nimport { webSocket, WebSocketSubject } from 'rxjs/webSocket';\nimport { Observable, timer, EMPTY, Subject } from 'rxjs';\nimport {\n  retryWhen, delay, tap, switchMap, catchError,\n  takeUntil, share, map, filter, distinctUntilChanged\n} from 'rxjs/operators';\n\ninterface WebSocketMessage<T = unknown> {\n  type: string;\n  payload: T;\n  timestamp: number;\n  correlationId?: string;\n}\n\n@Injectable({ providedIn: 'root' })\nexport class WebSocketService {\n  private socket$: WebSocketSubject<WebSocketMessage> | null = null;\n  private reconnectAttempts = 0;\n  private maxReconnectAttempts = 10;\n  private destroy$ = new Subject<void>();\n\n  private messages$: Observable<WebSocketMessage> | null = null;\n\n  connect(url: string): Observable<WebSocketMessage> {\n    if (!this.messages$) {\n      this.socket$ = webSocket<WebSocketMessage>({\n        url,\n        openObserver: {\n          next: () => {\n            console.log('WebSocket connected');\n            this.reconnectAttempts = 0;\n          }\n        },\n        closeObserver: {\n          next: (event) => {\n            console.log('WebSocket closed', event.code, event.reason);\n            this.socket$ = null;\n            this.messages$ = null;\n          }\n        }\n      });\n\n      this.messages$ = this.socket$.pipe(\n        retryWhen(errors => errors.pipe(\n          tap(err => {\n            this.reconnectAttempts++;\n            console.warn(\n              `WebSocket error, reconnect attempt ${this.reconnectAttempts}`,\n              err\n            );\n          }),\n          switchMap(() => {\n            if (this.reconnectAttempts > this.maxReconnectAttempts) {\n              return throwError(() => new Error('Max reconnection attempts exceeded'));\n            }\n            // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s\n            const delayMs = Math.min(\n              Math.pow(2, this.reconnectAttempts - 1) * 1000,\n              30000\n            );\n            return timer(delayMs);\n          })\n        )),\n        takeUntil(this.destroy$),\n        share() // Multicast to all subscribers\n      );\n    }\n\n    return this.messages$;\n  }\n\n  // Type-safe message filtering\n  on<T>(messageType: string): Observable<T> {\n    if (!this.messages$) {\n      throw new Error('WebSocket not connected. Call connect() first.');\n    }\n    return this.messages$.pipe(\n      filter(msg => msg.type === messageType),\n      map(msg => msg.payload as T),\n      distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))\n    );\n  }\n\n  send<T>(type: string, payload: T): void {\n    if (this.socket$) {\n      this.socket$.next({\n        type,\n        payload,\n        timestamp: Date.now(),\n        correlationId: crypto.randomUUID()\n      });\n    }\n  }\n\n  disconnect(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n    this.socket$?.complete();\n    this.socket$ = null;\n    this.messages$ = null;\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Component, inject } from '@angular/core';\nimport { FormControl } from '@angular/forms';\nimport { Observable, from, of, interval, Subject } from 'rxjs';\nimport {\n  switchMap, mergeMap, concatMap, exhaustMap,\n  take, delay, tap, map\n} from 'rxjs/operators';\n\n@Component({ selector: 'app-operator-demo', template: '' })\nexport class OperatorDemoComponent {\n  private http = inject(HttpClient);\n\n  // switchMap — CANCELS previous, only latest matters\n  // Use case: search autocomplete, route parameter changes\n  searchResults$ = this.searchInput.valueChanges.pipe(\n    debounceTime(300),\n    switchMap(query => this.http.get<Result[]>(`/api/search?q=${query}`))\n    // If user types \"ang\" then \"angular\", the request for \"ang\" is cancelled\n  );\n\n  // mergeMap — CONCURRENT, all execute in parallel\n  // Use case: analytics events, notifications, independent operations\n  saveAllItems(items: Item[]): Observable<SaveResult[]> {\n    return from(items).pipe(\n      mergeMap(\n        item => this.http.post<SaveResult>('/api/items', item),\n        5 // concurrency limit: max 5 parallel requests\n      ),\n      toArray()\n    );\n  }\n\n  // concatMap — SEQUENTIAL, waits for each to complete\n  // Use case: ordered operations, sequential file uploads, queue processing\n  uploadFiles(files: File[]): Observable<UploadResult> {\n    return from(files).pipe(\n      concatMap((file, index) => {\n        const formData = new FormData();\n        formData.append('file', file);\n        return this.http.post<UploadResult>('/api/upload', formData).pipe(\n          tap(result => console.log(`Uploaded ${index + 1}/${files.length}`))\n        );\n      })\n    );\n  }\n\n  // exhaustMap — IGNORES new emissions while current is active\n  // Use case: form submission (prevent double-submit), login buttons\n  private submitAction$ = new Subject<FormData>();\n  submitResult$ = this.submitAction$.pipe(\n    exhaustMap(formData =>\n      this.http.post<SubmitResult>('/api/submit', formData).pipe(\n        catchError(err => of({ success: false, error: err.message }))\n      )\n    )\n    // Rapid clicks only trigger ONE request, subsequent clicks ignored\n  );\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/rxjs-and-reactive.md",
+    "wordCount": 2336,
+    "sectionCount": 15
+  }
+}

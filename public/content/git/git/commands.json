@@ -41,9 +41,23 @@
         {
           "type": "paragraph",
           "text": "Git commands form the foundation of every developer's daily workflow. You use setup commands (git init, git clone, git config) when starting a new project or joining an existing one. Staging and committing commands (git add, git commit) are used dozens of times per day as you make incremental progress. Collaboration commands (git push, git pull, git fetch) synchronize your work with teammates. Branching commands (git branch, git switch, git merge) enable parallel development of features. Inspection commands (git log, git diff, git blame) help you understand code history and debug issues. Recovery commands (git stash, git reset, git revert, git restore) save you when things go wrong. Understanding which command to use in each situation is critical for maintaining a clean, collaborative workflow without losing work or creating unnecessary conflicts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Additional scenarios where command mastery is critical:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Incident response: During production incidents, you need to quickly identify which commit introduced a regression using git bisect, revert the problematic change with git revert, and deploy the fix — all under time pressure.",
+            "Release management: Cutting releases requires tagging (git tag), cherry-picking hotfixes across branches (git cherry-pick), and managing release branches with precise merge strategies.",
+            "Repository maintenance: Large repositories need periodic cleanup with git gc, history rewriting with git filter-branch or git filter-repo for removing accidentally committed secrets, and git prune for cleaning up unreachable objects.",
+            "Code archaeology: Understanding why code exists in its current form requires git log -p --follow, git blame, and git log -S \"search term\" (pickaxe) to trace the evolution of specific code patterns across renames and refactors."
+          ]
         }
       ],
-      "wordCount": 131,
+      "wordCount": 261,
       "subsections": []
     },
     {
@@ -227,6 +241,111 @@
           ],
           "wordCount": 0,
           "subsections": []
+        },
+        {
+          "id": "advanced-operations",
+          "heading": "Advanced Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Cherry-pick a specific commit onto current branch\ngit cherry-pick <commit-hash>\n\n# Cherry-pick without committing (stage changes only)\ngit cherry-pick --no-commit <commit-hash>\n\n# View the reflog (local history of HEAD changes)\ngit reflog\n\n# Recover a deleted branch using reflog\ngit reflog | grep \"feature/lost-branch\"\ngit switch -c feature/recovered <commit-hash>\n\n# Clean untracked files (dry run first)\ngit clean -n    # show what would be deleted\ngit clean -fd   # actually delete untracked files and directories\n\n# Create a patch file from commits\ngit format-patch -3    # last 3 commits as patch files\n\n# Apply a patch\ngit apply fix.patch\n\n# Archive the repository at a specific point\ngit archive --format=tar.gz --prefix=project-v1.0/ v1.0 > release.tar.gz",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "tagging-and-releases",
+          "heading": "Tagging and Releases",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Create a lightweight tag\ngit tag v1.0.0\n\n# Create an annotated tag (recommended for releases)\ngit tag -a v1.0.0 -m \"Release version 1.0.0\"\n\n# Tag a specific commit (not HEAD)\ngit tag -a v0.9.0 <commit-hash> -m \"Retroactive tag for beta\"\n\n# List all tags\ngit tag -l\n\n# List tags matching a pattern\ngit tag -l \"v1.*\"\n\n# Push a specific tag to remote\ngit push origin v1.0.0\n\n# Push all tags to remote\ngit push --tags\n\n# Delete a local tag\ngit tag -d v1.0.0\n\n# Delete a remote tag\ngit push origin --delete v1.0.0",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "worktrees-for-parallel-development",
+          "heading": "Worktrees for Parallel Development",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Add a new worktree for a different branch\ngit worktree add ../hotfix-dir hotfix/critical-bug\n\n# List all worktrees\ngit worktree list\n\n# Remove a worktree after you're done\ngit worktree remove ../hotfix-dir\n\n# Prune stale worktree references\ngit worktree prune",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "interactive-staging-partial-commits",
+          "heading": "Interactive Staging (Partial Commits)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Stage specific hunks within a file interactively\ngit add -p src/auth.js\n# Git shows each change hunk and asks:\n# Stage this hunk [y,n,q,a,d,s,e,?]?\n# y = stage this hunk\n# n = skip this hunk\n# s = split into smaller hunks\n# e = manually edit the hunk\n# q = quit (don't stage remaining hunks)\n\n# Interactive staging with full menu\ngit add -i\n# Shows: staged/unstaged status, then menu:\n# 1: status  2: update  3: revert  4: add untracked\n# 5: patch   6: diff    7: quit    8: help\n\n# Stage only deleted files\ngit add -u  # stages modifications and deletions, not new files\n\n# Interactively unstage hunks\ngit reset -p",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "command-composition-and-aliases",
+          "heading": "Command Composition and Aliases",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Set up useful Git aliases\ngit config --global alias.st \"status -sb\"\ngit config --global alias.co \"checkout\"\ngit config --global alias.br \"branch\"\ngit config --global alias.ci \"commit\"\ngit config --global alias.unstage \"reset HEAD --\"\ngit config --global alias.last \"log -1 HEAD\"\ngit config --global alias.visual \"log --oneline --graph --decorate --all\"\n\n# Complex aliases with shell commands\ngit config --global alias.find '!git log --all --oneline | grep'\ngit config --global alias.aliases \"config --get-regexp ^alias\\\\.\"\ngit config --global alias.contributors \"shortlog -sn --no-merges\"\n\n# Show files changed in last commit\ngit config --global alias.changed \"diff --name-only HEAD~1\"\n\n# Undo last commit (keep changes)\ngit config --global alias.undo \"reset --soft HEAD~1\"\n\n# Show branch age and last commit\ngit config --global alias.recent \"for-each-ref --sort=-committerdate refs/heads/ --format='%(committerdate:short) %(refname:short)'\"\n\n# Delete all merged branches except main/develop\ngit config --global alias.cleanup '!git branch --merged | grep -v \"\\\\*\\\\|main\\\\|develop\" | xargs -n 1 git branch -d'",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "git-grep-and-log-search",
+          "heading": "Git Grep and Log Search",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Search for a pattern in tracked files (faster than system grep)\ngit grep \"TODO\" -- '*.ts'\n\n# Search with line numbers and context\ngit grep -n -C 3 \"deprecated\"\n\n# Search across all branches\ngit grep \"security_fix\" $(git branch -r --format='%(refname:short)')\n\n# Search commit messages\ngit log --grep=\"JIRA-1234\" --oneline\n\n# Search for when a string was added/removed (pickaxe)\ngit log -S \"calculateTotal\" --oneline\n\n# Search for regex pattern changes\ngit log -G \"function\\s+auth\" --oneline\n\n# Find commits that changed a specific function\ngit log -L :functionName:src/utils.js",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "submodules-and-subtrees",
+          "heading": "Submodules and Subtrees",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Add a submodule\ngit submodule add https://github.com/lib/dependency.git vendor/dependency\n\n# Initialize submodules after cloning\ngit submodule update --init --recursive\n\n# Update all submodules to latest\ngit submodule update --remote\n\n# Remove a submodule\ngit submodule deinit vendor/dependency\ngit rm vendor/dependency\nrm -rf .git/modules/vendor/dependency\n\n# Subtree alternative (no .gitmodules file needed)\ngit subtree add --prefix=vendor/lib https://github.com/lib/repo.git main --squash\n\n# Update a subtree\ngit subtree pull --prefix=vendor/lib https://github.com/lib/repo.git main --squash",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
         }
       ]
     },
@@ -265,6 +384,46 @@
       "subsections": []
     },
     {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Git commands are used differently depending on the team's workflow and the stage of development. During feature development, a developer typically uses git switch -c, git add -p, git commit, and git push in a tight loop. During code review, reviewers use git fetch, gh pr checkout, git diff, and git log to understand proposed changes. During incident response, on-call engineers use git log --since, git bisect, git revert, and git push to quickly identify and roll back problematic changes. Release engineers use git tag, git cherry-pick, and git merge --no-ff to manage release branches and backport fixes."
+        }
+      ],
+      "wordCount": 98,
+      "subsections": [
+        {
+          "id": "cicd-pipeline-integration",
+          "heading": "CI/CD Pipeline Integration",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In continuous integration pipelines, Git commands are used programmatically. A typical pipeline starts with git clone --depth 1 for fast checkout, uses git diff --name-only HEAD~1 to determine which files changed (for selective testing), runs git describe --tags to generate version numbers, and ends with git tag and git push --tags for release automation. Advanced pipelines use git log --format to generate changelogs and git shortlog -sn to attribute changes for release notes."
+            }
+          ],
+          "wordCount": 73,
+          "subsections": []
+        },
+        {
+          "id": "monorepo-workflows",
+          "heading": "Monorepo Workflows",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In monorepo environments, teams rely heavily on git sparse-checkout to work with subsets of the repository, git log -- path/to/service to view service-specific history, and git diff --name-only combined with build system integration to determine which services need rebuilding. Commands like git subtree or git submodule manage dependencies between components within the monorepo."
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        }
+      ]
+    },
+    {
       "id": "interview-questions",
       "heading": "Interview Questions",
       "level": 2,
@@ -288,9 +447,21 @@
         {
           "type": "paragraph",
           "text": "Q5: What is the Git reflog and how can it save you?\nThe reflog records every change to HEAD and branch tips locally, including resets, rebases, and branch deletions. If you accidentally lose commits through git reset --hard or delete a branch, you can find the lost commit hash in git reflog and recover it with git checkout or git cherry-pick."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q6: What is the difference between git reset, git restore, and git revert?\ngit reset moves the branch pointer backward, potentially discarding commits (dangerous on shared branches). git restore discards changes in the working directory or unstages files without affecting commits. git revert creates a new commit that undoes a previous commit's changes, preserving history. In production, prefer revert for shared branches, restore for local file changes, and reset only for local unpushed commits."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q7: How would you use git cherry-pick in a release workflow?\ngit cherry-pick applies a specific commit from one branch to another. In release workflows, you cherry-pick critical bug fixes from the development branch onto a release branch without merging all development work. Use git cherry-pick -x <hash> to include the original commit reference in the message for traceability. For multiple commits, use git cherry-pick A..B to pick a range."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q8: Explain git stash internals and advanced usage.\ngit stash creates a special commit that stores your working directory and staging area state, then resets your working directory to HEAD. Stashes are stored as a stack in .git/refs/stash. Advanced usage includes git stash push -p for partial stashing (selecting specific hunks), git stash branch <name> to create a branch from a stash (useful when the stash conflicts with current state), and git stash push --include-untracked to also stash new files."
         }
       ],
-      "wordCount": 299,
+      "wordCount": 523,
       "subsections": []
     },
     {
@@ -306,11 +477,13 @@
             "Leverage git bisect for production bug hunting: When a regression appears in production, use bisect with an automated test script (git bisect run ./test.sh) to pinpoint the exact commit that introduced the issue in minutes rather than hours.",
             "Set up Git hooks for quality gates: Use pre-commit hooks to run linters and formatters, pre-push hooks to run tests, and commit-msg hooks to enforce conventional commit format. This catches issues before they reach the remote.",
             "Use git log --since for incident investigation: When debugging production issues, git log --since=\"2 hours ago\" --oneline quickly shows what changed recently, helping correlate deployments with incidents.",
-            "Configure credential caching for CI/CD: Use git config credential.helper cache or platform-specific credential managers to avoid storing plaintext credentials in CI pipelines while maintaining automated push access."
+            "Configure credential caching for CI/CD: Use git config credential.helper cache or platform-specific credential managers to avoid storing plaintext credentials in CI pipelines while maintaining automated push access.",
+            "Use git diff --stat in deployment scripts: Before deploying, run git diff --stat HEAD~1 to generate a human-readable summary of what changed. Include this in deployment notifications (Slack, PagerDuty) so the team knows what went out with each release.",
+            "Automate changelog generation from commits: With conventional commit messages (feat:, fix:, chore:), tools like git log --format combined with scripts can auto-generate changelogs. Use git log --format=\"%s\" v1.0.0..v1.1.0 | grep \"^feat:\" to extract features for release notes."
           ]
         }
       ],
-      "wordCount": 158,
+      "wordCount": 234,
       "subsections": []
     },
     {
@@ -379,13 +552,48 @@
       "language": "bash",
       "code": "# View commit history\ngit log\n\n# Compact one-line history with graph\ngit log --oneline --graph --decorate --all\n\n# Show commits that modified a specific file\ngit log --follow -- src/utils.js\n\n# Show details of a specific commit\ngit show <commit-hash>\n\n# Find who changed each line in a file\ngit blame <file>\n\n# Binary search for a bug-introducing commit\ngit bisect start\ngit bisect bad          # current commit is broken\ngit bisect good v1.0.0  # this tag was working\n# Git checks out middle commit; test and mark good/bad\ngit bisect reset        # when done",
       "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Cherry-pick a specific commit onto current branch\ngit cherry-pick <commit-hash>\n\n# Cherry-pick without committing (stage changes only)\ngit cherry-pick --no-commit <commit-hash>\n\n# View the reflog (local history of HEAD changes)\ngit reflog\n\n# Recover a deleted branch using reflog\ngit reflog | grep \"feature/lost-branch\"\ngit switch -c feature/recovered <commit-hash>\n\n# Clean untracked files (dry run first)\ngit clean -n    # show what would be deleted\ngit clean -fd   # actually delete untracked files and directories\n\n# Create a patch file from commits\ngit format-patch -3    # last 3 commits as patch files\n\n# Apply a patch\ngit apply fix.patch\n\n# Archive the repository at a specific point\ngit archive --format=tar.gz --prefix=project-v1.0/ v1.0 > release.tar.gz",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Create a lightweight tag\ngit tag v1.0.0\n\n# Create an annotated tag (recommended for releases)\ngit tag -a v1.0.0 -m \"Release version 1.0.0\"\n\n# Tag a specific commit (not HEAD)\ngit tag -a v0.9.0 <commit-hash> -m \"Retroactive tag for beta\"\n\n# List all tags\ngit tag -l\n\n# List tags matching a pattern\ngit tag -l \"v1.*\"\n\n# Push a specific tag to remote\ngit push origin v1.0.0\n\n# Push all tags to remote\ngit push --tags\n\n# Delete a local tag\ngit tag -d v1.0.0\n\n# Delete a remote tag\ngit push origin --delete v1.0.0",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Add a new worktree for a different branch\ngit worktree add ../hotfix-dir hotfix/critical-bug\n\n# List all worktrees\ngit worktree list\n\n# Remove a worktree after you're done\ngit worktree remove ../hotfix-dir\n\n# Prune stale worktree references\ngit worktree prune",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Stage specific hunks within a file interactively\ngit add -p src/auth.js\n# Git shows each change hunk and asks:\n# Stage this hunk [y,n,q,a,d,s,e,?]?\n# y = stage this hunk\n# n = skip this hunk\n# s = split into smaller hunks\n# e = manually edit the hunk\n# q = quit (don't stage remaining hunks)\n\n# Interactive staging with full menu\ngit add -i\n# Shows: staged/unstaged status, then menu:\n# 1: status  2: update  3: revert  4: add untracked\n# 5: patch   6: diff    7: quit    8: help\n\n# Stage only deleted files\ngit add -u  # stages modifications and deletions, not new files\n\n# Interactively unstage hunks\ngit reset -p",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Set up useful Git aliases\ngit config --global alias.st \"status -sb\"\ngit config --global alias.co \"checkout\"\ngit config --global alias.br \"branch\"\ngit config --global alias.ci \"commit\"\ngit config --global alias.unstage \"reset HEAD --\"\ngit config --global alias.last \"log -1 HEAD\"\ngit config --global alias.visual \"log --oneline --graph --decorate --all\"\n\n# Complex aliases with shell commands\ngit config --global alias.find '!git log --all --oneline | grep'\ngit config --global alias.aliases \"config --get-regexp ^alias\\\\.\"\ngit config --global alias.contributors \"shortlog -sn --no-merges\"\n\n# Show files changed in last commit\ngit config --global alias.changed \"diff --name-only HEAD~1\"\n\n# Undo last commit (keep changes)\ngit config --global alias.undo \"reset --soft HEAD~1\"\n\n# Show branch age and last commit\ngit config --global alias.recent \"for-each-ref --sort=-committerdate refs/heads/ --format='%(committerdate:short) %(refname:short)'\"\n\n# Delete all merged branches except main/develop\ngit config --global alias.cleanup '!git branch --merged | grep -v \"\\\\*\\\\|main\\\\|develop\" | xargs -n 1 git branch -d'",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Search for a pattern in tracked files (faster than system grep)\ngit grep \"TODO\" -- '*.ts'\n\n# Search with line numbers and context\ngit grep -n -C 3 \"deprecated\"\n\n# Search across all branches\ngit grep \"security_fix\" $(git branch -r --format='%(refname:short)')\n\n# Search commit messages\ngit log --grep=\"JIRA-1234\" --oneline\n\n# Search for when a string was added/removed (pickaxe)\ngit log -S \"calculateTotal\" --oneline\n\n# Search for regex pattern changes\ngit log -G \"function\\s+auth\" --oneline\n\n# Find commits that changed a specific function\ngit log -L :functionName:src/utils.js",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Add a submodule\ngit submodule add https://github.com/lib/dependency.git vendor/dependency\n\n# Initialize submodules after cloning\ngit submodule update --init --recursive\n\n# Update all submodules to latest\ngit submodule update --remote\n\n# Remove a submodule\ngit submodule deinit vendor/dependency\ngit rm vendor/dependency\nrm -rf .git/modules/vendor/dependency\n\n# Subtree alternative (no .gitmodules file needed)\ngit subtree add --prefix=vendor/lib https://github.com/lib/repo.git main --squash\n\n# Update a subtree\ngit subtree pull --prefix=vendor/lib https://github.com/lib/repo.git main --squash",
+      "runnable": false
     }
   ],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/git/git/commands.md",
-    "wordCount": 1086,
-    "sectionCount": 17
+    "wordCount": 1740,
+    "sectionCount": 27
   }
 }

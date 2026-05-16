@@ -19,3 +19,5 @@ This guide covers the foundational concepts that underpin all large-scale system
 9. [Event-Driven Architecture](./event-driven-architecture.md) — Event sourcing, CQRS, saga pattern, choreography vs orchestration, and exactly-once delivery
 10. [Common Interview Problems](./common-interview-problems.md) — URL shortener, chat system, notification service, news feed, and distributed cache design
 11. [Design Patterns](./design-patterns.md) — GoF patterns, architectural patterns, and their application in distributed systems
+12. [Microservices Patterns](./microservices-patterns.md) — Service decomposition, communication patterns, resilience patterns, and migration strategies
+13. [Data Pipeline Design](./data-pipeline-design.md) — Batch and streaming architectures, ETL patterns, CDC, and data quality at scale

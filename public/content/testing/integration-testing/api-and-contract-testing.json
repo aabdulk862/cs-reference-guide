@@ -1,0 +1,350 @@
+{
+  "id": "integration-testing-api-contract-testing",
+  "slug": "api-and-contract-testing",
+  "title": "API & Contract Testing",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "API integration tests verify that HTTP endpoints return correct status codes, response bodies, headers, and handle error cases when called with real or near-real dependencies",
+            "Contract testing (Pact) validates that consumer expectations match provider capabilities without requiring both services to run simultaneously",
+            "Consumer-driven contracts shift API compatibility verification left — consumers define what they need, providers verify they satisfy all consumer contracts",
+            "OpenAPI schema validation ensures responses conform to the documented API specification, catching drift between documentation and implementation",
+            "Service virtualization (WireMock, MockServer) creates deterministic test doubles for external dependencies, enabling reliable tests without network calls",
+            "Testcontainers spins up real databases, message brokers, and services in Docker containers for integration tests, providing production-like fidelity",
+            "GraphQL testing requires schema validation, query depth limiting, and resolver-level testing beyond simple HTTP status checks",
+            "gRPC testing uses generated client stubs and validates protobuf message serialization, streaming behavior, and deadline propagation"
+          ]
+        }
+      ],
+      "wordCount": 146,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "API and contract testing fills the critical gap between unit tests (fast but isolated) and end-to-end tests (realistic but slow and flaky). Apply these techniques when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building microservice architectures where services communicate over HTTP/gRPC and breaking changes in one service silently break consumers without contract tests",
+            "Developing APIs consumed by multiple clients (mobile apps, web frontends, third-party integrations) where each consumer has different expectations about response shape and behavior",
+            "Integrating with external services (payment gateways, identity providers, shipping APIs) that you cannot control but need to test against reliably",
+            "Validating that API documentation (OpenAPI/Swagger specs) stays synchronized with actual implementation, preventing integration failures in production",
+            "Testing complex request/response flows involving authentication, pagination, filtering, rate limiting, and error handling that unit tests cannot adequately cover"
+          ]
+        }
+      ],
+      "wordCount": 124,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "rest-api-testing-with-supertest-nodejsexpress",
+          "heading": "REST API Testing with Supertest (Node.js/Express)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import request from 'supertest';\nimport { app } from '../src/app';\nimport { setupTestDatabase, teardownTestDatabase, seedUsers } from './helpers/db';\nimport { generateAuthToken } from './helpers/auth';\n\ndescribe('Products API Integration Tests', () => {\n  let authToken: string;\n  let testUserId: string;\n\n  beforeAll(async () => {\n    await setupTestDatabase();\n    const user = await seedUsers({ role: 'admin' });\n    testUserId = user.id;\n    authToken = generateAuthToken(user);\n  });\n\n  afterAll(async () => {\n    await teardownTestDatabase();\n  });\n\n  describe('GET /api/products', () => {\n    it('returns paginated products with correct structure', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .query({ page: 1, limit: 10, category: 'electronics' })\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(200)\n        .expect('Content-Type', /json/);\n\n      expect(response.body).toMatchObject({\n        data: expect.arrayContaining([\n          expect.objectContaining({\n            id: expect.any(String),\n            name: expect.any(String),\n            price: expect.any(Number),\n            category: 'electronics',\n            createdAt: expect.any(String)\n          })\n        ]),\n        pagination: {\n          page: 1,\n          limit: 10,\n          total: expect.any(Number),\n          totalPages: expect.any(Number)\n        }\n      });\n\n      // Verify pagination math\n      const { total, totalPages, limit } = response.body.pagination;\n      expect(totalPages).toBe(Math.ceil(total / limit));\n      expect(response.body.data.length).toBeLessThanOrEqual(limit);\n    });\n\n    it('returns 401 without authentication', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .expect(401);\n\n      expect(response.body).toMatchObject({\n        error: 'Unauthorized',\n        message: expect.any(String)\n      });\n    });\n\n    it('returns 400 for invalid query parameters', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .query({ page: -1, limit: 10000 })\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(400);\n\n      expect(response.body.errors).toEqual(\n        expect.arrayContaining([\n          expect.objectContaining({ field: 'page', message: expect.any(String) }),\n          expect.objectContaining({ field: 'limit', message: expect.any(String) })\n        ])\n      );\n    });\n  });\n\n  describe('POST /api/products', () => {\n    it('creates a product and returns 201 with location header', async () => {\n      const newProduct = {\n        name: 'Test Widget',\n        price: 29.99,\n        category: 'electronics',\n        description: 'A test product for integration testing'\n      };\n\n      const response = await request(app)\n        .post('/api/products')\n        .set('Authorization', `Bearer ${authToken}`)\n        .send(newProduct)\n        .expect(201);\n\n      expect(response.headers['location']).toMatch(/\\/api\\/products\\/[\\w-]+/);\n      expect(response.body).toMatchObject({\n        ...newProduct,\n        id: expect.any(String),\n        createdAt: expect.any(String),\n        createdBy: testUserId\n      });\n\n      // Verify the product actually persisted\n      const getResponse = await request(app)\n        .get(`/api/products/${response.body.id}`)\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(200);\n\n      expect(getResponse.body.name).toBe(newProduct.name);\n    });\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "contract-testing-with-pact-consumer-side",
+          "heading": "Contract Testing with Pact (Consumer Side)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { PactV3, MatchersV3 } from '@pact-foundation/pact';\nimport { ProductApiClient } from '../src/clients/product-api-client';\n\nconst { like, eachLike, string, integer, decimal, datetime, regex } = MatchersV3;\n\nconst provider = new PactV3({\n  consumer: 'OrderService',\n  provider: 'ProductService',\n  logLevel: 'warn'\n});\n\ndescribe('Product Service Contract (Consumer)', () => {\n  describe('GET /api/products/:id', () => {\n    it('returns product details when product exists', async () => {\n      // Define the expected interaction\n      await provider\n        .given('a product with ID prod-123 exists')\n        .uponReceiving('a request for product prod-123')\n        .withRequest({\n          method: 'GET',\n          path: '/api/products/prod-123',\n          headers: {\n            Accept: 'application/json',\n            Authorization: regex(/Bearer [\\w-]+\\.[\\w-]+\\.[\\w-]+/, 'Bearer eyJ.test.token')\n          }\n        })\n        .willRespondWith({\n          status: 200,\n          headers: { 'Content-Type': 'application/json' },\n          body: {\n            id: string('prod-123'),\n            name: string('Premium Widget'),\n            price: decimal(49.99),\n            stock: integer(150),\n            category: string('electronics'),\n            createdAt: datetime(\"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'\", '2024-01-15T10:30:00.000Z')\n          }\n        });\n\n      // Execute the test against the mock provider\n      await provider.executeTest(async (mockServer) => {\n        const client = new ProductApiClient(mockServer.url, 'Bearer eyJ.test.token');\n        const product = await client.getProduct('prod-123');\n\n        expect(product.id).toBe('prod-123');\n        expect(product.name).toBe('Premium Widget');\n        expect(product.price).toBe(49.99);\n        expect(typeof product.stock).toBe('number');\n      });\n    });\n\n    it('returns 404 when product does not exist', async () => {\n      await provider\n        .given('no product with ID nonexistent exists')\n        .uponReceiving('a request for a nonexistent product')\n        .withRequest({\n          method: 'GET',\n          path: '/api/products/nonexistent',\n          headers: { Accept: 'application/json', Authorization: regex(/Bearer .+/, 'Bearer token') }\n        })\n        .willRespondWith({\n          status: 404,\n          body: {\n            error: string('Not Found'),\n            message: string('Product not found')\n          }\n        });\n\n      await provider.executeTest(async (mockServer) => {\n        const client = new ProductApiClient(mockServer.url, 'Bearer token');\n        await expect(client.getProduct('nonexistent')).rejects.toThrow('Product not found');\n      });\n    });\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "provider-verification-pact-provider-side",
+          "heading": "Provider Verification (Pact Provider Side)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Verifier } from '@pact-foundation/pact';\nimport { app } from '../src/app';\nimport { seedProduct, clearDatabase } from './helpers/db';\n\ndescribe('Product Service Contract Verification (Provider)', () => {\n  let server: any;\n\n  beforeAll(async () => {\n    server = app.listen(4000);\n  });\n\n  afterAll(async () => {\n    server.close();\n  });\n\n  it('validates all consumer contracts', async () => {\n    const verifier = new Verifier({\n      providerBaseUrl: 'http://localhost:4000',\n      pactBrokerUrl: process.env.PACT_BROKER_URL,\n      provider: 'ProductService',\n      providerVersion: process.env.GIT_SHA,\n      publishVerificationResult: process.env.CI === 'true',\n      providerVersionBranch: process.env.GIT_BRANCH,\n\n      // State handlers set up test data for each interaction\n      stateHandlers: {\n        'a product with ID prod-123 exists': async () => {\n          await clearDatabase();\n          await seedProduct({\n            id: 'prod-123',\n            name: 'Premium Widget',\n            price: 49.99,\n            stock: 150,\n            category: 'electronics'\n          });\n        },\n        'no product with ID nonexistent exists': async () => {\n          await clearDatabase();\n        }\n      }\n    });\n\n    await verifier.verifyProvider();\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "openapi-schema-validation",
+          "heading": "OpenAPI Schema Validation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { OpenAPISchemaValidator } from 'express-openapi-validator';\nimport SwaggerParser from '@apidevtools/swagger-parser';\nimport request from 'supertest';\nimport { app } from '../src/app';\n\ndescribe('OpenAPI Schema Compliance', () => {\n  let apiSpec: any;\n\n  beforeAll(async () => {\n    apiSpec = await SwaggerParser.dereference('./openapi.yaml');\n  });\n\n  it('GET /api/products response matches OpenAPI schema', async () => {\n    const response = await request(app)\n      .get('/api/products')\n      .set('Authorization', `Bearer ${validToken}`)\n      .expect(200);\n\n    const schema = apiSpec.paths['/api/products'].get.responses['200'].content['application/json'].schema;\n    const ajv = new Ajv({ allErrors: true });\n    const validate = ajv.compile(schema);\n    const valid = validate(response.body);\n\n    if (!valid) {\n      console.error('Schema validation errors:', validate.errors);\n    }\n    expect(valid).toBe(true);\n  });\n\n  // Validate all endpoints automatically\n  const endpoints = Object.entries(apiSpec.paths);\n  endpoints.forEach(([path, methods]: [string, any]) => {\n    Object.entries(methods).forEach(([method, spec]: [string, any]) => {\n      if (['get', 'post', 'put', 'delete', 'patch'].includes(method)) {\n        it(`${method.toUpperCase()} ${path} response conforms to schema`, async () => {\n          // Dynamic test generation for all documented endpoints\n          const response = await makeRequest(app, method, path, spec);\n          validateResponseAgainstSchema(response, spec);\n        });\n      }\n    });\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "wiremock-service-virtualization",
+          "heading": "WireMock Service Virtualization",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { WireMockRestClient } from 'wiremock-rest-client';\nimport { GenericContainer, StartedTestContainer } from 'testcontainers';\n\ndescribe('Payment Service Integration (with WireMock)', () => {\n  let wireMock: WireMockRestClient;\n  let container: StartedTestContainer;\n\n  beforeAll(async () => {\n    // Start WireMock in a container\n    container = await new GenericContainer('wiremock/wiremock:3.3.1')\n      .withExposedPorts(8080)\n      .start();\n\n    const wireMockUrl = `http://${container.getHost()}:${container.getMappedPort(8080)}`;\n    wireMock = new WireMockRestClient(wireMockUrl);\n  });\n\n  afterAll(async () => {\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    await wireMock.global.resetAll();\n  });\n\n  it('processes payment successfully', async () => {\n    // Stub the external payment gateway\n    await wireMock.mappings.createMapping({\n      request: {\n        method: 'POST',\n        urlPath: '/v1/charges',\n        headers: { 'Authorization': { equalTo: 'Bearer sk_test_key' } },\n        bodyPatterns: [{ matchesJsonPath: '$.amount' }, { matchesJsonPath: '$.currency' }]\n      },\n      response: {\n        status: 200,\n        jsonBody: {\n          id: 'ch_test_123',\n          status: 'succeeded',\n          amount: 2999,\n          currency: 'usd'\n        },\n        headers: { 'Content-Type': 'application/json' }\n      }\n    });\n\n    // Test our service against the stub\n    const result = await paymentService.processPayment({\n      amount: 29.99,\n      currency: 'usd',\n      customerId: 'cust-456'\n    });\n\n    expect(result.status).toBe('succeeded');\n    expect(result.chargeId).toBe('ch_test_123');\n\n    // Verify the external call was made correctly\n    const calls = await wireMock.requests.getCount({\n      method: 'POST',\n      url: '/v1/charges'\n    });\n    expect(calls.count).toBe(1);\n  });\n\n  it('handles payment gateway timeout gracefully', async () => {\n    await wireMock.mappings.createMapping({\n      request: { method: 'POST', urlPath: '/v1/charges' },\n      response: {\n        status: 200,\n        fixedDelayMilliseconds: 10000,  // Simulate timeout\n        jsonBody: { id: 'ch_delayed' }\n      }\n    });\n\n    await expect(\n      paymentService.processPayment({ amount: 29.99, currency: 'usd', customerId: 'cust-456' })\n    ).rejects.toThrow('Payment gateway timeout');\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "graphql-integration-testing",
+          "heading": "GraphQL Integration Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import request from 'supertest';\nimport { app } from '../src/app';\nimport { seedDatabase } from './helpers/db';\n\ndescribe('GraphQL API Integration Tests', () => {\n  beforeAll(async () => {\n    await seedDatabase();\n  });\n\n  it('queries products with nested relationships', async () => {\n    const query = `\n      query GetProducts($category: String!, $first: Int!) {\n        products(category: $category, first: $first) {\n          edges {\n            node {\n              id\n              name\n              price\n              reviews(first: 3) {\n                averageRating\n                edges {\n                  node {\n                    rating\n                    comment\n                    author { name }\n                  }\n                }\n              }\n            }\n          }\n          pageInfo {\n            hasNextPage\n            endCursor\n          }\n        }\n      }\n    `;\n\n    const response = await request(app)\n      .post('/graphql')\n      .set('Authorization', `Bearer ${authToken}`)\n      .send({ query, variables: { category: 'electronics', first: 5 } })\n      .expect(200);\n\n    expect(response.body.errors).toBeUndefined();\n    expect(response.body.data.products.edges).toHaveLength(5);\n    expect(response.body.data.products.edges[0].node).toMatchObject({\n      id: expect.any(String),\n      name: expect.any(String),\n      price: expect.any(Number),\n      reviews: expect.objectContaining({\n        averageRating: expect.any(Number)\n      })\n    });\n  });\n\n  it('rejects queries exceeding depth limit', async () => {\n    const deepQuery = `\n      query {\n        products(first: 1) {\n          edges {\n            node {\n              reviews(first: 1) {\n                edges {\n                  node {\n                    author {\n                      orders(first: 1) {\n                        edges {\n                          node {\n                            products(first: 1) {\n                              edges { node { name } }\n                            }\n                          }\n                        }\n                      }\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    `;\n\n    const response = await request(app)\n      .post('/graphql')\n      .send({ query: deepQuery })\n      .set('Authorization', `Bearer ${authToken}`)\n      .expect(200);\n\n    expect(response.body.errors[0].message).toContain('exceeds maximum depth');\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Contract Testing Flow\"\n        A[Consumer Team] --> B[Write Consumer Tests<br/>Define Expected Interactions]\n        B --> C[Generate Pact Contract<br/>JSON file]\n        C --> D[Publish to Pact Broker]\n        D --> E[Provider CI Pipeline]\n        E --> F[Download Consumer Contracts]\n        F --> G[Verify Against Provider]\n        G -->|Pass| H[Deploy Provider Safely]\n        G -->|Fail| I[Breaking Change Detected<br/>Fix or Negotiate]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant T as Test\n    participant A as App Server\n    participant W as WireMock\n    participant DB as Test Database\n\n    T->>W: Configure stubs (payment gateway)\n    T->>DB: Seed test data\n    T->>A: POST /api/orders (create order)\n    A->>DB: Insert order record\n    A->>W: POST /v1/charges (process payment)\n    W-->>A: 200 OK (stubbed response)\n    A->>DB: Update order status\n    A-->>T: 201 Created (order response)\n    T->>T: Assert response structure\n    T->>W: Verify stub was called correctly\n    T->>DB: Verify data persisted correctly"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"API Test Pyramid\"\n        A[Schema Validation<br/>Fast, catches drift] --> B[Contract Tests<br/>Consumer expectations]\n        B --> C[Integration Tests<br/>Real dependencies]\n        C --> D[E2E Tests<br/>Full system]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Testing against shared environments instead of isolated instances. When multiple test suites or CI pipelines share a test database or service instance, tests become flaky due to data conflicts and race conditions. Use Testcontainers to spin up isolated dependencies per test suite, or implement strict data isolation with unique prefixes and cleanup hooks. Shared environments should only be used for manual exploratory testing, never automated suites."
+        },
+        {
+          "type": "paragraph",
+          "text": "Contract tests that are too strict about response structure. Pact matchers should validate types and structure, not exact values. A contract that expects \"name\": \"Widget A\" breaks when the provider changes test data. Use like() for type matching, eachLike() for array structure, and regex() for format validation. The contract should answer \"does the response have the fields I need with the right types?\" not \"does it return this exact data?\""
+        },
+        {
+          "type": "paragraph",
+          "text": "Not testing error paths and edge cases in API tests. Teams often test only the happy path (200 OK) and miss critical error scenarios: 401 with expired tokens, 403 with insufficient permissions, 409 on duplicate creation, 422 on validation failures, 429 on rate limiting, and 503 on downstream failures. Each error response has a contract too — consumers need to know the error response structure to handle failures gracefully."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring test execution time as the suite grows. API integration tests that start containers, seed databases, and make HTTP calls are inherently slower than unit tests. Without optimization, a suite of 200 API tests can take 15+ minutes. Mitigate by: reusing containers across test files (global setup), parallelizing independent test suites, using transactions for data isolation (rollback instead of re-seed), and categorizing tests into fast (mocked dependencies) and slow (real dependencies) tiers."
+        },
+        {
+          "type": "paragraph",
+          "text": "WireMock stubs that don't match production behavior. Service virtualization is only valuable if stubs accurately represent the real service. Stubs that always return 200 OK miss timeout scenarios, rate limits, partial failures, and response format changes. Regularly record real traffic to update stubs, validate stubs against the provider's OpenAPI spec, and include failure scenarios (5xx, timeouts, malformed responses) in your stub library."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not versioning contracts alongside code changes. When a consumer updates its contract expectations without coordinating with the provider, the provider's CI breaks unexpectedly. Use Pact Broker's \"can I deploy\" feature to check compatibility before deploying either side. Tag contracts with branch names and environments to track which version of the contract is deployed where."
+        }
+      ],
+      "wordCount": 393,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Microservice Migration with Contract Safety Net. A monolithic e-commerce application is being decomposed into microservices. Before extracting the order service, the team writes Pact contracts for every internal API call the order logic makes (to inventory, pricing, customer services). As each service is extracted, provider verification ensures the new service satisfies all existing consumers. This catches breaking changes during extraction — a field renamed from customerId to customer_id is detected immediately rather than in production."
+        },
+        {
+          "type": "paragraph",
+          "text": "Third-Party Payment Integration Testing. A fintech application integrates with Stripe, PayPal, and bank transfer APIs. WireMock stubs simulate each provider's behavior including: successful charges, declined cards (various reason codes), 3D Secure challenges, webhook deliveries, idempotency key handling, and rate limiting. The test suite covers 47 distinct scenarios without making real API calls, runs in 30 seconds, and catches regressions when the team updates the payment abstraction layer."
+        },
+        {
+          "type": "paragraph",
+          "text": "API-First Development with Schema Validation. A team practices API-first development: they write the OpenAPI specification before implementing endpoints. Integration tests validate that every endpoint's response matches the spec exactly. When a developer adds a field to the response without updating the spec, tests fail. When the spec adds a required field that the implementation doesn't return, tests fail. This bidirectional validation keeps documentation and implementation permanently synchronized."
+        }
+      ],
+      "wordCount": 209,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is consumer-driven contract testing and how does it differ from traditional integration testing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Consumer-driven contract testing inverts the traditional approach. Instead of the provider defining its API and consumers adapting, each consumer defines a contract specifying exactly what it needs from the provider (which endpoints, which fields, which response codes). The provider then verifies it satisfies all consumer contracts. This differs from integration testing in several ways: contracts test at the boundary without requiring both services to run simultaneously, they're faster (no network calls in consumer tests), they pinpoint exactly which consumer breaks when a provider changes, and they enable independent deployment. Traditional integration tests verify the system works together but don't tell you which specific consumer-provider relationship broke or whether a change is safe to deploy."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a testing strategy for a service that depends on 5 external APIs?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Layer the strategy by fidelity and speed. Layer 1: Unit tests with mocked HTTP clients — test business logic in isolation, fast feedback. Layer 2: Contract tests (if you control the providers) or schema validation tests (if external) — verify your client code handles the expected response shapes. Layer 3: WireMock-based integration tests — test your service end-to-end with deterministic stubs for all 5 dependencies, covering happy paths, error scenarios, timeouts, and partial failures. Layer 4: Periodic smoke tests against real sandbox/staging environments — catch drift between stubs and reality. Record real responses periodically to update WireMock stubs. For external APIs you don't control, maintain a stub library versioned by the provider's API version and update it when they release changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the trade-offs between using real databases vs mocks in API integration tests."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Real databases (via Testcontainers) provide high fidelity — you test actual SQL queries, constraints, indexes, and transaction behavior. They catch issues like: queries that work in H2 but fail in PostgreSQL, missing indexes causing timeouts, constraint violations, and migration compatibility. The trade-off is speed (container startup adds 5-15 seconds) and complexity (managing schemas, seeds, cleanup). Mocked repositories are fast and isolated but miss database-specific behavior entirely. The pragmatic approach: use real databases for repository/data-access tests and critical path integration tests, use mocks for business logic tests that happen to touch the database. Never use in-memory databases (H2, SQLite) as substitutes for production databases — they have different SQL dialects, locking behavior, and constraint enforcement."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle authentication in API integration tests without coupling to the auth provider?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Create a test authentication helper that generates valid tokens without calling the real auth provider. For JWT-based auth: use the same signing key (or a test key configured in test environment) to mint tokens with any claims you need. For OAuth: stub the token introspection endpoint with WireMock. For session-based: directly insert session records into the session store. The key principle is that API tests should test your API's behavior, not the auth provider's behavior. Auth provider integration is tested separately. Provide helper functions like generateAdminToken(), generateUserToken(userId), generateExpiredToken() that test authors use without understanding token internals."
+        }
+      ],
+      "wordCount": 511,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Run contract verification in provider CI pipelines with \"can I deploy\" checks. Before deploying a provider, query the Pact Broker's \"can I deploy\" endpoint to verify the new version satisfies all consumer contracts currently deployed in production. This prevents deploying breaking changes. Similarly, before deploying a consumer, verify that the provider in production satisfies the consumer's new contract. Integrate this as a required CI gate — no deployment proceeds without passing compatibility checks."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement test data management strategies that scale. As API test suites grow beyond 100 tests, naive approaches (truncate and re-seed before each test) become prohibitively slow. Use transaction rollback for read-heavy tests (wrap each test in a transaction, rollback after), unique data prefixes for write tests (each test creates data with a unique prefix, cleanup is optional), and shared reference data that tests never modify (lookup tables, configuration). For Testcontainers, reuse containers across test files with global setup/teardown rather than starting fresh containers per file."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor contract test coverage and identify untested interactions. Track which consumer-provider interactions have contracts and which don't. A service with 20 endpoints but contracts covering only 5 has significant risk in the uncovered 15. Use Pact Broker's network diagram to visualize service dependencies and identify gaps. Prioritize contracts for: endpoints that change frequently, endpoints with multiple consumers, and endpoints involved in critical business flows (payments, authentication, order processing)."
+        }
+      ],
+      "wordCount": 226,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Database Integration Testing — Testing data persistence layers with real databases and Testcontainers",
+            "REST API Design — API design principles that make APIs more testable",
+            "GraphQL — GraphQL-specific testing considerations for queries, mutations, and subscriptions",
+            "Unit Testing — How unit tests complement integration tests in the testing pyramid"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import request from 'supertest';\nimport { app } from '../src/app';\nimport { setupTestDatabase, teardownTestDatabase, seedUsers } from './helpers/db';\nimport { generateAuthToken } from './helpers/auth';\n\ndescribe('Products API Integration Tests', () => {\n  let authToken: string;\n  let testUserId: string;\n\n  beforeAll(async () => {\n    await setupTestDatabase();\n    const user = await seedUsers({ role: 'admin' });\n    testUserId = user.id;\n    authToken = generateAuthToken(user);\n  });\n\n  afterAll(async () => {\n    await teardownTestDatabase();\n  });\n\n  describe('GET /api/products', () => {\n    it('returns paginated products with correct structure', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .query({ page: 1, limit: 10, category: 'electronics' })\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(200)\n        .expect('Content-Type', /json/);\n\n      expect(response.body).toMatchObject({\n        data: expect.arrayContaining([\n          expect.objectContaining({\n            id: expect.any(String),\n            name: expect.any(String),\n            price: expect.any(Number),\n            category: 'electronics',\n            createdAt: expect.any(String)\n          })\n        ]),\n        pagination: {\n          page: 1,\n          limit: 10,\n          total: expect.any(Number),\n          totalPages: expect.any(Number)\n        }\n      });\n\n      // Verify pagination math\n      const { total, totalPages, limit } = response.body.pagination;\n      expect(totalPages).toBe(Math.ceil(total / limit));\n      expect(response.body.data.length).toBeLessThanOrEqual(limit);\n    });\n\n    it('returns 401 without authentication', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .expect(401);\n\n      expect(response.body).toMatchObject({\n        error: 'Unauthorized',\n        message: expect.any(String)\n      });\n    });\n\n    it('returns 400 for invalid query parameters', async () => {\n      const response = await request(app)\n        .get('/api/products')\n        .query({ page: -1, limit: 10000 })\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(400);\n\n      expect(response.body.errors).toEqual(\n        expect.arrayContaining([\n          expect.objectContaining({ field: 'page', message: expect.any(String) }),\n          expect.objectContaining({ field: 'limit', message: expect.any(String) })\n        ])\n      );\n    });\n  });\n\n  describe('POST /api/products', () => {\n    it('creates a product and returns 201 with location header', async () => {\n      const newProduct = {\n        name: 'Test Widget',\n        price: 29.99,\n        category: 'electronics',\n        description: 'A test product for integration testing'\n      };\n\n      const response = await request(app)\n        .post('/api/products')\n        .set('Authorization', `Bearer ${authToken}`)\n        .send(newProduct)\n        .expect(201);\n\n      expect(response.headers['location']).toMatch(/\\/api\\/products\\/[\\w-]+/);\n      expect(response.body).toMatchObject({\n        ...newProduct,\n        id: expect.any(String),\n        createdAt: expect.any(String),\n        createdBy: testUserId\n      });\n\n      // Verify the product actually persisted\n      const getResponse = await request(app)\n        .get(`/api/products/${response.body.id}`)\n        .set('Authorization', `Bearer ${authToken}`)\n        .expect(200);\n\n      expect(getResponse.body.name).toBe(newProduct.name);\n    });\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { PactV3, MatchersV3 } from '@pact-foundation/pact';\nimport { ProductApiClient } from '../src/clients/product-api-client';\n\nconst { like, eachLike, string, integer, decimal, datetime, regex } = MatchersV3;\n\nconst provider = new PactV3({\n  consumer: 'OrderService',\n  provider: 'ProductService',\n  logLevel: 'warn'\n});\n\ndescribe('Product Service Contract (Consumer)', () => {\n  describe('GET /api/products/:id', () => {\n    it('returns product details when product exists', async () => {\n      // Define the expected interaction\n      await provider\n        .given('a product with ID prod-123 exists')\n        .uponReceiving('a request for product prod-123')\n        .withRequest({\n          method: 'GET',\n          path: '/api/products/prod-123',\n          headers: {\n            Accept: 'application/json',\n            Authorization: regex(/Bearer [\\w-]+\\.[\\w-]+\\.[\\w-]+/, 'Bearer eyJ.test.token')\n          }\n        })\n        .willRespondWith({\n          status: 200,\n          headers: { 'Content-Type': 'application/json' },\n          body: {\n            id: string('prod-123'),\n            name: string('Premium Widget'),\n            price: decimal(49.99),\n            stock: integer(150),\n            category: string('electronics'),\n            createdAt: datetime(\"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'\", '2024-01-15T10:30:00.000Z')\n          }\n        });\n\n      // Execute the test against the mock provider\n      await provider.executeTest(async (mockServer) => {\n        const client = new ProductApiClient(mockServer.url, 'Bearer eyJ.test.token');\n        const product = await client.getProduct('prod-123');\n\n        expect(product.id).toBe('prod-123');\n        expect(product.name).toBe('Premium Widget');\n        expect(product.price).toBe(49.99);\n        expect(typeof product.stock).toBe('number');\n      });\n    });\n\n    it('returns 404 when product does not exist', async () => {\n      await provider\n        .given('no product with ID nonexistent exists')\n        .uponReceiving('a request for a nonexistent product')\n        .withRequest({\n          method: 'GET',\n          path: '/api/products/nonexistent',\n          headers: { Accept: 'application/json', Authorization: regex(/Bearer .+/, 'Bearer token') }\n        })\n        .willRespondWith({\n          status: 404,\n          body: {\n            error: string('Not Found'),\n            message: string('Product not found')\n          }\n        });\n\n      await provider.executeTest(async (mockServer) => {\n        const client = new ProductApiClient(mockServer.url, 'Bearer token');\n        await expect(client.getProduct('nonexistent')).rejects.toThrow('Product not found');\n      });\n    });\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Verifier } from '@pact-foundation/pact';\nimport { app } from '../src/app';\nimport { seedProduct, clearDatabase } from './helpers/db';\n\ndescribe('Product Service Contract Verification (Provider)', () => {\n  let server: any;\n\n  beforeAll(async () => {\n    server = app.listen(4000);\n  });\n\n  afterAll(async () => {\n    server.close();\n  });\n\n  it('validates all consumer contracts', async () => {\n    const verifier = new Verifier({\n      providerBaseUrl: 'http://localhost:4000',\n      pactBrokerUrl: process.env.PACT_BROKER_URL,\n      provider: 'ProductService',\n      providerVersion: process.env.GIT_SHA,\n      publishVerificationResult: process.env.CI === 'true',\n      providerVersionBranch: process.env.GIT_BRANCH,\n\n      // State handlers set up test data for each interaction\n      stateHandlers: {\n        'a product with ID prod-123 exists': async () => {\n          await clearDatabase();\n          await seedProduct({\n            id: 'prod-123',\n            name: 'Premium Widget',\n            price: 49.99,\n            stock: 150,\n            category: 'electronics'\n          });\n        },\n        'no product with ID nonexistent exists': async () => {\n          await clearDatabase();\n        }\n      }\n    });\n\n    await verifier.verifyProvider();\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { OpenAPISchemaValidator } from 'express-openapi-validator';\nimport SwaggerParser from '@apidevtools/swagger-parser';\nimport request from 'supertest';\nimport { app } from '../src/app';\n\ndescribe('OpenAPI Schema Compliance', () => {\n  let apiSpec: any;\n\n  beforeAll(async () => {\n    apiSpec = await SwaggerParser.dereference('./openapi.yaml');\n  });\n\n  it('GET /api/products response matches OpenAPI schema', async () => {\n    const response = await request(app)\n      .get('/api/products')\n      .set('Authorization', `Bearer ${validToken}`)\n      .expect(200);\n\n    const schema = apiSpec.paths['/api/products'].get.responses['200'].content['application/json'].schema;\n    const ajv = new Ajv({ allErrors: true });\n    const validate = ajv.compile(schema);\n    const valid = validate(response.body);\n\n    if (!valid) {\n      console.error('Schema validation errors:', validate.errors);\n    }\n    expect(valid).toBe(true);\n  });\n\n  // Validate all endpoints automatically\n  const endpoints = Object.entries(apiSpec.paths);\n  endpoints.forEach(([path, methods]: [string, any]) => {\n    Object.entries(methods).forEach(([method, spec]: [string, any]) => {\n      if (['get', 'post', 'put', 'delete', 'patch'].includes(method)) {\n        it(`${method.toUpperCase()} ${path} response conforms to schema`, async () => {\n          // Dynamic test generation for all documented endpoints\n          const response = await makeRequest(app, method, path, spec);\n          validateResponseAgainstSchema(response, spec);\n        });\n      }\n    });\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { WireMockRestClient } from 'wiremock-rest-client';\nimport { GenericContainer, StartedTestContainer } from 'testcontainers';\n\ndescribe('Payment Service Integration (with WireMock)', () => {\n  let wireMock: WireMockRestClient;\n  let container: StartedTestContainer;\n\n  beforeAll(async () => {\n    // Start WireMock in a container\n    container = await new GenericContainer('wiremock/wiremock:3.3.1')\n      .withExposedPorts(8080)\n      .start();\n\n    const wireMockUrl = `http://${container.getHost()}:${container.getMappedPort(8080)}`;\n    wireMock = new WireMockRestClient(wireMockUrl);\n  });\n\n  afterAll(async () => {\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    await wireMock.global.resetAll();\n  });\n\n  it('processes payment successfully', async () => {\n    // Stub the external payment gateway\n    await wireMock.mappings.createMapping({\n      request: {\n        method: 'POST',\n        urlPath: '/v1/charges',\n        headers: { 'Authorization': { equalTo: 'Bearer sk_test_key' } },\n        bodyPatterns: [{ matchesJsonPath: '$.amount' }, { matchesJsonPath: '$.currency' }]\n      },\n      response: {\n        status: 200,\n        jsonBody: {\n          id: 'ch_test_123',\n          status: 'succeeded',\n          amount: 2999,\n          currency: 'usd'\n        },\n        headers: { 'Content-Type': 'application/json' }\n      }\n    });\n\n    // Test our service against the stub\n    const result = await paymentService.processPayment({\n      amount: 29.99,\n      currency: 'usd',\n      customerId: 'cust-456'\n    });\n\n    expect(result.status).toBe('succeeded');\n    expect(result.chargeId).toBe('ch_test_123');\n\n    // Verify the external call was made correctly\n    const calls = await wireMock.requests.getCount({\n      method: 'POST',\n      url: '/v1/charges'\n    });\n    expect(calls.count).toBe(1);\n  });\n\n  it('handles payment gateway timeout gracefully', async () => {\n    await wireMock.mappings.createMapping({\n      request: { method: 'POST', urlPath: '/v1/charges' },\n      response: {\n        status: 200,\n        fixedDelayMilliseconds: 10000,  // Simulate timeout\n        jsonBody: { id: 'ch_delayed' }\n      }\n    });\n\n    await expect(\n      paymentService.processPayment({ amount: 29.99, currency: 'usd', customerId: 'cust-456' })\n    ).rejects.toThrow('Payment gateway timeout');\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import request from 'supertest';\nimport { app } from '../src/app';\nimport { seedDatabase } from './helpers/db';\n\ndescribe('GraphQL API Integration Tests', () => {\n  beforeAll(async () => {\n    await seedDatabase();\n  });\n\n  it('queries products with nested relationships', async () => {\n    const query = `\n      query GetProducts($category: String!, $first: Int!) {\n        products(category: $category, first: $first) {\n          edges {\n            node {\n              id\n              name\n              price\n              reviews(first: 3) {\n                averageRating\n                edges {\n                  node {\n                    rating\n                    comment\n                    author { name }\n                  }\n                }\n              }\n            }\n          }\n          pageInfo {\n            hasNextPage\n            endCursor\n          }\n        }\n      }\n    `;\n\n    const response = await request(app)\n      .post('/graphql')\n      .set('Authorization', `Bearer ${authToken}`)\n      .send({ query, variables: { category: 'electronics', first: 5 } })\n      .expect(200);\n\n    expect(response.body.errors).toBeUndefined();\n    expect(response.body.data.products.edges).toHaveLength(5);\n    expect(response.body.data.products.edges[0].node).toMatchObject({\n      id: expect.any(String),\n      name: expect.any(String),\n      price: expect.any(Number),\n      reviews: expect.objectContaining({\n        averageRating: expect.any(Number)\n      })\n    });\n  });\n\n  it('rejects queries exceeding depth limit', async () => {\n    const deepQuery = `\n      query {\n        products(first: 1) {\n          edges {\n            node {\n              reviews(first: 1) {\n                edges {\n                  node {\n                    author {\n                      orders(first: 1) {\n                        edges {\n                          node {\n                            products(first: 1) {\n                              edges { node { name } }\n                            }\n                          }\n                        }\n                      }\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    `;\n\n    const response = await request(app)\n      .post('/graphql')\n      .send({ query: deepQuery })\n      .set('Authorization', `Bearer ${authToken}`)\n      .expect(200);\n\n    expect(response.body.errors[0].message).toContain('exceeds maximum depth');\n  });\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/integration-testing/api-and-contract-testing.md",
+    "wordCount": 1657,
+    "sectionCount": 15
+  }
+}

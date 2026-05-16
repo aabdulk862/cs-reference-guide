@@ -1,0 +1,419 @@
+# Redis Clustering & High Availability
+
+## Quick Reference
+
+- **Redis Cluster** partitions data across multiple nodes using 16,384 hash slots; each master owns a subset of slots
+- **Hash slot assignment**: `CRC16(key) mod 16384` determines which slot (and thus which node) owns a key
+- **Redis Sentinel** monitors master/replica topologies and performs automatic failover without data partitioning
+- **Cluster bus** is a node-to-node binary protocol on port+10000 (e.g., 16379) used for failure detection, configuration updates, and failover authorization
+- **Resharding** moves hash slots between nodes online without downtime; clients are redirected via MOVED/ASK responses
+- **Replica migration** automatically moves replicas from masters with excess replicas to masters that lost theirs
+- **Split-brain** is mitigated by `min-replicas-to-write` (requires N replicas acknowledging writes) and cluster quorum requirements
+- **Cluster requires minimum 6 nodes** for production: 3 masters + 3 replicas for fault tolerance
+- **Multi-key operations** only work when all keys hash to the same slot; use hash tags `{tag}` to force co-location
+- **Sentinel requires minimum 3 instances** for reliable quorum-based failover decisions
+
+## When to Use
+
+Deploy Redis Cluster when your dataset exceeds the memory capacity of a single node, when you need write scalability beyond what a single master can provide, or when you need automatic partitioning with built-in failover. Redis Cluster is the right choice for large-scale caching layers, session stores, and real-time analytics where data naturally partitions across keys without cross-key transaction requirements.
+
+Use Redis Sentinel (without Cluster) when your dataset fits on a single node but you need automatic failover for high availability. Sentinel is simpler to operate than Cluster and supports all Redis commands without multi-key restrictions. It's ideal for applications that use Redis as a cache or session store with moderate data sizes (under 25GB) but require sub-second failover.
+
+Avoid Redis Cluster when your workload heavily depends on multi-key operations (transactions spanning multiple keys, Lua scripts accessing many keys, SORT with external keys) unless you can guarantee all related keys hash to the same slot via hash tags. Also avoid it when your dataset is small enough for a single node — the operational complexity of Cluster isn't justified for datasets under 10GB.
+
+Choose Sentinel over Cluster for pub/sub-heavy workloads, since Cluster's pub/sub broadcasts messages to all nodes (amplifying network traffic), while a single Sentinel-managed master handles pub/sub efficiently.
+
+## Code Examples
+
+### Redis Cluster Creation
+
+```bash
+# Create a 6-node cluster (3 masters + 3 replicas)
+# Start 6 Redis instances on different ports
+redis-server --port 7000 --cluster-enabled yes --cluster-config-file nodes-7000.conf \
+  --cluster-node-timeout 5000 --appendonly yes --appendfilename appendonly-7000.aof \
+  --dbfilename dump-7000.rdb --logfile /var/log/redis/7000.log --daemonize yes
+
+redis-server --port 7001 --cluster-enabled yes --cluster-config-file nodes-7001.conf \
+  --cluster-node-timeout 5000 --appendonly yes --appendfilename appendonly-7001.aof \
+  --dbfilename dump-7001.rdb --logfile /var/log/redis/7001.log --daemonize yes
+
+# ... repeat for ports 7002-7005
+
+# Create the cluster with automatic replica assignment
+redis-cli --cluster create \
+  127.0.0.1:7000 127.0.0.1:7001 127.0.0.1:7002 \
+  127.0.0.1:7003 127.0.0.1:7004 127.0.0.1:7005 \
+  --cluster-replicas 1
+
+# Verify cluster status
+redis-cli -p 7000 cluster info
+redis-cli -p 7000 cluster nodes
+
+# Check slot distribution
+redis-cli -p 7000 cluster slots
+```
+
+### Cluster Configuration (redis.conf)
+
+```ini
+# redis-cluster.conf - Production configuration
+port 7000
+bind 10.0.1.1
+protected-mode yes
+requirepass "cluster_secret_password"
+masterauth "cluster_secret_password"
+
+# Cluster settings
+cluster-enabled yes
+cluster-config-file nodes-7000.conf
+cluster-node-timeout 5000
+cluster-announce-ip 10.0.1.1
+cluster-announce-port 7000
+cluster-announce-bus-port 17000
+
+# Persistence
+appendonly yes
+appendfilename "appendonly-7000.aof"
+appendfsync everysec
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+# Memory
+maxmemory 8gb
+maxmemory-policy allkeys-lru
+
+# Replication
+replica-serve-stale-data yes
+replica-read-only yes
+repl-diskless-sync yes
+repl-diskless-sync-delay 5
+
+# Split-brain protection
+cluster-require-full-coverage no
+cluster-allow-reads-when-down no
+min-replicas-to-write 1
+min-replicas-max-lag 10
+
+# Performance
+tcp-backlog 511
+timeout 300
+tcp-keepalive 300
+hz 10
+dynamic-hz yes
+```
+
+### Redis Sentinel Configuration
+
+```ini
+# sentinel.conf - Production configuration
+port 26379
+bind 10.0.1.1
+protected-mode yes
+requirepass "sentinel_password"
+
+# Monitor the master (name, host, port, quorum)
+sentinel monitor mymaster 10.0.1.1 6379 2
+
+# Authentication for the monitored master
+sentinel auth-pass mymaster "redis_master_password"
+
+# Failover timing
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 60000
+sentinel parallel-syncs mymaster 1
+
+# Notification script (called on failover)
+sentinel notification-script mymaster /opt/redis/notify.sh
+
+# Reconfiguration script (update DNS, load balancer, etc.)
+sentinel client-reconfig-script mymaster /opt/redis/reconfig.sh
+
+# Deny dangerous commands via Sentinel
+sentinel deny-scripts-reconfig yes
+```
+
+```bash
+# Start three Sentinel instances
+redis-sentinel /etc/redis/sentinel-1.conf
+redis-sentinel /etc/redis/sentinel-2.conf
+redis-sentinel /etc/redis/sentinel-3.conf
+
+# Query Sentinel for current master
+redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+
+# List all replicas
+redis-cli -p 26379 SENTINEL replicas mymaster
+
+# Force failover (for testing)
+redis-cli -p 26379 SENTINEL failover mymaster
+
+# Check Sentinel status
+redis-cli -p 26379 SENTINEL masters
+redis-cli -p 26379 SENTINEL ckquorum mymaster
+```
+
+### Client Connection Handling (Node.js with ioredis)
+
+```javascript
+const Redis = require('ioredis');
+
+// Cluster client with automatic slot routing
+const cluster = new Redis.Cluster([
+  { host: '10.0.1.1', port: 7000 },
+  { host: '10.0.1.2', port: 7001 },
+  { host: '10.0.1.3', port: 7002 }
+], {
+  redisOptions: {
+    password: 'cluster_secret_password',
+    tls: { rejectUnauthorized: false }
+  },
+  // Read from replicas for read-heavy workloads
+  scaleReads: 'slave',  // 'master' | 'slave' | 'all'
+  // Retry strategy for MOVED/ASK redirections
+  clusterRetryStrategy: (times) => Math.min(times * 100, 3000),
+  // Natural key routing (no hash tags needed for single-key ops)
+  enableReadyCheck: true,
+  maxRedirections: 16,
+  retryDelayOnFailover: 300,
+  retryDelayOnClusterDown: 1000
+});
+
+cluster.on('error', (err) => console.error('Cluster error:', err));
+cluster.on('+node', (node) => console.log('Node added:', node.options.host));
+cluster.on('-node', (node) => console.log('Node removed:', node.options.host));
+
+// Using hash tags to co-locate related keys on the same slot
+await cluster.set('{user:1000}:profile', JSON.stringify({ name: 'Alice' }));
+await cluster.set('{user:1000}:session', JSON.stringify({ token: 'abc' }));
+await cluster.set('{user:1000}:cart', JSON.stringify({ items: [] }));
+
+// Multi-key operation works because all keys share {user:1000} hash tag
+const results = await cluster.mget(
+  '{user:1000}:profile',
+  '{user:1000}:session',
+  '{user:1000}:cart'
+);
+
+// Pipeline (commands auto-routed to correct nodes)
+const pipeline = cluster.pipeline();
+pipeline.set('key1', 'value1');  // may go to node A
+pipeline.set('key2', 'value2');  // may go to node B
+pipeline.get('key3');            // may go to node C
+const results = await pipeline.exec();
+
+// Sentinel client with automatic failover
+const sentinel = new Redis({
+  sentinels: [
+    { host: '10.0.1.1', port: 26379 },
+    { host: '10.0.1.2', port: 26379 },
+    { host: '10.0.1.3', port: 26379 }
+  ],
+  name: 'mymaster',
+  password: 'redis_master_password',
+  sentinelPassword: 'sentinel_password',
+  // Automatic reconnection on failover
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+  reconnectOnError: (err) => err.message.includes('READONLY')
+});
+
+sentinel.on('reconnecting', () => console.log('Reconnecting after failover...'));
+sentinel.on('ready', () => console.log('Connected to master'));
+```
+
+### Resharding and Cluster Operations
+
+```bash
+# Add a new node to the cluster
+redis-cli --cluster add-node 10.0.1.4:7006 10.0.1.1:7000
+
+# Add a node as a replica of a specific master
+redis-cli --cluster add-node 10.0.1.4:7007 10.0.1.1:7000 \
+  --cluster-slave --cluster-master-id <master-node-id>
+
+# Reshard: move 1000 slots from node A to new node
+redis-cli --cluster reshard 10.0.1.1:7000 \
+  --cluster-from <source-node-id> \
+  --cluster-to <destination-node-id> \
+  --cluster-slots 1000 \
+  --cluster-yes
+
+# Rebalance slots evenly across all masters
+redis-cli --cluster rebalance 10.0.1.1:7000 --cluster-use-empty-masters
+
+# Remove a node (must have zero slots first)
+redis-cli --cluster del-node 10.0.1.1:7000 <node-id-to-remove>
+
+# Fix cluster (repair broken slot assignments)
+redis-cli --cluster fix 10.0.1.1:7000
+
+# Check cluster health
+redis-cli --cluster check 10.0.1.1:7000
+```
+
+## Architecture / Diagrams
+
+```mermaid
+graph TB
+    subgraph "Redis Cluster Architecture"
+        subgraph "Client Layer"
+            C1[Client 1]
+            C2[Client 2]
+            C3[Client 3]
+        end
+
+        subgraph "Master Nodes"
+            M1[Master 1<br/>Slots 0-5460]
+            M2[Master 2<br/>Slots 5461-10922]
+            M3[Master 3<br/>Slots 10923-16383]
+        end
+
+        subgraph "Replica Nodes"
+            R1[Replica 1<br/>Copy of Master 1]
+            R2[Replica 2<br/>Copy of Master 2]
+            R3[Replica 3<br/>Copy of Master 3]
+        end
+
+        subgraph "Cluster Bus (port+10000)"
+            BUS[Gossip Protocol<br/>Failure Detection<br/>Config Propagation]
+        end
+    end
+
+    C1 -->|"SET user:1 → slot 7680"| M2
+    C2 -->|"GET order:5 → slot 2345"| M1
+    C3 -->|"HGET product:9 → slot 14500"| M3
+
+    M1 -.->|Replication| R1
+    M2 -.->|Replication| R2
+    M3 -.->|Replication| R3
+
+    M1 <-->|Cluster Bus| BUS
+    M2 <-->|Cluster Bus| BUS
+    M3 <-->|Cluster Bus| BUS
+    R1 <-->|Cluster Bus| BUS
+    R2 <-->|Cluster Bus| BUS
+    R3 <-->|Cluster Bus| BUS
+```
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Node_A as Node A (old owner)
+    participant Node_B as Node B (new owner)
+
+    Note over Client,Node_B: Key Migration During Resharding
+
+    Client->>Node_A: GET key (slot being migrated)
+    Node_A->>Node_A: Key still here
+    Node_A->>Client: "value"
+
+    Note over Node_A,Node_B: Slot migration in progress...
+    Node_A->>Node_B: MIGRATE key
+
+    Client->>Node_A: GET key (already migrated)
+    Node_A->>Client: ASK 12345 Node_B:7001
+    Client->>Node_B: ASKING + GET key
+    Node_B->>Client: "value"
+
+    Note over Node_A,Node_B: Migration complete, slot reassigned
+    Client->>Node_A: GET key
+    Node_A->>Client: MOVED 12345 Node_B:7001
+    Note over Client: Client updates slot map
+    Client->>Node_B: GET key (direct, cached routing)
+    Node_B->>Client: "value"
+```
+
+```mermaid
+graph TB
+    subgraph "Redis Sentinel Architecture"
+        subgraph "Sentinel Quorum"
+            S1[Sentinel 1<br/>AZ-1]
+            S2[Sentinel 2<br/>AZ-2]
+            S3[Sentinel 3<br/>AZ-3]
+        end
+
+        subgraph "Redis Instances"
+            MASTER[(Redis Master<br/>Read/Write)]
+            REPLICA1[(Redis Replica 1<br/>Read-only)]
+            REPLICA2[(Redis Replica 2<br/>Read-only)]
+        end
+
+        subgraph "Application"
+            APP[App connects via<br/>Sentinel discovery]
+        end
+    end
+
+    S1 -.->|Monitor| MASTER
+    S2 -.->|Monitor| MASTER
+    S3 -.->|Monitor| MASTER
+    S1 -.->|Monitor| REPLICA1
+    S2 -.->|Monitor| REPLICA2
+
+    MASTER -->|Replication| REPLICA1
+    MASTER -->|Replication| REPLICA2
+
+    APP -->|"SENTINEL get-master-addr"| S1
+    APP -->|Read/Write| MASTER
+```
+
+## Common Pitfalls
+
+**Cross-slot multi-key operations failing**: Commands like `MGET`, `MSET`, `SUNION`, and transactions (`MULTI`/`EXEC`) fail with `CROSSSLOT` error if keys hash to different slots. Always use hash tags (`{user:1000}:profile`, `{user:1000}:session`) to force related keys to the same slot. Design your key naming scheme around hash tags from the start — retrofitting is painful.
+
+**Hot slots causing uneven load**: If a small number of keys receive disproportionate traffic (e.g., a viral post's counter), the node owning those slots becomes a bottleneck while others are idle. Redis Cluster cannot split a single slot across nodes. Mitigate by distributing hot keys across multiple slots using application-level sharding (e.g., `counter:{shard_N}` with N random shards, sum on read).
+
+**Split-brain after network partition**: During a network partition, a minority-side master may continue accepting writes that will be lost when the partition heals (the majority side elects a new master). Configure `min-replicas-to-write 1` and `min-replicas-max-lag 10` so the isolated master stops accepting writes when it can't reach any replicas. This trades availability for consistency during partitions.
+
+**Sentinel quorum too small**: Running only 2 Sentinel instances means a single Sentinel failure prevents failover (quorum of 2 requires both to agree). Always run at least 3 Sentinels in different failure domains (different AZs or racks). The quorum should be set to `(N/2) + 1` — for 3 Sentinels, quorum = 2.
+
+**Not handling MOVED/ASK redirections in client code**: If your Redis client library doesn't handle cluster redirections automatically, your application will receive errors during resharding or after failover. Use cluster-aware client libraries (ioredis, Jedis with JedisCluster, redis-py-cluster) that handle redirections transparently and cache the slot-to-node mapping.
+
+**Cluster node timeout too aggressive**: Setting `cluster-node-timeout` too low (e.g., 1000ms) causes false failovers during brief network hiccups or GC pauses. Set it to at least 5000ms for production. The actual failover time is `node-timeout + failover-election-time` (typically 5-15 seconds total), which is acceptable for most applications.
+
+## Real-World Use Cases
+
+**Global session store with Redis Cluster**: A SaaS platform stores 50 million active user sessions across a 12-node Redis Cluster (6 masters, 6 replicas). Sessions are keyed by `{user:ID}:session` with hash tags ensuring all session data for a user co-locates on one node. The cluster handles 500,000 ops/sec with sub-millisecond latency. During peak traffic, they add nodes and reshard online without any application downtime. Sentinel-based replicas in a secondary region provide DR capability.
+
+**Rate limiting at scale**: An API gateway uses Redis Cluster to enforce rate limits across 100,000 API keys processing 2 million requests per second. Each API key's counter lives on a single node (determined by hash slot), eliminating cross-node coordination. The sliding window rate limiter uses sorted sets with timestamps, and the cluster's horizontal scaling ensures no single node becomes a bottleneck as API key count grows.
+
+**Real-time leaderboard with Sentinel HA**: A gaming platform maintains real-time leaderboards using Redis sorted sets behind Sentinel for automatic failover. The dataset (10 million players, 500MB) fits on a single node, making Cluster unnecessary. Sentinel provides sub-10-second failover when the master fails, and read replicas serve leaderboard queries (ZREVRANGE) to reduce master load. The application uses Sentinel-aware connection pooling that automatically reconnects to the new master after failover.
+
+**Distributed caching layer for microservices**: A microservices architecture uses a 24-node Redis Cluster as a shared caching layer. Each service uses hash-tagged keys (`{service:orders}:cache:key`) to keep related cache entries on the same node, enabling efficient batch invalidation with Lua scripts. The cluster handles cache stampede protection using distributed locks (one lock per cache key, co-located via hash tags). Automatic replica migration ensures that if a master loses its replica, another master's excess replica is reassigned automatically.
+
+## Interview Questions
+
+**Q: How does Redis Cluster handle data partitioning, and what are hash slots?**
+
+A: Redis Cluster divides the keyspace into 16,384 hash slots. Each key is assigned to a slot using `CRC16(key) mod 16384`. Each master node in the cluster owns a subset of these slots (e.g., with 3 masters: node A owns slots 0-5460, node B owns 5461-10922, node C owns 10923-16383). When a client sends a command, it computes the hash slot for the key and routes the request to the correct node. If the client sends to the wrong node, it receives a `MOVED` redirection with the correct node's address. Hash tags (curly braces in key names like `{user}:profile`) allow forcing multiple keys to the same slot by hashing only the tagged portion. This enables multi-key operations on related keys.
+
+**Q: What is the difference between Redis Sentinel and Redis Cluster?**
+
+A: Redis Sentinel provides high availability (automatic failover) for a single master with replicas — it monitors the master, detects failures, and promotes a replica to master. It does NOT partition data; all data lives on one master. Redis Cluster provides both data partitioning (sharding across multiple masters) AND high availability (each master has replicas that can be promoted). Use Sentinel when your data fits on one node but you need failover. Use Cluster when you need to scale beyond one node's memory/throughput. Sentinel is simpler to operate and supports all Redis commands without restrictions. Cluster has limitations: multi-key operations require hash tags, Lua scripts can only access keys on one node, and pub/sub broadcasts to all nodes.
+
+**Q: How does failover work in Redis Cluster when a master fails?**
+
+A: When a master becomes unreachable, its replicas and other masters detect the failure via the cluster bus (gossip protocol). After `cluster-node-timeout` milliseconds without a response, nodes mark the master as `PFAIL` (possibly failed). When a majority of masters agree it's unreachable, it's marked `FAIL`. The failed master's replicas then initiate an election: each replica requests votes from all masters, and masters vote for the replica with the most recent replication offset (most data). The replica that receives votes from a majority of masters promotes itself, takes ownership of the failed master's slots, and announces the new configuration via the cluster bus. The entire process typically takes 5-15 seconds. During this window, the failed master's slots are unavailable for writes.
+
+**Q: How do you handle the split-brain problem in Redis?**
+
+A: Split-brain occurs when a network partition isolates a master from the majority of the cluster, and a new master is elected on the majority side. The isolated old master may continue accepting writes that will be lost when the partition heals. Mitigation strategies: (1) Configure `min-replicas-to-write N` — the master stops accepting writes if fewer than N replicas are reachable, so an isolated master with no reachable replicas rejects writes immediately. (2) Set `min-replicas-max-lag` to a low value (e.g., 10 seconds) so the master detects replica disconnection quickly. (3) In Sentinel setups, ensure Sentinels are distributed across the same failure domains as Redis instances so the quorum decision reflects actual network state. (4) Use `cluster-require-full-coverage no` so the majority partition continues serving available slots rather than going completely down.
+
+**Q: What are the limitations of Redis Cluster that you need to design around?**
+
+A: Key limitations: (1) **Multi-key operations** require all keys on the same slot — use hash tags or redesign data access patterns. (2) **Transactions (MULTI/EXEC)** only work within a single slot. (3) **Lua scripts** can only access keys that hash to the slot of the first key argument. (4) **SELECT** (multiple databases) is not supported — only database 0 exists. (5) **Large keys** can't be split across nodes — a single sorted set with millions of members must fit on one node. (6) **Pub/Sub** messages are broadcast to all nodes, creating O(N) network amplification. (7) **Resharding** moves data online but adds latency during migration (ASK redirections). (8) **Maximum 1000 nodes** is the tested limit. Design your application to work within these constraints from the start — retrofitting hash tags or splitting large data structures is significantly harder after deployment.
+
+## Production Tips
+
+**Cluster monitoring essentials**: Monitor these metrics per node: `used_memory` vs `maxmemory` (eviction risk), `connected_clients` (connection leak detection), `instantaneous_ops_per_sec` (load distribution), `cluster_state` (must be "ok"), and `cluster_slots_assigned` (must be 16384). Alert on `cluster_state != ok`, any node with `used_memory_rss` > 90% of available RAM, or replication lag exceeding 5 seconds.
+
+**Graceful scaling procedure**: When adding capacity, add new nodes as empty masters, then reshard slots from existing nodes to the new ones. Reshard during low-traffic periods and limit migration speed with `cluster-migration-barrier`. After resharding, verify even distribution with `redis-cli --cluster check`. When removing nodes, reshard all their slots to other nodes first, then remove the empty node.
+
+**Backup strategy for Cluster**: Each node maintains its own RDB/AOF files. Coordinate backups across all masters to get a consistent cluster snapshot. Use `BGSAVE` triggered simultaneously on all masters, or use Redis Enterprise's built-in cluster backup. Test restoration by spinning up a parallel cluster from backups and verifying data integrity.
+
+**Client-side connection pooling**: Configure your client library with appropriate pool sizes per node. For a 6-node cluster, a pool size of 50 per node means 300 total connections from each application instance. Monitor pool exhaustion and adjust based on your concurrency requirements. Use `INFO clients` on each node to verify connection counts match expectations.
+
+## Related Topics
+
+- [Redis Data Structures & Patterns](./data-structures-deep-dive.md) — Data types, use cases, and production patterns
+- [Redis](./redis.md) — Core Redis features, persistence, and caching patterns
+- [System Design - Caching](../../system-design/system-design/caching.md) — Caching architectures and strategies

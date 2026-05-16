@@ -72,7 +72,8 @@ When adding a new category:
 1. Create the directory under `content/`
 2. Add a mapping entry to `CATEGORY_MAPPINGS`
 3. Create at least one topic subdirectory with `index.md`
-4. The pipeline auto-discovers all multi-page topics in mapped directories
+4. Add the category ID to the appropriate group in `CATEGORY_GROUPS` (Sidebar.tsx)
+5. The pipeline auto-discovers all multi-page topics in mapped directories
 
 ## Sidebar Organization
 
@@ -175,8 +176,8 @@ Generated files in `public/content/`:
       ]
     }]
   }],
-  "totalTopics": 35,
-  "totalSections": 400,
+  "totalTopics": 39,
+  "totalSections": 2508,
   "buildTimestamp": "2025-05-16T10:00:00Z"
 }
 ```

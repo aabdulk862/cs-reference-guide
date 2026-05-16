@@ -1,0 +1,361 @@
+{
+  "id": "angular-angular-routing-modules",
+  "slug": "routing-and-modules",
+  "title": "Angular Routing & Modules",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "RouterModule.forRoot(routes) configures the root router with application-wide routes; forChild(routes) registers routes for feature modules without re-initializing the router service",
+            "Lazy loading uses loadChildren (for modules) or loadComponent (Angular 15+ standalone) with dynamic import() to split code into separate bundles loaded on demand",
+            "Route guards control navigation: canActivate (enter), canDeactivate (leave), canMatch (route matching), resolve (pre-fetch data), canLoad (prevent lazy bundle download)",
+            "Angular 15+ functional guards replace class-based guards: canActivate: [() => inject(AuthService).isLoggedIn()]",
+            "Preloading strategies (PreloadAllModules, custom strategies) load lazy bundles in the background after initial render completes",
+            "Auxiliary routes (named outlets) enable multiple independent routable areas in a single view — useful for side panels, modals, and chat widgets",
+            "Standalone components can be routed directly without NgModules using loadComponent: () => import('./path').then(m => m.Component)"
+          ]
+        }
+      ],
+      "wordCount": 124,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Routing and module architecture decisions shape the entire application structure. This knowledge is critical when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Architecting large-scale applications where route-based code splitting reduces initial bundle size from megabytes to hundreds of kilobytes, directly impacting Core Web Vitals",
+            "Implementing authentication and authorization flows where route guards prevent unauthorized access to protected pages and pre-fetch user permissions before rendering",
+            "Designing feature module boundaries that enable independent team development, where each team owns a lazy-loaded module with its own routes, services, and components",
+            "Migrating from NgModule-based architecture to standalone components, understanding which patterns translate directly and which require architectural rethinking",
+            "Building applications with complex navigation patterns like nested dashboards, wizard flows with step validation, or multi-panel layouts with independent routing"
+          ]
+        }
+      ],
+      "wordCount": 117,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "route-configuration-with-guards-and-resolvers",
+          "heading": "Route Configuration with Guards and Resolvers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Routes } from '@angular/router';\nimport { inject } from '@angular/core';\nimport { AuthService } from './services/auth.service';\nimport { PermissionService } from './services/permission.service';\n\n// Functional guard (Angular 15+)\nconst authGuard = () => {\n  const auth = inject(AuthService);\n  const router = inject(Router);\n\n  if (auth.isAuthenticated()) {\n    return true;\n  }\n\n  // Store attempted URL for redirect after login\n  return router.createUrlTree(['/login'], {\n    queryParams: { returnUrl: router.routerState.snapshot.url }\n  });\n};\n\n// Role-based guard with parameter\nconst roleGuard = (allowedRoles: string[]) => {\n  return () => {\n    const permissions = inject(PermissionService);\n    return permissions.hasAnyRole(allowedRoles);\n  };\n};\n\n// Functional resolver\nconst productResolver = (route: ActivatedRouteSnapshot) => {\n  const productService = inject(ProductService);\n  return productService.getProduct(route.params['id']).pipe(\n    catchError(() => {\n      inject(Router).navigate(['/products']);\n      return EMPTY;\n    })\n  );\n};\n\n// Unsaved changes guard\nconst unsavedChangesGuard = (component: { hasUnsavedChanges(): boolean }) => {\n  if (component.hasUnsavedChanges()) {\n    return confirm('You have unsaved changes. Leave anyway?');\n  }\n  return true;\n};\n\nexport const routes: Routes = [\n  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },\n  { path: 'login', loadComponent: () => import('./pages/login.component').then(m => m.LoginComponent) },\n\n  // Protected routes\n  {\n    path: '',\n    canActivate: [authGuard],\n    children: [\n      {\n        path: 'dashboard',\n        loadComponent: () => import('./pages/dashboard.component').then(m => m.DashboardComponent),\n        title: 'Dashboard'\n      },\n      {\n        path: 'products',\n        loadChildren: () => import('./features/products/product.routes').then(m => m.PRODUCT_ROUTES)\n      },\n      {\n        path: 'admin',\n        canActivate: [roleGuard(['admin', 'super-admin'])],\n        loadChildren: () => import('./features/admin/admin.routes').then(m => m.ADMIN_ROUTES)\n      },\n      {\n        path: 'orders/:id',\n        loadComponent: () => import('./pages/order-detail.component').then(m => m.OrderDetailComponent),\n        resolve: { order: orderResolver },\n        canDeactivate: [unsavedChangesGuard]\n      }\n    ]\n  },\n\n  // Wildcard — must be last\n  { path: '**', loadComponent: () => import('./pages/not-found.component').then(m => m.NotFoundComponent) }\n];",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "lazy-loaded-feature-routes-standalone",
+          "heading": "Lazy-Loaded Feature Routes (Standalone)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// features/products/product.routes.ts\nimport { Routes } from '@angular/router';\n\nexport const PRODUCT_ROUTES: Routes = [\n  {\n    path: '',\n    loadComponent: () => import('./product-list.component').then(m => m.ProductListComponent),\n    title: 'Products'\n  },\n  {\n    path: 'create',\n    loadComponent: () => import('./product-form.component').then(m => m.ProductFormComponent),\n    canActivate: [roleGuard(['admin', 'product-manager'])],\n    title: 'Create Product'\n  },\n  {\n    path: ':id',\n    loadComponent: () => import('./product-detail.component').then(m => m.ProductDetailComponent),\n    resolve: { product: productResolver },\n    children: [\n      { path: '', redirectTo: 'overview', pathMatch: 'full' },\n      {\n        path: 'overview',\n        loadComponent: () => import('./tabs/product-overview.component').then(m => m.ProductOverviewComponent)\n      },\n      {\n        path: 'reviews',\n        loadComponent: () => import('./tabs/product-reviews.component').then(m => m.ProductReviewsComponent)\n      },\n      {\n        path: 'analytics',\n        loadComponent: () => import('./tabs/product-analytics.component').then(m => m.ProductAnalyticsComponent),\n        canActivate: [roleGuard(['admin'])]\n      }\n    ]\n  }\n];",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-preloading-strategy",
+          "heading": "Custom Preloading Strategy",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { PreloadingStrategy, Route } from '@angular/router';\nimport { Observable, of, timer } from 'rxjs';\nimport { mergeMap } from 'rxjs/operators';\n\n// Preload routes based on custom data property\nexport class SelectivePreloadStrategy implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<unknown>): Observable<unknown> {\n    if (route.data?.['preload']) {\n      // Delay preloading to not compete with initial render\n      const delay = route.data?.['preloadDelay'] || 2000;\n      return timer(delay).pipe(mergeMap(() => load()));\n    }\n    return of(null);\n  }\n}\n\n// Network-aware preloading — only preload on fast connections\nexport class NetworkAwarePreloadStrategy implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<unknown>): Observable<unknown> {\n    const connection = (navigator as any).connection;\n\n    // Don't preload on slow connections or data-saver mode\n    if (connection) {\n      if (connection.saveData) return of(null);\n      if (connection.effectiveType === '2g' || connection.effectiveType === 'slow-2g') {\n        return of(null);\n      }\n    }\n\n    // Preload after initial content is interactive\n    return timer(3000).pipe(mergeMap(() => load()));\n  }\n}\n\n// Route configuration with preload hints\nconst routes: Routes = [\n  {\n    path: 'dashboard',\n    loadChildren: () => import('./dashboard/routes').then(m => m.DASHBOARD_ROUTES),\n    data: { preload: true, preloadDelay: 1000 }  // High priority — preload quickly\n  },\n  {\n    path: 'settings',\n    loadChildren: () => import('./settings/routes').then(m => m.SETTINGS_ROUTES),\n    data: { preload: true, preloadDelay: 5000 }  // Low priority — preload later\n  },\n  {\n    path: 'admin',\n    loadChildren: () => import('./admin/routes').then(m => m.ADMIN_ROUTES),\n    data: { preload: false }  // Never preload — admin-only\n  }\n];\n\n// Bootstrap configuration\nbootstrapApplication(AppComponent, {\n  providers: [\n    provideRouter(routes, withPreloading(NetworkAwarePreloadStrategy))\n  ]\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "ngmodules-vs-standalone-feature-module-pattern",
+          "heading": "NgModules vs Standalone — Feature Module Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Traditional NgModule approach (pre-Angular 14)\n@NgModule({\n  declarations: [\n    ProductListComponent,\n    ProductDetailComponent,\n    ProductFormComponent,\n    ProductCardComponent,\n    PricePipe\n  ],\n  imports: [\n    CommonModule,\n    ReactiveFormsModule,\n    ProductRoutingModule,\n    SharedModule\n  ],\n  providers: [\n    ProductService,\n    { provide: PRODUCT_CONFIG, useValue: defaultProductConfig }\n  ]\n})\nexport class ProductModule {}\n\n// Equivalent standalone approach (Angular 15+)\n// No module file needed — each component imports its own dependencies\n// Routes file replaces the routing module:\nexport const PRODUCT_ROUTES: Routes = [\n  {\n    path: '',\n    providers: [\n      ProductService,\n      { provide: PRODUCT_CONFIG, useValue: defaultProductConfig }\n    ],\n    children: [\n      { path: '', component: ProductListComponent },\n      { path: ':id', component: ProductDetailComponent }\n    ]\n  }\n];\n\n// Shared functionality via utility functions instead of SharedModule\nexport function provideProductFeature(config?: Partial<ProductConfig>) {\n  return [\n    ProductService,\n    { provide: PRODUCT_CONFIG, useValue: { ...defaultProductConfig, ...config } }\n  ];\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "auxiliary-routes-and-named-outlets",
+          "heading": "Auxiliary Routes and Named Outlets",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// App template with multiple outlets\n@Component({\n  selector: 'app-root',\n  template: `\n    <div class=\"layout\">\n      <nav>\n        <a routerLink=\"/dashboard\">Dashboard</a>\n        <a [routerLink]=\"[{ outlets: { sidebar: ['notifications'] } }]\">\n          Show Notifications\n        </a>\n        <a [routerLink]=\"[{ outlets: { sidebar: null } }]\">\n          Hide Sidebar\n        </a>\n      </nav>\n\n      <main>\n        <router-outlet></router-outlet>\n      </main>\n\n      <aside>\n        <router-outlet name=\"sidebar\"></router-outlet>\n      </aside>\n\n      <router-outlet name=\"modal\"></router-outlet>\n    </div>\n  `\n})\nexport class AppComponent {}\n\n// Route configuration with auxiliary routes\nconst routes: Routes = [\n  { path: 'dashboard', component: DashboardComponent },\n  { path: 'products', component: ProductListComponent },\n\n  // Auxiliary routes — render in named outlets\n  { path: 'notifications', component: NotificationPanelComponent, outlet: 'sidebar' },\n  { path: 'chat', component: ChatWidgetComponent, outlet: 'sidebar' },\n  { path: 'quick-view/:id', component: ProductQuickViewComponent, outlet: 'modal' }\n];\n\n// Programmatic navigation with auxiliary routes\n@Injectable({ providedIn: 'root' })\nexport class NavigationService {\n  constructor(private router: Router) {}\n\n  openNotifications(): void {\n    this.router.navigate([{ outlets: { sidebar: ['notifications'] } }]);\n  }\n\n  openProductQuickView(productId: string): void {\n    this.router.navigate([{ outlets: { modal: ['quick-view', productId] } }]);\n  }\n\n  closeModal(): void {\n    this.router.navigate([{ outlets: { modal: null } }]);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "router-events-and-navigation-tracking",
+          "heading": "Router Events and Navigation Tracking",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Component, inject } from '@angular/core';\nimport { Router, NavigationStart, NavigationEnd, NavigationCancel, NavigationError, Event as RouterEvent } from '@angular/router';\nimport { filter, map } from 'rxjs/operators';\n\n@Component({\n  selector: 'app-root',\n  template: `\n    <div class=\"loading-bar\" *ngIf=\"loading$ | async\"></div>\n    <router-outlet></router-outlet>\n  `\n})\nexport class AppComponent {\n  private router = inject(Router);\n\n  loading$ = this.router.events.pipe(\n    filter((event): event is NavigationStart | NavigationEnd | NavigationCancel | NavigationError =>\n      event instanceof NavigationStart ||\n      event instanceof NavigationEnd ||\n      event instanceof NavigationCancel ||\n      event instanceof NavigationError\n    ),\n    map(event => event instanceof NavigationStart)\n  );\n\n  constructor() {\n    // Analytics tracking\n    this.router.events.pipe(\n      filter((event): event is NavigationEnd => event instanceof NavigationEnd)\n    ).subscribe(event => {\n      analytics.trackPageView(event.urlAfterRedirects);\n    });\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Route Resolution Flow\"\n        A[URL Change] --> B[Router Parses URL]\n        B --> C[Match Route Config]\n        C --> D{canMatch Guard}\n        D -->|Pass| E{canActivate Guard}\n        D -->|Fail| F[Try Next Route]\n        E -->|Pass| G{Resolve Data}\n        E -->|Fail| H[Redirect to Login]\n        G -->|Success| I[Activate Component]\n        G -->|Error| J[Handle Error]\n        I --> K[Render in Router Outlet]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Lazy Loading Architecture\"\n        A[Initial Bundle<br/>~200KB] --> B[App Shell + Core Routes]\n        B --> C[User Navigates to /products]\n        C --> D[Download products.chunk.js<br/>~80KB]\n        D --> E[Instantiate ProductModule Injector]\n        E --> F[Render ProductListComponent]\n\n        B --> G[Preloading Strategy]\n        G --> H[Background: Download dashboard.chunk.js]\n        G --> I[Background: Download settings.chunk.js]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Module Architecture\"\n        A[AppModule<br/>Root] --> B[CoreModule<br/>Singleton Services]\n        A --> C[SharedModule<br/>Reusable Components]\n        A --> D[Feature Module A<br/>Lazy Loaded]\n        A --> E[Feature Module B<br/>Lazy Loaded]\n        D --> C\n        E --> C\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Importing a lazy-loaded module in the main bundle accidentally. If any eagerly-loaded component or service imports from a lazy module's barrel file, the bundler includes the entire lazy module in the main bundle, defeating code splitting. Use strict import boundaries — configure ESLint rules (@nx/enforce-module-boundaries or custom rules) to prevent cross-boundary imports. Verify with webpack-bundle-analyzer or source-map-explorer that lazy chunks are actually separate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Route order matters — wildcard and parameterized routes catch everything. Angular matches routes in definition order. A route { path: ':id' } before { path: 'create' } means navigating to /products/create matches the :id route with id = 'create'. Always place specific static routes before parameterized routes, and the wildcard ** route last. This is a frequent source of \"wrong component renders\" bugs that are hard to diagnose."
+        },
+        {
+          "type": "paragraph",
+          "text": "Guards returning Observables that never complete. If a canActivate guard returns an Observable that doesn't complete (like a BehaviorSubject without first() or take(1)), navigation hangs indefinitely. The router waits for the Observable to complete before proceeding. Always ensure guard Observables emit at least one value and complete — use first(), take(1), or map() (which completes when the source completes)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Resolver blocking navigation for slow API calls. Resolvers delay component rendering until data is fetched. If the API takes 3 seconds, the user sees nothing for 3 seconds — worse UX than showing a loading skeleton. Use resolvers only for critical data that the component cannot render without. For non-critical data, load it in the component's ngOnInit with a loading state. Alternatively, use resolver with a timeout that falls back to cached data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shared module growing unbounded. Teams often dump every reusable component into a single SharedModule, which becomes a massive import that pulls in hundreds of components. Even with tree-shaking, this creates compilation overhead and unclear dependency graphs. Split into focused modules (SharedFormsModule, SharedUIModule) or migrate to standalone components where each consumer imports only what it needs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not handling the canDeactivate guard for forms with unsaved data. Users accidentally navigate away from forms, losing their work. The canDeactivate guard should check for unsaved changes and prompt confirmation. But many implementations forget to handle browser back button, tab close, and programmatic navigation. Use both canDeactivate and the beforeunload window event for complete coverage."
+        }
+      ],
+      "wordCount": 373,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Platform with Role-Based Route Access. A marketplace application serves three user types: buyers, sellers, and administrators. Route guards check user roles at multiple levels: top-level guards prevent buyers from accessing seller dashboards, nested guards within the admin section restrict specific pages to super-admins. Resolvers pre-fetch product data and user permissions before rendering, ensuring components always have the data they need. Lazy loading separates the seller portal (~400KB) and admin panel (~600KB) from the buyer experience (~200KB initial bundle)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-Step Wizard with Step Validation Guards. An insurance application implements a 7-step quote wizard where each step must be completed before proceeding. canActivate guards on each step route verify that all previous steps have valid data. canDeactivate guards warn users about losing progress. The wizard state is managed by a service provided at the wizard route level (scoped injector), so navigating away from the wizard entirely resets state. Deep linking to step 4 redirects to step 1 if prerequisites aren't met."
+        },
+        {
+          "type": "paragraph",
+          "text": "Dashboard with Independent Routable Panels. A monitoring application uses auxiliary routes to manage a main content area, a side panel for alerts, and a modal overlay for detailed views. Users can have /dashboard(sidebar:alerts//modal:server-detail/srv-42) in their URL, bookmarking the exact view state. Each panel navigates independently — closing the modal doesn't affect the sidebar or main content. This pattern enables complex layouts without deeply nested component communication."
+        }
+      ],
+      "wordCount": 226,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does lazy loading work in Angular and what are its performance benefits?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Lazy loading splits the application into separate JavaScript bundles (chunks) that are downloaded only when the user navigates to the corresponding route. Technically, loadChildren or loadComponent uses dynamic import() statements that Webpack/esbuild recognizes as split points. When the router matches a lazy route for the first time, it triggers the chunk download, instantiates the module/component, and renders it. Performance benefits: smaller initial bundle (faster Time to Interactive), reduced memory usage (code isn't parsed until needed), and parallel development (teams work on independent chunks). The trade-off is a brief loading delay on first navigation to a lazy route — mitigate with preloading strategies that download chunks in the background after initial render."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between canActivate, canMatch, and canLoad guards."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: canActivate runs after the route is matched and prevents the component from activating — the route still appears in the URL momentarily. canMatch (Angular 14.1+) runs during route matching itself — if it returns false, the router skips this route entirely and tries the next matching route. This enables pattern-based routing where the same path renders different components based on user role. canLoad (deprecated in favor of canMatch) prevented the lazy bundle from being downloaded at all — useful for preventing unauthorized users from even seeing the code. In practice, use canMatch for conditional route selection and canActivate for access control with redirects."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement a preloading strategy that prioritizes routes based on user behavior?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Create a custom PreloadingStrategy that implements the preload(route, load) method. Track user navigation patterns (most visited routes) in a service backed by localStorage. In the strategy, check if the route is in the user's top-5 most visited routes — if yes, preload immediately after initial render. For other routes, check network conditions via the Network Information API: preload on WiFi/4G, skip on 2G or data-saver mode. Add a data: { preloadPriority: 'high' | 'low' | 'none' } property to route configs for explicit control. The strategy returns load() to preload or of(null) to skip. Monitor preloading effectiveness by tracking cache hit rates (how often a preloaded chunk is actually navigated to)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the trade-offs between NgModules and standalone components for application architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: NgModules provide explicit boundaries (what's declared, imported, exported), a single place to configure providers for a feature, and familiar patterns for teams. Downsides: boilerplate (every component needs a module), implicit dependencies (importing SharedModule gives you everything), and compilation overhead. Standalone components eliminate module boilerplate, make dependencies explicit per-component (better tree-shaking), enable direct route-to-component lazy loading, and simplify mental model. Downsides: no built-in boundary enforcement (need lint rules), provider scoping requires route-level providers arrays, and large teams may miss the organizational structure modules provided. The Angular team recommends standalone for new projects. Migration is incremental — both patterns coexist."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle route-level data fetching and error states?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three approaches with different trade-offs. (1) Resolvers: fetch data before component renders. Pro: component always has data. Con: blocks navigation, poor UX for slow APIs. (2) Component-level fetching in ngOnInit: component renders immediately with loading state, fetches data, shows content or error. Pro: instant navigation feedback. Con: every component handles loading/error states. (3) Hybrid: resolver with timeout — attempt to fetch data, but if it takes longer than 500ms, resolve with null and let the component show a skeleton while continuing to load. For errors, resolvers can redirect to error pages or resolve with an error state that the component handles gracefully. In production, approach (2) or (3) provides the best user experience."
+        }
+      ],
+      "wordCount": 604,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Monitor route-level bundle sizes and set budgets. Configure Angular's build budgets in angular.json to warn when lazy chunks exceed size thresholds (e.g., 100KB warning, 200KB error for individual chunks). Track bundle sizes in CI — a PR that adds a 500KB dependency to a lazy chunk should be flagged. Use source-map-explorer or webpack-bundle-analyzer to identify what's in each chunk. Common bloat sources: importing entire icon libraries, including unused locale data, or accidentally importing from barrel files that re-export everything."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement route-level error boundaries and fallback UI. When a lazy chunk fails to download (network error, CDN issue, deployment during user session), the router throws a NavigationError. Handle this globally by subscribing to router events and showing a \"please refresh\" message or automatically retrying the chunk download. For resolver errors, redirect to a generic error page with context about what failed. Never let a failed navigation leave the user on a blank screen."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use route-level providers for feature-scoped services. Instead of providing all services at root level, scope services to route subtrees using the providers array on route configurations. This ensures services are instantiated only when the route is active and garbage collected when the user navigates away. Particularly valuable for services that hold significant state or open connections (WebSocket services, polling services). This pattern replaces the module-level provider scoping that NgModules provided."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement navigation performance monitoring. Track time from NavigationStart to NavigationEnd for every route transition. Set performance budgets (e.g., lazy route first load < 2s, subsequent navigation < 500ms). Log slow navigations to your monitoring system with route path, guard execution time, resolver duration, and chunk download time. This data reveals which routes need optimization — perhaps a resolver is making 5 sequential API calls that could be parallelized, or a guard is performing expensive permission checks that could be cached."
+        }
+      ],
+      "wordCount": 302,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Angular Components & Templates — Components rendered by the router and how they interact with route data",
+            "Angular Services & Dependency Injection — Guards, resolvers, and interceptors as injectable services",
+            "React Hooks & Components — Compare Angular routing with React Router's approach",
+            "Web Performance — How lazy loading and code splitting impact Core Web Vitals"
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { Routes } from '@angular/router';\nimport { inject } from '@angular/core';\nimport { AuthService } from './services/auth.service';\nimport { PermissionService } from './services/permission.service';\n\n// Functional guard (Angular 15+)\nconst authGuard = () => {\n  const auth = inject(AuthService);\n  const router = inject(Router);\n\n  if (auth.isAuthenticated()) {\n    return true;\n  }\n\n  // Store attempted URL for redirect after login\n  return router.createUrlTree(['/login'], {\n    queryParams: { returnUrl: router.routerState.snapshot.url }\n  });\n};\n\n// Role-based guard with parameter\nconst roleGuard = (allowedRoles: string[]) => {\n  return () => {\n    const permissions = inject(PermissionService);\n    return permissions.hasAnyRole(allowedRoles);\n  };\n};\n\n// Functional resolver\nconst productResolver = (route: ActivatedRouteSnapshot) => {\n  const productService = inject(ProductService);\n  return productService.getProduct(route.params['id']).pipe(\n    catchError(() => {\n      inject(Router).navigate(['/products']);\n      return EMPTY;\n    })\n  );\n};\n\n// Unsaved changes guard\nconst unsavedChangesGuard = (component: { hasUnsavedChanges(): boolean }) => {\n  if (component.hasUnsavedChanges()) {\n    return confirm('You have unsaved changes. Leave anyway?');\n  }\n  return true;\n};\n\nexport const routes: Routes = [\n  { path: '', redirectTo: '/dashboard', pathMatch: 'full' },\n  { path: 'login', loadComponent: () => import('./pages/login.component').then(m => m.LoginComponent) },\n\n  // Protected routes\n  {\n    path: '',\n    canActivate: [authGuard],\n    children: [\n      {\n        path: 'dashboard',\n        loadComponent: () => import('./pages/dashboard.component').then(m => m.DashboardComponent),\n        title: 'Dashboard'\n      },\n      {\n        path: 'products',\n        loadChildren: () => import('./features/products/product.routes').then(m => m.PRODUCT_ROUTES)\n      },\n      {\n        path: 'admin',\n        canActivate: [roleGuard(['admin', 'super-admin'])],\n        loadChildren: () => import('./features/admin/admin.routes').then(m => m.ADMIN_ROUTES)\n      },\n      {\n        path: 'orders/:id',\n        loadComponent: () => import('./pages/order-detail.component').then(m => m.OrderDetailComponent),\n        resolve: { order: orderResolver },\n        canDeactivate: [unsavedChangesGuard]\n      }\n    ]\n  },\n\n  // Wildcard — must be last\n  { path: '**', loadComponent: () => import('./pages/not-found.component').then(m => m.NotFoundComponent) }\n];",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// features/products/product.routes.ts\nimport { Routes } from '@angular/router';\n\nexport const PRODUCT_ROUTES: Routes = [\n  {\n    path: '',\n    loadComponent: () => import('./product-list.component').then(m => m.ProductListComponent),\n    title: 'Products'\n  },\n  {\n    path: 'create',\n    loadComponent: () => import('./product-form.component').then(m => m.ProductFormComponent),\n    canActivate: [roleGuard(['admin', 'product-manager'])],\n    title: 'Create Product'\n  },\n  {\n    path: ':id',\n    loadComponent: () => import('./product-detail.component').then(m => m.ProductDetailComponent),\n    resolve: { product: productResolver },\n    children: [\n      { path: '', redirectTo: 'overview', pathMatch: 'full' },\n      {\n        path: 'overview',\n        loadComponent: () => import('./tabs/product-overview.component').then(m => m.ProductOverviewComponent)\n      },\n      {\n        path: 'reviews',\n        loadComponent: () => import('./tabs/product-reviews.component').then(m => m.ProductReviewsComponent)\n      },\n      {\n        path: 'analytics',\n        loadComponent: () => import('./tabs/product-analytics.component').then(m => m.ProductAnalyticsComponent),\n        canActivate: [roleGuard(['admin'])]\n      }\n    ]\n  }\n];",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { PreloadingStrategy, Route } from '@angular/router';\nimport { Observable, of, timer } from 'rxjs';\nimport { mergeMap } from 'rxjs/operators';\n\n// Preload routes based on custom data property\nexport class SelectivePreloadStrategy implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<unknown>): Observable<unknown> {\n    if (route.data?.['preload']) {\n      // Delay preloading to not compete with initial render\n      const delay = route.data?.['preloadDelay'] || 2000;\n      return timer(delay).pipe(mergeMap(() => load()));\n    }\n    return of(null);\n  }\n}\n\n// Network-aware preloading — only preload on fast connections\nexport class NetworkAwarePreloadStrategy implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<unknown>): Observable<unknown> {\n    const connection = (navigator as any).connection;\n\n    // Don't preload on slow connections or data-saver mode\n    if (connection) {\n      if (connection.saveData) return of(null);\n      if (connection.effectiveType === '2g' || connection.effectiveType === 'slow-2g') {\n        return of(null);\n      }\n    }\n\n    // Preload after initial content is interactive\n    return timer(3000).pipe(mergeMap(() => load()));\n  }\n}\n\n// Route configuration with preload hints\nconst routes: Routes = [\n  {\n    path: 'dashboard',\n    loadChildren: () => import('./dashboard/routes').then(m => m.DASHBOARD_ROUTES),\n    data: { preload: true, preloadDelay: 1000 }  // High priority — preload quickly\n  },\n  {\n    path: 'settings',\n    loadChildren: () => import('./settings/routes').then(m => m.SETTINGS_ROUTES),\n    data: { preload: true, preloadDelay: 5000 }  // Low priority — preload later\n  },\n  {\n    path: 'admin',\n    loadChildren: () => import('./admin/routes').then(m => m.ADMIN_ROUTES),\n    data: { preload: false }  // Never preload — admin-only\n  }\n];\n\n// Bootstrap configuration\nbootstrapApplication(AppComponent, {\n  providers: [\n    provideRouter(routes, withPreloading(NetworkAwarePreloadStrategy))\n  ]\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Traditional NgModule approach (pre-Angular 14)\n@NgModule({\n  declarations: [\n    ProductListComponent,\n    ProductDetailComponent,\n    ProductFormComponent,\n    ProductCardComponent,\n    PricePipe\n  ],\n  imports: [\n    CommonModule,\n    ReactiveFormsModule,\n    ProductRoutingModule,\n    SharedModule\n  ],\n  providers: [\n    ProductService,\n    { provide: PRODUCT_CONFIG, useValue: defaultProductConfig }\n  ]\n})\nexport class ProductModule {}\n\n// Equivalent standalone approach (Angular 15+)\n// No module file needed — each component imports its own dependencies\n// Routes file replaces the routing module:\nexport const PRODUCT_ROUTES: Routes = [\n  {\n    path: '',\n    providers: [\n      ProductService,\n      { provide: PRODUCT_CONFIG, useValue: defaultProductConfig }\n    ],\n    children: [\n      { path: '', component: ProductListComponent },\n      { path: ':id', component: ProductDetailComponent }\n    ]\n  }\n];\n\n// Shared functionality via utility functions instead of SharedModule\nexport function provideProductFeature(config?: Partial<ProductConfig>) {\n  return [\n    ProductService,\n    { provide: PRODUCT_CONFIG, useValue: { ...defaultProductConfig, ...config } }\n  ];\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App template with multiple outlets\n@Component({\n  selector: 'app-root',\n  template: `\n    <div class=\"layout\">\n      <nav>\n        <a routerLink=\"/dashboard\">Dashboard</a>\n        <a [routerLink]=\"[{ outlets: { sidebar: ['notifications'] } }]\">\n          Show Notifications\n        </a>\n        <a [routerLink]=\"[{ outlets: { sidebar: null } }]\">\n          Hide Sidebar\n        </a>\n      </nav>\n\n      <main>\n        <router-outlet></router-outlet>\n      </main>\n\n      <aside>\n        <router-outlet name=\"sidebar\"></router-outlet>\n      </aside>\n\n      <router-outlet name=\"modal\"></router-outlet>\n    </div>\n  `\n})\nexport class AppComponent {}\n\n// Route configuration with auxiliary routes\nconst routes: Routes = [\n  { path: 'dashboard', component: DashboardComponent },\n  { path: 'products', component: ProductListComponent },\n\n  // Auxiliary routes — render in named outlets\n  { path: 'notifications', component: NotificationPanelComponent, outlet: 'sidebar' },\n  { path: 'chat', component: ChatWidgetComponent, outlet: 'sidebar' },\n  { path: 'quick-view/:id', component: ProductQuickViewComponent, outlet: 'modal' }\n];\n\n// Programmatic navigation with auxiliary routes\n@Injectable({ providedIn: 'root' })\nexport class NavigationService {\n  constructor(private router: Router) {}\n\n  openNotifications(): void {\n    this.router.navigate([{ outlets: { sidebar: ['notifications'] } }]);\n  }\n\n  openProductQuickView(productId: string): void {\n    this.router.navigate([{ outlets: { modal: ['quick-view', productId] } }]);\n  }\n\n  closeModal(): void {\n    this.router.navigate([{ outlets: { modal: null } }]);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Component, inject } from '@angular/core';\nimport { Router, NavigationStart, NavigationEnd, NavigationCancel, NavigationError, Event as RouterEvent } from '@angular/router';\nimport { filter, map } from 'rxjs/operators';\n\n@Component({\n  selector: 'app-root',\n  template: `\n    <div class=\"loading-bar\" *ngIf=\"loading$ | async\"></div>\n    <router-outlet></router-outlet>\n  `\n})\nexport class AppComponent {\n  private router = inject(Router);\n\n  loading$ = this.router.events.pipe(\n    filter((event): event is NavigationStart | NavigationEnd | NavigationCancel | NavigationError =>\n      event instanceof NavigationStart ||\n      event instanceof NavigationEnd ||\n      event instanceof NavigationCancel ||\n      event instanceof NavigationError\n    ),\n    map(event => event instanceof NavigationStart)\n  );\n\n  constructor() {\n    // Analytics tracking\n    this.router.events.pipe(\n      filter((event): event is NavigationEnd => event instanceof NavigationEnd)\n    ).subscribe(event => {\n      analytics.trackPageView(event.urlAfterRedirects);\n    });\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/routing-and-modules.md",
+    "wordCount": 1801,
+    "sectionCount": 15
+  }
+}

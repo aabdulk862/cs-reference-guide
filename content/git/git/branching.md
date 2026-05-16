@@ -20,6 +20,13 @@
 
 Branching is fundamental to every Git workflow and should be used whenever you start working on something new. Create a feature branch when implementing a new feature, a bugfix branch when addressing a reported issue, and a hotfix branch when patching a critical production problem. Branches isolate your work from the main codebase, allowing you to experiment freely without risking the stability of shared code. Use branches when collaborating with a team so that multiple developers can work in parallel without stepping on each other's changes. Branching is also essential for release management, where you maintain separate branches for different release versions. Even for solo projects, branching provides a clean way to context-switch between tasks. The only time you might skip branching is for trivial one-line fixes in a solo project, though even then a branch provides a safety net.
 
+Additional branching scenarios in production environments:
+
+- **Environment-specific branches**: Some teams maintain branches that map to deployment environments (e.g., `staging`, `production`). Merging to these branches triggers automated deployments, providing a Git-native deployment mechanism.
+- **Experimentation and A/B testing**: Create branches for experimental features that may or may not ship. Feature flags combined with branches allow you to deploy experimental code to a subset of users without affecting the main release.
+- **Vendor customization**: When maintaining a product with customer-specific customizations, branches can represent each customer's variant. Cherry-pick core improvements across all customer branches while keeping customizations isolated.
+- **Long-term support (LTS)**: Open-source projects and enterprise software maintain LTS branches (e.g., `v2.x`, `v3.x`) that receive security patches and critical fixes long after the main development has moved forward.
+
 ---
 
 ## Code Examples
@@ -90,6 +97,53 @@ git rebase --continue
 git rebase --abort
 ```
 
+### Advanced Branch Operations
+
+```bash
+# Find the common ancestor of two branches
+git merge-base main feature/login
+
+# Show branches that contain a specific commit
+git branch --contains abc1234
+
+# Show branches that have been merged into main
+git branch --merged main
+
+# Show branches NOT yet merged into main
+git branch --no-merged main
+
+# Compare two branches (commits in feature not in main)
+git log main..feature/login --oneline
+
+# Compare two branches (commits in either but not both)
+git log main...feature/login --oneline
+
+# Create a branch from a specific commit or tag
+git branch release/1.0 v1.0.0
+
+# Track a remote branch locally
+git switch --track origin/feature/remote-work
+```
+
+### Cherry-Picking Across Branches
+
+```bash
+# Apply a specific commit to current branch
+git cherry-pick abc1234
+
+# Cherry-pick without auto-committing
+git cherry-pick --no-commit abc1234
+
+# Cherry-pick a range of commits
+git cherry-pick A..B
+
+# Cherry-pick and record the original commit hash
+git cherry-pick -x abc1234
+
+# Abort a cherry-pick with conflicts
+git cherry-pick --abort
+```
+
 ---
 
 ## Branching Strategies
@@ -148,6 +202,122 @@ GitHub Flow is a simpler model suited for continuous deployment. There is only o
 
 Trunk-Based Development minimizes branch lifetime. Developers commit directly to `main` (the trunk) or use extremely short-lived branches (less than a day). Feature flags control the visibility of incomplete work in production. This approach reduces merge conflicts, encourages small incremental changes, and pairs well with continuous integration. It requires strong CI/CD pipelines and comprehensive automated testing to maintain stability.
 
+### Comparing Branching Strategies
+
+| Strategy | Branch Lifetime | Best For | CI/CD Requirement | Team Size |
+| --- | --- | --- | --- | --- |
+| Git Flow | Days to weeks | Scheduled releases, multiple versions | Moderate | Medium-Large |
+| GitHub Flow | Hours to days | Continuous deployment, SaaS | High | Any |
+| Trunk-Based | Minutes to hours | High-velocity teams, microservices | Very High | Any (with discipline) |
+| Release Branching | Weeks (release only) | Mobile apps, packaged software | Moderate | Medium-Large |
+
+The choice of branching strategy should be driven by your deployment frequency, team size, and product type. Teams deploying multiple times per day benefit from trunk-based development, while teams shipping quarterly releases may prefer Git Flow's structure.
+
+### Rebase vs Merge: A Deep Dive
+
+The rebase vs merge decision is one of the most debated topics in Git workflows. Understanding the mechanics and trade-offs is essential for making the right choice.
+
+**Merge** creates a new commit (the merge commit) that has two parents, preserving the complete history of both branches. The branch topology is visible in `git log --graph`, making it clear when features were developed in parallel. Merge commits serve as documentation of when integration happened.
+
+**Rebase** takes the commits from your feature branch and replays them one by one on top of the target branch, creating new commits with new hashes. The original commits are abandoned (though recoverable via reflog). The result is a perfectly linear history with no merge commits.
+
+```bash
+# Merge approach: preserves branch topology
+git switch main
+git merge --no-ff feature/login
+# Result: A---B---C---M (merge commit)
+#              \     /
+#               D---E (feature commits preserved)
+
+# Rebase approach: linear history
+git switch feature/login
+git rebase main
+git switch main
+git merge --ff-only feature/login
+# Result: A---B---C---D'---E' (linear, no merge commit)
+```
+
+**When to use merge:**
+- On shared/public branches (never rebase what others have pulled)
+- When you want to preserve the exact history of parallel development
+- For release branches where traceability is critical
+- When the feature branch has been reviewed and you want to keep the review context
+
+**When to use rebase:**
+- On local feature branches before merging (cleaning up history)
+- When you want a linear, readable history on main
+- During `git pull --rebase` to avoid unnecessary merge commits
+- When squashing work-in-progress commits before review
+
+**The golden rule**: Never rebase commits that have been pushed to a shared branch. Rebase rewrites history (creates new commit hashes), which causes divergence for anyone who has pulled the original commits.
+
+### Branch Protection Rules
+
+Branch protection rules are server-side configurations that enforce quality gates before code can be merged. They are critical for production stability.
+
+```yaml
+# Example GitHub branch protection configuration (conceptual)
+branch_protection:
+  branch: main
+  rules:
+    require_pull_request:
+      required_approving_reviews: 2
+      dismiss_stale_reviews: true
+      require_code_owner_reviews: true
+      require_last_push_approval: true
+    require_status_checks:
+      strict: true  # branch must be up-to-date
+      contexts:
+        - "ci/build"
+        - "ci/test"
+        - "ci/lint"
+        - "security/snyk"
+    require_linear_history: true
+    require_signed_commits: true
+    restrict_pushes:
+      allow_force_pushes: false
+      allow_deletions: false
+    require_conversation_resolution: true
+```
+
+Key protection rules and their purposes:
+- **Required reviews**: Ensures human oversight before merging. Two reviewers catch more issues than one.
+- **Dismiss stale reviews**: When new commits are pushed after approval, previous approvals are invalidated, requiring re-review.
+- **Require up-to-date branches**: Prevents merging a branch that has not incorporated the latest main changes, avoiding integration issues.
+- **Required status checks**: CI must pass before merging. Include build, test, lint, and security scans.
+- **Linear history**: Forces squash or rebase merges, preventing merge commits for a cleaner history.
+- **Signed commits**: Requires GPG-signed commits to verify author identity.
+- **No force pushes**: Prevents history rewriting on protected branches.
+
+### Release Branching and Hotfix Workflows
+
+```mermaid
+graph LR
+    subgraph "Release Workflow"
+        M[main] -->|cut release| R[release/2.1]
+        R -->|bug fixes| R
+        R -->|merge| M
+        R -->|tag| T[v2.1.0]
+        M -->|hotfix needed| H[hotfix/security-patch]
+        H -->|merge| M
+        H -->|cherry-pick| R2[release/2.0 LTS]
+    end
+```
+
+**Release branch workflow:**
+1. Cut a release branch from `develop` or `main`: `git switch -c release/2.1 develop`
+2. Only bug fixes and release preparation (version bumps, changelog) go on the release branch
+3. New features continue on `develop` — they will ship in the next release
+4. When ready, merge release branch to `main` and tag: `git tag -a v2.1.0`
+5. Merge release branch back to `develop` to incorporate bug fixes
+
+**Hotfix workflow:**
+1. Create hotfix branch from `main` (production): `git switch -c hotfix/critical-fix main`
+2. Fix the issue with minimal changes
+3. Merge to `main` and tag a patch release: `git tag -a v2.0.1`
+4. Merge to `develop` (and any active release branches) to propagate the fix
+5. If maintaining LTS branches, cherry-pick the fix to each supported version
+
 ---
 
 ## Branch Lifecycle
@@ -178,6 +348,20 @@ stateDiagram-v2
 - **Inconsistent naming conventions**: Without agreed-upon branch naming (e.g., `feature/`, `bugfix/`, `hotfix/`), repositories become cluttered and it is difficult to understand what each branch represents.
 - **Merge commit pollution**: Using `git merge` without `--no-ff` on trivial branches creates unnecessary merge commits. Conversely, always fast-forwarding loses the context of feature branch boundaries. Choose a strategy and be consistent.
 
+## Real-World Use Cases
+
+### Enterprise Release Management
+
+Large enterprises with compliance requirements often use a modified Git Flow where release branches undergo extensive QA cycles. A typical workflow: developers work on feature branches, merge to `develop` for integration testing, cut a `release/x.y.z` branch for UAT and compliance review, then merge to `main` for production deployment. Hotfix branches are created from `main` for critical patches and merged back into both `main` and `develop`. Branch protection rules enforce that only release managers can merge to `main`, and every merge requires sign-off from QA and security teams.
+
+### Microservices with Independent Deployment
+
+In microservice architectures, each service repository typically uses GitHub Flow or trunk-based development because services deploy independently. A team might have 20 microservices, each with its own repository and CI/CD pipeline. Feature branches are short-lived (hours, not days), PRs are small and focused, and merging to `main` triggers automatic deployment to staging. Production deployment happens via a separate promotion mechanism (tagging or environment branch merge). This approach maximizes deployment velocity while maintaining service independence.
+
+### Open-Source Contribution Workflow
+
+Open-source projects use a fork-based branching model. Contributors fork the repository, create feature branches on their fork, and submit PRs to the upstream repository. Maintainers review, request changes, and eventually merge. The contributor's workflow involves maintaining an `upstream` remote, regularly rebasing their branches onto `upstream/main`, and squashing commits before final review. This model scales to thousands of contributors without granting write access to the main repository.
+
 ---
 
 ## Interview Questions
@@ -197,6 +381,12 @@ First, fetch the latest main: `git fetch origin main`. Then either rebase your f
 **Q5: What is `git cherry-pick` and when would you use it?**
 `git cherry-pick <commit-hash>` applies a specific commit from one branch onto your current branch without merging the entire branch. Use it when you need a specific bug fix from another branch, when you accidentally committed to the wrong branch, or when backporting a fix to a release branch.
 
+**Q6: How do feature flags relate to branching strategies?**
+Feature flags decouple deployment from release. With feature flags, incomplete code can be merged to main and deployed to production behind a flag (disabled for users). This enables trunk-based development where branches live for hours instead of weeks, dramatically reducing merge conflicts. The flag is enabled gradually (canary, percentage rollout, full) once the feature is complete. If issues arise, the flag is disabled instantly without a code rollback. This shifts the branching problem from Git to application configuration.
+
+**Q7: What is `git merge --no-ff` and why would you enforce it?**
+`--no-ff` (no fast-forward) forces Git to create a merge commit even when a fast-forward is possible. This preserves the fact that a set of commits was developed on a feature branch, making it easy to revert an entire feature by reverting the single merge commit. Many teams enforce `--no-ff` via branch protection rules because it maintains clear feature boundaries in the history graph. Without it, feature branch commits become indistinguishable from direct main commits after a fast-forward.
+
 ---
 
 ## Production Tips
@@ -211,7 +401,7 @@ First, fetch the latest main: `git fetch origin main`. Then either rebase your f
 
 ## Related Topics
 
-- [Git Commands](./git-commands.md) — complete reference for branching and merging commands
+- [Git Commands](./commands.md) — complete reference for branching and merging commands
 - [Pull Requests](./pull-requests.md) — code review workflows that depend on branching
 - [Merge Conflicts](./merge-conflicts.md) — resolving conflicts that arise when merging branches
 - [Local vs Remote](./local-vs-remote.md) — how branches sync between local and remote repositories

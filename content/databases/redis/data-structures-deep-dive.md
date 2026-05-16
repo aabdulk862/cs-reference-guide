@@ -1,0 +1,3 @@
+# Data Structures Deep Dive
+
+Redis is fundamentally a data structure server — unlike traditional databases that store rows or documents, Redis provides direct access to computer science data structures (strings, lists, sets, sorted sets, hashes, streams) with O(1) or O(log N) operations, all held in memory for microsecond-level latency. Each data structure is purpose-built for specific access patterns: sorted sets enable real-time leaderboards with O(log N) insertions and O(log N + M) range queries, streams provide append-only logs with consumer groups for event processing, and HyperLogLog estimates cardinality of billion-element sets using only 12KB of memory.

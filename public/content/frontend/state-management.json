@@ -1,219 +1,49 @@
 {
-  "id": "react-state-management",
+  "id": "state-management",
   "slug": "state-management",
   "title": "State Management",
   "category": "Frontend",
   "sections": [
     {
-      "id": "quick-reference",
-      "heading": "Quick Reference",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Local state (useState/useReducer) is sufficient for component-level concerns: form inputs, toggles, and component-specific data",
-            "Lifting state up to the nearest common ancestor handles sibling components that need shared state",
-            "Context API with useReducer provides built-in global state for infrequently-changing values like theme, auth, and locale",
-            "External libraries (Redux Toolkit, Zustand, Jotai) solve Context performance limitations with fine-grained subscriptions",
-            "Server state libraries (TanStack Query, SWR) treat remote data as a separate concern with caching and background refetching",
-            "URL state via React Router stores navigation-relevant state that should be shareable and bookmarkable",
-            "The right state management choice depends on update frequency, consumer count, and persistence requirements",
-            "Zustand provides minimal API with selector-based subscriptions; Redux Toolkit provides opinionated structure with DevTools"
-          ]
-        }
-      ],
-      "wordCount": 118,
-      "subsections": []
-    },
-    {
-      "id": "when-to-use",
-      "heading": "When to Use",
+      "id": "content",
+      "heading": "State Management",
       "level": 2,
       "content": [
         {
           "type": "paragraph",
-          "text": "Choose local state for UI concerns that do not need to be shared: modal visibility, form field values, animation states, and component-specific loading indicators. Lift state up when two sibling components need the same data and updates should be synchronized between them. Use Context API for truly global values that change infrequently (theme, authenticated user, feature flags) where the re-render cost of context updates is acceptable because consumers are few or the value rarely changes. Reach for external state libraries when you have frequently-updating global state consumed by many components at different tree depths, when you need middleware (logging, persistence, async handling), or when DevTools integration is important for debugging complex state flows. Use server state libraries whenever your components display data fetched from APIs, because they handle caching, deduplication, background refetching, optimistic updates, and pagination automatically. Store state in the URL when it represents navigation context that users should be able to bookmark or share: active tab, search query, filter selections, and pagination page number."
+          "text": "State management is one of the most critical architectural decisions in frontend applications. As applications grow in complexity, managing shared state across components becomes challenging. This guide covers the spectrum from Redux (the established standard) through modern lightweight alternatives that offer different tradeoffs in terms of boilerplate, performance, and developer experience."
         }
       ],
-      "wordCount": 166,
+      "wordCount": 51,
       "subsections": []
     },
     {
-      "id": "code-examples",
-      "heading": "Code Examples",
-      "level": 2,
-      "content": [
-        {
-          "type": "code",
-          "language": "typescript",
-          "code": "// Context API with useReducer for authentication state\nimport { createContext, useContext, useReducer, ReactNode } from 'react';\n\ninterface User {\n  id: string;\n  name: string;\n  email: string;\n  role: 'admin' | 'user' | 'moderator';\n}\n\ninterface AuthState {\n  user: User | null;\n  token: string | null;\n  isAuthenticated: boolean;\n  isLoading: boolean;\n}\n\ntype AuthAction =\n  | { type: 'LOGIN_START' }\n  | { type: 'LOGIN_SUCCESS'; user: User; token: string }\n  | { type: 'LOGIN_FAILURE' }\n  | { type: 'LOGOUT' }\n  | { type: 'TOKEN_REFRESH'; token: string };\n\nfunction authReducer(state: AuthState, action: AuthAction): AuthState {\n  switch (action.type) {\n    case 'LOGIN_START':\n      return { ...state, isLoading: true };\n    case 'LOGIN_SUCCESS':\n      return {\n        user: action.user,\n        token: action.token,\n        isAuthenticated: true,\n        isLoading: false,\n      };\n    case 'LOGIN_FAILURE':\n      return { user: null, token: null, isAuthenticated: false, isLoading: false };\n    case 'LOGOUT':\n      return { user: null, token: null, isAuthenticated: false, isLoading: false };\n    case 'TOKEN_REFRESH':\n      return { ...state, token: action.token };\n    default:\n      return state;\n  }\n}\n\nconst AuthContext = createContext<{\n  state: AuthState;\n  dispatch: React.Dispatch<AuthAction>;\n} | null>(null);\n\nexport function AuthProvider({ children }: { children: ReactNode }) {\n  const [state, dispatch] = useReducer(authReducer, {\n    user: null,\n    token: null,\n    isAuthenticated: false,\n    isLoading: false,\n  });\n\n  return (\n    <AuthContext.Provider value={{ state, dispatch }}>\n      {children}\n    </AuthContext.Provider>\n  );\n}\n\nexport function useAuth() {\n  const context = useContext(AuthContext);\n  if (!context) throw new Error('useAuth must be used within AuthProvider');\n  return context;\n}",
-          "runnable": false
-        },
-        {
-          "type": "code",
-          "language": "typescript",
-          "code": "// Zustand store with slices pattern for scalable state management\nimport { create } from 'zustand';\nimport { devtools, persist } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface CartItem {\n  productId: string;\n  name: string;\n  price: number;\n  quantity: number;\n}\n\ninterface CartSlice {\n  items: CartItem[];\n  addItem: (item: Omit<CartItem, 'quantity'>) => void;\n  removeItem: (productId: string) => void;\n  updateQuantity: (productId: string, quantity: number) => void;\n  clearCart: () => void;\n  totalPrice: () => number;\n  totalItems: () => number;\n}\n\ninterface UISlice {\n  sidebarOpen: boolean;\n  theme: 'light' | 'dark';\n  notifications: string[];\n  toggleSidebar: () => void;\n  setTheme: (theme: 'light' | 'dark') => void;\n  addNotification: (message: string) => void;\n  dismissNotification: (index: number) => void;\n}\n\ntype AppStore = CartSlice & UISlice;\n\nconst useAppStore = create<AppStore>()(\n  devtools(\n    persist(\n      immer((set, get) => ({\n        // Cart slice\n        items: [],\n        addItem: (item) => set((state) => {\n          const existing = state.items.find(i => i.productId === item.productId);\n          if (existing) {\n            existing.quantity += 1;\n          } else {\n            state.items.push({ ...item, quantity: 1 });\n          }\n        }),\n        removeItem: (productId) => set((state) => {\n          state.items = state.items.filter(i => i.productId !== productId);\n        }),\n        updateQuantity: (productId, quantity) => set((state) => {\n          const item = state.items.find(i => i.productId === productId);\n          if (item) item.quantity = Math.max(0, quantity);\n        }),\n        clearCart: () => set((state) => { state.items = []; }),\n        totalPrice: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),\n        totalItems: () => get().items.reduce((sum, i) => sum + i.quantity, 0),\n\n        // UI slice\n        sidebarOpen: true,\n        theme: 'dark',\n        notifications: [],\n        toggleSidebar: () => set((state) => { state.sidebarOpen = !state.sidebarOpen; }),\n        setTheme: (theme) => set((state) => { state.theme = theme; }),\n        addNotification: (message) => set((state) => { state.notifications.push(message); }),\n        dismissNotification: (index) => set((state) => {\n          state.notifications.splice(index, 1);\n        }),\n      })),\n      { name: 'app-store', partialize: (state) => ({ items: state.items, theme: state.theme }) }\n    )\n  )\n);\n\n// Selector pattern for fine-grained subscriptions\nconst useCartItems = () => useAppStore((state) => state.items);\nconst useTheme = () => useAppStore((state) => state.theme);\nconst useCartTotal = () => useAppStore((state) => state.totalPrice());",
-          "runnable": false
-        },
-        {
-          "type": "code",
-          "language": "typescript",
-          "code": "// TanStack Query for server state management\nimport { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';\n\ninterface Post {\n  id: string;\n  title: string;\n  content: string;\n  authorId: string;\n  createdAt: string;\n}\n\n// Query hook with caching and background refetch\nfunction usePosts(authorId: string) {\n  return useQuery({\n    queryKey: ['posts', authorId],\n    queryFn: async (): Promise<Post[]> => {\n      const response = await fetch(`/api/posts?authorId=${authorId}`);\n      if (!response.ok) throw new Error('Failed to fetch posts');\n      return response.json();\n    },\n    staleTime: 5 * 60 * 1000, // Consider fresh for 5 minutes\n    gcTime: 30 * 60 * 1000,   // Keep in cache for 30 minutes\n    refetchOnWindowFocus: true,\n  });\n}\n\n// Mutation with optimistic update\nfunction useCreatePost() {\n  const queryClient = useQueryClient();\n\n  return useMutation({\n    mutationFn: async (newPost: Omit<Post, 'id' | 'createdAt'>) => {\n      const response = await fetch('/api/posts', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(newPost),\n      });\n      if (!response.ok) throw new Error('Failed to create post');\n      return response.json() as Promise<Post>;\n    },\n    onMutate: async (newPost) => {\n      await queryClient.cancelQueries({ queryKey: ['posts', newPost.authorId] });\n      const previousPosts = queryClient.getQueryData<Post[]>(['posts', newPost.authorId]);\n\n      // Optimistic update\n      queryClient.setQueryData<Post[]>(['posts', newPost.authorId], (old = []) => [\n        ...old,\n        { ...newPost, id: 'temp-' + Date.now(), createdAt: new Date().toISOString() },\n      ]);\n\n      return { previousPosts };\n    },\n    onError: (_err, newPost, context) => {\n      // Rollback on error\n      queryClient.setQueryData(['posts', newPost.authorId], context?.previousPosts);\n    },\n    onSettled: (_data, _error, newPost) => {\n      // Refetch to get server state\n      queryClient.invalidateQueries({ queryKey: ['posts', newPost.authorId] });\n    },\n  });\n}",
-          "runnable": false
-        }
-      ],
-      "wordCount": 0,
-      "subsections": []
-    },
-    {
-      "id": "common-pitfalls",
-      "heading": "Common Pitfalls",
+      "id": "learning-path",
+      "heading": "Learning Path",
       "level": 2,
       "content": [
         {
           "type": "list",
           "ordered": true,
           "items": [
-            "Putting everything in global state: Not all state needs to be global. Form input values, modal visibility, and component-specific loading states belong in local state. Putting them in a global store creates unnecessary coupling, makes components harder to test in isolation, and causes unrelated components to re-render when the state changes. The rule of thumb is: if only one component or a small subtree uses the state, keep it local.",
-            "Context re-render cascading: Every component consuming a context re-renders whenever any part of the context value changes. Putting a large object with frequently-changing properties into a single context causes all consumers to re-render even when they only care about one property. Split contexts by update frequency: a ThemeContext that rarely changes and a NotificationContext that updates frequently should be separate providers.",
-            "Mixing server state with client state: Storing API responses in Redux or Context alongside UI state creates synchronization problems. The cached data becomes stale, you must manually handle refetching, and the store grows unbounded. Use dedicated server state libraries (TanStack Query, SWR) that handle caching, staleness, and background updates automatically, keeping your client state store focused on true client-side concerns.",
-            "Unnecessary state duplication: Storing derived values in state (like a filtered list alongside the full list and filter criteria) creates synchronization bugs. When the source data changes, you must remember to update the derived state too. Calculate derived values during render with useMemo or inline computation. State should only contain the minimal source of truth from which everything else can be derived.",
-            "Ignoring state colocation: State that lives too high in the component tree causes the entire subtree to re-render on every update. If a search input's value is stored in a top-level provider, typing a character re-renders the entire application. Move state as close as possible to where it is consumed. This is often more effective than memoization because it eliminates the problem rather than caching around it.",
-            "Not considering URL state: Filter selections, pagination, sort order, and active tabs are often stored in component state when they should be in the URL. URL state is shareable (users can send links with specific filters applied), bookmarkable, and survives page refreshes. Use React Router's useSearchParams for query parameters that represent user-visible application state."
+            "Redux & Redux Toolkit — Predictable state container with middleware, selectors, and RTK Query",
+            "Redux Patterns — Redux core concepts, Redux Toolkit, RTK Query, middleware, and normalized state",
+            "Zustand & Lightweight Alternatives — Minimal state management with Zustand, Jotai, and Valtio",
+            "Modern Alternatives — Zustand, Jotai, Recoil, Valtio, and signals-based state management"
           ]
         }
       ],
-      "wordCount": 374,
-      "subsections": []
-    },
-    {
-      "id": "real-world-use-cases",
-      "heading": "Real-World Use Cases",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Enterprise dashboards at companies like Datadog and Grafana combine multiple state management approaches: Zustand or Redux for global UI preferences and dashboard layout configuration, TanStack Query for the dozens of metric queries that power charts and tables, and local state for individual widget interactions like tooltip visibility and drag-and-drop positioning. This layered approach keeps each state concern in the appropriate tool, preventing a monolithic store that becomes unmaintainable."
-        },
-        {
-          "type": "paragraph",
-          "text": "E-commerce platforms like Shopify use server state management extensively for product catalogs, inventory levels, and pricing that must stay synchronized with the backend. Cart state lives in a client-side store (often persisted to localStorage) because it represents user intent that has not yet been committed to the server. The checkout flow uses useReducer for its multi-step form state, where each step's validation depends on previous steps and the overall flow has clear state transitions (shipping → payment → confirmation → complete)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Collaborative editing tools like Notion and Linear use a combination of optimistic updates (via mutation hooks) and real-time synchronization (via WebSocket subscriptions stored in refs). The local state represents the user's pending changes, the server state represents the committed document, and conflict resolution logic reconciles them. This pattern requires careful separation of \"what the user sees\" (optimistic local state) from \"what the server confirmed\" (query cache), with rollback mechanisms when optimistic updates fail."
-        },
-        {
-          "type": "paragraph",
-          "text": "Social media applications manage complex notification state, feed pagination, and user interaction state (likes, comments, shares) across hundreds of components. TanStack Query's infinite query support handles feed pagination with automatic page merging, while Zustand stores the user's draft compositions and UI preferences. The key architectural decision is identifying which state is truly global (authenticated user, unread count badge) versus which is route-scoped (current feed filters, active conversation)."
-        }
-      ],
-      "wordCount": 289,
-      "subsections": []
-    },
-    {
-      "id": "interview-questions",
-      "heading": "Interview Questions",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Q: Compare Context API with Redux Toolkit. When would you choose each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Context API is built-in, requires no additional dependencies, and works well for infrequently-changing global values (theme, locale, auth state) consumed by a moderate number of components. Its limitation is performance: every consumer re-renders when the context value changes, regardless of which property they use. Redux Toolkit is appropriate when you have frequently-updating state consumed by many components, need middleware for side effects or logging, want time-travel debugging via DevTools, or need to enforce predictable state transitions through reducers. Redux Toolkit's selector pattern (via useSelector or reselect) provides fine-grained subscriptions that only re-render when the selected slice changes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the stale-while-revalidate pattern and how do libraries like TanStack Query implement it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Stale-while-revalidate serves cached (potentially stale) data immediately for instant UI response, then revalidates in the background by fetching fresh data from the server. If the fresh data differs from the cache, the UI updates seamlessly. TanStack Query implements this through configurable staleTime (how long data is considered fresh) and gcTime (how long unused data stays in cache). When a component mounts and cached data exists, it renders immediately with the cached value while a background refetch runs. This provides the best user experience: no loading spinners for repeat visits, with eventual consistency guarantees."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you handle state that needs to persist across page refreshes?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The approach depends on the state type. For user preferences (theme, sidebar state, display density), use localStorage with a custom hook that syncs state on change and reads initial value from storage. For authentication tokens, use httpOnly cookies (most secure) or localStorage with proper XSS protections. For form drafts, use sessionStorage (cleared when tab closes) or IndexedDB for large data. For navigation state (filters, pagination), use URL search parameters via useSearchParams so the state is shareable and bookmarkable. Libraries like Zustand's persist middleware and TanStack Query's persistQueryClient automate localStorage synchronization with proper serialization and hydration."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the concept of optimistic updates and how you would implement one."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Optimistic updates immediately reflect a user action in the UI before the server confirms it, providing instant feedback. Implementation: (1) capture the current state as a rollback point, (2) apply the expected change to the local cache/state, (3) send the mutation to the server, (4) on success, optionally refetch to ensure consistency, (5) on failure, rollback to the captured state and show an error. TanStack Query's onMutate/onError/onSettled hooks provide this pattern built-in. The key consideration is identifying which operations are safe to optimistically update (toggling a like) versus which need server confirmation first (payment processing)."
-        }
-      ],
-      "wordCount": 437,
-      "subsections": []
-    },
-    {
-      "id": "production-tips",
-      "heading": "Production Tips",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Implement state persistence with versioning: When persisting state to localStorage (via Zustand persist or custom hooks), include a version number in the stored data. When your state shape changes in a new release, the version mismatch triggers a migration function that transforms the old shape to the new one, preventing crashes from deserialization of incompatible data. Without versioning, schema changes break the application for users with stale localStorage.",
-            "Use React DevTools and Redux DevTools for state debugging: In production debugging scenarios, Redux DevTools provides time-travel debugging showing every action dispatched and the resulting state changes. Zustand integrates with Redux DevTools via the devtools middleware. For Context-based state, React DevTools shows the current context value at each provider. Enable these tools in development and staging environments, and consider a feature flag to enable them in production for specific users during incident investigation.",
-            "Monitor state size and subscription count: Large state objects and many subscribers degrade performance. Track the size of your persisted state (localStorage has a 5-10MB limit per origin) and the number of components subscribing to each store slice. If a single store action triggers re-renders in 50+ components, consider splitting the store or using more granular selectors. Zustand's subscribe function with a selector only notifies when the selected value changes, providing automatic optimization."
-          ]
-        }
-      ],
-      "wordCount": 214,
-      "subsections": []
-    },
-    {
-      "id": "related-topics",
-      "heading": "Related Topics",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "React Hooks — useState, useReducer, and useContext are the foundation of all React state management",
-            "Performance Optimization — State management choices directly impact re-render performance",
-            "Component Patterns — Compound components and context patterns for encapsulated state"
-          ]
-        }
-      ],
-      "wordCount": 36,
+      "wordCount": 52,
       "subsections": []
     }
   ],
   "images": [],
-  "codeBlocks": [
-    {
-      "language": "typescript",
-      "code": "// Context API with useReducer for authentication state\nimport { createContext, useContext, useReducer, ReactNode } from 'react';\n\ninterface User {\n  id: string;\n  name: string;\n  email: string;\n  role: 'admin' | 'user' | 'moderator';\n}\n\ninterface AuthState {\n  user: User | null;\n  token: string | null;\n  isAuthenticated: boolean;\n  isLoading: boolean;\n}\n\ntype AuthAction =\n  | { type: 'LOGIN_START' }\n  | { type: 'LOGIN_SUCCESS'; user: User; token: string }\n  | { type: 'LOGIN_FAILURE' }\n  | { type: 'LOGOUT' }\n  | { type: 'TOKEN_REFRESH'; token: string };\n\nfunction authReducer(state: AuthState, action: AuthAction): AuthState {\n  switch (action.type) {\n    case 'LOGIN_START':\n      return { ...state, isLoading: true };\n    case 'LOGIN_SUCCESS':\n      return {\n        user: action.user,\n        token: action.token,\n        isAuthenticated: true,\n        isLoading: false,\n      };\n    case 'LOGIN_FAILURE':\n      return { user: null, token: null, isAuthenticated: false, isLoading: false };\n    case 'LOGOUT':\n      return { user: null, token: null, isAuthenticated: false, isLoading: false };\n    case 'TOKEN_REFRESH':\n      return { ...state, token: action.token };\n    default:\n      return state;\n  }\n}\n\nconst AuthContext = createContext<{\n  state: AuthState;\n  dispatch: React.Dispatch<AuthAction>;\n} | null>(null);\n\nexport function AuthProvider({ children }: { children: ReactNode }) {\n  const [state, dispatch] = useReducer(authReducer, {\n    user: null,\n    token: null,\n    isAuthenticated: false,\n    isLoading: false,\n  });\n\n  return (\n    <AuthContext.Provider value={{ state, dispatch }}>\n      {children}\n    </AuthContext.Provider>\n  );\n}\n\nexport function useAuth() {\n  const context = useContext(AuthContext);\n  if (!context) throw new Error('useAuth must be used within AuthProvider');\n  return context;\n}",
-      "runnable": false
-    },
-    {
-      "language": "typescript",
-      "code": "// Zustand store with slices pattern for scalable state management\nimport { create } from 'zustand';\nimport { devtools, persist } from 'zustand/middleware';\nimport { immer } from 'zustand/middleware/immer';\n\ninterface CartItem {\n  productId: string;\n  name: string;\n  price: number;\n  quantity: number;\n}\n\ninterface CartSlice {\n  items: CartItem[];\n  addItem: (item: Omit<CartItem, 'quantity'>) => void;\n  removeItem: (productId: string) => void;\n  updateQuantity: (productId: string, quantity: number) => void;\n  clearCart: () => void;\n  totalPrice: () => number;\n  totalItems: () => number;\n}\n\ninterface UISlice {\n  sidebarOpen: boolean;\n  theme: 'light' | 'dark';\n  notifications: string[];\n  toggleSidebar: () => void;\n  setTheme: (theme: 'light' | 'dark') => void;\n  addNotification: (message: string) => void;\n  dismissNotification: (index: number) => void;\n}\n\ntype AppStore = CartSlice & UISlice;\n\nconst useAppStore = create<AppStore>()(\n  devtools(\n    persist(\n      immer((set, get) => ({\n        // Cart slice\n        items: [],\n        addItem: (item) => set((state) => {\n          const existing = state.items.find(i => i.productId === item.productId);\n          if (existing) {\n            existing.quantity += 1;\n          } else {\n            state.items.push({ ...item, quantity: 1 });\n          }\n        }),\n        removeItem: (productId) => set((state) => {\n          state.items = state.items.filter(i => i.productId !== productId);\n        }),\n        updateQuantity: (productId, quantity) => set((state) => {\n          const item = state.items.find(i => i.productId === productId);\n          if (item) item.quantity = Math.max(0, quantity);\n        }),\n        clearCart: () => set((state) => { state.items = []; }),\n        totalPrice: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),\n        totalItems: () => get().items.reduce((sum, i) => sum + i.quantity, 0),\n\n        // UI slice\n        sidebarOpen: true,\n        theme: 'dark',\n        notifications: [],\n        toggleSidebar: () => set((state) => { state.sidebarOpen = !state.sidebarOpen; }),\n        setTheme: (theme) => set((state) => { state.theme = theme; }),\n        addNotification: (message) => set((state) => { state.notifications.push(message); }),\n        dismissNotification: (index) => set((state) => {\n          state.notifications.splice(index, 1);\n        }),\n      })),\n      { name: 'app-store', partialize: (state) => ({ items: state.items, theme: state.theme }) }\n    )\n  )\n);\n\n// Selector pattern for fine-grained subscriptions\nconst useCartItems = () => useAppStore((state) => state.items);\nconst useTheme = () => useAppStore((state) => state.theme);\nconst useCartTotal = () => useAppStore((state) => state.totalPrice());",
-      "runnable": false
-    },
-    {
-      "language": "typescript",
-      "code": "// TanStack Query for server state management\nimport { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';\n\ninterface Post {\n  id: string;\n  title: string;\n  content: string;\n  authorId: string;\n  createdAt: string;\n}\n\n// Query hook with caching and background refetch\nfunction usePosts(authorId: string) {\n  return useQuery({\n    queryKey: ['posts', authorId],\n    queryFn: async (): Promise<Post[]> => {\n      const response = await fetch(`/api/posts?authorId=${authorId}`);\n      if (!response.ok) throw new Error('Failed to fetch posts');\n      return response.json();\n    },\n    staleTime: 5 * 60 * 1000, // Consider fresh for 5 minutes\n    gcTime: 30 * 60 * 1000,   // Keep in cache for 30 minutes\n    refetchOnWindowFocus: true,\n  });\n}\n\n// Mutation with optimistic update\nfunction useCreatePost() {\n  const queryClient = useQueryClient();\n\n  return useMutation({\n    mutationFn: async (newPost: Omit<Post, 'id' | 'createdAt'>) => {\n      const response = await fetch('/api/posts', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(newPost),\n      });\n      if (!response.ok) throw new Error('Failed to create post');\n      return response.json() as Promise<Post>;\n    },\n    onMutate: async (newPost) => {\n      await queryClient.cancelQueries({ queryKey: ['posts', newPost.authorId] });\n      const previousPosts = queryClient.getQueryData<Post[]>(['posts', newPost.authorId]);\n\n      // Optimistic update\n      queryClient.setQueryData<Post[]>(['posts', newPost.authorId], (old = []) => [\n        ...old,\n        { ...newPost, id: 'temp-' + Date.now(), createdAt: new Date().toISOString() },\n      ]);\n\n      return { previousPosts };\n    },\n    onError: (_err, newPost, context) => {\n      // Rollback on error\n      queryClient.setQueryData(['posts', newPost.authorId], context?.previousPosts);\n    },\n    onSettled: (_data, _error, newPost) => {\n      // Refetch to get server state\n      queryClient.invalidateQueries({ queryKey: ['posts', newPost.authorId] });\n    },\n  });\n}",
-      "runnable": false
-    }
-  ],
+  "codeBlocks": [],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
-    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/react/state-management.md",
-    "wordCount": 1634,
-    "sectionCount": 8
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/index.md",
+    "wordCount": 103,
+    "sectionCount": 2
   }
 }

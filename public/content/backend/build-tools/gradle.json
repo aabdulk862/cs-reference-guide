@@ -1,0 +1,385 @@
+{
+  "id": "build-tools-gradle",
+  "slug": "gradle",
+  "title": "Gradle",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Gradle uses a Kotlin DSL (build.gradle.kts) or Groovy DSL (build.gradle) — Kotlin DSL provides type-safe configuration with IDE autocompletion",
+            "Build execution is based on a Directed Acyclic Graph (DAG) of tasks — Gradle determines execution order from task dependencies, not a fixed lifecycle",
+            "Configurations replace Maven scopes: implementation (compile + runtime, not exposed to consumers), api (exposed to consumers), compileOnly, runtimeOnly, testImplementation",
+            "Incremental compilation recompiles only changed files and their dependents — 10-100x faster than full recompilation for large projects",
+            "Build cache (local and remote) stores task outputs keyed by inputs — identical inputs produce cached outputs, skipping execution entirely",
+            "Gradle Wrapper (gradlew) pins the Gradle version per project — always commit gradle/wrapper/ to version control",
+            "Version catalogs (gradle/libs.versions.toml) centralize dependency versions in a type-safe, IDE-friendly format",
+            "Convention plugins (buildSrc/ or included builds) extract shared build logic into reusable plugins applied across modules",
+            "Configuration cache serializes the task graph after configuration phase — subsequent builds skip configuration entirely (seconds saved per build)",
+            "Multi-project builds use settings.gradle.kts with include() for subprojects and includeBuild() for composite builds"
+          ]
+        }
+      ],
+      "wordCount": 175,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Gradle is the optimal choice for large JVM projects where build performance directly impacts developer productivity and CI costs. Choose Gradle when your project has 10+ modules and full builds exceed 5 minutes with Maven — Gradle's incremental compilation, build cache, and parallel execution can reduce build times by 50-80%. Gradle excels when you need custom build logic beyond what Maven plugins offer — its imperative Kotlin/Groovy DSL allows loops, conditionals, and custom tasks without writing a full plugin. Use Gradle for Android development (it is the official build system), for polyglot projects mixing Java, Kotlin, Scala, and Groovy, or when your CI/CD pipeline benefits from remote build caching (Gradle Enterprise/Develocity provides shared caches across all developers and CI agents). Gradle is preferred when your team values build performance optimization — configuration cache, parallel execution, and file system watching (--continuous) provide a development experience closer to interpreted languages. Avoid Gradle for small projects where Maven's convention-over-configuration simplicity is sufficient, for teams unfamiliar with Kotlin/Groovy who would struggle with the DSL, or for organizations with heavy Maven tooling investment (Nexus staging rules, Maven-specific CI plugins) that would require migration effort."
+        }
+      ],
+      "wordCount": 189,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "buildgradlekts-kotlin-dsl-fundamentals",
+          "heading": "build.gradle.kts — Kotlin DSL Fundamentals",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// build.gradle.kts\nplugins {\n    java\n    id(\"org.springframework.boot\") version \"3.2.1\"\n    id(\"io.spring.dependency-management\") version \"1.1.4\"\n    id(\"com.google.cloud.tools.jib\") version \"3.4.0\"\n    jacoco\n}\n\ngroup = \"com.example\"\nversion = \"2.1.0-SNAPSHOT\"\n\njava {\n    toolchain {\n        languageVersion = JavaLanguageVersion.of(21)\n    }\n}\n\nrepositories {\n    mavenCentral()\n    maven {\n        url = uri(\"https://nexus.internal.company.com/repository/maven-releases/\")\n        credentials {\n            username = providers.gradleProperty(\"nexusUsername\").orNull\n                ?: System.getenv(\"NEXUS_USERNAME\")\n            password = providers.gradleProperty(\"nexusPassword\").orNull\n                ?: System.getenv(\"NEXUS_PASSWORD\")\n        }\n    }\n}\n\ndependencies {\n    // implementation — compile + runtime, NOT exposed to consumers\n    implementation(\"org.springframework.boot:spring-boot-starter-web\")\n    implementation(\"org.springframework.boot:spring-boot-starter-data-jpa\")\n    implementation(\"org.springframework.boot:spring-boot-starter-validation\")\n    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")\n\n    // compileOnly — available at compile time only (like Maven's provided)\n    compileOnly(\"org.projectlombok:lombok\")\n    annotationProcessor(\"org.projectlombok:lombok\")\n    annotationProcessor(\"org.mapstruct:mapstruct-processor:1.5.5.Final\")\n\n    // runtimeOnly — available at runtime only (not needed for compilation)\n    runtimeOnly(\"org.postgresql:postgresql\")\n    runtimeOnly(\"io.micrometer:micrometer-registry-prometheus\")\n\n    // testImplementation — test compile + runtime\n    testImplementation(\"org.springframework.boot:spring-boot-starter-test\")\n    testImplementation(\"org.testcontainers:postgresql\")\n    testImplementation(\"org.testcontainers:junit-jupiter\")\n\n    // testRuntimeOnly — test runtime only\n    testRuntimeOnly(\"org.junit.platform:junit-platform-launcher\")\n}\n\ntasks.withType<Test> {\n    useJUnitPlatform()\n    maxParallelForks = Runtime.getRuntime().availableProcessors() / 2\n    \n    testLogging {\n        events(\"passed\", \"skipped\", \"failed\")\n        showStandardStreams = true\n    }\n\n    // Enable test retry for flaky tests in CI\n    if (System.getenv(\"CI\") != null) {\n        retry {\n            maxRetries = 2\n            maxFailures = 5\n        }\n    }\n}\n\ntasks.jacocoTestReport {\n    dependsOn(tasks.test)\n    reports {\n        xml.required = true\n        html.required = true\n    }\n}\n\ntasks.jacocoTestCoverageVerification {\n    violationRules {\n        rule {\n            limit {\n                minimum = \"0.80\".toBigDecimal()\n            }\n        }\n    }\n}\n\n// Jib — containerize without Docker daemon\njib {\n    from {\n        image = \"eclipse-temurin:21-jre-alpine\"\n    }\n    to {\n        image = \"registry.example.com/${project.name}\"\n        tags = setOf(version.toString(), \"latest\")\n    }\n    container {\n        jvmFlags = listOf(\n            \"-XX:+UseG1GC\",\n            \"-XX:MaxRAMPercentage=75.0\",\n            \"-Djava.security.egd=file:/dev/./urandom\"\n        )\n        ports = listOf(\"8080\")\n        creationTime = \"USE_CURRENT_TIMESTAMP\"\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "version-catalogs-libsversionstoml",
+          "heading": "Version Catalogs (libs.versions.toml)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "toml",
+              "code": "# gradle/libs.versions.toml\n[versions]\nspring-boot = \"3.2.1\"\nspring-dependency-management = \"1.1.4\"\ntestcontainers = \"1.19.3\"\nmapstruct = \"1.5.5.Final\"\nlombok = \"1.18.30\"\njib = \"3.4.0\"\nspotless = \"6.23.3\"\n\n[libraries]\n# Spring Boot starters\nspring-boot-starter-web = { module = \"org.springframework.boot:spring-boot-starter-web\" }\nspring-boot-starter-data-jpa = { module = \"org.springframework.boot:spring-boot-starter-data-jpa\" }\nspring-boot-starter-validation = { module = \"org.springframework.boot:spring-boot-starter-validation\" }\nspring-boot-starter-actuator = { module = \"org.springframework.boot:spring-boot-starter-actuator\" }\nspring-boot-starter-test = { module = \"org.springframework.boot:spring-boot-starter-test\" }\n\n# Database\npostgresql = { module = \"org.postgresql:postgresql\" }\n\n# Mapping\nmapstruct = { module = \"org.mapstruct:mapstruct\", version.ref = \"mapstruct\" }\nmapstruct-processor = { module = \"org.mapstruct:mapstruct-processor\", version.ref = \"mapstruct\" }\n\n# Testing\ntestcontainers-bom = { module = \"org.testcontainers:testcontainers-bom\", version.ref = \"testcontainers\" }\ntestcontainers-postgresql = { module = \"org.testcontainers:postgresql\" }\ntestcontainers-junit = { module = \"org.testcontainers:junit-jupiter\" }\n\n# Code quality\nlombok = { module = \"org.projectlombok:lombok\", version.ref = \"lombok\" }\n\n[bundles]\nspring-web = [\"spring-boot-starter-web\", \"spring-boot-starter-validation\", \"spring-boot-starter-actuator\"]\ntesting = [\"spring-boot-starter-test\", \"testcontainers-postgresql\", \"testcontainers-junit\"]\n\n[plugins]\nspring-boot = { id = \"org.springframework.boot\", version.ref = \"spring-boot\" }\nspring-dependency-management = { id = \"io.spring.dependency-management\", version.ref = \"spring-dependency-management\" }\njib = { id = \"com.google.cloud.tools.jib\", version.ref = \"jib\" }\nspotless = { id = \"com.diffplug.spotless\", version.ref = \"spotless\" }",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// build.gradle.kts using version catalog\nplugins {\n    java\n    alias(libs.plugins.spring.boot)\n    alias(libs.plugins.spring.dependency.management)\n    alias(libs.plugins.jib)\n}\n\ndependencies {\n    implementation(libs.bundles.spring.web)\n    implementation(libs.spring.boot.starter.data.jpa)\n    implementation(libs.mapstruct)\n\n    compileOnly(libs.lombok)\n    annotationProcessor(libs.lombok)\n    annotationProcessor(libs.mapstruct.processor)\n\n    runtimeOnly(libs.postgresql)\n\n    testImplementation(libs.bundles.testing)\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "multi-project-build-with-convention-plugins",
+          "heading": "Multi-Project Build with Convention Plugins",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// settings.gradle.kts\nrootProject.name = \"ecommerce-platform\"\n\n// Enable version catalogs\ndependencyResolutionManagement {\n    versionCatalogs {\n        create(\"libs\") {\n            from(files(\"gradle/libs.versions.toml\"))\n        }\n    }\n}\n\n// Include subprojects\ninclude(\n    \"common\",\n    \"domain\",\n    \"persistence\",\n    \"service:order-service\",\n    \"service:payment-service\",\n    \"service:inventory-service\",\n    \"gateway\"\n)\n\n// Composite build for shared build logic\nincludeBuild(\"build-logic\")",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// build-logic/src/main/kotlin/com.example.java-conventions.gradle.kts\n// Convention plugin applied to all Java subprojects\nplugins {\n    java\n    jacoco\n    id(\"com.diffplug.spotless\")\n}\n\njava {\n    toolchain {\n        languageVersion = JavaLanguageVersion.of(21)\n    }\n}\n\nrepositories {\n    mavenCentral()\n}\n\ndependencies {\n    testImplementation(platform(\"org.junit:junit-bom:5.10.1\"))\n    testImplementation(\"org.junit.jupiter:junit-jupiter\")\n    testImplementation(\"org.assertj:assertj-core:3.25.1\")\n    testImplementation(\"org.mockito:mockito-core:5.8.0\")\n}\n\ntasks.test {\n    useJUnitPlatform()\n    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)\n    finalizedBy(tasks.jacocoTestReport)\n}\n\nspotless {\n    java {\n        googleJavaFormat(\"1.19.1\")\n        removeUnusedImports()\n        trimTrailingWhitespace()\n        endWithNewline()\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// build-logic/src/main/kotlin/com.example.spring-service.gradle.kts\n// Convention plugin for Spring Boot microservices\nplugins {\n    id(\"com.example.java-conventions\")\n    id(\"org.springframework.boot\")\n    id(\"io.spring.dependency-management\")\n    id(\"com.google.cloud.tools.jib\")\n}\n\ndependencies {\n    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")\n    implementation(\"io.micrometer:micrometer-registry-prometheus\")\n    runtimeOnly(\"io.opentelemetry.javaagent:opentelemetry-javaagent:1.32.0\")\n}\n\n// Subproject build.gradle.kts — minimal configuration\n// service/order-service/build.gradle.kts\nplugins {\n    id(\"com.example.spring-service\")\n}\n\ndependencies {\n    implementation(project(\":domain\"))\n    implementation(project(\":persistence\"))\n    implementation(libs.spring.boot.starter.web)\n    implementation(libs.spring.boot.starter.data.jpa)\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-tasks-and-build-cache-configuration",
+          "heading": "Custom Tasks and Build Cache Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// Custom task with inputs/outputs for caching\nabstract class GenerateApiClient : DefaultTask() {\n    @get:InputFile\n    abstract val openApiSpec: RegularFileProperty\n\n    @get:OutputDirectory\n    abstract val outputDir: DirectoryProperty\n\n    @get:Input\n    abstract val packageName: Property<String>\n\n    @TaskAction\n    fun generate() {\n        val spec = openApiSpec.get().asFile\n        val output = outputDir.get().asFile\n        // OpenAPI Generator logic here\n        logger.lifecycle(\"Generating API client from ${spec.name} to ${output.path}\")\n    }\n}\n\ntasks.register<GenerateApiClient>(\"generatePaymentClient\") {\n    openApiSpec = file(\"specs/payment-api.yaml\")\n    outputDir = layout.buildDirectory.dir(\"generated/payment-client\")\n    packageName = \"com.example.payment.client\"\n}\n\ntasks.named(\"compileJava\") {\n    dependsOn(\"generatePaymentClient\")\n}\n\n// settings.gradle.kts — build cache configuration\nbuildCache {\n    local {\n        directory = File(rootDir, \".gradle/build-cache\")\n        removeUnusedEntriesAfterDays = 7\n    }\n    remote<HttpBuildCache> {\n        url = uri(\"https://gradle-cache.internal.company.com/cache/\")\n        isPush = System.getenv(\"CI\") != null // Only CI pushes to remote cache\n        credentials {\n            username = System.getenv(\"CACHE_USERNAME\") ?: \"\"\n            password = System.getenv(\"CACHE_PASSWORD\") ?: \"\"\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "performance-optimization-configuration",
+          "heading": "Performance Optimization Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "kotlin",
+              "code": "// gradle.properties — performance tuning\n// org.gradle.parallel=true              # Build modules in parallel\n// org.gradle.caching=true               # Enable build cache\n// org.gradle.configuration-cache=true   # Cache configuration phase\n// org.gradle.daemon=true                # Keep daemon running between builds\n// org.gradle.jvmargs=-Xmx4g -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError\n// org.gradle.workers.max=8              # Max parallel workers\n\n// Programmatic performance configuration\ntasks.withType<JavaCompile>().configureEach {\n    options.isFork = true\n    options.forkOptions.memoryMaximumSize = \"2g\"\n    options.isIncremental = true\n}\n\n// Dependency locking for reproducible builds\ndependencyLocking {\n    lockAllConfigurations()\n}\n\n// Resolve all dependencies and write lock file\n// ./gradlew dependencies --write-locks",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Gradle Wrapper setup\ngradle wrapper --gradle-version 8.5\n\n# Common commands\n./gradlew build                          # Full build (compile + test + assemble)\n./gradlew test                           # Run tests only\n./gradlew :service:order-service:test    # Test specific subproject\n./gradlew build --parallel               # Parallel module builds\n./gradlew build --build-cache            # Use build cache\n./gradlew build --configuration-cache    # Cache configuration phase\n./gradlew dependencies                   # Show dependency tree\n./gradlew dependencyInsight --dependency guava  # Trace specific dependency\n./gradlew build --scan                   # Generate build scan (performance analysis)\n./gradlew clean build -x test            # Build without tests\n./gradlew tasks --all                    # List all available tasks",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Gradle Build Phases\"\n        A[Initialization] --> B[Configuration]\n        B --> C[Execution]\n    end\n\n    subgraph \"Initialization Phase\"\n        A --> A1[Evaluate settings.gradle.kts]\n        A1 --> A2[Determine included projects]\n        A2 --> A3[Create Project instances]\n    end\n\n    subgraph \"Configuration Phase\"\n        B --> B1[Evaluate build.gradle.kts]\n        B1 --> B2[Configure tasks]\n        B2 --> B3[Build Task DAG]\n    end\n\n    subgraph \"Execution Phase\"\n        C --> C1[Determine required tasks]\n        C1 --> C2[Check build cache]\n        C2 -->|Cache hit| C4[Restore outputs]\n        C2 -->|Cache miss| C3[Execute task actions]\n        C3 --> C5[Store in cache]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Dependency Configurations\"\n        A[api] -->|Exposed to consumers| B[Consumer's compile classpath]\n        C[implementation] -->|Hidden from consumers| D[Only this module's classpath]\n        E[compileOnly] -->|Compile time only| F[Not in runtime classpath]\n        G[runtimeOnly] -->|Runtime only| H[Not in compile classpath]\n        I[testImplementation] -->|Test scope| J[Test compile + runtime]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Build Cache Flow\"\n        T[Task Execution] --> H{Cache Enabled?}\n        H -->|Yes| K[Compute Cache Key]\n        K --> L{Key in Local Cache?}\n        L -->|Yes| M[Restore from Local]\n        L -->|No| N{Key in Remote Cache?}\n        N -->|Yes| O[Download + Restore]\n        N -->|No| P[Execute Task]\n        P --> Q[Store in Local Cache]\n        Q --> R{CI Build?}\n        R -->|Yes| S[Push to Remote Cache]\n        H -->|No| P\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Using compile and runtime configurations (deprecated). Legacy Gradle configurations (compile, runtime, testCompile) leak dependencies to consumers and prevent build optimization. Always use implementation (hidden from consumers), api (exposed to consumers), compileOnly, and runtimeOnly. The java-library plugin provides the api configuration for libraries that expose types in their public API."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Expensive operations in the configuration phase. Code in build.gradle.kts outside of task actions runs during configuration — even for tasks that will not execute. Reading files, making network calls, or running processes during configuration slows every build invocation. Move expensive operations into task actions, use providers for lazy evaluation, and enable the configuration cache to skip configuration entirely on subsequent builds."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Not declaring task inputs and outputs. Gradle's incremental build and caching rely on knowing what a task reads (inputs) and produces (outputs). Custom tasks without declared inputs/outputs always execute, defeating caching. Annotate task properties with @InputFile, @InputDirectory, @OutputFile, @OutputDirectory, and @Input for the build cache to function correctly."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Misunderstanding implementation vs api in libraries. Using api for all dependencies in a library module exposes everything to consumers, creating tight coupling and slow compilation (changes to any api dependency trigger recompilation of all consumers). Use implementation by default — only use api when the dependency's types appear in your library's public API (method signatures, return types, superclasses)."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Ignoring dependency resolution conflicts. Gradle uses \"highest version wins\" by default, which can silently upgrade a dependency to an incompatible version. Use failOnVersionConflict() in the resolution strategy to detect conflicts, force() to pin specific versions, or strictly() constraints to prevent upgrades. Version catalogs with explicit versions make conflicts visible."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Not leveraging the build cache in CI. Without a remote build cache, every CI build starts from scratch. A remote cache (Gradle Enterprise/Develocity, or a custom HTTP cache) allows CI agents to reuse outputs from previous builds and from other agents building the same code. This can reduce CI build times by 60-80% for incremental changes. Configure CI to push to the cache and developers to pull only."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Composite builds without proper isolation. Using includeBuild() for local development of dependencies is powerful but can mask version conflicts. The included build's output replaces the published artifact, so you may not notice that the published version has different behavior. Always test with published artifacts before releasing, and use substitution rules explicitly rather than blanket includes."
+        }
+      ],
+      "wordCount": 395,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Android application with 200+ modules. A large Android application uses Gradle with aggressive modularization — feature modules, library modules, and test modules totaling 200+ subprojects. Convention plugins in buildSrc ensure consistent configuration. The build uses Gradle's configuration cache (saving 15 seconds per build), parallel execution across modules, and a remote build cache shared between 50 developers and CI agents. Full clean builds take 8 minutes; incremental builds with cache hits complete in 45 seconds. Build scans identify bottlenecks — a single slow annotation processor was adding 30 seconds to every module."
+        },
+        {
+          "type": "paragraph",
+          "text": "Microservices monorepo with shared libraries. A fintech company maintains 12 Spring Boot microservices in a single Gradle multi-project build. Shared libraries (common, security, observability) are subprojects consumed via project(\":common\"). Version catalogs ensure all services use identical dependency versions. Convention plugins apply Spring Boot configuration, Docker image building (Jib), and OpenTelemetry instrumentation uniformly. Composite builds (includeBuild(\"../shared-proto\")) allow local development against the protobuf definitions repository without publishing snapshots."
+        },
+        {
+          "type": "paragraph",
+          "text": "CI/CD pipeline with remote build cache. A platform team deploys Gradle Enterprise (Develocity) as a remote build cache and build scan server. CI agents push task outputs to the cache; developer machines pull from it. When a developer pulls main and runs ./gradlew build, 90% of tasks are cache hits from the CI build that already ran on the same commit. Build times drop from 12 minutes to 90 seconds. Build scans provide visibility into cache miss reasons, helping the team optimize task declarations for better cache hit rates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Kotlin multiplatform library publishing. A team publishes a Kotlin Multiplatform library targeting JVM, JS, and Native. Gradle's Kotlin Multiplatform plugin manages compilation for each target, with shared source sets for common code. The build produces platform-specific artifacts published to Maven Central with Gradle's maven-publish plugin. Signing, Javadoc generation, and source JAR creation are configured in a convention plugin. The version catalog manages Kotlin compiler versions, coroutines, and serialization library versions across all targets."
+        }
+      ],
+      "wordCount": 319,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between Gradle's implementation and api configurations."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: implementation declares a dependency that is used internally by the module but not exposed to consumers. If module A uses implementation(\"com.google.guava:guava\"), modules depending on A cannot see Guava on their compile classpath. api declares a dependency that is part of the module's public API — if A's public method returns a Guava ImmutableList, consumers need Guava on their compile classpath, so A must use api. The distinction matters for compilation performance: changing an implementation dependency only recompiles the declaring module, while changing an api dependency triggers recompilation of all consumers. Rule of thumb: use implementation by default, switch to api only when the dependency's types appear in your public API signatures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Gradle's build cache work, and what determines cache key computation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Gradle's build cache stores task outputs keyed by a hash of the task's inputs. The cache key is computed from: the task implementation class (bytecode hash), the task's input properties (file contents, string values, etc.), and the task's classpath. When a task executes, Gradle checks the local cache first, then the remote cache. If a matching key exists, outputs are restored without execution. Cache correctness depends on complete input/output declarations — if a task reads a file not declared as an input, the cache may serve stale results. The local cache lives on disk (~/.gradle/caches/build-cache-1/); the remote cache is an HTTP server (Gradle Enterprise, custom, or cloud storage). CI agents push to remote; developers pull. This means a developer building code that CI already built gets instant cache hits."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the Gradle configuration cache, and how does it differ from the build cache?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The build cache caches task outputs (compiled classes, test results, JARs). The configuration cache caches the result of the configuration phase — the task graph itself. Without configuration cache, Gradle evaluates all build.gradle.kts files on every invocation to build the task graph (typically 2-10 seconds for large projects). With configuration cache enabled, Gradle serializes the configured task graph after the first run and deserializes it on subsequent runs, skipping configuration entirely. The cache is invalidated when build scripts, gradle.properties, or environment variables change. Restrictions: configuration-phase code cannot use certain APIs (like Project references in task actions), requiring code changes to be compatible. The combination of both caches means: configuration cache skips graph building, build cache skips task execution — resulting in near-instant builds for unchanged code."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle dependency version conflicts in Gradle?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Gradle resolves conflicts using \"highest version wins\" by default — if two dependencies transitively pull different versions of the same library, Gradle selects the highest. To control this: use failOnVersionConflict() in resolutionStrategy to make conflicts build failures, use force(\"group:artifact:version\") to pin a specific version, use strictly(\"version\") in dependency declarations to prevent upgrades beyond that version, or use exclude(group = \"...\", module = \"...\") to remove unwanted transitive dependencies. For visibility, run ./gradlew dependencyInsight --dependency <name> to trace why a specific version was selected. Version catalogs with explicit versions and enforcedPlatform() (BOM with forced versions) provide the most maintainable approach for large projects."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Compare Gradle's task-based model with Maven's lifecycle-based model."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Maven defines fixed lifecycle phases (compile → test → package → verify → install → deploy) that always execute in order — running mvn package always runs compile and test first. Gradle uses a task DAG where tasks declare dependencies on other tasks, and only requested tasks and their dependencies execute. This means ./gradlew jar runs compilation but not tests (unless jar depends on test). Gradle's model is more flexible: you can define arbitrary tasks, create complex dependency graphs, and skip unnecessary work. Maven's model is more predictable: every developer knows what mvn verify does. Gradle's approach enables better performance (skip unneeded tasks) and customization (insert tasks anywhere in the graph), while Maven's approach provides stronger conventions and simpler mental models."
+        }
+      ],
+      "wordCount": 652,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enable build scans for every CI build. Gradle build scans (--scan or Gradle Enterprise) provide detailed performance analysis: which tasks took longest, cache hit rates, dependency resolution times, and configuration phase duration. Publish scans for every CI build and review them weekly to identify optimization opportunities. A single misconfigured task that disables caching can add minutes to every build across the entire team. Build scans make these issues visible with actionable data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use the configuration cache in CI and local development. Enable org.gradle.configuration-cache=true in gradle.properties. For large projects (50+ modules), the configuration phase can take 5-15 seconds — the configuration cache eliminates this entirely on subsequent builds. Fix compatibility issues incrementally: Gradle reports which code is incompatible, and most fixes involve replacing project. references with providers. in task configurations. The investment pays off immediately for teams running builds dozens of times per day."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement dependency locking for reproducible builds. Enable dependencyLocking { lockAllConfigurations() } and commit lock files to version control. Without locking, dynamic versions (1.+, latest.release) and version ranges resolve differently over time, making builds non-reproducible. Lock files pin exact resolved versions while still allowing controlled updates via ./gradlew dependencies --write-locks. This ensures that a build from the same commit always produces the same artifact, which is critical for debugging production issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Optimize CI with remote build cache and test distribution. Configure a remote build cache (Gradle Enterprise or custom HTTP cache) so CI agents share cached outputs. For test-heavy builds, use Gradle Enterprise's test distribution feature to split test execution across multiple agents — a 30-minute test suite runs in 5 minutes across 6 agents. Combine with predictive test selection (run only tests affected by code changes) to further reduce CI feedback time. Monitor cache hit rates — anything below 70% indicates misconfigured task inputs that should be investigated."
+        }
+      ],
+      "wordCount": 301,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Maven — Alternative JVM build tool with convention-over-configuration approach",
+            "CI/CD Pipelines — Pipeline integration patterns for Gradle builds with caching",
+            "Spring Boot — Spring Boot Gradle plugin for application packaging and containerization",
+            "Docker — Jib plugin for building Docker images without a Docker daemon"
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "kotlin",
+      "code": "// build.gradle.kts\nplugins {\n    java\n    id(\"org.springframework.boot\") version \"3.2.1\"\n    id(\"io.spring.dependency-management\") version \"1.1.4\"\n    id(\"com.google.cloud.tools.jib\") version \"3.4.0\"\n    jacoco\n}\n\ngroup = \"com.example\"\nversion = \"2.1.0-SNAPSHOT\"\n\njava {\n    toolchain {\n        languageVersion = JavaLanguageVersion.of(21)\n    }\n}\n\nrepositories {\n    mavenCentral()\n    maven {\n        url = uri(\"https://nexus.internal.company.com/repository/maven-releases/\")\n        credentials {\n            username = providers.gradleProperty(\"nexusUsername\").orNull\n                ?: System.getenv(\"NEXUS_USERNAME\")\n            password = providers.gradleProperty(\"nexusPassword\").orNull\n                ?: System.getenv(\"NEXUS_PASSWORD\")\n        }\n    }\n}\n\ndependencies {\n    // implementation — compile + runtime, NOT exposed to consumers\n    implementation(\"org.springframework.boot:spring-boot-starter-web\")\n    implementation(\"org.springframework.boot:spring-boot-starter-data-jpa\")\n    implementation(\"org.springframework.boot:spring-boot-starter-validation\")\n    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")\n\n    // compileOnly — available at compile time only (like Maven's provided)\n    compileOnly(\"org.projectlombok:lombok\")\n    annotationProcessor(\"org.projectlombok:lombok\")\n    annotationProcessor(\"org.mapstruct:mapstruct-processor:1.5.5.Final\")\n\n    // runtimeOnly — available at runtime only (not needed for compilation)\n    runtimeOnly(\"org.postgresql:postgresql\")\n    runtimeOnly(\"io.micrometer:micrometer-registry-prometheus\")\n\n    // testImplementation — test compile + runtime\n    testImplementation(\"org.springframework.boot:spring-boot-starter-test\")\n    testImplementation(\"org.testcontainers:postgresql\")\n    testImplementation(\"org.testcontainers:junit-jupiter\")\n\n    // testRuntimeOnly — test runtime only\n    testRuntimeOnly(\"org.junit.platform:junit-platform-launcher\")\n}\n\ntasks.withType<Test> {\n    useJUnitPlatform()\n    maxParallelForks = Runtime.getRuntime().availableProcessors() / 2\n    \n    testLogging {\n        events(\"passed\", \"skipped\", \"failed\")\n        showStandardStreams = true\n    }\n\n    // Enable test retry for flaky tests in CI\n    if (System.getenv(\"CI\") != null) {\n        retry {\n            maxRetries = 2\n            maxFailures = 5\n        }\n    }\n}\n\ntasks.jacocoTestReport {\n    dependsOn(tasks.test)\n    reports {\n        xml.required = true\n        html.required = true\n    }\n}\n\ntasks.jacocoTestCoverageVerification {\n    violationRules {\n        rule {\n            limit {\n                minimum = \"0.80\".toBigDecimal()\n            }\n        }\n    }\n}\n\n// Jib — containerize without Docker daemon\njib {\n    from {\n        image = \"eclipse-temurin:21-jre-alpine\"\n    }\n    to {\n        image = \"registry.example.com/${project.name}\"\n        tags = setOf(version.toString(), \"latest\")\n    }\n    container {\n        jvmFlags = listOf(\n            \"-XX:+UseG1GC\",\n            \"-XX:MaxRAMPercentage=75.0\",\n            \"-Djava.security.egd=file:/dev/./urandom\"\n        )\n        ports = listOf(\"8080\")\n        creationTime = \"USE_CURRENT_TIMESTAMP\"\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "toml",
+      "code": "# gradle/libs.versions.toml\n[versions]\nspring-boot = \"3.2.1\"\nspring-dependency-management = \"1.1.4\"\ntestcontainers = \"1.19.3\"\nmapstruct = \"1.5.5.Final\"\nlombok = \"1.18.30\"\njib = \"3.4.0\"\nspotless = \"6.23.3\"\n\n[libraries]\n# Spring Boot starters\nspring-boot-starter-web = { module = \"org.springframework.boot:spring-boot-starter-web\" }\nspring-boot-starter-data-jpa = { module = \"org.springframework.boot:spring-boot-starter-data-jpa\" }\nspring-boot-starter-validation = { module = \"org.springframework.boot:spring-boot-starter-validation\" }\nspring-boot-starter-actuator = { module = \"org.springframework.boot:spring-boot-starter-actuator\" }\nspring-boot-starter-test = { module = \"org.springframework.boot:spring-boot-starter-test\" }\n\n# Database\npostgresql = { module = \"org.postgresql:postgresql\" }\n\n# Mapping\nmapstruct = { module = \"org.mapstruct:mapstruct\", version.ref = \"mapstruct\" }\nmapstruct-processor = { module = \"org.mapstruct:mapstruct-processor\", version.ref = \"mapstruct\" }\n\n# Testing\ntestcontainers-bom = { module = \"org.testcontainers:testcontainers-bom\", version.ref = \"testcontainers\" }\ntestcontainers-postgresql = { module = \"org.testcontainers:postgresql\" }\ntestcontainers-junit = { module = \"org.testcontainers:junit-jupiter\" }\n\n# Code quality\nlombok = { module = \"org.projectlombok:lombok\", version.ref = \"lombok\" }\n\n[bundles]\nspring-web = [\"spring-boot-starter-web\", \"spring-boot-starter-validation\", \"spring-boot-starter-actuator\"]\ntesting = [\"spring-boot-starter-test\", \"testcontainers-postgresql\", \"testcontainers-junit\"]\n\n[plugins]\nspring-boot = { id = \"org.springframework.boot\", version.ref = \"spring-boot\" }\nspring-dependency-management = { id = \"io.spring.dependency-management\", version.ref = \"spring-dependency-management\" }\njib = { id = \"com.google.cloud.tools.jib\", version.ref = \"jib\" }\nspotless = { id = \"com.diffplug.spotless\", version.ref = \"spotless\" }",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// build.gradle.kts using version catalog\nplugins {\n    java\n    alias(libs.plugins.spring.boot)\n    alias(libs.plugins.spring.dependency.management)\n    alias(libs.plugins.jib)\n}\n\ndependencies {\n    implementation(libs.bundles.spring.web)\n    implementation(libs.spring.boot.starter.data.jpa)\n    implementation(libs.mapstruct)\n\n    compileOnly(libs.lombok)\n    annotationProcessor(libs.lombok)\n    annotationProcessor(libs.mapstruct.processor)\n\n    runtimeOnly(libs.postgresql)\n\n    testImplementation(libs.bundles.testing)\n}",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// settings.gradle.kts\nrootProject.name = \"ecommerce-platform\"\n\n// Enable version catalogs\ndependencyResolutionManagement {\n    versionCatalogs {\n        create(\"libs\") {\n            from(files(\"gradle/libs.versions.toml\"))\n        }\n    }\n}\n\n// Include subprojects\ninclude(\n    \"common\",\n    \"domain\",\n    \"persistence\",\n    \"service:order-service\",\n    \"service:payment-service\",\n    \"service:inventory-service\",\n    \"gateway\"\n)\n\n// Composite build for shared build logic\nincludeBuild(\"build-logic\")",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// build-logic/src/main/kotlin/com.example.java-conventions.gradle.kts\n// Convention plugin applied to all Java subprojects\nplugins {\n    java\n    jacoco\n    id(\"com.diffplug.spotless\")\n}\n\njava {\n    toolchain {\n        languageVersion = JavaLanguageVersion.of(21)\n    }\n}\n\nrepositories {\n    mavenCentral()\n}\n\ndependencies {\n    testImplementation(platform(\"org.junit:junit-bom:5.10.1\"))\n    testImplementation(\"org.junit.jupiter:junit-jupiter\")\n    testImplementation(\"org.assertj:assertj-core:3.25.1\")\n    testImplementation(\"org.mockito:mockito-core:5.8.0\")\n}\n\ntasks.test {\n    useJUnitPlatform()\n    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)\n    finalizedBy(tasks.jacocoTestReport)\n}\n\nspotless {\n    java {\n        googleJavaFormat(\"1.19.1\")\n        removeUnusedImports()\n        trimTrailingWhitespace()\n        endWithNewline()\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// build-logic/src/main/kotlin/com.example.spring-service.gradle.kts\n// Convention plugin for Spring Boot microservices\nplugins {\n    id(\"com.example.java-conventions\")\n    id(\"org.springframework.boot\")\n    id(\"io.spring.dependency-management\")\n    id(\"com.google.cloud.tools.jib\")\n}\n\ndependencies {\n    implementation(\"org.springframework.boot:spring-boot-starter-actuator\")\n    implementation(\"io.micrometer:micrometer-registry-prometheus\")\n    runtimeOnly(\"io.opentelemetry.javaagent:opentelemetry-javaagent:1.32.0\")\n}\n\n// Subproject build.gradle.kts — minimal configuration\n// service/order-service/build.gradle.kts\nplugins {\n    id(\"com.example.spring-service\")\n}\n\ndependencies {\n    implementation(project(\":domain\"))\n    implementation(project(\":persistence\"))\n    implementation(libs.spring.boot.starter.web)\n    implementation(libs.spring.boot.starter.data.jpa)\n}",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// Custom task with inputs/outputs for caching\nabstract class GenerateApiClient : DefaultTask() {\n    @get:InputFile\n    abstract val openApiSpec: RegularFileProperty\n\n    @get:OutputDirectory\n    abstract val outputDir: DirectoryProperty\n\n    @get:Input\n    abstract val packageName: Property<String>\n\n    @TaskAction\n    fun generate() {\n        val spec = openApiSpec.get().asFile\n        val output = outputDir.get().asFile\n        // OpenAPI Generator logic here\n        logger.lifecycle(\"Generating API client from ${spec.name} to ${output.path}\")\n    }\n}\n\ntasks.register<GenerateApiClient>(\"generatePaymentClient\") {\n    openApiSpec = file(\"specs/payment-api.yaml\")\n    outputDir = layout.buildDirectory.dir(\"generated/payment-client\")\n    packageName = \"com.example.payment.client\"\n}\n\ntasks.named(\"compileJava\") {\n    dependsOn(\"generatePaymentClient\")\n}\n\n// settings.gradle.kts — build cache configuration\nbuildCache {\n    local {\n        directory = File(rootDir, \".gradle/build-cache\")\n        removeUnusedEntriesAfterDays = 7\n    }\n    remote<HttpBuildCache> {\n        url = uri(\"https://gradle-cache.internal.company.com/cache/\")\n        isPush = System.getenv(\"CI\") != null // Only CI pushes to remote cache\n        credentials {\n            username = System.getenv(\"CACHE_USERNAME\") ?: \"\"\n            password = System.getenv(\"CACHE_PASSWORD\") ?: \"\"\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "kotlin",
+      "code": "// gradle.properties — performance tuning\n// org.gradle.parallel=true              # Build modules in parallel\n// org.gradle.caching=true               # Enable build cache\n// org.gradle.configuration-cache=true   # Cache configuration phase\n// org.gradle.daemon=true                # Keep daemon running between builds\n// org.gradle.jvmargs=-Xmx4g -XX:+UseG1GC -XX:+HeapDumpOnOutOfMemoryError\n// org.gradle.workers.max=8              # Max parallel workers\n\n// Programmatic performance configuration\ntasks.withType<JavaCompile>().configureEach {\n    options.isFork = true\n    options.forkOptions.memoryMaximumSize = \"2g\"\n    options.isIncremental = true\n}\n\n// Dependency locking for reproducible builds\ndependencyLocking {\n    lockAllConfigurations()\n}\n\n// Resolve all dependencies and write lock file\n// ./gradlew dependencies --write-locks",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Gradle Wrapper setup\ngradle wrapper --gradle-version 8.5\n\n# Common commands\n./gradlew build                          # Full build (compile + test + assemble)\n./gradlew test                           # Run tests only\n./gradlew :service:order-service:test    # Test specific subproject\n./gradlew build --parallel               # Parallel module builds\n./gradlew build --build-cache            # Use build cache\n./gradlew build --configuration-cache    # Cache configuration phase\n./gradlew dependencies                   # Show dependency tree\n./gradlew dependencyInsight --dependency guava  # Trace specific dependency\n./gradlew build --scan                   # Generate build scan (performance analysis)\n./gradlew clean build -x test            # Build without tests\n./gradlew tasks --all                    # List all available tasks",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/build-tools/gradle.md",
+    "wordCount": 2075,
+    "sectionCount": 14
+  }
+}

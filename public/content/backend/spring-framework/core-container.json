@@ -19,12 +19,19 @@
             "Configuration approaches: @Configuration classes with @Bean methods, component scanning with @Component, and XML (legacy)",
             "@Autowired resolves dependencies by type; @Qualifier disambiguates when multiple candidates exist",
             "Bean lifecycle callbacks: @PostConstruct, @PreDestroy, InitializingBean, DisposableBean, @Bean(initMethod/destroyMethod)",
+            "BeanPostProcessor intercepts bean initialization to add cross-cutting behavior (AOP proxies, validation, custom annotations)",
+            "BeanFactoryPostProcessor modifies bean definitions before instantiation (property placeholder resolution, configuration class processing)",
             "Profiles (@Profile) enable environment-specific bean registration; activated via spring.profiles.active",
-            "@Conditional annotations enable programmatic bean registration based on classpath, properties, or custom conditions"
+            "@Conditional annotations enable programmatic bean registration based on classpath, properties, or custom conditions",
+            "Spring Expression Language (SpEL) provides runtime evaluation in annotations: @Value(\"#{systemProperties['user.home']}\")",
+            "Custom scopes can be registered via ConfigurableBeanFactory.registerScope() for tenant-isolated or conversation-scoped beans",
+            "Spring 6 / Boot 3 introduces AOT (Ahead-of-Time) processing that pre-computes bean definitions at build time for GraalVM native images",
+            "ObjectProvider<T> is the preferred way to handle optional or lazy dependencies, replacing @Autowired(required=false)",
+            "@ConfigurationProperties with @ConstructorBinding creates immutable, validated configuration objects bound from application.yml"
           ]
         }
       ],
-      "wordCount": 96,
+      "wordCount": 187,
       "subsections": []
     },
     {
@@ -35,9 +42,13 @@
         {
           "type": "paragraph",
           "text": "The Spring IoC container is the foundation of every Spring application and understanding its internals is essential for building maintainable enterprise systems. You need deep container knowledge when designing modular applications with clear dependency boundaries, when implementing plugin architectures where components are discovered and wired at runtime, when troubleshooting circular dependency errors or unexpected bean initialization order, and when optimizing application startup time by controlling eager versus lazy initialization. Constructor injection with the container managing object graphs enables true unit testing with mock dependencies, eliminates hidden coupling between components, and makes dependency requirements explicit in the API. Understanding bean scopes is critical when integrating with web frameworks where request-scoped beans must not be injected into singletons without proxy wrappers, and when prototype-scoped beans require special handling through ObjectProvider or lookup methods to avoid the common mistake of receiving the same instance repeatedly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Understanding BeanPostProcessor and BeanFactoryPostProcessor is essential for framework developers and for debugging unexpected behavior in production. These extension points power Spring's AOP proxies, transaction management, scheduling, and caching — knowing how they work helps you understand why self-invocation bypasses proxies and why bean ordering sometimes matters. Custom scopes enable advanced patterns like tenant isolation in SaaS applications, conversation-scoped beans in wizard flows, and thread-scoped beans for batch processing. SpEL expressions in @Value annotations provide runtime flexibility for configuration that depends on system properties, environment variables, or other bean values."
         }
       ],
-      "wordCount": 142,
+      "wordCount": 231,
       "subsections": []
     },
     {
@@ -78,14 +89,74 @@
           "subsections": []
         },
         {
-          "id": "bean-lifecycle-and-scope-management",
-          "heading": "Bean Lifecycle and Scope Management",
+          "id": "beanpostprocessor-and-beanfactorypostprocessor",
+          "heading": "BeanPostProcessor and BeanFactoryPostProcessor",
           "level": 3,
           "content": [
             {
               "type": "code",
               "language": "java",
-              "code": "@Component\n@Scope(value = \"prototype\", proxyMode = ScopedProxyMode.TARGET_CLASS)\npublic class RequestContext {\n    private final Map<String, Object> attributes = new HashMap<>();\n    private Instant startTime;\n\n    @PostConstruct\n    public void init() {\n        this.startTime = Instant.now();\n    }\n\n    public void setAttribute(String key, Object value) {\n        attributes.put(key, value);\n    }\n\n    public Duration getElapsed() {\n        return Duration.between(startTime, Instant.now());\n    }\n}\n\n// Using ObjectProvider for prototype beans in a singleton\n@Service\npublic class ReportGenerator {\n    private final ObjectProvider<ReportContext> contextProvider;\n\n    public ReportGenerator(ObjectProvider<ReportContext> contextProvider) {\n        this.contextProvider = contextProvider;\n    }\n\n    public Report generate(ReportRequest request) {\n        // Each call gets a fresh prototype instance\n        ReportContext context = contextProvider.getObject();\n        context.initialize(request);\n        return context.buildReport();\n    }\n}\n\n// Custom bean post-processor for cross-cutting concerns\n@Component\npublic class AuditBeanPostProcessor implements BeanPostProcessor {\n\n    @Override\n    public Object postProcessAfterInitialization(Object bean, String beanName) {\n        if (bean.getClass().isAnnotationPresent(Audited.class)) {\n            return createAuditProxy(bean);\n        }\n        return bean;\n    }\n\n    private Object createAuditProxy(Object target) {\n        return Proxy.newProxyInstance(\n            target.getClass().getClassLoader(),\n            target.getClass().getInterfaces(),\n            new AuditInvocationHandler(target)\n        );\n    }\n}",
+              "code": "// BeanPostProcessor — intercepts every bean after initialization\n// This is how Spring creates AOP proxies, @Scheduled wrappers, etc.\n@Component\npublic class AuditBeanPostProcessor implements BeanPostProcessor {\n\n    @Override\n    public Object postProcessBeforeInitialization(Object bean, String beanName) {\n        // Called BEFORE @PostConstruct and InitializingBean.afterPropertiesSet()\n        if (bean instanceof Configurable configurable) {\n            configurable.validate();  // Custom pre-init validation\n        }\n        return bean;\n    }\n\n    @Override\n    public Object postProcessAfterInitialization(Object bean, String beanName) {\n        // Called AFTER @PostConstruct — this is where proxies are created\n        if (bean.getClass().isAnnotationPresent(Audited.class)) {\n            return createAuditProxy(bean);\n        }\n        return bean;\n    }\n\n    private Object createAuditProxy(Object target) {\n        return Proxy.newProxyInstance(\n            target.getClass().getClassLoader(),\n            target.getClass().getInterfaces(),\n            new AuditInvocationHandler(target)\n        );\n    }\n}\n\n// BeanFactoryPostProcessor — modifies bean DEFINITIONS before any beans are created\n// This is how @ConfigurationProperties, property placeholders, and @ComponentScan work\n@Component\npublic class EncryptedPropertyPostProcessor implements BeanFactoryPostProcessor {\n\n    @Override\n    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {\n        // Runs before any bean is instantiated\n        // Can modify bean definitions, add new ones, or change property values\n        MutablePropertySources propertySources = ((ConfigurableEnvironment)\n            beanFactory.getBean(Environment.class)).getPropertySources();\n\n        propertySources.forEach(ps -> {\n            if (ps instanceof EnumerablePropertySource<?> eps) {\n                for (String name : eps.getPropertyNames()) {\n                    Object value = eps.getProperty(name);\n                    if (value instanceof String str && str.startsWith(\"{encrypted}\")) {\n                        // Decrypt and replace property value\n                        String decrypted = decrypt(str.substring(11));\n                        System.setProperty(name, decrypted);\n                    }\n                }\n            }\n        });\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "bean-lifecycle-in-detail",
+          "heading": "Bean Lifecycle in Detail",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Complete bean lifecycle demonstration\n// Order: Constructor → BeanPostProcessor.before → @PostConstruct →\n//        InitializingBean.afterPropertiesSet → init-method →\n//        BeanPostProcessor.after → Ready for use →\n//        @PreDestroy → DisposableBean.destroy → destroy-method\n@Component\npublic class LifecycleDemoBean implements InitializingBean, DisposableBean,\n        BeanNameAware, BeanFactoryAware, ApplicationContextAware {\n\n    private String beanName;\n    private BeanFactory beanFactory;\n    private ApplicationContext applicationContext;\n\n    // 1. Constructor injection\n    public LifecycleDemoBean(SomeDependency dep) {\n        System.out.println(\"1. Constructor called\");\n    }\n\n    // 2. Aware interfaces — container injects infrastructure references\n    @Override\n    public void setBeanName(String name) {\n        this.beanName = name;\n        System.out.println(\"2. BeanNameAware: \" + name);\n    }\n\n    @Override\n    public void setBeanFactory(BeanFactory factory) {\n        this.beanFactory = factory;\n        System.out.println(\"3. BeanFactoryAware\");\n    }\n\n    @Override\n    public void setApplicationContext(ApplicationContext ctx) {\n        this.applicationContext = ctx;\n        System.out.println(\"4. ApplicationContextAware\");\n    }\n\n    // 3. BeanPostProcessor.postProcessBeforeInitialization runs here\n\n    // 4. @PostConstruct\n    @PostConstruct\n    public void postConstruct() {\n        System.out.println(\"5. @PostConstruct\");\n    }\n\n    // 5. InitializingBean\n    @Override\n    public void afterPropertiesSet() {\n        System.out.println(\"6. InitializingBean.afterPropertiesSet\");\n    }\n\n    // 6. BeanPostProcessor.postProcessAfterInitialization runs here\n    // → Bean is now fully initialized and ready for use\n\n    // Destruction phase:\n    @PreDestroy\n    public void preDestroy() {\n        System.out.println(\"7. @PreDestroy\");\n    }\n\n    @Override\n    public void destroy() {\n        System.out.println(\"8. DisposableBean.destroy\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-scopes-and-spel-expressions",
+          "heading": "Custom Scopes and SpEL Expressions",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom scope implementation for multi-tenant isolation\npublic class TenantScope implements Scope {\n\n    private final Map<String, Map<String, Object>> tenantBeans = new ConcurrentHashMap<>();\n\n    @Override\n    public Object get(String name, ObjectFactory<?> objectFactory) {\n        String tenantId = TenantContext.getCurrentTenant();\n        Map<String, Object> beans = tenantBeans.computeIfAbsent(\n            tenantId, k -> new ConcurrentHashMap<>());\n        return beans.computeIfAbsent(name, k -> objectFactory.getObject());\n    }\n\n    @Override\n    public Object remove(String name) {\n        String tenantId = TenantContext.getCurrentTenant();\n        Map<String, Object> beans = tenantBeans.get(tenantId);\n        return beans != null ? beans.remove(name) : null;\n    }\n\n    @Override\n    public void registerDestructionCallback(String name, Runnable callback) {\n        // Register callback for cleanup when tenant scope ends\n    }\n\n    @Override\n    public Object resolveContextualObject(String key) {\n        return TenantContext.getCurrentTenant();\n    }\n\n    @Override\n    public String getConversationId() {\n        return TenantContext.getCurrentTenant();\n    }\n}\n\n// Register the custom scope\n@Configuration\npublic class ScopeConfig {\n    @Bean\n    public static CustomScopeConfigurer tenantScopeConfigurer() {\n        CustomScopeConfigurer configurer = new CustomScopeConfigurer();\n        configurer.addScope(\"tenant\", new TenantScope());\n        return configurer;\n    }\n}\n\n// Use the custom scope\n@Component\n@Scope(\"tenant\")\npublic class TenantConfiguration {\n    private Map<String, String> settings;\n    // Each tenant gets their own instance\n}\n\n// SpEL expressions in bean definitions\n@Component\npublic class SpELDemoService {\n\n    // System property access\n    @Value(\"#{systemProperties['user.home']}\")\n    private String userHome;\n\n    // Environment variable with default\n    @Value(\"#{systemEnvironment['MAX_RETRIES'] ?: 3}\")\n    private int maxRetries;\n\n    // Bean reference and method call\n    @Value(\"#{configService.getTimeout()}\")\n    private Duration timeout;\n\n    // Conditional expression\n    @Value(\"#{${server.port} > 8080 ? 'high-port' : 'standard-port'}\")\n    private String portCategory;\n\n    // Collection filtering\n    @Value(\"#{userRepository.findAll().?[active == true]}\")\n    private List<User> activeUsers;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "graalvm-native-image-and-aot-processing",
+          "heading": "GraalVM Native Image and AOT Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Spring 6 / Boot 3 AOT-compatible configuration\n@Configuration(proxyBeanMethods = false)  // Lite mode — no CGLIB proxy\npublic class NativeCompatibleConfig {\n\n    @Bean\n    public OrderService orderService(OrderRepository repository,\n                                     EventPublisher publisher) {\n        return new OrderService(repository, publisher);\n    }\n\n    @ImportRuntimeHints(AppRuntimeHints.class)\n    static class HintsRegistration {}\n}\n\npublic class AppRuntimeHints implements RuntimeHintsRegistrar {\n    @Override\n    public void registerHints(RuntimeHints hints, ClassLoader classLoader) {\n        hints.reflection().registerType(CustomerDTO.class,\n            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,\n            MemberCategory.INVOKE_DECLARED_METHODS);\n        hints.resources().registerPattern(\"db/migration/*.sql\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "conditional-beans-and-profile-composition",
+          "heading": "Conditional Beans and Profile Composition",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom condition for feature flags\npublic class FeatureEnabledCondition implements Condition {\n    @Override\n    public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {\n        Map<String, Object> attrs = metadata.getAnnotationAttributes(\n            ConditionalOnFeature.class.getName());\n        String featureName = (String) attrs.get(\"value\");\n        return context.getEnvironment()\n            .getProperty(\"features.\" + featureName + \".enabled\", Boolean.class, false);\n    }\n}\n\n@Target({ElementType.TYPE, ElementType.METHOD})\n@Retention(RetentionPolicy.RUNTIME)\n@Conditional(FeatureEnabledCondition.class)\npublic @interface ConditionalOnFeature {\n    String value();\n}\n\n// Usage\n@Service\n@ConditionalOnFeature(\"new-pricing-engine\")\npublic class NewPricingEngine implements PricingEngine {\n    // Only registered when features.new-pricing-engine.enabled=true\n}\n\n// Profile composition — multiple profiles can be active simultaneously\n@Configuration\n@Profile(\"cloud & !local\")  // Active when 'cloud' is active AND 'local' is NOT\npublic class CloudConfig {\n\n    @Bean\n    @Profile(\"aws\")\n    public StorageService s3Storage() {\n        return new S3StorageService();\n    }\n\n    @Bean\n    @Profile(\"gcp\")\n    public StorageService gcsStorage() {\n        return new GcsStorageService();\n    }\n}",
               "runnable": false
             }
           ],
@@ -107,11 +178,15 @@
             "Field injection hiding dependencies: Using @Autowired on fields makes dependencies invisible in the constructor, preventing the compiler from enforcing required dependencies and making unit testing difficult (requiring reflection or Spring test context). Field injection also hides the true complexity of a class because you cannot see the dependency count without reading the entire class body. Constructor injection makes dependencies explicit, enables immutability with final fields, and allows plain unit tests with mock objects passed directly to the constructor.",
             "Prototype bean injected into singleton: When a prototype-scoped bean is injected into a singleton via constructor or field injection, the singleton receives one instance that is reused for the singleton's entire lifetime, defeating the purpose of prototype scope. Use ObjectProvider<T>, @Lookup method injection, or ScopedProxyMode.TARGET_CLASS to get fresh prototype instances on each access. This is one of the most common Spring mistakes in production code.",
             "Missing @Transactional proxy awareness: Spring's @Transactional works through AOP proxies. Calling a @Transactional method from within the same class bypasses the proxy, so the transaction annotation has no effect. The method must be called from an external bean for the proxy to intercept it. Solutions include extracting the transactional method to a separate service, using self-injection (@Autowired on the same class), or using AspectJ compile-time weaving instead of proxy-based AOP.",
-            "Auto-configuration ordering conflicts: When multiple auto-configuration classes compete to define the same bean type, the order of evaluation matters. Use @AutoConfigureBefore, @AutoConfigureAfter, and @AutoConfigureOrder to control ordering. More commonly, use @ConditionalOnMissingBean to ensure your custom bean takes precedence over auto-configured defaults, and @Primary to designate a preferred candidate when multiple beans of the same type exist."
+            "BeanPostProcessor ordering issues: If a BeanPostProcessor depends on other beans, those beans are created early (before other post-processors run) and may miss processing by other BeanPostProcessor instances. For example, a BeanPostProcessor that depends on a @Service bean causes that service to be created before AOP proxies are applied, meaning @Transactional on that service will not work. Keep BeanPostProcessor implementations dependency-free or use @Lazy injection.",
+            "Auto-configuration ordering conflicts: When multiple auto-configuration classes compete to define the same bean type, the order of evaluation matters. Use @AutoConfigureBefore, @AutoConfigureAfter, and @AutoConfigureOrder to control ordering. More commonly, use @ConditionalOnMissingBean to ensure your custom bean takes precedence over auto-configured defaults, and @Primary to designate a preferred candidate when multiple beans of the same type exist.",
+            "GraalVM native image incompatibility with runtime proxies: Spring's default CGLIB proxying for @Configuration classes uses runtime bytecode generation, which is not supported in GraalVM native images without explicit configuration. Use @Configuration(proxyBeanMethods = false) (lite mode) for native-compatible configurations. Register RuntimeHints for any beans accessed via reflection, and avoid @ConditionalOnExpression with complex SpEL that cannot be evaluated at build time.",
+            "Ignoring bean destruction in prototype scope: The container does not manage the full lifecycle of prototype-scoped beans — it creates them but does not call @PreDestroy or DisposableBean.destroy() when they are no longer needed. This can cause resource leaks (open connections, file handles) in prototype beans. Implement AutoCloseable and manage cleanup explicitly in the consuming code, or use a custom scope that tracks instances for destruction.",
+            "SpEL injection vulnerabilities: Using user-supplied input in SpEL expressions (e.g., @Value(\"#{${user.input}}\")) can lead to remote code execution. Never evaluate untrusted strings as SpEL expressions. Use SimpleEvaluationContext instead of StandardEvaluationContext when evaluating dynamic expressions to restrict access to Java types and methods."
           ]
         }
       ],
-      "wordCount": 364,
+      "wordCount": 594,
       "subsections": []
     },
     {
@@ -126,11 +201,13 @@
             "Multi-tenant SaaS applications: Spring's bean scopes and profiles enable multi-tenant architectures where tenant-specific configurations (database connections, feature flags, rate limits) are resolved at runtime. Custom scope implementations backed by ThreadLocal or request attributes provide tenant-isolated beans without code duplication. Companies like Salesforce and ServiceNow use similar patterns to serve thousands of tenants from shared infrastructure while maintaining configuration isolation.",
             "Plugin-based architectures: Spring's component scanning and conditional bean registration enable plugin systems where functionality is activated by dropping JARs on the classpath. Each plugin declares its beans with @ConditionalOnClass checks, and the container automatically wires them into the application. This pattern powers Spring Boot's auto-configuration system itself, where adding a dependency like spring-boot-starter-data-jpa automatically configures entity managers, transaction managers, and repositories.",
             "Feature flag-driven development: Using @ConditionalOnProperty and custom @Conditional implementations, teams can deploy code with features disabled in production and enable them gradually through configuration changes without redeployment. This enables trunk-based development where incomplete features are merged to main behind flags, reducing long-lived branches and merge conflicts while enabling canary releases and A/B testing.",
-            "Graceful degradation with fallback beans: Production systems define primary service implementations alongside fallback beans annotated with @ConditionalOnMissingBean or lower @Order priority. When the primary service is unavailable (detected via health checks or circuit breakers), the container can be refreshed to activate fallback implementations that provide degraded but functional service, maintaining system availability during partial outages."
+            "Graceful degradation with fallback beans: Production systems define primary service implementations alongside fallback beans annotated with @ConditionalOnMissingBean or lower @Order priority. When the primary service is unavailable (detected via health checks or circuit breakers), the container can be refreshed to activate fallback implementations that provide degraded but functional service, maintaining system availability during partial outages.",
+            "GraalVM native microservices: Spring Boot 3's AOT engine pre-computes bean definitions, configuration property bindings, and proxy classes at build time. This enables native image compilation with GraalVM, producing executables that start in under 100ms and consume 50-80% less memory than JVM deployments. Companies running hundreds of microservices on Kubernetes use native images to reduce pod startup time from 15 seconds to under 1 second, enabling aggressive horizontal scaling and near-instant failover.",
+            "Kubernetes-native configuration with ConfigMaps: Spring Boot 3's spring.config.import=kubernetes: support reads configuration directly from Kubernetes ConfigMaps and Secrets, eliminating the need for Spring Cloud Config Server in Kubernetes deployments. Combined with @ConfigurationProperties validation, applications fail fast on startup if required configuration is missing from the cluster, preventing misconfigured pods from entering the load balancer rotation."
           ]
         }
       ],
-      "wordCount": 228,
+      "wordCount": 353,
       "subsections": []
     },
     {
@@ -156,6 +233,14 @@
         },
         {
           "type": "paragraph",
+          "text": "Q: What is the difference between BeanPostProcessor and BeanFactoryPostProcessor?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: BeanFactoryPostProcessor runs before any beans are instantiated — it operates on bean definitions (metadata) and can modify them, add new definitions, or resolve property placeholders. PropertySourcesPlaceholderConfigurer is a classic example that resolves ${...} placeholders in bean definitions. BeanPostProcessor runs after each bean is instantiated and initialized — it operates on actual bean instances and can wrap them with proxies or modify their state. AutowiredAnnotationBeanPostProcessor handles @Autowired injection, and AnnotationAwareAspectJAutoProxyCreator creates AOP proxies. The key distinction: BeanFactoryPostProcessor modifies the blueprint, BeanPostProcessor modifies the built object."
+        },
+        {
+          "type": "paragraph",
           "text": "Q: What is the difference between @Bean and @Component?"
         },
         {
@@ -169,9 +254,41 @@
         {
           "type": "paragraph",
           "text": "A: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or the legacy spring.factories) for auto-configuration class names. Each class is a @Configuration annotated with @Conditional variants that control activation. For example, DataSourceAutoConfiguration activates only when a DataSource class is on the classpath (@ConditionalOnClass) and no user-defined DataSource bean exists (@ConditionalOnMissingBean). Auto-configurations are processed after user-defined configurations, ensuring user beans take precedence. The @EnableAutoConfiguration annotation (included in @SpringBootApplication) triggers this mechanism."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Spring AOT processing and traditional runtime bean creation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Traditional Spring creates beans at runtime by scanning the classpath, evaluating conditions, and using reflection to instantiate and wire objects. AOT (Ahead-of-Time) processing in Spring 6 / Boot 3 performs these steps at build time, generating Java source code that directly instantiates beans without reflection. This produces a BeanFactoryInitializationAotProcessor that registers bean definitions programmatically. The benefits are faster startup (no classpath scanning or condition evaluation at runtime), lower memory usage (no reflection metadata retained), and GraalVM native image compatibility (no dynamic class loading). The trade-off is that runtime-dynamic features like @Profile evaluation and @ConditionalOnProperty must be resolved at build time, limiting some flexibility."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does @ConfigurationProperties differ from @Value for configuration binding?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: @Value injects individual properties using SpEL expressions and is suitable for simple, isolated values. @ConfigurationProperties binds an entire prefix of properties to a structured Java object, supporting nested objects, collections, validation with @Validated, and type-safe access. @ConfigurationProperties with record classes or @ConstructorBinding creates immutable configuration objects. It also generates metadata for IDE auto-completion via spring-boot-configuration-processor. Use @Value for one-off values; use @ConfigurationProperties for structured configuration groups that benefit from validation and documentation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain custom scopes in Spring. When would you implement one?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Custom scopes define a lifecycle boundary for bean instances beyond the built-in singleton, prototype, request, and session scopes. Implement the Scope interface with get() (retrieve or create instance), remove() (destroy instance), and registerDestructionCallback() methods. Register via CustomScopeConfigurer. Use cases include tenant scope (one instance per tenant in multi-tenant apps), conversation scope (one instance per multi-step wizard flow), batch scope (one instance per batch job execution), and thread scope (one instance per thread for thread-unsafe objects). Spring Batch's @StepScope and @JobScope are examples of custom scopes that bind bean lifecycle to batch execution contexts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is SpEL and where is it used in Spring?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Expression Language (SpEL) is a runtime expression language supporting property access, method invocation, string templating, mathematical operators, logical operators, collection manipulation, and type references. It is used in @Value annotations for dynamic property resolution, in @PreAuthorize/@PostAuthorize for security expressions, in @Cacheable for dynamic key generation, in Spring Data @Query for SpEL-based parameter binding, and in Spring Integration for routing expressions. SpEL evaluates against an EvaluationContext that provides access to beans, system properties, and method parameters. Use SimpleEvaluationContext for restricted evaluation when processing untrusted input."
         }
       ],
-      "wordCount": 392,
+      "wordCount": 889,
       "subsections": []
     },
     {
@@ -183,13 +300,16 @@
           "type": "list",
           "ordered": false,
           "items": [
-            "Startup time optimization: For large applications with hundreds of beans, startup time can exceed 30 seconds. Use @Lazy on beans that are not needed immediately, enable lazy initialization globally with spring.main.lazy-initialization=true for development (not production), and use Spring AOT (Ahead-of-Time) compilation in Spring Boot 3+ to pre-compute bean definitions at build time. Profile startup with Spring Boot's ApplicationStartup API to identify the slowest bean initializations.",
+            "Startup time optimization: For large applications with hundreds of beans, startup time can exceed 30 seconds. Use @Lazy on beans that are not needed immediately, enable lazy initialization globally with spring.main.lazy-initialization=true for development (not production), and use Spring AOT (Ahead-of-Time) compilation in Spring Boot 3+ to pre-compute bean definitions at build time. Profile startup with Spring Boot's ApplicationStartup API and export to Java Flight Recorder for detailed analysis of the slowest bean initializations.",
             "Configuration validation at startup: Use @ConfigurationProperties with @Validated and Jakarta Bean Validation annotations to fail fast on misconfiguration. This catches missing required properties, invalid formats, and out-of-range values at application startup rather than at runtime when the configuration is first accessed. Combine with @ConstructorBinding for immutable configuration objects that cannot be accidentally modified after initialization.",
-            "Bean definition overriding control: In production, set spring.main.allow-bean-definition-overriding=false (the default in Spring Boot 2.1+) to prevent accidental bean replacement. When intentional overriding is needed (e.g., in test configurations), use @Primary or explicit @Qualifier rather than relying on definition ordering. This prevents subtle bugs where a library's auto-configuration silently replaces your custom bean."
+            "Bean definition overriding control: In production, set spring.main.allow-bean-definition-overriding=false (the default in Spring Boot 2.1+) to prevent accidental bean replacement. When intentional overriding is needed (e.g., in test configurations), use @Primary or explicit @Qualifier rather than relying on definition ordering. This prevents subtle bugs where a library's auto-configuration silently replaces your custom bean.",
+            "Observability with Micrometer and bean metrics: Instrument critical beans with Micrometer counters and timers to track business operations. Use MeterRegistry injection to record bean method execution times, error rates, and throughput. Spring Boot 3's built-in observability auto-configures Micrometer with support for Prometheus, Datadog, and OpenTelemetry exporters. Annotate methods with @Observed (from Micrometer Observation API) for automatic span creation and metric recording without manual instrumentation code.",
+            "Virtual threads integration (Project Loom): Spring Boot 3.2+ supports virtual threads via spring.threads.virtual.enabled=true. This changes the embedded server's thread pool to use virtual threads, allowing millions of concurrent requests without thread pool exhaustion. For bean-scoped operations, virtual threads eliminate the need for reactive programming in I/O-bound services. However, avoid synchronized blocks in beans when using virtual threads — use ReentrantLock instead to prevent carrier thread pinning.",
+            "BeanPostProcessor performance impact: Each BeanPostProcessor is invoked for every bean in the container. In applications with 500+ beans and multiple post-processors, this adds measurable startup overhead. Keep post-processor logic lightweight, use early returns for beans that don't need processing, and consider using SmartInstantiationAwareBeanPostProcessor for more targeted interception. Profile with ApplicationStartup to identify slow post-processors."
           ]
         }
       ],
-      "wordCount": 172,
+      "wordCount": 365,
       "subsections": []
     },
     {
@@ -203,11 +323,12 @@
           "items": [
             "Spring MVC and REST APIs — Web layer built on top of the core container's dependency injection",
             "Spring Data and Persistence — Repository beans managed by the IoC container with transaction proxies",
+            "Spring Security — Security filters and method security rely on AOP proxies created by BeanPostProcessors",
             "Java Core Language — Interfaces and polymorphism that enable Spring's DI model"
           ]
         }
       ],
-      "wordCount": 44,
+      "wordCount": 59,
       "subsections": []
     }
   ],
@@ -225,7 +346,27 @@
     },
     {
       "language": "java",
-      "code": "@Component\n@Scope(value = \"prototype\", proxyMode = ScopedProxyMode.TARGET_CLASS)\npublic class RequestContext {\n    private final Map<String, Object> attributes = new HashMap<>();\n    private Instant startTime;\n\n    @PostConstruct\n    public void init() {\n        this.startTime = Instant.now();\n    }\n\n    public void setAttribute(String key, Object value) {\n        attributes.put(key, value);\n    }\n\n    public Duration getElapsed() {\n        return Duration.between(startTime, Instant.now());\n    }\n}\n\n// Using ObjectProvider for prototype beans in a singleton\n@Service\npublic class ReportGenerator {\n    private final ObjectProvider<ReportContext> contextProvider;\n\n    public ReportGenerator(ObjectProvider<ReportContext> contextProvider) {\n        this.contextProvider = contextProvider;\n    }\n\n    public Report generate(ReportRequest request) {\n        // Each call gets a fresh prototype instance\n        ReportContext context = contextProvider.getObject();\n        context.initialize(request);\n        return context.buildReport();\n    }\n}\n\n// Custom bean post-processor for cross-cutting concerns\n@Component\npublic class AuditBeanPostProcessor implements BeanPostProcessor {\n\n    @Override\n    public Object postProcessAfterInitialization(Object bean, String beanName) {\n        if (bean.getClass().isAnnotationPresent(Audited.class)) {\n            return createAuditProxy(bean);\n        }\n        return bean;\n    }\n\n    private Object createAuditProxy(Object target) {\n        return Proxy.newProxyInstance(\n            target.getClass().getClassLoader(),\n            target.getClass().getInterfaces(),\n            new AuditInvocationHandler(target)\n        );\n    }\n}",
+      "code": "// BeanPostProcessor — intercepts every bean after initialization\n// This is how Spring creates AOP proxies, @Scheduled wrappers, etc.\n@Component\npublic class AuditBeanPostProcessor implements BeanPostProcessor {\n\n    @Override\n    public Object postProcessBeforeInitialization(Object bean, String beanName) {\n        // Called BEFORE @PostConstruct and InitializingBean.afterPropertiesSet()\n        if (bean instanceof Configurable configurable) {\n            configurable.validate();  // Custom pre-init validation\n        }\n        return bean;\n    }\n\n    @Override\n    public Object postProcessAfterInitialization(Object bean, String beanName) {\n        // Called AFTER @PostConstruct — this is where proxies are created\n        if (bean.getClass().isAnnotationPresent(Audited.class)) {\n            return createAuditProxy(bean);\n        }\n        return bean;\n    }\n\n    private Object createAuditProxy(Object target) {\n        return Proxy.newProxyInstance(\n            target.getClass().getClassLoader(),\n            target.getClass().getInterfaces(),\n            new AuditInvocationHandler(target)\n        );\n    }\n}\n\n// BeanFactoryPostProcessor — modifies bean DEFINITIONS before any beans are created\n// This is how @ConfigurationProperties, property placeholders, and @ComponentScan work\n@Component\npublic class EncryptedPropertyPostProcessor implements BeanFactoryPostProcessor {\n\n    @Override\n    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {\n        // Runs before any bean is instantiated\n        // Can modify bean definitions, add new ones, or change property values\n        MutablePropertySources propertySources = ((ConfigurableEnvironment)\n            beanFactory.getBean(Environment.class)).getPropertySources();\n\n        propertySources.forEach(ps -> {\n            if (ps instanceof EnumerablePropertySource<?> eps) {\n                for (String name : eps.getPropertyNames()) {\n                    Object value = eps.getProperty(name);\n                    if (value instanceof String str && str.startsWith(\"{encrypted}\")) {\n                        // Decrypt and replace property value\n                        String decrypted = decrypt(str.substring(11));\n                        System.setProperty(name, decrypted);\n                    }\n                }\n            }\n        });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Complete bean lifecycle demonstration\n// Order: Constructor → BeanPostProcessor.before → @PostConstruct →\n//        InitializingBean.afterPropertiesSet → init-method →\n//        BeanPostProcessor.after → Ready for use →\n//        @PreDestroy → DisposableBean.destroy → destroy-method\n@Component\npublic class LifecycleDemoBean implements InitializingBean, DisposableBean,\n        BeanNameAware, BeanFactoryAware, ApplicationContextAware {\n\n    private String beanName;\n    private BeanFactory beanFactory;\n    private ApplicationContext applicationContext;\n\n    // 1. Constructor injection\n    public LifecycleDemoBean(SomeDependency dep) {\n        System.out.println(\"1. Constructor called\");\n    }\n\n    // 2. Aware interfaces — container injects infrastructure references\n    @Override\n    public void setBeanName(String name) {\n        this.beanName = name;\n        System.out.println(\"2. BeanNameAware: \" + name);\n    }\n\n    @Override\n    public void setBeanFactory(BeanFactory factory) {\n        this.beanFactory = factory;\n        System.out.println(\"3. BeanFactoryAware\");\n    }\n\n    @Override\n    public void setApplicationContext(ApplicationContext ctx) {\n        this.applicationContext = ctx;\n        System.out.println(\"4. ApplicationContextAware\");\n    }\n\n    // 3. BeanPostProcessor.postProcessBeforeInitialization runs here\n\n    // 4. @PostConstruct\n    @PostConstruct\n    public void postConstruct() {\n        System.out.println(\"5. @PostConstruct\");\n    }\n\n    // 5. InitializingBean\n    @Override\n    public void afterPropertiesSet() {\n        System.out.println(\"6. InitializingBean.afterPropertiesSet\");\n    }\n\n    // 6. BeanPostProcessor.postProcessAfterInitialization runs here\n    // → Bean is now fully initialized and ready for use\n\n    // Destruction phase:\n    @PreDestroy\n    public void preDestroy() {\n        System.out.println(\"7. @PreDestroy\");\n    }\n\n    @Override\n    public void destroy() {\n        System.out.println(\"8. DisposableBean.destroy\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Custom scope implementation for multi-tenant isolation\npublic class TenantScope implements Scope {\n\n    private final Map<String, Map<String, Object>> tenantBeans = new ConcurrentHashMap<>();\n\n    @Override\n    public Object get(String name, ObjectFactory<?> objectFactory) {\n        String tenantId = TenantContext.getCurrentTenant();\n        Map<String, Object> beans = tenantBeans.computeIfAbsent(\n            tenantId, k -> new ConcurrentHashMap<>());\n        return beans.computeIfAbsent(name, k -> objectFactory.getObject());\n    }\n\n    @Override\n    public Object remove(String name) {\n        String tenantId = TenantContext.getCurrentTenant();\n        Map<String, Object> beans = tenantBeans.get(tenantId);\n        return beans != null ? beans.remove(name) : null;\n    }\n\n    @Override\n    public void registerDestructionCallback(String name, Runnable callback) {\n        // Register callback for cleanup when tenant scope ends\n    }\n\n    @Override\n    public Object resolveContextualObject(String key) {\n        return TenantContext.getCurrentTenant();\n    }\n\n    @Override\n    public String getConversationId() {\n        return TenantContext.getCurrentTenant();\n    }\n}\n\n// Register the custom scope\n@Configuration\npublic class ScopeConfig {\n    @Bean\n    public static CustomScopeConfigurer tenantScopeConfigurer() {\n        CustomScopeConfigurer configurer = new CustomScopeConfigurer();\n        configurer.addScope(\"tenant\", new TenantScope());\n        return configurer;\n    }\n}\n\n// Use the custom scope\n@Component\n@Scope(\"tenant\")\npublic class TenantConfiguration {\n    private Map<String, String> settings;\n    // Each tenant gets their own instance\n}\n\n// SpEL expressions in bean definitions\n@Component\npublic class SpELDemoService {\n\n    // System property access\n    @Value(\"#{systemProperties['user.home']}\")\n    private String userHome;\n\n    // Environment variable with default\n    @Value(\"#{systemEnvironment['MAX_RETRIES'] ?: 3}\")\n    private int maxRetries;\n\n    // Bean reference and method call\n    @Value(\"#{configService.getTimeout()}\")\n    private Duration timeout;\n\n    // Conditional expression\n    @Value(\"#{${server.port} > 8080 ? 'high-port' : 'standard-port'}\")\n    private String portCategory;\n\n    // Collection filtering\n    @Value(\"#{userRepository.findAll().?[active == true]}\")\n    private List<User> activeUsers;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Spring 6 / Boot 3 AOT-compatible configuration\n@Configuration(proxyBeanMethods = false)  // Lite mode — no CGLIB proxy\npublic class NativeCompatibleConfig {\n\n    @Bean\n    public OrderService orderService(OrderRepository repository,\n                                     EventPublisher publisher) {\n        return new OrderService(repository, publisher);\n    }\n\n    @ImportRuntimeHints(AppRuntimeHints.class)\n    static class HintsRegistration {}\n}\n\npublic class AppRuntimeHints implements RuntimeHintsRegistrar {\n    @Override\n    public void registerHints(RuntimeHints hints, ClassLoader classLoader) {\n        hints.reflection().registerType(CustomerDTO.class,\n            MemberCategory.INVOKE_DECLARED_CONSTRUCTORS,\n            MemberCategory.INVOKE_DECLARED_METHODS);\n        hints.resources().registerPattern(\"db/migration/*.sql\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Custom condition for feature flags\npublic class FeatureEnabledCondition implements Condition {\n    @Override\n    public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {\n        Map<String, Object> attrs = metadata.getAnnotationAttributes(\n            ConditionalOnFeature.class.getName());\n        String featureName = (String) attrs.get(\"value\");\n        return context.getEnvironment()\n            .getProperty(\"features.\" + featureName + \".enabled\", Boolean.class, false);\n    }\n}\n\n@Target({ElementType.TYPE, ElementType.METHOD})\n@Retention(RetentionPolicy.RUNTIME)\n@Conditional(FeatureEnabledCondition.class)\npublic @interface ConditionalOnFeature {\n    String value();\n}\n\n// Usage\n@Service\n@ConditionalOnFeature(\"new-pricing-engine\")\npublic class NewPricingEngine implements PricingEngine {\n    // Only registered when features.new-pricing-engine.enabled=true\n}\n\n// Profile composition — multiple profiles can be active simultaneously\n@Configuration\n@Profile(\"cloud & !local\")  // Active when 'cloud' is active AND 'local' is NOT\npublic class CloudConfig {\n\n    @Bean\n    @Profile(\"aws\")\n    public StorageService s3Storage() {\n        return new S3StorageService();\n    }\n\n    @Bean\n    @Profile(\"gcp\")\n    public StorageService gcsStorage() {\n        return new GcsStorageService();\n    }\n}",
       "runnable": false
     }
   ],
@@ -233,7 +374,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/core-container.md",
-    "wordCount": 1438,
-    "sectionCount": 11
+    "wordCount": 2678,
+    "sectionCount": 15
   }
 }

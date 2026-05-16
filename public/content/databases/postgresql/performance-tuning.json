@@ -1,0 +1,346 @@
+{
+  "id": "postgresql-performance-tuning",
+  "slug": "performance-tuning",
+  "title": "Performance Tuning",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Performance Tuning",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "PostgreSQL performance tuning is a systematic discipline that combines query analysis (EXPLAIN ANALYZE), strategic indexing, configuration optimization, and ongoing maintenance (VACUUM, ANALYZE) to achieve consistent sub-millisecond response times under production workloads. Unlike simpler databases where \"add an index\" solves most problems, PostgreSQL's sophisticated query planner requires understanding cost estimation, statistics collection, and the interaction between shared_buffers, work_mem, and the operating system's page cache. The pg_stat_statements extension is the single most important tool for production PostgreSQL performance — it tracks execution statistics for every normalized query, revealing which queries consume the most total time, which have the worst per-execution performance, and which are called most frequently. Effective PostgreSQL tuning follows a data-driven approach: identify the problem queries using pg_stat_statements, understand their execution plans with EXPLAIN (ANALYZE, BUFFERS, TIMING), create targeted indexes or rewrite queries, and verify improvement with before/after metrics."
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "EXPLAIN ANALYZE: Executes the query and shows actual vs estimated rows, execution time per node, buffer hits/reads, and sort/hash memory usage",
+            "Index types: B-tree (default, equality/range/sorting), GIN (full-text/JSONB/arrays), GiST (geometric/range/nearest-neighbor), BRIN (large sequential/time-series), Hash (equality-only)",
+            "pg_stat_statements: Tracks query execution statistics; total_exec_time, calls, mean_exec_time, rows, shared_blks_hit/read per normalized query",
+            "VACUUM: Reclaims dead tuples from MVCC; VACUUM FULL rewrites the table (locks it); autovacuum handles routine maintenance but needs tuning for write-heavy tables",
+            "ANALYZE: Updates table statistics (row counts, value distributions, most common values, histograms) used by the query planner for cost estimation",
+            "shared_buffers: PostgreSQL's buffer cache; typically 25% of RAM (max ~8-16GB due to diminishing returns); remainder used by OS page cache",
+            "work_mem: Per-operation memory for sorts and hash joins; set conservatively globally (32-256MB), increase per-session for complex analytics queries",
+            "effective_cache_size: Hint to planner about total available cache (shared_buffers + OS cache); typically 75% of RAM; affects index vs sequential scan decisions",
+            "Partial indexes: Index only rows matching a WHERE condition; dramatically smaller for selective queries on large tables",
+            "Index-only scans: When all required columns are in the index (or INCLUDE clause), PostgreSQL reads only the index, skipping the heap entirely"
+          ]
+        }
+      ],
+      "wordCount": 190,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Performance tuning should begin with measurement, not guessing. Use pg_stat_statements to identify the top queries by total execution time — these represent the highest-impact optimization targets. A query called 10,000 times per second at 5ms each contributes more total load than a query called once per hour at 30 seconds. Focus on total_exec_time first, then mean_exec_time for latency-sensitive paths."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use EXPLAIN ANALYZE when you've identified a slow query and need to understand why it's slow. Look for sequential scans on large tables (missing index), nested loop joins with high row estimates (missing statistics or bad join order), sort operations spilling to disk (insufficient work_mem), and large differences between estimated and actual rows (stale statistics requiring ANALYZE)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Index tuning is appropriate when EXPLAIN shows sequential scans on tables with selective WHERE clauses, or when sort operations could be eliminated by an ordered index. Create partial indexes when queries consistently filter on a specific condition (e.g., WHERE status = 'active' on a table where 95% of rows are archived). Use covering indexes (INCLUDE clause) when you need index-only scans for frequently-executed queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "VACUUM tuning is critical for write-heavy tables. Default autovacuum settings (vacuum after 20% dead tuples) are too conservative for tables with millions of rows — a 100M row table won't vacuum until 20M dead tuples accumulate. Set per-table autovacuum thresholds for high-write tables: autovacuum_vacuum_scale_factor = 0.01 or use autovacuum_vacuum_threshold with a fixed count."
+        },
+        {
+          "type": "paragraph",
+          "text": "Configuration tuning (shared_buffers, work_mem, effective_io_concurrency) should be done once during initial deployment and revisited when hardware changes or workload patterns shift significantly. Don't micro-tune configuration parameters — the biggest gains come from query optimization and indexing."
+        }
+      ],
+      "wordCount": 269,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "explain-analyze-deep-dive",
+          "heading": "EXPLAIN ANALYZE Deep Dive",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Full diagnostic EXPLAIN with all options\nEXPLAIN (ANALYZE, BUFFERS, TIMING, VERBOSE, FORMAT TEXT)\nSELECT o.order_id, o.total_amount, c.name, c.email\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nWHERE o.status = 'PENDING'\n  AND o.created_at > NOW() - INTERVAL '7 days'\nORDER BY o.created_at DESC\nLIMIT 50;\n\n-- Example output analysis:\n-- Limit  (cost=0.87..152.34 rows=50 width=86) (actual time=0.089..0.234 rows=50 loops=1)\n--   Buffers: shared hit=156\n--   ->  Nested Loop  (cost=0.87..4521.23 rows=1489 width=86) (actual time=0.087..0.228 rows=50 loops=1)\n--         Buffers: shared hit=156\n--         ->  Index Scan Backward using idx_orders_pending_created\n--               on orders o  (cost=0.43..2145.67 rows=1489 width=48)\n--               (actual time=0.045..0.098 rows=50 loops=1)\n--               Index Cond: (created_at > (now() - '7 days'::interval))\n--               Filter: (status = 'PENDING')\n--               Buffers: shared hit=55\n--         ->  Index Scan using customers_pkey on customers c  (cost=0.43..1.59 rows=1 width=42)\n--               (actual time=0.002..0.002 rows=1 loops=50)\n--               Index Cond: (id = o.customer_id)\n--               Buffers: shared hit=101\n\n-- KEY METRICS TO CHECK:\n-- 1. actual rows vs estimated rows (large differences = stale statistics)\n-- 2. shared hit vs shared read (reads = cache misses = disk I/O)\n-- 3. Sort Method: external merge (= spilling to disk, increase work_mem)\n-- 4. Rows Removed by Filter (= index not selective enough)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "strategic-index-creation",
+          "heading": "Strategic Index Creation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Composite index matching common query patterns (leftmost prefix rule applies)\nCREATE INDEX idx_orders_customer_status_date\nON orders (customer_id, status, created_at DESC);\n-- Supports: WHERE customer_id = X\n--           WHERE customer_id = X AND status = Y\n--           WHERE customer_id = X AND status = Y ORDER BY created_at DESC\n\n-- Partial index for active records (95% of queries filter on active)\nCREATE INDEX idx_users_active_email ON users (email)\nWHERE is_active = true AND deleted_at IS NULL;\n-- Index size: ~5% of full index if only 5% of users are active\n\n-- Covering index for index-only scans (avoids heap access entirely)\nCREATE INDEX idx_products_category_covering\nON products (category_id, price)\nINCLUDE (name, sku, stock_quantity);\n-- SELECT name, sku, price FROM products WHERE category_id = 5 AND price < 100\n-- → Index Only Scan (no heap access needed)\n\n-- GIN index for JSONB containment queries\nCREATE INDEX idx_events_payload ON events USING GIN (payload jsonb_path_ops);\n-- jsonb_path_ops: smaller index, supports @> operator only (not ? or ?|)\n-- Default GIN ops: larger index, supports all JSONB operators\n\n-- BRIN index for time-series data (tiny index, huge tables)\nCREATE INDEX idx_logs_timestamp ON application_logs USING BRIN (created_at)\nWITH (pages_per_range = 64);\n-- BRIN stores min/max per block range; effective when data is physically ordered\n-- 1TB table: B-tree index = ~20GB, BRIN index = ~1MB\n\n-- Expression index for case-insensitive lookups\nCREATE INDEX idx_users_email_lower ON users (LOWER(email));\n-- Query must use LOWER(email) = 'user@example.com' to hit this index\n\n-- Index for pattern matching (trigram)\nCREATE EXTENSION IF NOT EXISTS pg_trgm;\nCREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);\n-- Supports: WHERE name LIKE '%search%' and WHERE name % 'fuzzy'",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pg_stat_statements-analysis",
+          "heading": "pg_stat_statements Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Enable pg_stat_statements (requires restart for shared_preload_libraries)\n-- postgresql.conf:\n-- shared_preload_libraries = 'pg_stat_statements'\n-- pg_stat_statements.track = all\n-- pg_stat_statements.max = 10000\n\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\n-- Top 20 queries by total execution time (highest impact)\nSELECT\n    substring(query, 1, 100) AS short_query,\n    calls,\n    round(total_exec_time::numeric, 2) AS total_ms,\n    round(mean_exec_time::numeric, 2) AS avg_ms,\n    round((100 * total_exec_time / sum(total_exec_time) OVER())::numeric, 2) AS pct_total,\n    rows,\n    round((shared_blks_hit::numeric / NULLIF(shared_blks_hit + shared_blks_read, 0) * 100), 2) AS cache_hit_pct\nFROM pg_stat_statements\nWHERE userid = (SELECT usesysid FROM pg_user WHERE usename = current_user)\nORDER BY total_exec_time DESC\nLIMIT 20;\n\n-- Queries with worst cache hit ratio (I/O bound)\nSELECT\n    substring(query, 1, 80) AS short_query,\n    calls,\n    shared_blks_read,\n    shared_blks_hit,\n    round((shared_blks_hit::numeric / NULLIF(shared_blks_hit + shared_blks_read, 0) * 100), 2) AS hit_ratio\nFROM pg_stat_statements\nWHERE calls > 100\n  AND shared_blks_hit + shared_blks_read > 1000\nORDER BY hit_ratio ASC\nLIMIT 20;\n\n-- Queries with high row estimation errors (need ANALYZE)\nSELECT\n    substring(query, 1, 80) AS short_query,\n    calls,\n    rows / NULLIF(calls, 0) AS avg_rows_returned,\n    round(mean_exec_time::numeric, 2) AS avg_ms\nFROM pg_stat_statements\nWHERE calls > 50\nORDER BY mean_exec_time DESC\nLIMIT 20;\n\n-- Reset statistics (do this periodically to get fresh data)\nSELECT pg_stat_statements_reset();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "vacuum-and-autovacuum-tuning",
+          "heading": "VACUUM and Autovacuum Tuning",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Check table bloat and dead tuple counts\nSELECT\n    schemaname, relname,\n    n_live_tup, n_dead_tup,\n    round(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) AS dead_pct,\n    last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,\n    vacuum_count, autovacuum_count\nFROM pg_stat_user_tables\nWHERE n_dead_tup > 10000\nORDER BY n_dead_tup DESC;\n\n-- Per-table autovacuum tuning for high-write tables\nALTER TABLE orders SET (\n    autovacuum_vacuum_scale_factor = 0.01,      -- vacuum at 1% dead tuples (vs default 20%)\n    autovacuum_vacuum_threshold = 1000,          -- minimum dead tuples before considering vacuum\n    autovacuum_analyze_scale_factor = 0.005,     -- analyze at 0.5% changes\n    autovacuum_vacuum_cost_delay = 2,            -- less throttling (default 2ms, set to 0 for aggressive)\n    autovacuum_vacuum_cost_limit = 1000          -- higher budget per round (default 200)\n);\n\n-- Check if autovacuum is keeping up\nSELECT\n    relname,\n    n_dead_tup,\n    last_autovacuum,\n    EXTRACT(EPOCH FROM (now() - last_autovacuum)) / 3600 AS hours_since_vacuum\nFROM pg_stat_user_tables\nWHERE n_dead_tup > 100000\nORDER BY n_dead_tup DESC;\n\n-- Monitor autovacuum workers\nSELECT pid, datname, relid::regclass AS table_name,\n       phase, heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,\n       index_vacuum_count, max_dead_tuples\nFROM pg_stat_progress_vacuum;\n\n-- Identify tables needing VACUUM FULL (extreme bloat)\n-- WARNING: VACUUM FULL locks the table exclusively\nSELECT\n    schemaname || '.' || relname AS table_name,\n    pg_size_pretty(pg_total_relation_size(relid)) AS total_size,\n    pg_size_pretty(pg_relation_size(relid)) AS table_size,\n    n_live_tup,\n    n_dead_tup\nFROM pg_stat_user_tables\nWHERE pg_relation_size(relid) > 1073741824  -- tables > 1GB\nORDER BY pg_relation_size(relid) DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "configuration-tuning",
+          "heading": "Configuration Tuning",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Memory configuration for a 64GB RAM, 16-core server\n-- postgresql.conf\n\n-- Buffer cache: 25% of RAM\n-- shared_buffers = '16GB'\n\n-- Planner hint: total cache available (shared_buffers + OS cache)\n-- effective_cache_size = '48GB'\n\n-- Per-operation sort/hash memory (careful: multiplied by concurrent operations)\n-- work_mem = '256MB'              -- for analytics; use 32-64MB for OLTP\n-- maintenance_work_mem = '2GB'    -- for VACUUM, CREATE INDEX, ALTER TABLE\n\n-- WAL configuration\n-- wal_buffers = '64MB'\n-- checkpoint_completion_target = 0.9\n-- max_wal_size = '4GB'\n-- min_wal_size = '1GB'\n\n-- Parallelism (16 cores)\n-- max_parallel_workers_per_gather = 4\n-- max_parallel_workers = 8\n-- max_parallel_maintenance_workers = 4\n-- parallel_tuple_cost = 0.01\n-- parallel_setup_cost = 100\n\n-- I/O configuration (NVMe SSD)\n-- effective_io_concurrency = 200\n-- random_page_cost = 1.1          -- SSD: nearly same as seq (default 4.0 is for HDD)\n-- seq_page_cost = 1.0\n\n-- Connection and process limits\n-- max_connections = 200           -- use PgBouncer for more\n-- huge_pages = try                -- reduce TLB misses for large shared_buffers\n\n-- Verify current settings\nSHOW shared_buffers;\nSHOW work_mem;\nSHOW effective_cache_size;\n\n-- Check buffer cache hit ratio (should be > 99% for OLTP)\nSELECT\n    sum(heap_blks_hit) AS heap_hits,\n    sum(heap_blks_read) AS heap_reads,\n    round(sum(heap_blks_hit)::numeric / NULLIF(sum(heap_blks_hit) + sum(heap_blks_read), 0) * 100, 2) AS hit_ratio\nFROM pg_statio_user_tables;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Over-indexing tables: Every index adds write overhead (INSERT/UPDATE/DELETE must maintain all indexes) and consumes disk space and memory. A table with 15 indexes will have significantly slower writes. Audit indexes regularly using pg_stat_user_indexes — indexes with idx_scan = 0 over a month are candidates for removal. Each unused index wastes space in shared_buffers and slows down VACUUM."
+        },
+        {
+          "type": "paragraph",
+          "text": "Setting work_mem too high globally: work_mem is allocated per-sort-operation per-query, not per-connection. A complex query with 5 sort/hash operations and work_mem = 1GB could use 5GB. With 100 concurrent connections, that's potentially 500GB — far exceeding available RAM. Set work_mem conservatively globally (32-64MB for OLTP) and increase per-session for specific analytics queries: SET LOCAL work_mem = '1GB' within a transaction."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring statistics staleness: The query planner relies on pg_statistic for row count estimates, value distributions, and correlation data. If statistics are stale (table changed significantly since last ANALYZE), the planner makes bad decisions — choosing nested loops when hash joins are better, or sequential scans when index scans are faster. Run ANALYZE after bulk loads, and tune autovacuum_analyze_scale_factor for tables with frequent updates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Creating indexes without CONCURRENTLY: CREATE INDEX locks the table against writes for the entire build duration. On a 100GB table, this could mean 30+ minutes of downtime. Always use CREATE INDEX CONCURRENTLY in production — it takes longer but allows concurrent writes. Note: CONCURRENTLY cannot run inside a transaction and may leave invalid indexes if it fails (check pg_index.indisvalid)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Misunderstanding EXPLAIN cost numbers: EXPLAIN's cost values are arbitrary units, not milliseconds. cost=0.00..1234.56 means startup cost of 0 and total cost of 1234.56 in planner units. These are useful for comparing plans but meaningless in absolute terms. Always use EXPLAIN ANALYZE to see actual execution times. Also, EXPLAIN ANALYZE actually executes the query — don't run it on destructive statements without wrapping in a transaction and rolling back."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not using connection pooling: Each PostgreSQL connection forks a backend process consuming ~10MB of RSS memory. With 1,000 direct connections, that's 10GB just for connection overhead, plus context-switching costs. Applications using connection-per-request patterns (common in PHP, short-lived serverless functions) should always use PgBouncer. Even with connection pools in the application (HikariCP, etc.), PgBouncer provides an additional layer of protection against connection storms."
+        },
+        {
+          "type": "paragraph",
+          "text": "Neglecting index maintenance: B-tree indexes can become bloated over time as pages split and are never reclaimed. Monitor index size relative to table size using pg_relation_size(). If an index is significantly larger than expected, REINDEX CONCURRENTLY rebuilds it without locking. Also, after bulk deletes, indexes retain entries for dead tuples until VACUUM marks them as reusable — run VACUUM before expecting index performance to improve after large deletes."
+        }
+      ],
+      "wordCount": 437,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "High-frequency trading platform query optimization: A fintech company processing 50,000 orders per second identified through pg_stat_statements that their order matching query consumed 40% of total database CPU. EXPLAIN ANALYZE revealed a hash join on a 500M-row trades table with poor row estimates (estimated 100 rows, actual 50,000). Running ANALYZE on the trades table with increased default_statistics_target = 1000 for the relevant columns fixed the estimate. They also added a partial index on trades(symbol, price) WHERE status = 'OPEN' reducing the query from 45ms to 0.3ms. Combined with covering indexes to enable index-only scans, they achieved 99th percentile latency under 1ms."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-commerce catalog search optimization: An online marketplace with 50M products found their search queries degrading as the catalog grew. pg_stat_statements showed the product search query averaging 800ms. The issue: a sequential scan on the products table with multiple LIKE conditions. Solution: installed pg_trgm extension, created GIN trigram indexes on product name and description, and rewrote queries to use similarity operators. Added a composite BRIN index on (category_id, created_at) for category browsing (table was naturally ordered by insertion time). Result: search latency dropped to 15ms, category browsing to 3ms."
+        },
+        {
+          "type": "paragraph",
+          "text": "SaaS platform autovacuum tuning: A multi-tenant SaaS platform noticed increasing query latency over time, with periodic \"spikes\" during autovacuum runs. Investigation revealed their largest table (500M rows, 200GB) had default autovacuum settings — it wouldn't vacuum until 100M dead tuples accumulated, then the vacuum would run for hours, competing with production queries for I/O. Solution: set per-table autovacuum_vacuum_scale_factor = 0.005 (vacuum at 2.5M dead tuples), increased autovacuum_vacuum_cost_limit = 2000 for faster completion, and set autovacuum_max_workers = 6. Vacuum runs became frequent but short (minutes instead of hours), eliminating the latency spikes."
+        }
+      ],
+      "wordCount": 279,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you identify and fix a slow query in PostgreSQL? Walk through your systematic approach."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with pg_stat_statements to identify the query by total_exec_time (highest impact) or mean_exec_time (worst latency). Then run EXPLAIN (ANALYZE, BUFFERS) to see the actual execution plan. Look for: sequential scans on large tables (add an index), large differences between estimated and actual rows (run ANALYZE or increase statistics_target), sorts spilling to disk (increase work_mem for that session), and nested loops with high loop counts (consider hash or merge joins by adjusting join_collapse_limit or rewriting the query). After creating an index, verify with EXPLAIN that the planner uses it. Monitor pg_stat_statements after the fix to confirm improvement in production, not just in isolation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between B-tree, GIN, GiST, and BRIN indexes. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: B-tree is the default, supporting equality, range, sorting, and prefix LIKE queries — use for most columns in WHERE/ORDER BY/JOIN clauses. GIN (Generalized Inverted Index) indexes individual elements within composite values — use for full-text search (tsvector), JSONB containment queries (@>), array element queries, and trigram similarity. GiST (Generalized Search Tree) supports geometric operations, range type overlaps, and nearest-neighbor searches — use for PostGIS spatial queries, range exclusion constraints, and KNN lookups. BRIN (Block Range Index) stores min/max summaries per block range — use for very large tables where data is physically ordered (time-series, append-only logs). BRIN indexes are tiny (MBs vs GBs for B-tree) but only effective when physical row order correlates with the indexed column."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between VACUUM and VACUUM FULL? When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: VACUUM marks dead tuples as reusable space within existing pages but doesn't return space to the OS or shrink the table file. It runs concurrently with reads and writes (no exclusive lock). VACUUM FULL rewrites the entire table to a new file, eliminating all bloat and returning space to the OS, but requires an exclusive lock for the entire duration (no reads or writes). Use regular VACUUM (via autovacuum) for routine maintenance — it's fast and non-blocking. Use VACUUM FULL only when a table has extreme bloat (e.g., after deleting 90% of rows) and you need to reclaim disk space. In production, prefer pg_repack over VACUUM FULL — it achieves the same result without an exclusive lock by creating a new copy and swapping atomically."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does PostgreSQL's query planner decide between a sequential scan and an index scan?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The planner estimates the total cost of each access method using statistics from pg_statistic and configuration parameters. For an index scan, it estimates: index page reads + heap page reads (for non-covering indexes) + CPU processing. For a sequential scan: total table pages read sequentially + CPU filtering. Key factors: selectivity (what fraction of rows match the WHERE clause), random_page_cost vs seq_page_cost (random I/O is 4x more expensive on HDD, nearly equal on SSD), table size, and correlation (how well physical row order matches index order — high correlation makes index scans cheaper because sequential heap access is likely). If the query returns more than ~5-20% of the table, a sequential scan is usually cheaper because sequential I/O is faster than random I/O, even with an index available."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you tune autovacuum for a table receiving 100,000 updates per second?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Default autovacuum triggers at 20% dead tuples, which for a 100M-row table means 20M dead tuples before vacuum starts — unacceptable for a high-write table. Set per-table parameters: autovacuum_vacuum_scale_factor = 0.01 (1% = 1M dead tuples trigger), autovacuum_vacuum_threshold = 50000, autovacuum_vacuum_cost_delay = 0 (no throttling — vacuum as fast as possible), autovacuum_vacuum_cost_limit = 2000. Also increase autovacuum_max_workers globally to 6-8 so this table's vacuum doesn't block other tables. Monitor with pg_stat_user_tables.n_dead_tup and ensure dead tuple count stays below 5% of live tuples. Consider partitioning the table by time so old partitions have minimal write activity and vacuum completes quickly."
+        }
+      ],
+      "wordCount": 653,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Establish a query performance baseline: After deploying pg_stat_statements, let it collect data for a full business cycle (typically one week). Export the top 50 queries by total_exec_time as your baseline. Set up weekly automated reports comparing current performance to baseline — any query whose mean_exec_time increases by more than 50% should trigger investigation. This catches performance regressions from schema changes, data growth, or statistics drift before users notice."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use pg_stat_statements for capacity planning: Track the growth rate of total_exec_time across all queries. If total database CPU time is growing 10% monthly while traffic grows 5% monthly, you have a query efficiency problem that will eventually require hardware scaling. Address it proactively by optimizing the top queries rather than reactively adding hardware."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor index usage and bloat: Query pg_stat_user_indexes weekly to find unused indexes (idx_scan = 0). Each unused index wastes write I/O, disk space, and shared_buffers memory. Also monitor index size vs table size — if an index is larger than the table it indexes, it's likely bloated and needs REINDEX CONCURRENTLY. Automate this monitoring with a scheduled job that alerts when indexes exceed expected size ratios."
+        },
+        {
+          "type": "paragraph",
+          "text": "Configure huge pages for large shared_buffers: When shared_buffers exceeds 8GB, the number of page table entries becomes significant (2M entries for 8GB with 4KB pages). Enable huge pages (huge_pages = try in postgresql.conf, configure OS with vm.nr_hugepages) to reduce TLB misses by 1000x. This can improve throughput by 5-15% for memory-intensive workloads. Verify with grep HugePages /proc/meminfo that pages are actually allocated."
+        }
+      ],
+      "wordCount": 249,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "PostgreSQL Deep Dive — Core PostgreSQL concepts, MVCC architecture, and data types",
+            "Replication and High Availability — Streaming replication, Patroni, and PgBouncer configuration",
+            "Advanced Features — JSONB, full-text search, partitioning, and extensions",
+            "SQL Performance Tuning — General SQL optimization principles and patterns",
+            "SQL Design Patterns — Schema design patterns that impact query performance"
+          ]
+        }
+      ],
+      "wordCount": 53,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- Full diagnostic EXPLAIN with all options\nEXPLAIN (ANALYZE, BUFFERS, TIMING, VERBOSE, FORMAT TEXT)\nSELECT o.order_id, o.total_amount, c.name, c.email\nFROM orders o\nJOIN customers c ON c.id = o.customer_id\nWHERE o.status = 'PENDING'\n  AND o.created_at > NOW() - INTERVAL '7 days'\nORDER BY o.created_at DESC\nLIMIT 50;\n\n-- Example output analysis:\n-- Limit  (cost=0.87..152.34 rows=50 width=86) (actual time=0.089..0.234 rows=50 loops=1)\n--   Buffers: shared hit=156\n--   ->  Nested Loop  (cost=0.87..4521.23 rows=1489 width=86) (actual time=0.087..0.228 rows=50 loops=1)\n--         Buffers: shared hit=156\n--         ->  Index Scan Backward using idx_orders_pending_created\n--               on orders o  (cost=0.43..2145.67 rows=1489 width=48)\n--               (actual time=0.045..0.098 rows=50 loops=1)\n--               Index Cond: (created_at > (now() - '7 days'::interval))\n--               Filter: (status = 'PENDING')\n--               Buffers: shared hit=55\n--         ->  Index Scan using customers_pkey on customers c  (cost=0.43..1.59 rows=1 width=42)\n--               (actual time=0.002..0.002 rows=1 loops=50)\n--               Index Cond: (id = o.customer_id)\n--               Buffers: shared hit=101\n\n-- KEY METRICS TO CHECK:\n-- 1. actual rows vs estimated rows (large differences = stale statistics)\n-- 2. shared hit vs shared read (reads = cache misses = disk I/O)\n-- 3. Sort Method: external merge (= spilling to disk, increase work_mem)\n-- 4. Rows Removed by Filter (= index not selective enough)",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Composite index matching common query patterns (leftmost prefix rule applies)\nCREATE INDEX idx_orders_customer_status_date\nON orders (customer_id, status, created_at DESC);\n-- Supports: WHERE customer_id = X\n--           WHERE customer_id = X AND status = Y\n--           WHERE customer_id = X AND status = Y ORDER BY created_at DESC\n\n-- Partial index for active records (95% of queries filter on active)\nCREATE INDEX idx_users_active_email ON users (email)\nWHERE is_active = true AND deleted_at IS NULL;\n-- Index size: ~5% of full index if only 5% of users are active\n\n-- Covering index for index-only scans (avoids heap access entirely)\nCREATE INDEX idx_products_category_covering\nON products (category_id, price)\nINCLUDE (name, sku, stock_quantity);\n-- SELECT name, sku, price FROM products WHERE category_id = 5 AND price < 100\n-- → Index Only Scan (no heap access needed)\n\n-- GIN index for JSONB containment queries\nCREATE INDEX idx_events_payload ON events USING GIN (payload jsonb_path_ops);\n-- jsonb_path_ops: smaller index, supports @> operator only (not ? or ?|)\n-- Default GIN ops: larger index, supports all JSONB operators\n\n-- BRIN index for time-series data (tiny index, huge tables)\nCREATE INDEX idx_logs_timestamp ON application_logs USING BRIN (created_at)\nWITH (pages_per_range = 64);\n-- BRIN stores min/max per block range; effective when data is physically ordered\n-- 1TB table: B-tree index = ~20GB, BRIN index = ~1MB\n\n-- Expression index for case-insensitive lookups\nCREATE INDEX idx_users_email_lower ON users (LOWER(email));\n-- Query must use LOWER(email) = 'user@example.com' to hit this index\n\n-- Index for pattern matching (trigram)\nCREATE EXTENSION IF NOT EXISTS pg_trgm;\nCREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);\n-- Supports: WHERE name LIKE '%search%' and WHERE name % 'fuzzy'",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Enable pg_stat_statements (requires restart for shared_preload_libraries)\n-- postgresql.conf:\n-- shared_preload_libraries = 'pg_stat_statements'\n-- pg_stat_statements.track = all\n-- pg_stat_statements.max = 10000\n\nCREATE EXTENSION IF NOT EXISTS pg_stat_statements;\n\n-- Top 20 queries by total execution time (highest impact)\nSELECT\n    substring(query, 1, 100) AS short_query,\n    calls,\n    round(total_exec_time::numeric, 2) AS total_ms,\n    round(mean_exec_time::numeric, 2) AS avg_ms,\n    round((100 * total_exec_time / sum(total_exec_time) OVER())::numeric, 2) AS pct_total,\n    rows,\n    round((shared_blks_hit::numeric / NULLIF(shared_blks_hit + shared_blks_read, 0) * 100), 2) AS cache_hit_pct\nFROM pg_stat_statements\nWHERE userid = (SELECT usesysid FROM pg_user WHERE usename = current_user)\nORDER BY total_exec_time DESC\nLIMIT 20;\n\n-- Queries with worst cache hit ratio (I/O bound)\nSELECT\n    substring(query, 1, 80) AS short_query,\n    calls,\n    shared_blks_read,\n    shared_blks_hit,\n    round((shared_blks_hit::numeric / NULLIF(shared_blks_hit + shared_blks_read, 0) * 100), 2) AS hit_ratio\nFROM pg_stat_statements\nWHERE calls > 100\n  AND shared_blks_hit + shared_blks_read > 1000\nORDER BY hit_ratio ASC\nLIMIT 20;\n\n-- Queries with high row estimation errors (need ANALYZE)\nSELECT\n    substring(query, 1, 80) AS short_query,\n    calls,\n    rows / NULLIF(calls, 0) AS avg_rows_returned,\n    round(mean_exec_time::numeric, 2) AS avg_ms\nFROM pg_stat_statements\nWHERE calls > 50\nORDER BY mean_exec_time DESC\nLIMIT 20;\n\n-- Reset statistics (do this periodically to get fresh data)\nSELECT pg_stat_statements_reset();",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Check table bloat and dead tuple counts\nSELECT\n    schemaname, relname,\n    n_live_tup, n_dead_tup,\n    round(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) AS dead_pct,\n    last_vacuum, last_autovacuum, last_analyze, last_autoanalyze,\n    vacuum_count, autovacuum_count\nFROM pg_stat_user_tables\nWHERE n_dead_tup > 10000\nORDER BY n_dead_tup DESC;\n\n-- Per-table autovacuum tuning for high-write tables\nALTER TABLE orders SET (\n    autovacuum_vacuum_scale_factor = 0.01,      -- vacuum at 1% dead tuples (vs default 20%)\n    autovacuum_vacuum_threshold = 1000,          -- minimum dead tuples before considering vacuum\n    autovacuum_analyze_scale_factor = 0.005,     -- analyze at 0.5% changes\n    autovacuum_vacuum_cost_delay = 2,            -- less throttling (default 2ms, set to 0 for aggressive)\n    autovacuum_vacuum_cost_limit = 1000          -- higher budget per round (default 200)\n);\n\n-- Check if autovacuum is keeping up\nSELECT\n    relname,\n    n_dead_tup,\n    last_autovacuum,\n    EXTRACT(EPOCH FROM (now() - last_autovacuum)) / 3600 AS hours_since_vacuum\nFROM pg_stat_user_tables\nWHERE n_dead_tup > 100000\nORDER BY n_dead_tup DESC;\n\n-- Monitor autovacuum workers\nSELECT pid, datname, relid::regclass AS table_name,\n       phase, heap_blks_total, heap_blks_scanned, heap_blks_vacuumed,\n       index_vacuum_count, max_dead_tuples\nFROM pg_stat_progress_vacuum;\n\n-- Identify tables needing VACUUM FULL (extreme bloat)\n-- WARNING: VACUUM FULL locks the table exclusively\nSELECT\n    schemaname || '.' || relname AS table_name,\n    pg_size_pretty(pg_total_relation_size(relid)) AS total_size,\n    pg_size_pretty(pg_relation_size(relid)) AS table_size,\n    n_live_tup,\n    n_dead_tup\nFROM pg_stat_user_tables\nWHERE pg_relation_size(relid) > 1073741824  -- tables > 1GB\nORDER BY pg_relation_size(relid) DESC;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Memory configuration for a 64GB RAM, 16-core server\n-- postgresql.conf\n\n-- Buffer cache: 25% of RAM\n-- shared_buffers = '16GB'\n\n-- Planner hint: total cache available (shared_buffers + OS cache)\n-- effective_cache_size = '48GB'\n\n-- Per-operation sort/hash memory (careful: multiplied by concurrent operations)\n-- work_mem = '256MB'              -- for analytics; use 32-64MB for OLTP\n-- maintenance_work_mem = '2GB'    -- for VACUUM, CREATE INDEX, ALTER TABLE\n\n-- WAL configuration\n-- wal_buffers = '64MB'\n-- checkpoint_completion_target = 0.9\n-- max_wal_size = '4GB'\n-- min_wal_size = '1GB'\n\n-- Parallelism (16 cores)\n-- max_parallel_workers_per_gather = 4\n-- max_parallel_workers = 8\n-- max_parallel_maintenance_workers = 4\n-- parallel_tuple_cost = 0.01\n-- parallel_setup_cost = 100\n\n-- I/O configuration (NVMe SSD)\n-- effective_io_concurrency = 200\n-- random_page_cost = 1.1          -- SSD: nearly same as seq (default 4.0 is for HDD)\n-- seq_page_cost = 1.0\n\n-- Connection and process limits\n-- max_connections = 200           -- use PgBouncer for more\n-- huge_pages = try                -- reduce TLB misses for large shared_buffers\n\n-- Verify current settings\nSHOW shared_buffers;\nSHOW work_mem;\nSHOW effective_cache_size;\n\n-- Check buffer cache hit ratio (should be > 99% for OLTP)\nSELECT\n    sum(heap_blks_hit) AS heap_hits,\n    sum(heap_blks_read) AS heap_reads,\n    round(sum(heap_blks_hit)::numeric / NULLIF(sum(heap_blks_hit) + sum(heap_blks_read), 0) * 100, 2) AS hit_ratio\nFROM pg_statio_user_tables;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/performance-tuning.md",
+    "wordCount": 2269,
+    "sectionCount": 14
+  }
+}

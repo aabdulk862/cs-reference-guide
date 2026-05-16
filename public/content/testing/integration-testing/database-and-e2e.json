@@ -1,0 +1,354 @@
+{
+  "id": "integration-testing-database-integration-end-to-end-testing",
+  "slug": "database-and-e2e",
+  "title": "Database Integration & End-to-End Testing",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Testcontainers spins up real databases (PostgreSQL, MongoDB, Redis, Elasticsearch) in Docker containers per test suite, providing production-equivalent behavior without shared infrastructure or mocking",
+            "The transaction rollback pattern wraps each test in a database transaction and rolls back after assertions — provides fast isolation without re-seeding data between tests",
+            "Playwright and Cypress are the two dominant E2E frameworks: Playwright supports multiple browsers natively (Chromium, Firefox, WebKit) with parallel execution; Cypress runs in-browser with excellent debugging but is Chromium-focused",
+            "Visual regression testing (Percy, Chromatic, Playwright screenshots) captures pixel-level UI changes, catching CSS regressions that functional tests miss entirely",
+            "Test data builders (Object Mother, Builder pattern) create valid domain objects with sensible defaults, allowing tests to specify only the fields relevant to the scenario under test",
+            "Database migration testing verifies that schema changes apply cleanly to existing data and that rollbacks work correctly before deploying to production environments",
+            "Page Object Model encapsulates page interactions behind a clean API, making E2E tests resilient to UI changes — when a selector changes, you update one page object, not 50 tests",
+            "Fixture management strategies include: factory functions (flexible), SQL seed files (fast), snapshot restoration (consistent), and programmatic setup via API calls (realistic)",
+            "E2E tests should cover critical user journeys (happy paths) and high-value business flows, not exhaustive feature coverage — aim for 5-20 E2E tests, not 500",
+            "Flaky test detection requires retry mechanisms, deterministic waits (not sleep), and isolation from external dependencies (time, network, third-party services)"
+          ]
+        }
+      ],
+      "wordCount": 240,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database integration and E2E testing fill critical gaps that unit tests cannot cover. Apply these techniques when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building data access layers where SQL queries involve joins, aggregations, window functions, or database-specific features (PostgreSQL JSONB, full-text search, CTEs) that cannot be validated without a real database engine",
+            "Testing database migrations before deploying to production — ensuring that ALTER TABLE statements, data transformations, and index changes work correctly on tables with existing data and don't cause downtime",
+            "Validating critical user journeys end-to-end — signup flows, checkout processes, payment integrations, and multi-step wizards where bugs at component boundaries cause revenue loss or user abandonment",
+            "Catching visual regressions in UI-heavy applications where CSS changes in one component cascade unexpectedly to other pages, breaking layouts that functional tests don't verify",
+            "Working with ORMs (Hibernate, Prisma, TypeORM) where generated SQL may differ from expectations, especially for complex relationships, lazy loading, N+1 query patterns, and transaction boundaries",
+            "Verifying that application code correctly handles database constraints (unique violations, foreign key failures, check constraints, deadlocks) and translates them into appropriate user-facing errors"
+          ]
+        }
+      ],
+      "wordCount": 173,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "testcontainers-postgresql-integration-tests",
+          "heading": "Testcontainers — PostgreSQL Integration Tests",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';\nimport { Pool } from 'pg';\nimport { migrate } from '../migrations';\nimport { UserRepository } from '../repositories/user-repository';\n\ndescribe('UserRepository Integration Tests', () => {\n  let container: StartedPostgreSqlContainer;\n  let pool: Pool;\n  let repository: UserRepository;\n\n  beforeAll(async () => {\n    // Start a real PostgreSQL container — takes 2-5 seconds\n    container = await new PostgreSqlContainer('postgres:16-alpine')\n      .withDatabase('testdb')\n      .withUsername('test')\n      .withPassword('test')\n      .withExposedPorts(5432)\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: container.getDatabase(),\n      user: container.getUsername(),\n      password: container.getPassword()\n    });\n\n    // Run migrations against the test database\n    await migrate(pool);\n    repository = new UserRepository(pool);\n  }, 30000); // 30s timeout for container startup\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  // Transaction rollback pattern — each test is isolated\n  let client: PoolClient;\n  beforeEach(async () => {\n    client = await pool.connect();\n    await client.query('BEGIN');\n    repository = new UserRepository(client); // Use transaction client\n  });\n\n  afterEach(async () => {\n    await client.query('ROLLBACK');\n    client.release();\n  });\n\n  it('should create a user with all fields persisted correctly', async () => {\n    const user = await repository.create({\n      email: 'test@example.com',\n      name: 'Test User',\n      role: 'admin',\n      preferences: { theme: 'dark', language: 'en' }\n    });\n\n    expect(user.id).toBeDefined();\n    expect(user.email).toBe('test@example.com');\n    expect(user.createdAt).toBeInstanceOf(Date);\n\n    // Verify by reading back from database\n    const found = await repository.findById(user.id);\n    expect(found).toEqual(user);\n    expect(found.preferences).toEqual({ theme: 'dark', language: 'en' });\n  });\n\n  it('should enforce unique email constraint', async () => {\n    await repository.create({ email: 'duplicate@test.com', name: 'First', role: 'user' });\n\n    await expect(\n      repository.create({ email: 'duplicate@test.com', name: 'Second', role: 'user' })\n    ).rejects.toThrow('User with this email already exists');\n  });\n\n  it('should handle concurrent updates with optimistic locking', async () => {\n    const user = await repository.create({ email: 'lock@test.com', name: 'Lock Test', role: 'user' });\n\n    // Simulate two concurrent reads\n    const version1 = await repository.findById(user.id);\n    const version2 = await repository.findById(user.id);\n\n    // First update succeeds\n    await repository.update(user.id, { name: 'Updated' }, version1.version);\n\n    // Second update fails — version mismatch\n    await expect(\n      repository.update(user.id, { name: 'Conflict' }, version2.version)\n    ).rejects.toThrow('Optimistic lock conflict');\n  });\n\n  it('should paginate results with correct total count', async () => {\n    // Seed 25 users\n    for (let i = 0; i < 25; i++) {\n      await repository.create({ email: `user${i}@test.com`, name: `User ${i}`, role: 'user' });\n    }\n\n    const page1 = await repository.findAll({ page: 1, pageSize: 10 });\n    expect(page1.data).toHaveLength(10);\n    expect(page1.total).toBe(25);\n    expect(page1.hasMore).toBe(true);\n\n    const page3 = await repository.findAll({ page: 3, pageSize: 10 });\n    expect(page3.data).toHaveLength(5);\n    expect(page3.hasMore).toBe(false);\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "testcontainers-javaspring-boot-example",
+          "heading": "Testcontainers — Java/Spring Boot Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import org.junit.jupiter.api.Test;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\n\n@SpringBootTest\n@Testcontainers\nclass OrderRepositoryIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n        .withDatabaseName(\"orders_test\")\n        .withUsername(\"test\")\n        .withPassword(\"test\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Autowired\n    private TestEntityManager entityManager;\n\n    @Test\n    void shouldCalculateOrderTotalWithDiscounts() {\n        // Arrange — using test data builder\n        Order order = OrderBuilder.anOrder()\n            .withItem(\"Widget\", 10.00, 3)\n            .withItem(\"Gadget\", 25.00, 1)\n            .withDiscount(DiscountType.PERCENTAGE, 10)\n            .build();\n\n        entityManager.persistAndFlush(order);\n        entityManager.clear(); // Force reload from DB\n\n        // Act\n        OrderSummary summary = orderRepository.calculateSummary(order.getId());\n\n        // Assert\n        assertThat(summary.getSubtotal()).isEqualByComparingTo(\"55.00\");\n        assertThat(summary.getDiscount()).isEqualByComparingTo(\"5.50\");\n        assertThat(summary.getTotal()).isEqualByComparingTo(\"49.50\");\n    }\n\n    @Test\n    void shouldFindOrdersByDateRangeWithJoins() {\n        // Tests complex SQL with joins, date filtering, and aggregation\n        LocalDate today = LocalDate.now();\n        createOrdersForDateRange(today.minusDays(30), today);\n\n        List<OrderReport> report = orderRepository.getWeeklyReport(\n            today.minusDays(7), today\n        );\n\n        assertThat(report).hasSize(7); // One entry per day\n        assertThat(report).allSatisfy(entry -> {\n            assertThat(entry.getOrderCount()).isGreaterThanOrEqualTo(0);\n            assertThat(entry.getRevenue()).isNotNegative();\n        });\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "playwright-e2e-testing-with-page-object-model",
+          "heading": "Playwright — E2E Testing with Page Object Model",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { test, expect, Page } from '@playwright/test';\n\n// Page Object — encapsulates page interactions\nclass CheckoutPage {\n  constructor(private page: Page) {}\n\n  async fillShippingAddress(address: ShippingAddress) {\n    await this.page.getByLabel('Full Name').fill(address.name);\n    await this.page.getByLabel('Street Address').fill(address.street);\n    await this.page.getByLabel('City').fill(address.city);\n    await this.page.getByLabel('State').selectOption(address.state);\n    await this.page.getByLabel('ZIP Code').fill(address.zip);\n  }\n\n  async selectShippingMethod(method: 'standard' | 'express' | 'overnight') {\n    await this.page.getByRole('radio', { name: new RegExp(method, 'i') }).check();\n  }\n\n  async fillPaymentDetails(payment: PaymentDetails) {\n    // Payment is in an iframe\n    const frame = this.page.frameLocator('[data-testid=\"payment-frame\"]');\n    await frame.getByLabel('Card Number').fill(payment.cardNumber);\n    await frame.getByLabel('Expiry').fill(payment.expiry);\n    await frame.getByLabel('CVC').fill(payment.cvc);\n  }\n\n  async placeOrder() {\n    await this.page.getByRole('button', { name: 'Place Order' }).click();\n    await this.page.waitForURL(/\\/order-confirmation\\//);\n  }\n\n  async getOrderConfirmation(): Promise<{ orderId: string; total: string }> {\n    const orderId = await this.page.getByTestId('order-id').textContent();\n    const total = await this.page.getByTestId('order-total').textContent();\n    return { orderId: orderId!, total: total! };\n  }\n\n  async getValidationErrors(): Promise<string[]> {\n    const errors = this.page.locator('[role=\"alert\"]');\n    return errors.allTextContents();\n  }\n}\n\nclass ProductPage {\n  constructor(private page: Page) {}\n\n  async addToCart(productName: string, quantity = 1) {\n    const product = this.page.locator(`[data-product-name=\"${productName}\"]`);\n    if (quantity > 1) {\n      await product.getByLabel('Quantity').fill(String(quantity));\n    }\n    await product.getByRole('button', { name: 'Add to Cart' }).click();\n    // Wait for cart badge to update\n    await expect(this.page.getByTestId('cart-count')).not.toHaveText('0');\n  }\n\n  async goToCheckout() {\n    await this.page.getByRole('link', { name: 'Checkout' }).click();\n    await this.page.waitForURL('/checkout');\n  }\n}\n\n// E2E Test — Critical User Journey\ntest.describe('Checkout Flow', () => {\n  let productPage: ProductPage;\n  let checkoutPage: CheckoutPage;\n\n  test.beforeEach(async ({ page }) => {\n    productPage = new ProductPage(page);\n    checkoutPage = new CheckoutPage(page);\n    // Seed test data via API\n    await page.request.post('/api/test/seed-products');\n    await page.goto('/products');\n  });\n\n  test('complete purchase with standard shipping', async ({ page }) => {\n    // Add items to cart\n    await productPage.addToCart('Wireless Headphones', 1);\n    await productPage.addToCart('USB-C Cable', 2);\n    await productPage.goToCheckout();\n\n    // Fill checkout form\n    await checkoutPage.fillShippingAddress({\n      name: 'Jane Smith',\n      street: '123 Main St',\n      city: 'Portland',\n      state: 'OR',\n      zip: '97201'\n    });\n    await checkoutPage.selectShippingMethod('standard');\n    await checkoutPage.fillPaymentDetails({\n      cardNumber: '4242424242424242',\n      expiry: '12/28',\n      cvc: '123'\n    });\n\n    // Place order\n    await checkoutPage.placeOrder();\n\n    // Verify confirmation\n    const confirmation = await checkoutPage.getOrderConfirmation();\n    expect(confirmation.orderId).toMatch(/^ORD-[A-Z0-9]+$/);\n    expect(confirmation.total).toContain('$');\n\n    // Verify order appears in order history\n    await page.goto('/account/orders');\n    await expect(page.getByText(confirmation.orderId)).toBeVisible();\n  });\n\n  test('shows validation errors for incomplete form', async ({ page }) => {\n    await productPage.addToCart('Wireless Headphones');\n    await productPage.goToCheckout();\n\n    // Try to place order without filling form\n    await page.getByRole('button', { name: 'Place Order' }).click();\n\n    const errors = await checkoutPage.getValidationErrors();\n    expect(errors).toContain('Full name is required');\n    expect(errors).toContain('Street address is required');\n    expect(errors).toContain('Payment details are required');\n  });\n});\n\n// Visual Regression Test\ntest.describe('Visual Regression', () => {\n  test('product listing page matches snapshot', async ({ page }) => {\n    await page.goto('/products');\n    await page.waitForLoadState('networkidle');\n\n    // Full page screenshot comparison\n    await expect(page).toHaveScreenshot('product-listing.png', {\n      maxDiffPixelRatio: 0.01, // Allow 1% pixel difference\n      animations: 'disabled'\n    });\n  });\n\n  test('checkout form states', async ({ page }) => {\n    await page.goto('/checkout');\n\n    // Empty state\n    await expect(page.locator('.checkout-form')).toHaveScreenshot('checkout-empty.png');\n\n    // Error state\n    await page.getByRole('button', { name: 'Place Order' }).click();\n    await expect(page.locator('.checkout-form')).toHaveScreenshot('checkout-errors.png');\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cypress-component-and-e2e-testing",
+          "heading": "Cypress — Component and E2E Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// cypress/e2e/authentication.cy.ts\ndescribe('Authentication Flow', () => {\n  beforeEach(() => {\n    cy.task('db:seed'); // Seed test database\n    cy.visit('/login');\n  });\n\n  it('logs in with valid credentials and redirects to dashboard', () => {\n    cy.getByTestId('email-input').type('user@example.com');\n    cy.getByTestId('password-input').type('SecurePass123!');\n    cy.getByTestId('login-button').click();\n\n    // Should redirect to dashboard\n    cy.url().should('include', '/dashboard');\n    cy.getByTestId('welcome-message').should('contain', 'Welcome back');\n\n    // Session should persist across page reload\n    cy.reload();\n    cy.url().should('include', '/dashboard');\n    cy.getByTestId('welcome-message').should('be.visible');\n  });\n\n  it('shows error for invalid credentials without exposing details', () => {\n    cy.getByTestId('email-input').type('user@example.com');\n    cy.getByTestId('password-input').type('WrongPassword');\n    cy.getByTestId('login-button').click();\n\n    // Generic error message — don't reveal if email exists\n    cy.getByTestId('error-message')\n      .should('contain', 'Invalid email or password');\n\n    // Should not redirect\n    cy.url().should('include', '/login');\n  });\n\n  it('locks account after 5 failed attempts', () => {\n    for (let i = 0; i < 5; i++) {\n      cy.getByTestId('email-input').clear().type('user@example.com');\n      cy.getByTestId('password-input').clear().type(`wrong${i}`);\n      cy.getByTestId('login-button').click();\n    }\n\n    cy.getByTestId('error-message')\n      .should('contain', 'Account locked. Please try again in 15 minutes.');\n\n    // Even correct password should fail\n    cy.getByTestId('email-input').clear().type('user@example.com');\n    cy.getByTestId('password-input').clear().type('SecurePass123!');\n    cy.getByTestId('login-button').click();\n    cy.getByTestId('error-message').should('contain', 'Account locked');\n  });\n});\n\n// Cypress API testing\ndescribe('API Integration', () => {\n  it('creates a resource and verifies database state', () => {\n    cy.request({\n      method: 'POST',\n      url: '/api/products',\n      headers: { Authorization: `Bearer ${Cypress.env('API_TOKEN')}` },\n      body: {\n        name: 'New Product',\n        price: 29.99,\n        category: 'electronics'\n      }\n    }).then((response) => {\n      expect(response.status).to.eq(201);\n      expect(response.body.id).to.be.a('string');\n      expect(response.body.createdAt).to.be.a('string');\n\n      // Verify via GET\n      cy.request(`/api/products/${response.body.id}`).then((getResponse) => {\n        expect(getResponse.body.name).to.eq('New Product');\n        expect(getResponse.body.price).to.eq(29.99);\n      });\n    });\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "database-migration-testing",
+          "heading": "Database Migration Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { PostgreSqlContainer } from '@testcontainers/postgresql';\nimport { Pool } from 'pg';\nimport { readdir, readFile } from 'fs/promises';\nimport { join } from 'path';\n\ndescribe('Database Migration Tests', () => {\n  let container: StartedPostgreSqlContainer;\n  let pool: Pool;\n\n  beforeAll(async () => {\n    container = await new PostgreSqlContainer('postgres:16-alpine').start();\n    pool = new Pool({ connectionString: container.getConnectionUri() });\n  }, 30000);\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  it('all migrations apply cleanly in sequence', async () => {\n    const migrationsDir = join(__dirname, '../../migrations');\n    const files = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.up.sql'))\n      .sort();\n\n    for (const file of files) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await expect(pool.query(sql)).resolves.not.toThrow();\n    }\n\n    // Verify final schema has expected tables\n    const tables = await pool.query(`\n      SELECT table_name FROM information_schema.tables\n      WHERE table_schema = 'public' ORDER BY table_name\n    `);\n    expect(tables.rows.map(r => r.table_name)).toContain('users');\n    expect(tables.rows.map(r => r.table_name)).toContain('orders');\n    expect(tables.rows.map(r => r.table_name)).toContain('products');\n  });\n\n  it('migrations are reversible — up then down returns to clean state', async () => {\n    const migrationsDir = join(__dirname, '../../migrations');\n    const upFiles = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.up.sql')).sort();\n    const downFiles = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.down.sql')).sort().reverse();\n\n    // Apply all up migrations\n    for (const file of upFiles) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await pool.query(sql);\n    }\n\n    // Apply all down migrations in reverse\n    for (const file of downFiles) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await expect(pool.query(sql)).resolves.not.toThrow();\n    }\n\n    // Verify no tables remain\n    const tables = await pool.query(`\n      SELECT table_name FROM information_schema.tables\n      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'\n    `);\n    expect(tables.rows).toHaveLength(0);\n  });\n\n  it('migration handles existing data correctly', async () => {\n    // Apply migrations up to the one before the change\n    await applyMigrationsUpTo(pool, '003_add_users_table');\n\n    // Insert test data representing production state\n    await pool.query(`\n      INSERT INTO users (id, email, name) VALUES\n      ('u1', 'alice@test.com', 'Alice'),\n      ('u2', 'bob@test.com', 'Bob'),\n      ('u3', NULL, 'Charlie')\n    `);\n\n    // Apply the migration that adds NOT NULL constraint with default\n    await applyMigration(pool, '004_add_email_not_null');\n\n    // Verify existing data was handled (NULL emails get default)\n    const result = await pool.query('SELECT email FROM users WHERE id = $1', ['u3']);\n    expect(result.rows[0].email).toBe('unknown@placeholder.com');\n\n    // Verify constraint is enforced for new inserts\n    await expect(\n      pool.query(\"INSERT INTO users (id, name) VALUES ('u4', 'Dave')\")\n    ).rejects.toThrow(/null value in column \"email\"/);\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Test Pyramid with Integration Layer\"\n        E2E[E2E Tests<br/>5-20 critical journeys<br/>Slow, expensive, high confidence]\n        INT[Integration Tests<br/>Database, API, contracts<br/>Medium speed, real dependencies]\n        UNIT[Unit Tests<br/>Hundreds of fast tests<br/>Isolated, mocked dependencies]\n    end\n\n    E2E --> INT --> UNIT"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant T as Test Suite\n    participant TC as Testcontainers\n    participant D as Docker\n    participant DB as PostgreSQL Container\n    participant R as Repository\n\n    T->>TC: new PostgreSqlContainer()\n    TC->>D: docker pull postgres:16\n    D->>DB: Start container\n    DB-->>TC: Container ready (port mapped)\n    TC-->>T: Connection URI\n\n    T->>DB: Run migrations\n    T->>R: Execute test queries\n    R->>DB: SQL operations\n    DB-->>R: Results\n    R-->>T: Assert results\n\n    T->>DB: ROLLBACK (per test)\n    T->>TC: container.stop()\n    TC->>D: Remove container"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"E2E Test Architecture\"\n        T[Test Script] --> PO[Page Objects]\n        PO --> B[Browser<br/>Playwright/Cypress]\n        B --> APP[Application<br/>Frontend + Backend]\n        APP --> DB[(Test Database)]\n        APP --> EXT[External Services<br/>Mocked/Stubbed]\n\n        T --> API[Test API<br/>Seed/Reset Data]\n        API --> DB\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Visual Regression Workflow\"\n        A[PR Created] --> B[Run E2E Tests]\n        B --> C[Capture Screenshots]\n        C --> D{Compare to Baseline}\n        D -->|Match| E[Pass ✓]\n        D -->|Diff Detected| F[Generate Diff Image]\n        F --> G[Human Review]\n        G -->|Approve| H[Update Baseline]\n        G -->|Reject| I[Fix CSS/Layout]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Using shared test databases instead of isolated containers. Shared databases cause test pollution — one test's data affects another, leading to order-dependent failures and flaky CI. Tests pass individually but fail when run together. Testcontainers solve this by giving each test suite its own database instance. The 2-5 second startup cost is worth the reliability. For faster iteration during development, use the transaction rollback pattern within a single container to isolate individual tests without container restart overhead."
+        },
+        {
+          "type": "paragraph",
+          "text": "Writing E2E tests that depend on specific data existing in the database. If your E2E test assumes \"user@example.com\" exists with specific orders, it breaks when someone modifies the seed data. Instead, have each test create its own data via API calls in beforeEach, or use a dedicated test seeding endpoint that creates a known state. This makes tests self-contained and runnable in any order. The tradeoff is slightly slower tests, but dramatically more reliable ones."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using sleep() or fixed timeouts instead of deterministic waits in E2E tests. cy.wait(3000) or await page.waitForTimeout(2000) makes tests slow (always waits the full duration) and flaky (sometimes the operation takes longer). Use deterministic waits: await page.waitForSelector('[data-testid=\"results\"]'), cy.get('.loading').should('not.exist'), or await expect(page.locator('.item')).toHaveCount(5). These resolve as soon as the condition is met, making tests both faster and more reliable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Testing implementation details in E2E tests instead of user-visible behavior. E2E tests that assert on CSS classes, internal state, or DOM structure break on every refactor. Test what users see and do: \"the error message is visible,\" \"the button is disabled,\" \"the page shows 5 results.\" Use accessible selectors (roles, labels, text content) over implementation selectors (class names, IDs, data attributes). This makes tests resilient to UI refactoring while still catching real regressions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not cleaning up test data between E2E test runs. Tests that create users, orders, or other persistent data without cleanup accumulate garbage over time. This slows down the test database, causes unique constraint violations on re-runs, and makes debugging harder because you can't tell which data belongs to which test. Implement a cleanup strategy: truncate tables before each suite, use unique identifiers per run (timestamp prefix), or restore from a database snapshot between suites."
+        },
+        {
+          "type": "paragraph",
+          "text": "Running too many E2E tests — treating them as the primary test layer. E2E tests are 10-100x slower than unit tests and significantly more flaky due to browser rendering, network timing, and animation delays. Teams that write 500 E2E tests spend hours waiting for CI and constantly fight flakiness. Follow the test pyramid: 5-20 E2E tests for critical user journeys, 50-100 integration tests for API and database behavior, and hundreds of unit tests for business logic. If you're writing an E2E test for a utility function's edge case, it belongs in a unit test."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using in-memory databases (H2, SQLite) as substitutes for production databases. H2 and SQLite have different SQL dialects, locking behavior, constraint enforcement, and query optimization than PostgreSQL or MySQL. Tests pass against H2 but fail in production because: JSON operators differ, window functions behave differently, transaction isolation levels aren't equivalent, and index usage patterns change. Use Testcontainers with the same database version as production. The slight speed penalty (real DB vs in-memory) is offset by catching real compatibility issues before deployment."
+        }
+      ],
+      "wordCount": 529,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Financial Services — Transaction Processing with Audit Trail. A payment processing system requires database integration tests that verify: (1) Double-spend prevention via database-level locks and constraints. (2) Audit trail completeness — every state transition (pending → processing → completed/failed) is recorded with timestamps and actor IDs. (3) Idempotency — processing the same payment request twice produces the same result without duplicate charges. (4) Concurrent access — two simultaneous withdrawals from the same account don't overdraw. Tests use Testcontainers with PostgreSQL, simulate concurrent transactions using multiple database connections, and verify that serializable isolation prevents race conditions. E2E tests cover the complete payment flow from initiation through confirmation email."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare Platform — HIPAA-Compliant Data Access Testing. A healthcare application tests that: (1) Role-based access controls are enforced at the database level — a nurse cannot query a patient outside their assigned ward. (2) Audit logs capture every data access with the requesting user, timestamp, and accessed records. (3) Data encryption at rest is verified by inspecting raw database storage. (4) Patient data deletion (right to be forgotten) cascades correctly through all related tables without orphaning records. Integration tests use Testcontainers with the exact PostgreSQL extensions (pgcrypto, row-level security policies) used in production. E2E tests verify that the UI correctly hides restricted data and that export functions redact sensitive fields."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-Commerce — Checkout Flow with Payment Integration. A large e-commerce platform runs E2E tests against a staging environment with: (1) Stripe test mode for payment processing — verifying card validation, 3D Secure flows, and webhook handling. (2) Inventory management — adding items to cart, verifying stock availability at checkout, and handling out-of-stock scenarios gracefully. (3) Multi-currency pricing with tax calculation — verifying that displayed prices match charged amounts across different locales. (4) Visual regression testing on the checkout page across 5 viewport sizes (mobile, tablet, desktop, wide desktop, ultra-wide) to catch layout breaks. Playwright runs these tests in parallel across Chromium, Firefox, and WebKit, with Percy capturing screenshots for visual review on each PR."
+        }
+      ],
+      "wordCount": 331,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you decide between Testcontainers and mocking the database in integration tests?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use Testcontainers (real database) when: testing SQL queries with joins, aggregations, or database-specific features; verifying constraint enforcement (unique, foreign key, check); testing migration scripts; validating ORM-generated SQL; or testing transaction isolation behavior. Use mocks when: testing business logic that happens to call a repository (mock the repository interface); testing error handling paths (easier to simulate specific failures); or when container startup time is unacceptable for the feedback loop (though this is rarely the case with modern Testcontainers). The key principle: mock at boundaries you own (your repository interface), but don't mock the database itself when testing data access code. A repository test with a mocked database proves nothing — it only verifies that your mock behaves as you expect, not that your SQL is correct."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle flaky E2E tests in CI/CD pipelines?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Flaky tests erode team trust and slow delivery. Multi-layered approach: (1) Prevention: Use deterministic waits (waitForSelector, not sleep), isolate test data (each test creates its own), disable animations in test mode, and use stable selectors (data-testid, roles). (2) Detection: Track test pass rates over time — a test that fails 5% of runs is flaky even if it passes on retry. Quarantine flaky tests into a separate suite that doesn't block deployment. (3) Retry strategy: Allow 1-2 retries in CI but flag retried tests for investigation. A test that needs retries has a bug. (4) Root cause analysis: Common causes are timing issues (add explicit waits), shared state (isolate data), external dependencies (mock or stub), and resource contention (increase CI resources or reduce parallelism). (5) Architecture: Run E2E tests against a dedicated, stable environment — not a shared staging that other teams deploy to mid-test."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the Page Object Model pattern. What are its benefits and when might you deviate from it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Page Object Model (POM) encapsulates page interactions behind a class with methods representing user actions and properties representing page state. Benefits: (1) Single point of change — when a selector changes, update one page object, not 50 tests. (2) Readable tests — checkoutPage.fillShippingAddress(address) is clearer than 5 lines of page.fill() calls. (3) Reusability — multiple tests share the same page interactions. (4) Abstraction — tests describe what the user does, not how the UI is structured. Deviations: For simple pages with 1-2 interactions, a page object adds unnecessary indirection. For component-level tests (testing a single widget), direct selectors are clearer. Some teams prefer \"screenplay pattern\" (action-focused) over page objects (page-focused) for complex workflows that span multiple pages. The key is consistency within a project — pick one pattern and apply it uniformly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement visual regression testing in a CI/CD pipeline?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Implementation steps: (1) Capture: Use Playwright's toHaveScreenshot() or a service like Percy/Chromatic to capture screenshots during E2E test runs. Capture at multiple viewport sizes and in both light/dark themes. (2) Baseline management: Store baseline screenshots in the repository (Playwright) or in the service's cloud (Percy). Update baselines explicitly when intentional visual changes are made. (3) Comparison: On each PR, compare new screenshots against baselines. Use perceptual diff algorithms that ignore anti-aliasing differences but catch layout shifts. Set a threshold (e.g., 0.1% pixel difference allowed) to avoid false positives from rendering engine variations. (4) Review workflow: When diffs are detected, generate side-by-side comparison images for human review. Integrate with PR checks — visual changes require explicit approval before merge. (5) Stability: Disable animations, use fixed timestamps/dates, mock dynamic content (avatars, ads), and ensure consistent font rendering across CI environments (install specific fonts in Docker)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What's the difference between Playwright and Cypress? When would you choose each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Playwright: Multi-browser (Chromium, Firefox, WebKit) with true parallel execution across browsers and test files. Runs outside the browser (Node.js process controlling browsers via CDP/WebSocket). Supports multiple tabs, browser contexts, and cross-origin navigation natively. Better for: teams needing cross-browser coverage, complex multi-tab scenarios, mobile browser testing (WebKit = Safari), and large test suites benefiting from parallelism. Cypress: Runs inside the browser alongside the application. Excellent debugging with time-travel snapshots, automatic waiting, and real-time reloading. Primarily Chromium-based (Firefox support is experimental). Better for: developer experience during test writing, component testing (renders components in isolation), teams that value the interactive test runner, and applications that only need Chromium testing. Key tradeoffs: Cypress has better DX for writing/debugging tests; Playwright has better CI performance and browser coverage. Cypress struggles with multi-tab and cross-origin; Playwright handles these natively. Both are production-ready choices — the decision often comes down to team preference and browser requirements."
+        }
+      ],
+      "wordCount": 767,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Parallelize integration tests by using independent database containers per test file. Instead of one shared container for all tests (which forces sequential execution or complex isolation), start a container per test file and run files in parallel. Modern CI systems (GitHub Actions, GitLab CI) support parallel jobs natively. With Testcontainers, container startup (2-5 seconds) is amortized across the test file's execution time (often 30-60 seconds). This can reduce total integration test time from 10 minutes to 2-3 minutes. Use jest --maxWorkers=4 or vitest --pool=forks to control parallelism based on available CI resources."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement a test data factory that generates realistic but deterministic data. Use libraries like Faker.js with a fixed seed for reproducible random data, or build custom factories that create valid domain objects with sensible defaults. The factory should handle relationships (a valid Order requires a valid User and valid Products) without requiring tests to manually set up the entire object graph. Expose overrides for the specific fields each test cares about: createOrder({ status: 'cancelled', items: 3 }) handles all other fields automatically. This reduces test setup from 20 lines to 1 line while maintaining data validity."
+        },
+        {
+          "type": "paragraph",
+          "text": "Run E2E tests against a production-like environment, not the development server. E2E tests against localhost:3000 with hot-reload enabled miss issues caused by: production builds (minification, tree-shaking, code splitting), CDN caching, environment variables, CORS policies, and SSL/TLS. Build the application in production mode, serve it from a container matching your production infrastructure (nginx, CloudFront), and run E2E tests against that. This catches \"works in dev, breaks in prod\" issues before they reach users. Use Docker Compose to orchestrate the full stack (frontend, backend, database, cache) for E2E test environments."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor E2E test execution time and set performance budgets. E2E tests that take 30+ minutes block deployment velocity. Track execution time per test and per suite over time. Set budgets: individual tests should complete in under 30 seconds, the full E2E suite in under 10 minutes. When tests exceed budgets, investigate: are they waiting unnecessarily (replace sleep with explicit waits), loading too much data (reduce seed data), or testing too many steps (split into focused tests). Consider running E2E tests in parallel across multiple CI machines using Playwright's sharding (--shard=1/4) to maintain fast feedback even as the suite grows."
+        }
+      ],
+      "wordCount": 375,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "API & Contract Testing — REST, GraphQL, and gRPC testing with Pact consumer-driven contracts",
+            "Integration Testing Fundamentals — Core integration testing strategies and patterns",
+            "Unit Testing — Fast isolated tests that complement integration and E2E tests",
+            "Docker Fundamentals — Container basics underlying Testcontainers",
+            "CI/CD Pipelines — Running integration and E2E tests in continuous integration"
+          ]
+        }
+      ],
+      "wordCount": 54,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';\nimport { Pool } from 'pg';\nimport { migrate } from '../migrations';\nimport { UserRepository } from '../repositories/user-repository';\n\ndescribe('UserRepository Integration Tests', () => {\n  let container: StartedPostgreSqlContainer;\n  let pool: Pool;\n  let repository: UserRepository;\n\n  beforeAll(async () => {\n    // Start a real PostgreSQL container — takes 2-5 seconds\n    container = await new PostgreSqlContainer('postgres:16-alpine')\n      .withDatabase('testdb')\n      .withUsername('test')\n      .withPassword('test')\n      .withExposedPorts(5432)\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: container.getDatabase(),\n      user: container.getUsername(),\n      password: container.getPassword()\n    });\n\n    // Run migrations against the test database\n    await migrate(pool);\n    repository = new UserRepository(pool);\n  }, 30000); // 30s timeout for container startup\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  // Transaction rollback pattern — each test is isolated\n  let client: PoolClient;\n  beforeEach(async () => {\n    client = await pool.connect();\n    await client.query('BEGIN');\n    repository = new UserRepository(client); // Use transaction client\n  });\n\n  afterEach(async () => {\n    await client.query('ROLLBACK');\n    client.release();\n  });\n\n  it('should create a user with all fields persisted correctly', async () => {\n    const user = await repository.create({\n      email: 'test@example.com',\n      name: 'Test User',\n      role: 'admin',\n      preferences: { theme: 'dark', language: 'en' }\n    });\n\n    expect(user.id).toBeDefined();\n    expect(user.email).toBe('test@example.com');\n    expect(user.createdAt).toBeInstanceOf(Date);\n\n    // Verify by reading back from database\n    const found = await repository.findById(user.id);\n    expect(found).toEqual(user);\n    expect(found.preferences).toEqual({ theme: 'dark', language: 'en' });\n  });\n\n  it('should enforce unique email constraint', async () => {\n    await repository.create({ email: 'duplicate@test.com', name: 'First', role: 'user' });\n\n    await expect(\n      repository.create({ email: 'duplicate@test.com', name: 'Second', role: 'user' })\n    ).rejects.toThrow('User with this email already exists');\n  });\n\n  it('should handle concurrent updates with optimistic locking', async () => {\n    const user = await repository.create({ email: 'lock@test.com', name: 'Lock Test', role: 'user' });\n\n    // Simulate two concurrent reads\n    const version1 = await repository.findById(user.id);\n    const version2 = await repository.findById(user.id);\n\n    // First update succeeds\n    await repository.update(user.id, { name: 'Updated' }, version1.version);\n\n    // Second update fails — version mismatch\n    await expect(\n      repository.update(user.id, { name: 'Conflict' }, version2.version)\n    ).rejects.toThrow('Optimistic lock conflict');\n  });\n\n  it('should paginate results with correct total count', async () => {\n    // Seed 25 users\n    for (let i = 0; i < 25; i++) {\n      await repository.create({ email: `user${i}@test.com`, name: `User ${i}`, role: 'user' });\n    }\n\n    const page1 = await repository.findAll({ page: 1, pageSize: 10 });\n    expect(page1.data).toHaveLength(10);\n    expect(page1.total).toBe(25);\n    expect(page1.hasMore).toBe(true);\n\n    const page3 = await repository.findAll({ page: 3, pageSize: 10 });\n    expect(page3.data).toHaveLength(5);\n    expect(page3.hasMore).toBe(false);\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import org.junit.jupiter.api.Test;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\n\n@SpringBootTest\n@Testcontainers\nclass OrderRepositoryIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n        .withDatabaseName(\"orders_test\")\n        .withUsername(\"test\")\n        .withPassword(\"test\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Autowired\n    private TestEntityManager entityManager;\n\n    @Test\n    void shouldCalculateOrderTotalWithDiscounts() {\n        // Arrange — using test data builder\n        Order order = OrderBuilder.anOrder()\n            .withItem(\"Widget\", 10.00, 3)\n            .withItem(\"Gadget\", 25.00, 1)\n            .withDiscount(DiscountType.PERCENTAGE, 10)\n            .build();\n\n        entityManager.persistAndFlush(order);\n        entityManager.clear(); // Force reload from DB\n\n        // Act\n        OrderSummary summary = orderRepository.calculateSummary(order.getId());\n\n        // Assert\n        assertThat(summary.getSubtotal()).isEqualByComparingTo(\"55.00\");\n        assertThat(summary.getDiscount()).isEqualByComparingTo(\"5.50\");\n        assertThat(summary.getTotal()).isEqualByComparingTo(\"49.50\");\n    }\n\n    @Test\n    void shouldFindOrdersByDateRangeWithJoins() {\n        // Tests complex SQL with joins, date filtering, and aggregation\n        LocalDate today = LocalDate.now();\n        createOrdersForDateRange(today.minusDays(30), today);\n\n        List<OrderReport> report = orderRepository.getWeeklyReport(\n            today.minusDays(7), today\n        );\n\n        assertThat(report).hasSize(7); // One entry per day\n        assertThat(report).allSatisfy(entry -> {\n            assertThat(entry.getOrderCount()).isGreaterThanOrEqualTo(0);\n            assertThat(entry.getRevenue()).isNotNegative();\n        });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { test, expect, Page } from '@playwright/test';\n\n// Page Object — encapsulates page interactions\nclass CheckoutPage {\n  constructor(private page: Page) {}\n\n  async fillShippingAddress(address: ShippingAddress) {\n    await this.page.getByLabel('Full Name').fill(address.name);\n    await this.page.getByLabel('Street Address').fill(address.street);\n    await this.page.getByLabel('City').fill(address.city);\n    await this.page.getByLabel('State').selectOption(address.state);\n    await this.page.getByLabel('ZIP Code').fill(address.zip);\n  }\n\n  async selectShippingMethod(method: 'standard' | 'express' | 'overnight') {\n    await this.page.getByRole('radio', { name: new RegExp(method, 'i') }).check();\n  }\n\n  async fillPaymentDetails(payment: PaymentDetails) {\n    // Payment is in an iframe\n    const frame = this.page.frameLocator('[data-testid=\"payment-frame\"]');\n    await frame.getByLabel('Card Number').fill(payment.cardNumber);\n    await frame.getByLabel('Expiry').fill(payment.expiry);\n    await frame.getByLabel('CVC').fill(payment.cvc);\n  }\n\n  async placeOrder() {\n    await this.page.getByRole('button', { name: 'Place Order' }).click();\n    await this.page.waitForURL(/\\/order-confirmation\\//);\n  }\n\n  async getOrderConfirmation(): Promise<{ orderId: string; total: string }> {\n    const orderId = await this.page.getByTestId('order-id').textContent();\n    const total = await this.page.getByTestId('order-total').textContent();\n    return { orderId: orderId!, total: total! };\n  }\n\n  async getValidationErrors(): Promise<string[]> {\n    const errors = this.page.locator('[role=\"alert\"]');\n    return errors.allTextContents();\n  }\n}\n\nclass ProductPage {\n  constructor(private page: Page) {}\n\n  async addToCart(productName: string, quantity = 1) {\n    const product = this.page.locator(`[data-product-name=\"${productName}\"]`);\n    if (quantity > 1) {\n      await product.getByLabel('Quantity').fill(String(quantity));\n    }\n    await product.getByRole('button', { name: 'Add to Cart' }).click();\n    // Wait for cart badge to update\n    await expect(this.page.getByTestId('cart-count')).not.toHaveText('0');\n  }\n\n  async goToCheckout() {\n    await this.page.getByRole('link', { name: 'Checkout' }).click();\n    await this.page.waitForURL('/checkout');\n  }\n}\n\n// E2E Test — Critical User Journey\ntest.describe('Checkout Flow', () => {\n  let productPage: ProductPage;\n  let checkoutPage: CheckoutPage;\n\n  test.beforeEach(async ({ page }) => {\n    productPage = new ProductPage(page);\n    checkoutPage = new CheckoutPage(page);\n    // Seed test data via API\n    await page.request.post('/api/test/seed-products');\n    await page.goto('/products');\n  });\n\n  test('complete purchase with standard shipping', async ({ page }) => {\n    // Add items to cart\n    await productPage.addToCart('Wireless Headphones', 1);\n    await productPage.addToCart('USB-C Cable', 2);\n    await productPage.goToCheckout();\n\n    // Fill checkout form\n    await checkoutPage.fillShippingAddress({\n      name: 'Jane Smith',\n      street: '123 Main St',\n      city: 'Portland',\n      state: 'OR',\n      zip: '97201'\n    });\n    await checkoutPage.selectShippingMethod('standard');\n    await checkoutPage.fillPaymentDetails({\n      cardNumber: '4242424242424242',\n      expiry: '12/28',\n      cvc: '123'\n    });\n\n    // Place order\n    await checkoutPage.placeOrder();\n\n    // Verify confirmation\n    const confirmation = await checkoutPage.getOrderConfirmation();\n    expect(confirmation.orderId).toMatch(/^ORD-[A-Z0-9]+$/);\n    expect(confirmation.total).toContain('$');\n\n    // Verify order appears in order history\n    await page.goto('/account/orders');\n    await expect(page.getByText(confirmation.orderId)).toBeVisible();\n  });\n\n  test('shows validation errors for incomplete form', async ({ page }) => {\n    await productPage.addToCart('Wireless Headphones');\n    await productPage.goToCheckout();\n\n    // Try to place order without filling form\n    await page.getByRole('button', { name: 'Place Order' }).click();\n\n    const errors = await checkoutPage.getValidationErrors();\n    expect(errors).toContain('Full name is required');\n    expect(errors).toContain('Street address is required');\n    expect(errors).toContain('Payment details are required');\n  });\n});\n\n// Visual Regression Test\ntest.describe('Visual Regression', () => {\n  test('product listing page matches snapshot', async ({ page }) => {\n    await page.goto('/products');\n    await page.waitForLoadState('networkidle');\n\n    // Full page screenshot comparison\n    await expect(page).toHaveScreenshot('product-listing.png', {\n      maxDiffPixelRatio: 0.01, // Allow 1% pixel difference\n      animations: 'disabled'\n    });\n  });\n\n  test('checkout form states', async ({ page }) => {\n    await page.goto('/checkout');\n\n    // Empty state\n    await expect(page.locator('.checkout-form')).toHaveScreenshot('checkout-empty.png');\n\n    // Error state\n    await page.getByRole('button', { name: 'Place Order' }).click();\n    await expect(page.locator('.checkout-form')).toHaveScreenshot('checkout-errors.png');\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// cypress/e2e/authentication.cy.ts\ndescribe('Authentication Flow', () => {\n  beforeEach(() => {\n    cy.task('db:seed'); // Seed test database\n    cy.visit('/login');\n  });\n\n  it('logs in with valid credentials and redirects to dashboard', () => {\n    cy.getByTestId('email-input').type('user@example.com');\n    cy.getByTestId('password-input').type('SecurePass123!');\n    cy.getByTestId('login-button').click();\n\n    // Should redirect to dashboard\n    cy.url().should('include', '/dashboard');\n    cy.getByTestId('welcome-message').should('contain', 'Welcome back');\n\n    // Session should persist across page reload\n    cy.reload();\n    cy.url().should('include', '/dashboard');\n    cy.getByTestId('welcome-message').should('be.visible');\n  });\n\n  it('shows error for invalid credentials without exposing details', () => {\n    cy.getByTestId('email-input').type('user@example.com');\n    cy.getByTestId('password-input').type('WrongPassword');\n    cy.getByTestId('login-button').click();\n\n    // Generic error message — don't reveal if email exists\n    cy.getByTestId('error-message')\n      .should('contain', 'Invalid email or password');\n\n    // Should not redirect\n    cy.url().should('include', '/login');\n  });\n\n  it('locks account after 5 failed attempts', () => {\n    for (let i = 0; i < 5; i++) {\n      cy.getByTestId('email-input').clear().type('user@example.com');\n      cy.getByTestId('password-input').clear().type(`wrong${i}`);\n      cy.getByTestId('login-button').click();\n    }\n\n    cy.getByTestId('error-message')\n      .should('contain', 'Account locked. Please try again in 15 minutes.');\n\n    // Even correct password should fail\n    cy.getByTestId('email-input').clear().type('user@example.com');\n    cy.getByTestId('password-input').clear().type('SecurePass123!');\n    cy.getByTestId('login-button').click();\n    cy.getByTestId('error-message').should('contain', 'Account locked');\n  });\n});\n\n// Cypress API testing\ndescribe('API Integration', () => {\n  it('creates a resource and verifies database state', () => {\n    cy.request({\n      method: 'POST',\n      url: '/api/products',\n      headers: { Authorization: `Bearer ${Cypress.env('API_TOKEN')}` },\n      body: {\n        name: 'New Product',\n        price: 29.99,\n        category: 'electronics'\n      }\n    }).then((response) => {\n      expect(response.status).to.eq(201);\n      expect(response.body.id).to.be.a('string');\n      expect(response.body.createdAt).to.be.a('string');\n\n      // Verify via GET\n      cy.request(`/api/products/${response.body.id}`).then((getResponse) => {\n        expect(getResponse.body.name).to.eq('New Product');\n        expect(getResponse.body.price).to.eq(29.99);\n      });\n    });\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { PostgreSqlContainer } from '@testcontainers/postgresql';\nimport { Pool } from 'pg';\nimport { readdir, readFile } from 'fs/promises';\nimport { join } from 'path';\n\ndescribe('Database Migration Tests', () => {\n  let container: StartedPostgreSqlContainer;\n  let pool: Pool;\n\n  beforeAll(async () => {\n    container = await new PostgreSqlContainer('postgres:16-alpine').start();\n    pool = new Pool({ connectionString: container.getConnectionUri() });\n  }, 30000);\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  it('all migrations apply cleanly in sequence', async () => {\n    const migrationsDir = join(__dirname, '../../migrations');\n    const files = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.up.sql'))\n      .sort();\n\n    for (const file of files) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await expect(pool.query(sql)).resolves.not.toThrow();\n    }\n\n    // Verify final schema has expected tables\n    const tables = await pool.query(`\n      SELECT table_name FROM information_schema.tables\n      WHERE table_schema = 'public' ORDER BY table_name\n    `);\n    expect(tables.rows.map(r => r.table_name)).toContain('users');\n    expect(tables.rows.map(r => r.table_name)).toContain('orders');\n    expect(tables.rows.map(r => r.table_name)).toContain('products');\n  });\n\n  it('migrations are reversible — up then down returns to clean state', async () => {\n    const migrationsDir = join(__dirname, '../../migrations');\n    const upFiles = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.up.sql')).sort();\n    const downFiles = (await readdir(migrationsDir))\n      .filter(f => f.endsWith('.down.sql')).sort().reverse();\n\n    // Apply all up migrations\n    for (const file of upFiles) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await pool.query(sql);\n    }\n\n    // Apply all down migrations in reverse\n    for (const file of downFiles) {\n      const sql = await readFile(join(migrationsDir, file), 'utf-8');\n      await expect(pool.query(sql)).resolves.not.toThrow();\n    }\n\n    // Verify no tables remain\n    const tables = await pool.query(`\n      SELECT table_name FROM information_schema.tables\n      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'\n    `);\n    expect(tables.rows).toHaveLength(0);\n  });\n\n  it('migration handles existing data correctly', async () => {\n    // Apply migrations up to the one before the change\n    await applyMigrationsUpTo(pool, '003_add_users_table');\n\n    // Insert test data representing production state\n    await pool.query(`\n      INSERT INTO users (id, email, name) VALUES\n      ('u1', 'alice@test.com', 'Alice'),\n      ('u2', 'bob@test.com', 'Bob'),\n      ('u3', NULL, 'Charlie')\n    `);\n\n    // Apply the migration that adds NOT NULL constraint with default\n    await applyMigration(pool, '004_add_email_not_null');\n\n    // Verify existing data was handled (NULL emails get default)\n    const result = await pool.query('SELECT email FROM users WHERE id = $1', ['u3']);\n    expect(result.rows[0].email).toBe('unknown@placeholder.com');\n\n    // Verify constraint is enforced for new inserts\n    await expect(\n      pool.query(\"INSERT INTO users (id, name) VALUES ('u4', 'Dave')\")\n    ).rejects.toThrow(/null value in column \"email\"/);\n  });\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/integration-testing/database-and-e2e.md",
+    "wordCount": 2469,
+    "sectionCount": 14
+  }
+}

@@ -1,0 +1,653 @@
+# Modern State Management Alternatives
+
+## Quick Reference
+
+- **Zustand** creates stores as hooks with zero boilerplate — no providers, no context wrappers, no action types. A store is a function returning state and actions, consumed via `useStore(selector)`
+- **Jotai** provides atomic state — each atom is an independent reactive unit. Components subscribe to individual atoms, eliminating unnecessary re-renders without manual selector optimization
+- **Valtio** uses JavaScript Proxies for transparent reactivity — mutate state directly (`state.count++`) and subscribed components re-render automatically, similar to Vue's reactivity
+- **Recoil** (Meta) introduces atoms and selectors with React Suspense integration — derived state automatically tracks dependencies and recomputes only when upstream atoms change
+- **Signals** (Preact/Solid/Angular) provide fine-grained reactivity at the variable level — updates bypass the virtual DOM diffing entirely, updating only the specific DOM nodes that reference the signal
+- Zustand stores are framework-agnostic at their core — the same store logic works in React, vanilla JS, and Node.js without modification
+- All lightweight libraries share a philosophy: minimal API surface, TypeScript-first, tree-shakable, and no unnecessary abstractions or boilerplate
+- Bundle sizes: Zustand ~1.1KB, Jotai ~2.4KB, Valtio ~1.3KB vs Redux Toolkit ~11KB (all gzipped) — significant for performance-critical applications
+- Zustand, Jotai, and Valtio are maintained by the same team (pmndrs/Daishi Kato) and share design philosophies but solve different problems
+
+## When to Use
+
+Modern state management libraries excel in specific contexts. Choose them over Redux when:
+
+- Building small to medium applications (5-30 routes) where Redux's ceremony (actions, reducers, selectors, middleware, DevTools setup) adds complexity without proportional benefit to the team
+- Managing a handful of global state concerns (auth, theme, user preferences, shopping cart, notifications) that don't require complex async orchestration or time-travel debugging
+- Working on teams that value simplicity and fast onboarding — Zustand's entire API can be learned in 10 minutes versus Redux's multi-hour learning curve with middleware, thunks, and normalized state
+- Building component libraries or micro-frontends that need self-contained state without imposing a specific state management architecture on host applications
+- Optimizing bundle size for performance-critical applications where every kilobyte matters — Zustand at 1.1KB gzipped is 10x smaller than Redux Toolkit
+- Prototyping or building MVPs where development speed matters more than architectural rigor — less boilerplate means faster iteration
+- Working with React Server Components where traditional context-based solutions (Redux Provider) conflict with the server/client boundary
+
+### Decision Matrix: Which Library to Choose
+
+| Criteria | Zustand | Jotai | Valtio | Redux Toolkit |
+|----------|---------|-------|--------|---------------|
+| Learning curve | 10 min | 20 min | 15 min | 2-4 hours |
+| Bundle size (gzip) | 1.1KB | 2.4KB | 1.3KB | 11KB |
+| Boilerplate | Minimal | Minimal | None | Moderate |
+| DevTools | Redux DevTools | Custom | Valtio DevTools | Full Redux DevTools |
+| TypeScript | Excellent | Excellent | Good | Excellent |
+| SSR support | Good | Excellent | Tricky | Excellent |
+| Time-travel debug | Via middleware | No | Via devtools | Built-in |
+| Best for | General purpose | Atomic/derived state | Mutable mental model | Large teams/apps |
+
+## Code Examples
+
+### Zustand — Store Creation and Usage
+
+```typescript
+import { create } from 'zustand';
+import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
+
+// Types
+interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+interface CartState {
+  items: CartItem[];
+  couponCode: string | null;
+  discountPercent: number;
+}
+
+interface CartActions {
+  addItem: (product: Omit<CartItem, 'quantity'>) => void;
+  removeItem: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void;
+  applyCoupon: (code: string) => Promise<void>;
+  clearCart: () => void;
+  // Computed (derived state via getters)
+  getTotal: () => number;
+  getItemCount: () => number;
+}
+
+type CartStore = CartState & CartActions;
+
+// Store with middleware composition
+export const useCartStore = create<CartStore>()(
+  devtools(
+    persist(
+      immer((set, get) => ({
+        // State
+        items: [],
+        couponCode: null,
+        discountPercent: 0,
+
+        // Actions — immer middleware allows direct mutation syntax
+        addItem: (product) => set((state) => {
+          const existing = state.items.find(i => i.id === product.id);
+          if (existing) {
+            existing.quantity += 1;
+          } else {
+            state.items.push({ ...product, quantity: 1 });
+          }
+        }),
+
+        removeItem: (id) => set((state) => {
+          state.items = state.items.filter(i => i.id !== id);
+        }),
+
+        updateQuantity: (id, quantity) => set((state) => {
+          const item = state.items.find(i => i.id === id);
+          if (item) {
+            if (quantity <= 0) {
+              state.items = state.items.filter(i => i.id !== id);
+            } else {
+              item.quantity = quantity;
+            }
+          }
+        }),
+
+        applyCoupon: async (code) => {
+          const response = await fetch(`/api/coupons/validate`, {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (response.ok) {
+            const { discount } = await response.json();
+            set({ couponCode: code, discountPercent: discount });
+          } else {
+            throw new Error('Invalid coupon code');
+          }
+        },
+
+        clearCart: () => set({ items: [], couponCode: null, discountPercent: 0 }),
+
+        // Derived state as methods
+        getTotal: () => {
+          const { items, discountPercent } = get();
+          const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+          return subtotal * (1 - discountPercent / 100);
+        },
+
+        getItemCount: () => {
+          return get().items.reduce((sum, item) => sum + item.quantity, 0);
+        }
+      })),
+      {
+        name: 'cart-storage',
+        partialize: (state) => ({
+          items: state.items,
+          couponCode: state.couponCode,
+          discountPercent: state.discountPercent
+        })
+      }
+    ),
+    { name: 'CartStore' }
+  )
+);
+
+// Usage in components — selector prevents re-renders from unrelated state changes
+function CartBadge() {
+  const itemCount = useCartStore(state => state.getItemCount());
+  return <span className="badge">{itemCount}</span>;
+}
+
+function CartTotal() {
+  const total = useCartStore(state => state.getTotal());
+  const discount = useCartStore(state => state.discountPercent);
+  return (
+    <div>
+      <span>${total.toFixed(2)}</span>
+      {discount > 0 && <span className="discount">-{discount}%</span>}
+    </div>
+  );
+}
+
+// Subscribe to state changes outside React
+const unsubscribe = useCartStore.subscribe(
+  (state) => state.items.length,
+  (itemCount, previousCount) => {
+    if (itemCount === 0 && previousCount > 0) {
+      analytics.track('cart_emptied');
+    }
+  }
+);
+```
+
+### Jotai — Atomic State Management
+
+```typescript
+import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { atomWithStorage, atomWithQuery, atomFamily } from 'jotai/utils';
+import { focusAtom } from 'jotai-optics';
+
+// Primitive atoms — independent pieces of state
+const userAtom = atom<User | null>(null);
+const themeAtom = atomWithStorage<'light' | 'dark'>('theme', 'light');
+const sidebarOpenAtom = atom(true);
+
+// Derived atom — automatically recomputes when dependencies change
+const isAuthenticatedAtom = atom((get) => get(userAtom) !== null);
+
+const userDisplayNameAtom = atom((get) => {
+  const user = get(userAtom);
+  if (!user) return 'Guest';
+  return `${user.firstName} ${user.lastName}`;
+});
+
+// Writable derived atom — read from one source, write to another
+const temperatureAtom = atom(72); // Fahrenheit
+const celsiusAtom = atom(
+  (get) => ((get(temperatureAtom) - 32) * 5) / 9,
+  (get, set, newCelsius: number) => {
+    set(temperatureAtom, (newCelsius * 9) / 5 + 32);
+  }
+);
+
+// Async atom — integrates with React Suspense
+const userProfileAtom = atom(async (get) => {
+  const user = get(userAtom);
+  if (!user) return null;
+  const response = await fetch(`/api/users/${user.id}/profile`);
+  return response.json();
+});
+
+// Atom family — parameterized atoms for collections
+const todoAtomFamily = atomFamily((id: string) =>
+  atom(async () => {
+    const response = await fetch(`/api/todos/${id}`);
+    return response.json();
+  })
+);
+
+// Complex derived state — todo list with filters
+const todosAtom = atom<Todo[]>([]);
+const filterAtom = atom<'all' | 'active' | 'completed'>('all');
+const searchAtom = atom('');
+
+const filteredTodosAtom = atom((get) => {
+  const todos = get(todosAtom);
+  const filter = get(filterAtom);
+  const search = get(searchAtom).toLowerCase();
+
+  return todos
+    .filter(todo => {
+      if (filter === 'active') return !todo.completed;
+      if (filter === 'completed') return todo.completed;
+      return true;
+    })
+    .filter(todo =>
+      search ? todo.title.toLowerCase().includes(search) : true
+    );
+});
+
+const todoStatsAtom = atom((get) => {
+  const todos = get(todosAtom);
+  return {
+    total: todos.length,
+    completed: todos.filter(t => t.completed).length,
+    active: todos.filter(t => !t.completed).length
+  };
+});
+
+// Usage in components
+function TodoList() {
+  const filteredTodos = useAtomValue(filteredTodosAtom);
+  const setTodos = useSetAtom(todosAtom);
+
+  const toggleTodo = (id: string) => {
+    setTodos(prev => prev.map(t =>
+      t.id === id ? { ...t, completed: !t.completed } : t
+    ));
+  };
+
+  return (
+    <ul>
+      {filteredTodos.map(todo => (
+        <TodoItem key={todo.id} todo={todo} onToggle={toggleTodo} />
+      ))}
+    </ul>
+  );
+}
+
+function TodoFilters() {
+  const [filter, setFilter] = useAtom(filterAtom);
+  const stats = useAtomValue(todoStatsAtom);
+
+  return (
+    <div>
+      <button onClick={() => setFilter('all')}>All ({stats.total})</button>
+      <button onClick={() => setFilter('active')}>Active ({stats.active})</button>
+      <button onClick={() => setFilter('completed')}>Done ({stats.completed})</button>
+    </div>
+  );
+}
+```
+
+### Valtio — Proxy-Based Reactivity
+
+```typescript
+import { proxy, useSnapshot, subscribe, ref, derive } from 'valtio';
+import { proxyWithHistory } from 'valtio-history';
+import { devtools } from 'valtio/utils';
+
+// State is a plain mutable object wrapped in a proxy
+interface AppState {
+  user: User | null;
+  notifications: Notification[];
+  settings: {
+    theme: 'light' | 'dark';
+    language: string;
+    notifications: boolean;
+  };
+  // ref() marks values that shouldn't be proxied (DOM elements, class instances)
+  wsConnection: WebSocket | null;
+}
+
+const state = proxy<AppState>({
+  user: null,
+  notifications: [],
+  settings: {
+    theme: 'light',
+    language: 'en',
+    notifications: true
+  },
+  wsConnection: null
+});
+
+// Actions — just mutate the proxy directly
+const actions = {
+  login: async (credentials: LoginCredentials) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const user = await response.json();
+    state.user = user; // Direct mutation triggers re-renders
+  },
+
+  logout: () => {
+    state.user = null;
+    state.notifications = [];
+  },
+
+  addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => {
+    state.notifications.push({
+      ...notification,
+      id: crypto.randomUUID(),
+      timestamp: Date.now()
+    });
+  },
+
+  dismissNotification: (id: string) => {
+    const index = state.notifications.findIndex(n => n.id === id);
+    if (index !== -1) {
+      state.notifications.splice(index, 1);
+    }
+  },
+
+  updateSettings: (updates: Partial<AppState['settings']>) => {
+    Object.assign(state.settings, updates);
+  }
+};
+
+// Derived state — automatically tracks dependencies
+const derived = derive({
+  unreadCount: (get) => get(state).notifications.filter(n => !n.read).length,
+  isAuthenticated: (get) => get(state).user !== null,
+  displayName: (get) => {
+    const user = get(state).user;
+    return user ? `${user.firstName} ${user.lastName}` : 'Guest';
+  }
+});
+
+// Subscribe to changes outside React
+subscribe(state.notifications, () => {
+  // Persist notifications to localStorage
+  localStorage.setItem('notifications', JSON.stringify(state.notifications));
+});
+
+// Usage in components — useSnapshot creates a read-only snapshot
+function UserProfile() {
+  const snap = useSnapshot(state);
+
+  // snap is deeply read-only — TypeScript prevents accidental mutations
+  // snap.user.name = 'test'; // TypeScript error!
+
+  if (!snap.user) return <LoginPrompt />;
+
+  return (
+    <div>
+      <h2>{snap.user.firstName} {snap.user.lastName}</h2>
+      <p>{snap.user.email}</p>
+      <button onClick={actions.logout}>Logout</button>
+    </div>
+  );
+}
+
+function NotificationBell() {
+  const snap = useSnapshot(derived);
+  return (
+    <button className="notification-bell">
+      🔔 {snap.unreadCount > 0 && <span>{snap.unreadCount}</span>}
+    </button>
+  );
+}
+
+// Valtio with undo/redo history
+const documentState = proxyWithHistory({
+  title: '',
+  content: '',
+  tags: [] as string[]
+});
+
+function DocumentEditor() {
+  const snap = useSnapshot(documentState);
+
+  return (
+    <div>
+      <input
+        value={snap.value.title}
+        onChange={e => { documentState.value.title = e.target.value; }}
+      />
+      <textarea
+        value={snap.value.content}
+        onChange={e => { documentState.value.content = e.target.value; }}
+      />
+      <button onClick={documentState.undo} disabled={!snap.canUndo}>Undo</button>
+      <button onClick={documentState.redo} disabled={!snap.canRedo}>Redo</button>
+    </div>
+  );
+}
+```
+
+### Signals — Fine-Grained Reactivity (Preact/Angular)
+
+```typescript
+// Preact Signals
+import { signal, computed, effect, batch } from '@preact/signals-react';
+
+// Signals are reactive primitives — .value triggers subscriptions
+const count = signal(0);
+const doubled = computed(() => count.value * 2);
+const items = signal<Item[]>([]);
+
+// Effects run when their dependencies change
+effect(() => {
+  console.log(`Count is now: ${count.value}`);
+  document.title = `Count: ${count.value}`;
+});
+
+// Batch multiple updates into a single re-render
+function resetAll() {
+  batch(() => {
+    count.value = 0;
+    items.value = [];
+  });
+}
+
+// Signals in React components — no hooks needed for reading
+function Counter() {
+  // Signal value directly in JSX — component doesn't re-render,
+  // only the text node updates
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <p>Doubled: {doubled}</p>
+      <button onClick={() => count.value++}>Increment</button>
+    </div>
+  );
+}
+
+// Angular Signals (Angular 16+)
+import { signal, computed, effect } from '@angular/core';
+
+@Component({
+  selector: 'app-counter',
+  template: `
+    <p>Count: {{ count() }}</p>
+    <p>Doubled: {{ doubled() }}</p>
+    <button (click)="increment()">Increment</button>
+  `
+})
+export class CounterComponent {
+  count = signal(0);
+  doubled = computed(() => this.count() * 2);
+
+  constructor() {
+    effect(() => {
+      console.log(`Count changed to: ${this.count()}`);
+    });
+  }
+
+  increment() {
+    this.count.update(c => c + 1);
+    // or: this.count.set(this.count() + 1);
+  }
+}
+
+// Complex state with signals
+const todoState = {
+  todos: signal<Todo[]>([]),
+  filter: signal<'all' | 'active' | 'completed'>('all'),
+  search: signal(''),
+
+  // Computed values automatically track dependencies
+  filtered: computed(() => {
+    const todos = todoState.todos.value;
+    const filter = todoState.filter.value;
+    const search = todoState.search.value.toLowerCase();
+
+    return todos
+      .filter(t => {
+        if (filter === 'active') return !t.completed;
+        if (filter === 'completed') return t.completed;
+        return true;
+      })
+      .filter(t => !search || t.title.toLowerCase().includes(search));
+  }),
+
+  stats: computed(() => {
+    const todos = todoState.todos.value;
+    return {
+      total: todos.length,
+      active: todos.filter(t => !t.completed).length,
+      completed: todos.filter(t => t.completed).length
+    };
+  })
+};
+
+// Actions
+function addTodo(title: string) {
+  todoState.todos.value = [
+    ...todoState.todos.value,
+    { id: crypto.randomUUID(), title, completed: false }
+  ];
+}
+
+function toggleTodo(id: string) {
+  todoState.todos.value = todoState.todos.value.map(t =>
+    t.id === id ? { ...t, completed: !t.completed } : t
+  );
+}
+```
+
+
+## Architecture / Diagrams
+
+```mermaid
+graph TB
+    subgraph "Zustand Architecture"
+        S[Store Function] --> ST[State Object]
+        S --> A[Actions]
+        C1[Component A] -->|selector| ST
+        C2[Component B] -->|selector| ST
+        A -->|set/get| ST
+        ST -->|notify subscribers| C1
+        ST -->|notify subscribers| C2
+    end
+```
+
+```mermaid
+graph TB
+    subgraph "Jotai Atom Graph"
+        PA1[Primitive Atom<br/>userAtom] --> DA1[Derived Atom<br/>isAuthenticatedAtom]
+        PA2[Primitive Atom<br/>todosAtom] --> DA2[Derived Atom<br/>filteredTodosAtom]
+        PA3[Primitive Atom<br/>filterAtom] --> DA2
+        DA2 --> DA3[Derived Atom<br/>todoStatsAtom]
+        PA1 --> DA4[Async Atom<br/>userProfileAtom]
+
+        C1[Component] -.->|subscribes| DA1
+        C2[Component] -.->|subscribes| DA2
+        C3[Component] -.->|subscribes| PA3
+    end
+```
+
+```mermaid
+graph LR
+    subgraph "Reactivity Models Compared"
+        direction TB
+        R[Redux<br/>Action → Reducer → New State<br/>Immutable, explicit] 
+        Z[Zustand<br/>set() → New State<br/>Immutable, implicit]
+        V[Valtio<br/>Mutate Proxy → Auto-detect<br/>Mutable, transparent]
+        S[Signals<br/>signal.value = x → DOM update<br/>Fine-grained, no VDOM diff]
+    end
+```
+
+```mermaid
+graph TB
+    subgraph "Signal Fine-Grained Updates"
+        SIG[signal count = 0] --> COMP[computed doubled]
+        SIG --> DOM1[DOM Text Node<br/>updates directly]
+        COMP --> DOM2[DOM Text Node<br/>updates directly]
+        
+        NOTE[No component re-render<br/>No virtual DOM diff<br/>Direct DOM mutation]
+    end
+```
+
+## Common Pitfalls
+
+**Using Zustand selectors incorrectly — selecting objects that create new references every render.** If your selector returns a new object or array on every call (`state => ({ a: state.a, b: state.b })`), the component re-renders on every state change because the reference is always new. Solutions: select primitive values individually, use `shallow` equality from `zustand/shallow` for object selectors, or use `useShallow` (Zustand 4.5+) which automatically applies shallow comparison. This is the most common performance issue in Zustand applications.
+
+**Mixing Valtio's proxy state with React's immutable mental model.** Developers accustomed to React's `setState` try to replace the entire state object (`state = newState`) instead of mutating properties (`state.count = newCount`). Replacing the proxy reference breaks all subscriptions. Similarly, spreading proxy state into a new object (`{...state, count: 5}`) creates a plain object that isn't reactive. Always mutate the original proxy's properties. Use `useSnapshot()` for reading (immutable) and the proxy directly for writing (mutable).
+
+**Creating atoms inside components with Jotai — causing infinite re-renders.** Atoms created inside a component body are recreated on every render, which Jotai treats as new atoms, triggering re-renders in a loop. Always define atoms at module scope (outside components) or memoize them with `useMemo`. The `atomFamily` utility handles parameterized atoms correctly by caching atom instances based on their parameter.
+
+**Overusing signals for state that doesn't need fine-grained reactivity.** Signals shine for frequently-updating values (animations, real-time data, counters) where avoiding component re-renders matters. For state that changes rarely (user preferences, auth status, feature flags), signals add complexity without measurable performance benefit. The mental model shift from React's component-level reactivity to signal-level reactivity can confuse team members unfamiliar with the pattern. Use signals strategically for hot paths, not as a wholesale replacement for useState.
+
+**Not handling server-side rendering (SSR) correctly with proxy-based libraries.** Valtio's proxies and Zustand's module-level stores create singletons that persist across requests in SSR environments (Next.js, Remix). This causes state leakage between users — one user's data appears for another user. Solutions: create stores per-request in SSR contexts, use Jotai's Provider (which scopes atoms to a React tree), or use Zustand's `createStore` (non-hook API) with React context for SSR-safe stores.
+
+**Choosing a library based on bundle size alone without considering ecosystem maturity.** Zustand at 1.1KB is tiny, but if you need middleware (persist, devtools, immer), the total grows. If you need data fetching (equivalent to RTK Query), you'll add TanStack Query (~12KB). The "lightweight" advantage diminishes when you account for the full feature set needed. Evaluate total solution size, not just the state library. Redux Toolkit's 11KB includes data fetching, caching, DevTools, and middleware that would require multiple additional libraries with lighter alternatives.
+
+## Real-World Use Cases
+
+**Design Tool with Zustand — Figma-like Canvas State.** A collaborative design tool uses Zustand to manage canvas state: selected elements, zoom level, pan position, tool mode, and layer visibility. The store uses `immer` middleware for complex nested updates (moving elements within groups, updating style properties deep in the tree). `subscribeWithSelector` watches for selection changes and syncs with a properties panel. The canvas renders thousands of elements but only re-renders the toolbar and properties panel when selection changes — Zustand's selector-based subscriptions prevent the canvas from re-rendering on every state change. Undo/redo is implemented with a custom middleware that captures state snapshots on significant actions (not every pixel of a drag operation).
+
+**Analytics Dashboard with Jotai — Independent Widget State.** A customizable analytics dashboard where each widget (chart, table, KPI card) has independent data sources, refresh intervals, and filter states. Each widget's configuration is an atom, and derived atoms compute the filtered/aggregated data for display. When a global date range filter changes, only widgets that depend on that atom recompute and re-render — widgets with fixed date ranges are unaffected. Async atoms handle data fetching with React Suspense, showing loading skeletons per-widget rather than blocking the entire dashboard. Users can add/remove widgets dynamically using `atomFamily` to create widget atoms on demand.
+
+**Real-Time Collaboration with Valtio — Shared Document State.** A real-time document editor uses Valtio's proxy state to represent the document structure (paragraphs, formatting, comments). When a remote user makes a change, the server sends a patch that's applied directly to the proxy (`state.paragraphs[2].text = 'updated'`), and only components rendering that paragraph re-render. Valtio's `subscribe` function watches for local changes and sends them to the server as operational transforms. The mutable API makes applying CRDT operations natural — no need to construct immutable update paths for deeply nested document structures. `proxyWithHistory` provides local undo/redo without additional implementation.
+
+**E-Commerce with Signals — High-Frequency Price Updates.** A stock trading or auction platform displays hundreds of items with prices that update multiple times per second via WebSocket. Using signals, each price is a `signal<number>` that updates independently. The price display in the DOM updates directly without triggering React component re-renders or virtual DOM diffing. This handles thousands of updates per second without frame drops, which would be impossible with traditional React state (each setState triggers reconciliation). Computed signals derive formatted prices, percentage changes, and trend indicators that update only when their specific input signal changes.
+
+## Interview Questions
+
+**Q: Compare Zustand, Jotai, and Valtio. When would you choose each?**
+
+A: All three are from the same team (pmndrs) but solve different problems. **Zustand** is a general-purpose store — think of it as "Redux without the boilerplate." Choose it when you want a single store with actions and selectors, familiar patterns for Redux developers, and middleware support (persist, devtools). Best for: most applications, especially those migrating from Redux. **Jotai** is atomic state — think of it as "React useState that can be shared." Choose it when state is naturally independent pieces (not one big object), you want automatic dependency tracking for derived state, or you need React Suspense integration for async data. Best for: applications with many independent state pieces, dashboards with independent widgets. **Valtio** is proxy-based — think of it as "Vue reactivity in React." Choose it when you prefer mutable APIs, have deeply nested state that's painful to update immutably, or are building real-time collaborative features where applying patches to mutable state is natural. Best for: complex nested state, real-time applications, developers from Vue/MobX backgrounds.
+
+**Q: What are signals and how do they differ from React's state model? What are the tradeoffs?**
+
+A: React's state model is component-centric: when state changes, the entire component function re-executes, produces new JSX, and React diffs the virtual DOM to find what changed in the actual DOM. Signals are value-centric: a signal is a reactive variable that knows which DOM nodes reference it. When a signal's value changes, it updates those specific DOM nodes directly — no component re-render, no virtual DOM diff, no reconciliation. Tradeoffs favoring signals: dramatically better performance for frequently-updating values (real-time data, animations), simpler mental model for derived state (computed signals auto-track dependencies). Tradeoffs favoring React's model: better ecosystem support, more predictable rendering behavior (component boundaries are clear), easier debugging (you can log in the component body to see re-renders), and React's concurrent features (Suspense, transitions) are designed around the component re-render model. Signals are gaining adoption (Angular 16+, Solid, Preact) but remain experimental in React's ecosystem.
+
+**Q: How do you handle server-side rendering with modern state management libraries?**
+
+A: SSR introduces the "singleton problem" — module-level stores (Zustand, Valtio) persist across requests on the server, leaking state between users. Solutions vary by library: **Zustand**: Use `createStore` (non-hook API) and pass the store via React context, creating a new store per request. Or use the `zustand/traditional` API with `createWithEqualityFn`. **Jotai**: Naturally SSR-safe because atoms are scoped to a Provider. Each request gets its own Provider with fresh atom values. Use `useHydrateAtoms` to initialize atoms with server-fetched data. **Valtio**: Most challenging for SSR — create proxy state inside a request handler and pass via context, or use `snapshot` to serialize state for hydration. **General pattern**: Initialize state on the server, serialize to JSON, embed in HTML, and hydrate on the client. Ensure no references to browser APIs (window, localStorage) during server-side store creation.
+
+**Q: How would you migrate a large Redux application to Zustand incrementally?**
+
+A: Incremental migration avoids a risky big-bang rewrite. Strategy: (1) Start with leaf slices that have few cross-slice dependencies — convert one Redux slice to a Zustand store while keeping the rest in Redux. (2) For the transition period, both stores coexist. If Zustand state needs Redux state, subscribe to the Redux store from Zustand (`store.subscribe(() => zustandStore.setState(...))`). (3) Convert selectors to Zustand selectors — the API is similar (`useSelector(selectX)` becomes `useStore(state => state.x)`). (4) Replace thunks with async actions inside the Zustand store. (5) Move middleware logic (logging, persistence) to Zustand middleware equivalents. (6) Once all slices are migrated, remove Redux dependencies. Key insight: you don't need to migrate everything — some complex slices with heavy middleware usage might stay in Redux while simpler state moves to Zustand. The two can coexist permanently.
+
+**Q: What performance optimizations do these libraries provide over React Context for global state?**
+
+A: React Context has a fundamental performance problem: when context value changes, ALL consumers re-render, regardless of whether they use the changed portion of state. If context holds `{ user, theme, cart }` and only `cart` changes, components that only read `theme` still re-render. Modern libraries solve this differently: **Zustand** uses selectors — components subscribe to specific state slices and only re-render when their selected value changes (reference equality check). **Jotai** uses atoms — components subscribe to individual atoms, so changing one atom doesn't affect components subscribed to other atoms. **Valtio** uses Proxy tracking — during render, it records which properties were accessed and only re-renders when those specific properties change. **Signals** bypass React's rendering entirely — they update DOM nodes directly. All approaches achieve O(1) update propagation (only affected components re-render) versus Context's O(n) (all consumers re-render). This matters when you have 50+ components consuming global state.
+
+## Production Tips
+
+**Implement store hydration carefully for SSR and persistence.** When rehydrating persisted state (from localStorage or SSR), validate the shape matches your current store definition. Schema changes between deployments can crash the application if old persisted state has missing or renamed fields. Use a version number in persisted state and implement migration functions that transform old shapes to new ones. For Zustand's `persist` middleware, use the `version` and `migrate` options. Set a maximum age for persisted state (24-48 hours) and fall back to defaults for expired data.
+
+**Use DevTools integration in development but strip it in production builds.** Zustand's `devtools` middleware, Valtio's devtools, and Jotai's debug utilities add overhead and expose internal state. Conditionally apply middleware based on environment: `const middleware = process.env.NODE_ENV === 'development' ? devtools(store) : store`. For Zustand, the `devtools` middleware is tree-shaken in production when using the conditional pattern. Monitor store size in DevTools during development — stores with thousands of entities may need pagination or virtualization strategies rather than loading everything into memory.
+
+**Profile re-render counts to validate selector effectiveness.** Use React DevTools Profiler to verify that components only re-render when their specific state slice changes. Common issues: selectors that return new array/object references on every call (use `shallow` comparison), computed values that aren't memoized (use `useMemo` or library-specific memoization), and components that subscribe to too much state (split into smaller components with focused selectors). Set a performance budget: no component should re-render more than once per user interaction unless it displays the changed data.
+
+**Design stores for testability — separate state logic from React.** All three libraries (Zustand, Jotai, Valtio) allow testing state logic without rendering React components. For Zustand, test the store directly: `const store = useMyStore.getState(); store.addItem(item); expect(store.items).toHaveLength(1)`. For Jotai, use `createStore()` from `jotai` to create a test store and `store.get(atom)` / `store.set(atom, value)` to test atom logic. For Valtio, test by mutating the proxy and asserting state: `state.count = 5; expect(snapshot(state).count).toBe(5)`. This approach is faster than rendering components and isolates state logic from UI concerns.
+
+## Related Topics
+
+- [Redux Patterns & Redux Toolkit](./redux-patterns.md) — The established standard that these alternatives aim to simplify
+- [React Hooks & State](../react/hooks-and-state.md) — React's built-in state primitives that these libraries extend
+- [Angular RxJS & Reactive Patterns](../angular/rxjs-and-reactive.md) — Angular's reactive state management with Observables and Signals
+- [TypeScript Advanced Types](../typescript/advanced-types.md) — Type inference patterns used by Zustand, Jotai, and Valtio
+- [Web Performance](../web-performance/web-performance.md) — Bundle size and rendering performance considerations for state library choice

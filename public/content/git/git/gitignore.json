@@ -21,11 +21,13 @@
             "Patterns are matched relative to the .gitignore file's location",
             ".gitignore can exist in any directory; rules apply to that directory and below",
             "Global ignore: git config --global core.excludesfile ~/.gitignore_global",
-            "Already-tracked files are not affected by .gitignore — use git rm --cached to untrack"
+            "Already-tracked files are not affected by .gitignore — use git rm --cached to untrack",
+            ".git/info/exclude provides local-only ignore rules not shared with the team",
+            "Leading / anchors the pattern to the .gitignore file's directory (e.g., /build only matches root build/)"
           ]
         }
       ],
-      "wordCount": 90,
+      "wordCount": 116,
       "subsections": []
     },
     {
@@ -36,9 +38,23 @@
         {
           "type": "paragraph",
           "text": "Use .gitignore in every Git repository to prevent unnecessary, sensitive, or generated files from being committed. You should configure it at project initialization, before your first commit, to avoid accidentally tracking files that should never be in version control. Common scenarios include excluding dependency directories (node_modules/, vendor/), build outputs (dist/, build/, target/), environment configuration files containing secrets (.env, application-local.yml), IDE-specific files (.idea/, .vscode/settings.json), operating system artifacts (.DS_Store, Thumbs.db), and log files. For personal preferences that should not be imposed on the team (like editor configs), use a global gitignore file. For project-specific ignores that all contributors should share, commit the .gitignore file to the repository. Getting .gitignore right from the start prevents security incidents from leaked credentials and keeps your repository focused on source code."
+        },
+        {
+          "type": "paragraph",
+          "text": "Additional scenarios where .gitignore configuration is critical:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monorepo environments: In monorepos, each service or package may have its own build output directory. A root .gitignore handles common patterns, while nested .gitignore files in subdirectories handle service-specific exclusions. This layered approach keeps the root file manageable while allowing per-service customization.",
+            "CI/CD artifact management: Build pipelines generate artifacts (test reports, coverage files, compiled binaries) that should never be committed. Ensure your .gitignore covers all CI-generated paths to prevent accidental commits from developers running CI scripts locally.",
+            "Terraform and IaC projects: Infrastructure-as-code repositories must ignore state files (*.tfstate, *.tfstate.backup) which contain sensitive infrastructure details, provider plugins (.terraform/), and plan output files. Committing state files is a security risk and causes state conflicts between team members.",
+            "Machine learning projects: ML repositories need to ignore large model files, dataset downloads, training checkpoints, and virtual environments while keeping notebooks, configuration, and small reference data tracked."
+          ]
         }
       ],
-      "wordCount": 125,
+      "wordCount": 274,
       "subsections": []
     },
     {
@@ -102,6 +118,196 @@
               "type": "code",
               "language": "bash",
               "code": "# Check if a specific file is ignored and why\ngit check-ignore -v path/to/file\n\n# List all ignored files in the repository\ngit status --ignored\n\n# List all ignored files (short format)\ngit status --ignored -s\n\n# Remove a file from tracking (after adding to .gitignore)\ngit rm --cached path/to/file\ngit rm --cached -r path/to/directory/\n\n# Commit the removal\ngit commit -m \"Remove tracked file now in .gitignore\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pythondata-science-gitignore",
+          "heading": "Python/Data Science .gitignore",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# Virtual environments\nvenv/\n.venv/\nenv/\n.env/\n\n# Python bytecode\n__pycache__/\n*.py[cod]\n*$py.class\n*.so\n\n# Distribution / packaging\ndist/\nbuild/\n*.egg-info/\n*.egg\n\n# Jupyter Notebook checkpoints\n.ipynb_checkpoints/\n\n# Model files and datasets (use Git LFS for these)\n*.h5\n*.pkl\n*.model\ndata/raw/\ndata/processed/\n\n# Environment variables\n.env\n.env.local\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Testing and coverage\n.coverage\nhtmlcov/\n.pytest_cache/\n.mypy_cache/",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "infrastructureterraform-gitignore",
+          "heading": "Infrastructure/Terraform .gitignore",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# Terraform\n.terraform/\n*.tfstate\n*.tfstate.backup\n*.tfplan\ncrash.log\noverride.tf\noverride.tf.json\n*_override.tf\n*_override.tf.json\n\n# Terraform variables (may contain secrets)\n*.auto.tfvars\nterraform.tfvars\n\n# Ansible\n*.retry\n\n# SSH keys (NEVER commit these)\n*.pem\n*.key\nid_rsa\nid_ed25519\n\n# Kubernetes\nkubeconfig\n*.kubeconfig\n\n# Helm\ncharts/*.tgz\n\n# AWS\n.aws/credentials",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "global-gitignore-setup",
+          "heading": "Global .gitignore Setup",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Create a global gitignore file\ncat > ~/.gitignore_global << 'EOF'\n# macOS\n.DS_Store\n.AppleDouble\n.LSOverride\n._*\n\n# Windows\nThumbs.db\nehthumbs.db\nDesktop.ini\n$RECYCLE.BIN/\n\n# Linux\n*~\n.directory\n\n# Editors\n.idea/\n*.swp\n*.swo\n*~\n.vscode/settings.json\n.vscode/launch.json\n*.sublime-workspace\n\n# Tags\ntags\nTAGS\nEOF\n\n# Configure Git to use it\ngit config --global core.excludesfile ~/.gitignore_global",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "gitattributes-for-file-handling",
+          "heading": ".gitattributes for File Handling",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": ".gitattributes complements .gitignore by controlling how tracked files are handled. While .gitignore decides what to track, .gitattributes decides how to track it."
+            },
+            {
+              "type": "code",
+              "language": "gitattributes",
+              "code": "# .gitattributes — controls file handling for tracked files\n\n# Normalize line endings (CRLF on Windows, LF on Unix)\n* text=auto\n\n# Force specific line endings for certain files\n*.sh text eol=lf\n*.bat text eol=crlf\n*.cmd text eol=crlf\n\n# Mark binary files (no diff, no merge, no line ending conversion)\n*.png binary\n*.jpg binary\n*.gif binary\n*.ico binary\n*.pdf binary\n*.zip binary\n*.woff2 binary\n\n# Custom diff drivers for better diffs\n*.md diff=markdown\n*.css diff=css\n*.html diff=html\n\n# Custom merge drivers\npackage-lock.json merge=ours\nyarn.lock merge=ours\n*.generated.ts merge=ours\n\n# Linguist overrides (for GitHub language statistics)\ndocs/** linguist-documentation\nvendor/** linguist-vendored\n*.min.js linguist-generated\n\n# Export ignore (files excluded from git archive)\n.gitignore export-ignore\n.gitattributes export-ignore\n.github/ export-ignore\ntests/ export-ignore",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Key .gitattributes use cases:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Line ending normalization: Prevents CRLF/LF conflicts between Windows and Unix developers",
+                "Binary file marking: Prevents Git from attempting text diffs or merges on binary files",
+                "Custom merge drivers: Auto-resolves conflicts in generated files (like lock files)",
+                "LFS tracking: Specifies which files should use Git Large File Storage",
+                "Export control: Excludes files from git archive output (release tarballs)"
+              ]
+            }
+          ],
+          "wordCount": 83,
+          "subsections": []
+        },
+        {
+          "id": "git-lfs-integration",
+          "heading": "Git LFS Integration",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Git Large File Storage (LFS) replaces large files with text pointers in the repository while storing the actual file content on a separate server. This keeps the repository small and fast."
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Install Git LFS (one-time setup)\ngit lfs install\n\n# Track large file types with LFS\ngit lfs track \"*.psd\"\ngit lfs track \"*.zip\"\ngit lfs track \"*.mp4\"\ngit lfs track \"*.model\"\ngit lfs track \"datasets/**\"\n\n# This creates/updates .gitattributes:\n# *.psd filter=lfs diff=lfs merge=lfs -text\n# *.zip filter=lfs diff=lfs merge=lfs -text\n\n# Commit the .gitattributes file\ngit add .gitattributes\ngit commit -m \"Configure Git LFS for large files\"\n\n# Now add and commit large files normally\ngit add assets/design.psd\ngit commit -m \"Add design mockup\"\ngit push  # LFS files are uploaded to LFS server\n\n# View LFS-tracked files\ngit lfs ls-files\n\n# View LFS status\ngit lfs status\n\n# Fetch LFS files (if not auto-fetched)\ngit lfs pull\n\n# Migrate existing large files to LFS (rewrites history)\ngit lfs migrate import --include=\"*.psd,*.zip\" --everything\n\n# Check LFS storage usage\ngit lfs env",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "LFS is essential for repositories that contain:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "Design assets (PSD, Sketch, Figma exports)",
+                "Video and audio files",
+                "Machine learning models and datasets",
+                "Compiled binaries and archives",
+                "Game assets (textures, meshes, audio)"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Without LFS, these files bloat the repository because Git stores every version of every file. A 100MB PSD file modified 10 times means 1GB of repository data. With LFS, only pointers are stored in Git history, and the LFS server handles versioned binary storage efficiently."
+            }
+          ],
+          "wordCount": 107,
+          "subsections": []
+        },
+        {
+          "id": "per-directory-gitignore-overrides",
+          "heading": "Per-Directory .gitignore Overrides",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Git supports .gitignore files in any directory, with rules applying to that directory and its subdirectories. This enables layered ignore configurations:"
+            },
+            {
+              "type": "code",
+              "language": "text",
+              "code": "# Repository structure with multiple .gitignore files:\nproject/\n├── .gitignore              # Root: common patterns for all\n├── src/\n│   ├── .gitignore          # Source: ignore generated files\n│   └── components/\n│       └── .gitignore      # Components: ignore storybook cache\n├── tests/\n│   └── .gitignore          # Tests: ignore coverage, snapshots\n└── docs/\n    └── .gitignore          # Docs: ignore build output",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# project/.gitignore (root)\nnode_modules/\n.env\n*.log\n\n# project/src/.gitignore\n*.generated.ts\n__generated__/\n\n# project/tests/.gitignore\ncoverage/\n__snapshots__/\n*.snap\n\n# project/docs/.gitignore\n_site/\n.docusaurus/",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Precedence rules for nested .gitignore files:"
+            },
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Patterns in a nested .gitignore override patterns from parent directories",
+                "Within a single file, later patterns override earlier ones",
+                "More specific patterns (with path separators) take precedence over general patterns",
+                ".git/info/exclude applies after all .gitignore files",
+                "Global gitignore (core.excludesfile) has the lowest precedence"
+              ]
+            }
+          ],
+          "wordCount": 70,
+          "subsections": []
+        },
+        {
+          "id": "common-templates-for-different-stacks",
+          "heading": "Common Templates for Different Stacks",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# ===== Go Project =====\n# Binaries\n*.exe\n*.exe~\n*.dll\n*.so\n*.dylib\n/bin/\n/dist/\n\n# Test binary\n*.test\n\n# Output of go coverage\n*.out\ncoverage.html\n\n# Dependency directories\nvendor/\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Environment\n.env\n.env.local",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# ===== Rust Project =====\n/target/\n**/*.rs.bk\nCargo.lock  # Only for libraries; keep for binaries\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Environment\n.env",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# ===== .NET / C# Project =====\n## Build results\n[Dd]ebug/\n[Rr]elease/\nx64/\nx86/\n[Bb]in/\n[Oo]bj/\n\n## NuGet\n*.nupkg\n**/[Pp]ackages/*\n!**/[Pp]ackages/build/\n\n## Visual Studio\n.vs/\n*.suo\n*.user\n*.userosscache\n*.sln.docstates\n\n## User-specific files\n*.rsuser\n*.suo\n*.user\n*.userosscache",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "gitignore",
+              "code": "# ===== React Native / Mobile =====\n# Dependencies\nnode_modules/\n\n# React Native\n.expo/\ndist/\n*.jks\n*.p8\n*.p12\n*.key\n*.mobileprovision\n\n# iOS\nios/Pods/\nios/build/\n*.xcworkspace\n!default.xcworkspace\n\n# Android\nandroid/app/build/\nandroid/.gradle/\n*.apk\n*.aab\nlocal.properties\n\n# Environment\n.env\n.env.*\n!.env.example\n\n# Metro\n.metro-health-check*",
               "runnable": false
             }
           ],
@@ -218,9 +424,21 @@
         {
           "type": "paragraph",
           "text": "Q5: Explain the order of precedence for gitignore rules.\nRules are evaluated from top to bottom within a file, with later rules overriding earlier ones. Nested .gitignore files override parent directory rules. .git/info/exclude applies after .gitignore. The global gitignore (core.excludesfile) has the lowest precedence. Within a single file, more specific patterns (with path components) take precedence over general patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q6: How do .gitignore and .gitattributes work together for repository hygiene?\n.gitignore controls which files are tracked, while .gitattributes controls how tracked files are handled. Together they provide comprehensive file management: .gitignore excludes build artifacts and secrets, while .gitattributes configures line ending normalization (* text=auto), marks binary files (*.png binary), sets up custom merge drivers for lock files (package-lock.json merge=ours), and enables Git LFS for large files (*.psd filter=lfs). Both files should be committed to the repository."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q7: How would you audit a repository to find files that should be ignored but are currently tracked?\nRun git ls-files to list all tracked files, then compare against your .gitignore patterns. Use git ls-files --cached --ignored --exclude-standard to find tracked files that match ignore patterns (these are files that were committed before the ignore rule was added). For each file found, evaluate whether it should be untracked with git rm --cached. Tools like git-secrets can scan the entire history for accidentally committed credentials."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q8: What is the difference between build/ and /build/ in a .gitignore file?\nbuild/ without a leading slash matches any directory named build at any depth in the repository (e.g., src/build/, lib/build/, ./build/). /build/ with a leading slash is anchored to the directory containing the .gitignore file, so it only matches build/ at that specific level. Use the anchored form when you want to ignore only the root-level build directory but not nested directories with the same name that might be legitimate source code."
         }
       ],
-      "wordCount": 312,
+      "wordCount": 557,
       "subsections": []
     },
     {
@@ -249,11 +467,13 @@
             "Audit .gitignore during security reviews: Periodically verify that sensitive file patterns (credentials, keys, environment configs) are properly ignored. Use git ls-files to check what is actually tracked and compare against what should be excluded.",
             "Set up pre-commit hooks to catch secrets: Tools like detect-secrets, git-secrets, or trufflehog can scan staged changes for patterns that look like API keys, passwords, or tokens before they are committed, providing a safety net beyond .gitignore.",
             "Document non-obvious ignore patterns: Add comments above complex patterns explaining why they exist. Future team members will appreciate understanding why !config/production.json is negated or why a specific subdirectory is excluded.",
-            "Use .dockerignore alongside .gitignore: When building Docker images, create a .dockerignore file to exclude files from the build context. This is separate from .gitignore but often overlaps — keeping both aligned reduces image size and prevents secrets from leaking into containers."
+            "Use .dockerignore alongside .gitignore: When building Docker images, create a .dockerignore file to exclude files from the build context. This is separate from .gitignore but often overlaps — keeping both aligned reduces image size and prevents secrets from leaking into containers.",
+            "Version your .gitignore from day one: The .gitignore file should be the first file committed to any new repository, even before application code. This prevents the common scenario where a developer commits node_modules/ or .env on the initial commit and then has to rewrite history to remove it.",
+            "Use git check-ignore -v for debugging: When a file is unexpectedly ignored (or not ignored), git check-ignore -v path/to/file shows exactly which rule in which .gitignore file is responsible. This is invaluable for debugging complex multi-level ignore configurations in monorepos."
           ]
         }
       ],
-      "wordCount": 175,
+      "wordCount": 263,
       "subsections": []
     },
     {
@@ -297,13 +517,68 @@
       "language": "bash",
       "code": "# Check if a specific file is ignored and why\ngit check-ignore -v path/to/file\n\n# List all ignored files in the repository\ngit status --ignored\n\n# List all ignored files (short format)\ngit status --ignored -s\n\n# Remove a file from tracking (after adding to .gitignore)\ngit rm --cached path/to/file\ngit rm --cached -r path/to/directory/\n\n# Commit the removal\ngit commit -m \"Remove tracked file now in .gitignore\"",
       "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# Virtual environments\nvenv/\n.venv/\nenv/\n.env/\n\n# Python bytecode\n__pycache__/\n*.py[cod]\n*$py.class\n*.so\n\n# Distribution / packaging\ndist/\nbuild/\n*.egg-info/\n*.egg\n\n# Jupyter Notebook checkpoints\n.ipynb_checkpoints/\n\n# Model files and datasets (use Git LFS for these)\n*.h5\n*.pkl\n*.model\ndata/raw/\ndata/processed/\n\n# Environment variables\n.env\n.env.local\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Testing and coverage\n.coverage\nhtmlcov/\n.pytest_cache/\n.mypy_cache/",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# Terraform\n.terraform/\n*.tfstate\n*.tfstate.backup\n*.tfplan\ncrash.log\noverride.tf\noverride.tf.json\n*_override.tf\n*_override.tf.json\n\n# Terraform variables (may contain secrets)\n*.auto.tfvars\nterraform.tfvars\n\n# Ansible\n*.retry\n\n# SSH keys (NEVER commit these)\n*.pem\n*.key\nid_rsa\nid_ed25519\n\n# Kubernetes\nkubeconfig\n*.kubeconfig\n\n# Helm\ncharts/*.tgz\n\n# AWS\n.aws/credentials",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Create a global gitignore file\ncat > ~/.gitignore_global << 'EOF'\n# macOS\n.DS_Store\n.AppleDouble\n.LSOverride\n._*\n\n# Windows\nThumbs.db\nehthumbs.db\nDesktop.ini\n$RECYCLE.BIN/\n\n# Linux\n*~\n.directory\n\n# Editors\n.idea/\n*.swp\n*.swo\n*~\n.vscode/settings.json\n.vscode/launch.json\n*.sublime-workspace\n\n# Tags\ntags\nTAGS\nEOF\n\n# Configure Git to use it\ngit config --global core.excludesfile ~/.gitignore_global",
+      "runnable": false
+    },
+    {
+      "language": "gitattributes",
+      "code": "# .gitattributes — controls file handling for tracked files\n\n# Normalize line endings (CRLF on Windows, LF on Unix)\n* text=auto\n\n# Force specific line endings for certain files\n*.sh text eol=lf\n*.bat text eol=crlf\n*.cmd text eol=crlf\n\n# Mark binary files (no diff, no merge, no line ending conversion)\n*.png binary\n*.jpg binary\n*.gif binary\n*.ico binary\n*.pdf binary\n*.zip binary\n*.woff2 binary\n\n# Custom diff drivers for better diffs\n*.md diff=markdown\n*.css diff=css\n*.html diff=html\n\n# Custom merge drivers\npackage-lock.json merge=ours\nyarn.lock merge=ours\n*.generated.ts merge=ours\n\n# Linguist overrides (for GitHub language statistics)\ndocs/** linguist-documentation\nvendor/** linguist-vendored\n*.min.js linguist-generated\n\n# Export ignore (files excluded from git archive)\n.gitignore export-ignore\n.gitattributes export-ignore\n.github/ export-ignore\ntests/ export-ignore",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Install Git LFS (one-time setup)\ngit lfs install\n\n# Track large file types with LFS\ngit lfs track \"*.psd\"\ngit lfs track \"*.zip\"\ngit lfs track \"*.mp4\"\ngit lfs track \"*.model\"\ngit lfs track \"datasets/**\"\n\n# This creates/updates .gitattributes:\n# *.psd filter=lfs diff=lfs merge=lfs -text\n# *.zip filter=lfs diff=lfs merge=lfs -text\n\n# Commit the .gitattributes file\ngit add .gitattributes\ngit commit -m \"Configure Git LFS for large files\"\n\n# Now add and commit large files normally\ngit add assets/design.psd\ngit commit -m \"Add design mockup\"\ngit push  # LFS files are uploaded to LFS server\n\n# View LFS-tracked files\ngit lfs ls-files\n\n# View LFS status\ngit lfs status\n\n# Fetch LFS files (if not auto-fetched)\ngit lfs pull\n\n# Migrate existing large files to LFS (rewrites history)\ngit lfs migrate import --include=\"*.psd,*.zip\" --everything\n\n# Check LFS storage usage\ngit lfs env",
+      "runnable": false
+    },
+    {
+      "language": "text",
+      "code": "# Repository structure with multiple .gitignore files:\nproject/\n├── .gitignore              # Root: common patterns for all\n├── src/\n│   ├── .gitignore          # Source: ignore generated files\n│   └── components/\n│       └── .gitignore      # Components: ignore storybook cache\n├── tests/\n│   └── .gitignore          # Tests: ignore coverage, snapshots\n└── docs/\n    └── .gitignore          # Docs: ignore build output",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# project/.gitignore (root)\nnode_modules/\n.env\n*.log\n\n# project/src/.gitignore\n*.generated.ts\n__generated__/\n\n# project/tests/.gitignore\ncoverage/\n__snapshots__/\n*.snap\n\n# project/docs/.gitignore\n_site/\n.docusaurus/",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# ===== Go Project =====\n# Binaries\n*.exe\n*.exe~\n*.dll\n*.so\n*.dylib\n/bin/\n/dist/\n\n# Test binary\n*.test\n\n# Output of go coverage\n*.out\ncoverage.html\n\n# Dependency directories\nvendor/\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Environment\n.env\n.env.local",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# ===== Rust Project =====\n/target/\n**/*.rs.bk\nCargo.lock  # Only for libraries; keep for binaries\n\n# IDE\n.idea/\n.vscode/\n*.swp\n\n# Environment\n.env",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# ===== .NET / C# Project =====\n## Build results\n[Dd]ebug/\n[Rr]elease/\nx64/\nx86/\n[Bb]in/\n[Oo]bj/\n\n## NuGet\n*.nupkg\n**/[Pp]ackages/*\n!**/[Pp]ackages/build/\n\n## Visual Studio\n.vs/\n*.suo\n*.user\n*.userosscache\n*.sln.docstates\n\n## User-specific files\n*.rsuser\n*.suo\n*.user\n*.userosscache",
+      "runnable": false
+    },
+    {
+      "language": "gitignore",
+      "code": "# ===== React Native / Mobile =====\n# Dependencies\nnode_modules/\n\n# React Native\n.expo/\ndist/\n*.jks\n*.p8\n*.p12\n*.key\n*.mobileprovision\n\n# iOS\nios/Pods/\nios/build/\n*.xcworkspace\n!default.xcworkspace\n\n# Android\nandroid/app/build/\nandroid/.gradle/\n*.apk\n*.aab\nlocal.properties\n\n# Environment\n.env\n.env.*\n!.env.example\n\n# Metro\n.metro-health-check*",
+      "runnable": false
     }
   ],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/git/git/gitignore.md",
-    "wordCount": 1147,
-    "sectionCount": 13
+    "wordCount": 1915,
+    "sectionCount": 20
   }
 }

@@ -1,0 +1,352 @@
+{
+  "id": "build-tools-maven",
+  "slug": "maven",
+  "title": "Maven",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Maven uses a Project Object Model (POM) — an XML file (pom.xml) that declares project metadata, dependencies, plugins, and build configuration",
+            "Default lifecycle phases execute in order: validate → compile → test → package → verify → install → deploy",
+            "Dependency scopes: compile (default, available everywhere), provided (compile-time only, container supplies at runtime), runtime (not needed for compilation), test (test classpath only), system (explicit JAR path, avoid)",
+            "<dependencyManagement> declares version constraints without adding dependencies — child modules inherit versions without specifying them",
+            "BOM (Bill of Materials) imports centralize version management: <scope>import</scope> in <dependencyManagement> pulls in a curated set of compatible versions",
+            "Multi-module projects use a parent POM with <modules> — the reactor determines build order from inter-module dependencies",
+            "Maven Wrapper (mvnw) ensures consistent Maven versions across environments — commit .mvn/wrapper/ to version control",
+            "Profiles activate conditional configuration based on environment, JDK version, or explicit flags (-P production)",
+            "Repository managers (Nexus, Artifactory) proxy public repositories, host internal artifacts, and enforce security policies",
+            "mvn dependency:tree reveals the full transitive dependency graph — essential for diagnosing version conflicts and exclusions"
+          ]
+        }
+      ],
+      "wordCount": 177,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Maven is the standard build tool for enterprise Java projects, particularly in organizations with established conventions and large codebases. Choose Maven when your team values convention over configuration — Maven's opinionated project structure (src/main/java, src/test/java) eliminates bikeshedding about directory layouts. Maven excels in multi-module projects where consistent dependency management across 20+ modules is critical, where BOM imports ensure all Spring Boot or Jakarta EE dependencies use compatible versions. Use Maven when your CI/CD pipeline benefits from reproducible builds (Maven's deterministic dependency resolution with <dependencyManagement> prevents version drift), when your organization uses Nexus or Artifactory for artifact management, or when your team includes developers who prefer declarative XML configuration over imperative build scripts. Maven is less suitable for projects requiring highly customized build logic (complex code generation, non-standard packaging), for polyglot projects mixing JVM and non-JVM languages, or for teams that prioritize build speed over convention (Gradle's incremental compilation and build cache are significantly faster for large projects)."
+        }
+      ],
+      "wordCount": 157,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "pom-structure-and-dependency-management",
+          "heading": "POM Structure and Dependency Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0\n         http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n    <modelVersion>4.0.0</modelVersion>\n\n    <groupId>com.example</groupId>\n    <artifactId>payment-service</artifactId>\n    <version>2.1.0-SNAPSHOT</version>\n    <packaging>jar</packaging>\n\n    <properties>\n        <java.version>21</java.version>\n        <maven.compiler.source>${java.version}</maven.compiler.source>\n        <maven.compiler.target>${java.version}</maven.compiler.target>\n        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n        <spring-boot.version>3.2.1</spring-boot.version>\n        <testcontainers.version>1.19.3</testcontainers.version>\n        <mapstruct.version>1.5.5.Final</mapstruct.version>\n    </properties>\n\n    <!-- BOM imports for version management -->\n    <dependencyManagement>\n        <dependencies>\n            <dependency>\n                <groupId>org.springframework.boot</groupId>\n                <artifactId>spring-boot-dependencies</artifactId>\n                <version>${spring-boot.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n            <dependency>\n                <groupId>org.testcontainers</groupId>\n                <artifactId>testcontainers-bom</artifactId>\n                <version>${testcontainers.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n        </dependencies>\n    </dependencyManagement>\n\n    <dependencies>\n        <!-- Compile scope (default) — available on all classpaths -->\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-web</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-data-jpa</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-validation</artifactId>\n        </dependency>\n\n        <!-- Provided scope — container supplies at runtime -->\n        <dependency>\n            <groupId>org.projectlombok</groupId>\n            <artifactId>lombok</artifactId>\n            <scope>provided</scope>\n        </dependency>\n\n        <!-- Runtime scope — not needed for compilation -->\n        <dependency>\n            <groupId>org.postgresql</groupId>\n            <artifactId>postgresql</artifactId>\n            <scope>runtime</scope>\n        </dependency>\n        <dependency>\n            <groupId>io.micrometer</groupId>\n            <artifactId>micrometer-registry-prometheus</artifactId>\n            <scope>runtime</scope>\n        </dependency>\n\n        <!-- Test scope — test classpath only -->\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-test</artifactId>\n            <scope>test</scope>\n        </dependency>\n        <dependency>\n            <groupId>org.testcontainers</groupId>\n            <artifactId>postgresql</artifactId>\n            <scope>test</scope>\n        </dependency>\n\n        <!-- Dependency with exclusion to resolve conflicts -->\n        <dependency>\n            <groupId>com.example</groupId>\n            <artifactId>shared-library</artifactId>\n            <version>1.4.0</version>\n            <exclusions>\n                <exclusion>\n                    <groupId>org.slf4j</groupId>\n                    <artifactId>slf4j-log4j12</artifactId>\n                </exclusion>\n            </exclusions>\n        </dependency>\n    </dependencies>\n</project>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "multi-module-project-structure",
+          "heading": "Multi-Module Project Structure",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<!-- parent/pom.xml — aggregator and parent POM -->\n<project>\n    <modelVersion>4.0.0</modelVersion>\n    <groupId>com.example</groupId>\n    <artifactId>ecommerce-platform</artifactId>\n    <version>3.0.0-SNAPSHOT</version>\n    <packaging>pom</packaging>\n\n    <!-- Reactor modules — build order determined by dependencies -->\n    <modules>\n        <module>common</module>\n        <module>domain</module>\n        <module>persistence</module>\n        <module>service</module>\n        <module>api</module>\n        <module>integration-tests</module>\n    </modules>\n\n    <properties>\n        <java.version>21</java.version>\n        <spring-boot.version>3.2.1</spring-boot.version>\n    </properties>\n\n    <!-- Centralized version management for all modules -->\n    <dependencyManagement>\n        <dependencies>\n            <dependency>\n                <groupId>org.springframework.boot</groupId>\n                <artifactId>spring-boot-dependencies</artifactId>\n                <version>${spring-boot.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n            <!-- Internal module versions -->\n            <dependency>\n                <groupId>com.example</groupId>\n                <artifactId>ecommerce-common</artifactId>\n                <version>${project.version}</version>\n            </dependency>\n            <dependency>\n                <groupId>com.example</groupId>\n                <artifactId>ecommerce-domain</artifactId>\n                <version>${project.version}</version>\n            </dependency>\n        </dependencies>\n    </dependencyManagement>\n\n    <build>\n        <pluginManagement>\n            <plugins>\n                <plugin>\n                    <groupId>org.apache.maven.plugins</groupId>\n                    <artifactId>maven-compiler-plugin</artifactId>\n                    <version>3.12.1</version>\n                    <configuration>\n                        <release>${java.version}</release>\n                        <annotationProcessorPaths>\n                            <path>\n                                <groupId>org.projectlombok</groupId>\n                                <artifactId>lombok</artifactId>\n                                <version>1.18.30</version>\n                            </path>\n                            <path>\n                                <groupId>org.mapstruct</groupId>\n                                <artifactId>mapstruct-processor</artifactId>\n                                <version>${mapstruct.version}</version>\n                            </path>\n                        </annotationProcessorPaths>\n                    </configuration>\n                </plugin>\n            </plugins>\n        </pluginManagement>\n    </build>\n</project>\n\n<!-- domain/pom.xml — child module -->\n<project>\n    <modelVersion>4.0.0</modelVersion>\n    <parent>\n        <groupId>com.example</groupId>\n        <artifactId>ecommerce-platform</artifactId>\n        <version>3.0.0-SNAPSHOT</version>\n    </parent>\n\n    <artifactId>ecommerce-domain</artifactId>\n\n    <dependencies>\n        <dependency>\n            <groupId>com.example</groupId>\n            <artifactId>ecommerce-common</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>jakarta.validation</groupId>\n            <artifactId>jakarta.validation-api</artifactId>\n        </dependency>\n    </dependencies>\n</project>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "plugin-configuration-surefire-failsafe-and-shade",
+          "heading": "Plugin Configuration — Surefire, Failsafe, and Shade",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<build>\n    <plugins>\n        <!-- Surefire — unit tests (runs during 'test' phase) -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-surefire-plugin</artifactId>\n            <version>3.2.3</version>\n            <configuration>\n                <includes>\n                    <include>**/*Test.java</include>\n                    <include>**/*Tests.java</include>\n                </includes>\n                <excludes>\n                    <exclude>**/*IntegrationTest.java</exclude>\n                    <exclude>**/*IT.java</exclude>\n                </excludes>\n                <argLine>-Xmx512m -XX:+EnableDynamicAgentLoading</argLine>\n                <parallel>methods</parallel>\n                <threadCount>4</threadCount>\n                <forkCount>1C</forkCount>\n                <reuseForks>true</reuseForks>\n            </configuration>\n        </plugin>\n\n        <!-- Failsafe — integration tests (runs during 'verify' phase) -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-failsafe-plugin</artifactId>\n            <version>3.2.3</version>\n            <configuration>\n                <includes>\n                    <include>**/*IntegrationTest.java</include>\n                    <include>**/*IT.java</include>\n                </includes>\n                <argLine>-Xmx1g</argLine>\n            </configuration>\n            <executions>\n                <execution>\n                    <goals>\n                        <goal>integration-test</goal>\n                        <goal>verify</goal>\n                    </goals>\n                </execution>\n            </executions>\n        </plugin>\n\n        <!-- Shade plugin — create uber-JAR with relocated dependencies -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-shade-plugin</artifactId>\n            <version>3.5.1</version>\n            <executions>\n                <execution>\n                    <phase>package</phase>\n                    <goals>\n                        <goal>shade</goal>\n                    </goals>\n                    <configuration>\n                        <relocations>\n                            <relocation>\n                                <pattern>com.google.common</pattern>\n                                <shadedPattern>com.example.shaded.guava</shadedPattern>\n                            </relocation>\n                        </relocations>\n                        <filters>\n                            <filter>\n                                <artifact>*:*</artifact>\n                                <excludes>\n                                    <exclude>META-INF/*.SF</exclude>\n                                    <exclude>META-INF/*.DSA</exclude>\n                                    <exclude>META-INF/*.RSA</exclude>\n                                </excludes>\n                            </filter>\n                        </filters>\n                        <transformers>\n                            <transformer implementation=\"org.apache.maven.plugins.shade.resource.ManifestResourceTransformer\">\n                                <mainClass>com.example.Application</mainClass>\n                            </transformer>\n                            <transformer implementation=\"org.apache.maven.plugins.shade.resource.ServicesResourceTransformer\"/>\n                        </transformers>\n                    </configuration>\n                </execution>\n            </executions>\n        </plugin>\n\n        <!-- Enforcer plugin — fail build on dependency conflicts -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-enforcer-plugin</artifactId>\n            <version>3.4.1</version>\n            <executions>\n                <execution>\n                    <id>enforce-versions</id>\n                    <goals>\n                        <goal>enforce</goal>\n                    </goals>\n                    <configuration>\n                        <rules>\n                            <requireMavenVersion>\n                                <version>[3.9.0,)</version>\n                            </requireMavenVersion>\n                            <requireJavaVersion>\n                                <version>[21,)</version>\n                            </requireJavaVersion>\n                            <dependencyConvergence/>\n                            <banDuplicatePomDependencyVersions/>\n                        </rules>\n                    </configuration>\n                </execution>\n            </executions>\n        </plugin>\n    </plugins>\n</build>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "profiles-for-environment-specific-configuration",
+          "heading": "Profiles for Environment-Specific Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<profiles>\n    <!-- Development profile — active by default -->\n    <profile>\n        <id>dev</id>\n        <activation>\n            <activeByDefault>true</activeByDefault>\n        </activation>\n        <properties>\n            <spring.profiles.active>dev</spring.profiles.active>\n            <skip.integration.tests>true</skip.integration.tests>\n        </properties>\n    </profile>\n\n    <!-- CI profile — runs all tests, generates reports -->\n    <profile>\n        <id>ci</id>\n        <properties>\n            <spring.profiles.active>test</spring.profiles.active>\n            <skip.integration.tests>false</skip.integration.tests>\n        </properties>\n        <build>\n            <plugins>\n                <plugin>\n                    <groupId>org.jacoco</groupId>\n                    <artifactId>jacoco-maven-plugin</artifactId>\n                    <version>0.8.11</version>\n                    <executions>\n                        <execution>\n                            <id>prepare-agent</id>\n                            <goals><goal>prepare-agent</goal></goals>\n                        </execution>\n                        <execution>\n                            <id>report</id>\n                            <phase>verify</phase>\n                            <goals><goal>report</goal></goals>\n                        </execution>\n                        <execution>\n                            <id>check</id>\n                            <goals><goal>check</goal></goals>\n                            <configuration>\n                                <rules>\n                                    <rule>\n                                        <element>BUNDLE</element>\n                                        <limits>\n                                            <limit>\n                                                <counter>LINE</counter>\n                                                <value>COVEREDRATIO</value>\n                                                <minimum>0.80</minimum>\n                                            </limit>\n                                        </limits>\n                                    </rule>\n                                </rules>\n                            </configuration>\n                        </execution>\n                    </executions>\n                </plugin>\n            </plugins>\n        </build>\n    </profile>\n\n    <!-- Production profile — optimized packaging -->\n    <profile>\n        <id>production</id>\n        <properties>\n            <spring.profiles.active>prod</spring.profiles.active>\n        </properties>\n        <build>\n            <plugins>\n                <plugin>\n                    <groupId>org.springframework.boot</groupId>\n                    <artifactId>spring-boot-maven-plugin</artifactId>\n                    <configuration>\n                        <layers>\n                            <enabled>true</enabled>\n                        </layers>\n                        <image>\n                            <name>registry.example.com/${project.artifactId}:${project.version}</name>\n                        </image>\n                    </configuration>\n                </plugin>\n            </plugins>\n        </build>\n    </profile>\n</profiles>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "reproducible-builds-and-version-management",
+          "heading": "Reproducible Builds and Version Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<!-- Enable reproducible builds -->\n<properties>\n    <project.build.outputTimestamp>2024-01-15T10:00:00Z</project.build.outputTimestamp>\n</properties>\n\n<!-- versions-maven-plugin for dependency updates -->\n<!-- Usage: mvn versions:display-dependency-updates -->\n<!-- Usage: mvn versions:use-latest-releases -->\n<plugin>\n    <groupId>org.codehaus.mojo</groupId>\n    <artifactId>versions-maven-plugin</artifactId>\n    <version>2.16.2</version>\n    <configuration>\n        <rulesUri>file:///${project.basedir}/maven-version-rules.xml</rulesUri>\n    </configuration>\n</plugin>",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Maven Wrapper setup\nmvn wrapper:wrapper -Dmaven=3.9.6\n\n# Common commands\n./mvnw clean verify                          # Full build with tests\n./mvnw clean package -DskipTests             # Package without tests\n./mvnw dependency:tree                       # Show dependency tree\n./mvnw dependency:tree -Dincludes=org.slf4j  # Filter dependency tree\n./mvnw versions:display-dependency-updates   # Check for updates\n./mvnw help:effective-pom                    # Show resolved POM\n./mvnw -pl service -am clean install         # Build module + dependencies\n./mvnw -pl service -amd clean install        # Build module + dependents\n./mvnw clean verify -P ci                    # Activate CI profile",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Maven Lifecycle Phases\"\n        A[validate] --> B[compile]\n        B --> C[test]\n        C --> D[package]\n        D --> E[verify]\n        E --> F[install]\n        F --> G[deploy]\n    end\n\n    subgraph \"Phase Bindings\"\n        B --> B1[maven-compiler-plugin:compile]\n        C --> C1[maven-surefire-plugin:test]\n        D --> D1[maven-jar-plugin:jar]\n        E --> E1[maven-failsafe-plugin:verify]\n        F --> F1[maven-install-plugin:install]\n        G --> G1[maven-deploy-plugin:deploy]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Multi-Module Reactor Build Order\"\n        P[Parent POM] --> COM[common]\n        COM --> DOM[domain]\n        DOM --> PER[persistence]\n        PER --> SVC[service]\n        SVC --> API[api]\n        API --> IT[integration-tests]\n    end\n\n    subgraph \"Dependency Resolution\"\n        R1[Local Repository ~/.m2] --> R2[Corporate Nexus]\n        R2 --> R3[Maven Central]\n        R2 --> R4[Spring Milestones]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Dependency Scopes\"\n        A[compile] -->|Compile + Test + Runtime| CP[All Classpaths]\n        B[provided] -->|Compile + Test only| CT[Compile/Test]\n        C[runtime] -->|Test + Runtime only| TR[Test/Runtime]\n        D[test] -->|Test only| T[Test Classpath]\n        E[system] -->|Explicit path| S[Local JAR]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Version conflicts from transitive dependencies. Maven uses a \"nearest wins\" strategy for version resolution — the version closest to the root of the dependency tree wins, not the newest. This can silently downgrade a library, causing NoSuchMethodError at runtime. Use mvn dependency:tree to identify conflicts, <dependencyManagement> to force specific versions, and the maven-enforcer-plugin with <dependencyConvergence/> to fail the build on conflicts."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Mixing <dependencies> and <dependencyManagement> incorrectly. Declaring a dependency in <dependencyManagement> does not add it to the classpath — it only sets the version for when a child module declares it in <dependencies>. Developers often add dependencies to <dependencyManagement> expecting them to be available, then get compilation errors. Conversely, declaring versions in <dependencies> of child modules defeats the purpose of centralized management."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Not separating unit and integration tests. Running integration tests (database, network) during the test phase with Surefire makes builds slow and flaky. Use naming conventions (*IT.java for integration tests) and configure Failsafe to run them during the verify phase. This allows mvn package -DskipTests to skip only slow tests while keeping unit tests in the fast feedback loop."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Snapshot dependencies in release builds. SNAPSHOT versions are mutable — the same version can resolve to different artifacts on different days. Release builds must use fixed versions only. Configure the maven-enforcer-plugin with <requireReleaseDeps/> to fail builds that depend on SNAPSHOTs. Use the versions-maven-plugin to automate version bumps before releases."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Ignoring the effective POM. Plugin configurations, dependency versions, and properties are inherited from parent POMs and BOMs. The POM you see in your editor is not the complete picture. Run mvn help:effective-pom to see the fully resolved configuration. Many \"mysterious\" build behaviors (wrong Java version, unexpected plugin execution) are explained by inherited configuration."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Fat JARs without dependency relocation. Using the shade plugin to create uber-JARs without relocating conflicting packages causes classpath collisions. If your application and a dependency both bundle Guava (different versions), the classloader picks one arbitrarily. Always relocate shaded dependencies to unique packages, or prefer Spring Boot's nested JAR approach (Boot's executable JAR keeps dependencies in separate classloader layers)."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Not using Maven Wrapper in CI/CD. Relying on the CI server's installed Maven version creates \"works on my machine\" problems. Different Maven versions resolve dependencies differently and support different plugin versions. Commit the Maven Wrapper (mvnw, .mvn/wrapper/) and use ./mvnw in all CI scripts to guarantee consistent behavior."
+        }
+      ],
+      "wordCount": 395,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enterprise multi-module monorepo. A financial services company maintains a 40-module Maven project with a parent POM that enforces Java 21, Spring Boot 3.2, and internal library versions across all modules. The reactor builds modules in dependency order — common → domain → persistence → service → api. Each module produces a versioned artifact deployed to Nexus. The CI pipeline runs ./mvnw clean verify -P ci on every PR, executing unit tests with Surefire and integration tests with Failsafe against Testcontainers. Release builds use the maven-release-plugin to bump versions, tag Git, and deploy to the release repository."
+        },
+        {
+          "type": "paragraph",
+          "text": "Library publishing with BOM management. An internal platform team publishes a BOM artifact that curates compatible versions of 30+ internal libraries. Application teams import this BOM in their <dependencyManagement> section, ensuring all services use compatible library versions. When a security vulnerability is found in a transitive dependency, the platform team updates the BOM, and all consuming applications pick up the fix on their next build without changing their own POMs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Docker image optimization with layered JARs. A microservices team uses Spring Boot's layered JAR feature via the spring-boot-maven-plugin. The build produces a JAR with separate layers for dependencies, Spring Boot loader, snapshot dependencies, and application code. The Dockerfile extracts these layers, placing rarely-changing dependencies in early Docker layers (cached) and frequently-changing application code in later layers. This reduces Docker image build times from 3 minutes to 20 seconds for code-only changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Reproducible builds for compliance. A healthcare software company requires bit-for-bit reproducible builds for regulatory compliance. They set <project.build.outputTimestamp> to a fixed value, pin all plugin versions explicitly, use the maven-enforcer-plugin to ban SNAPSHOT dependencies, and configure Nexus to serve deterministic dependency resolution. Two builds from the same Git commit produce identical artifacts, verified by comparing SHA-256 checksums."
+        }
+      ],
+      "wordCount": 294,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between <dependencyManagement> and <dependencies> in Maven."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: <dependencies> adds JARs to the project's classpath — anything declared here is available for compilation and/or runtime depending on scope. <dependencyManagement> does not add anything to the classpath; it declares version and scope constraints that apply when a dependency is actually declared in <dependencies> (in the same POM or child modules). The primary use case: a parent POM uses <dependencyManagement> to centralize versions, and child modules declare dependencies without specifying versions. BOM imports (<scope>import</scope>) in <dependencyManagement> pull in an external set of managed versions. This separation ensures consistent versions across a multi-module project without forcing all modules to include every dependency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Maven resolve version conflicts in transitive dependencies?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Maven uses two rules: nearest definition wins (the version declared closest to the root of the dependency tree takes precedence) and first declaration wins (when two dependencies are at the same depth, the one declared first in the POM wins). This can silently downgrade libraries — if your project declares A which depends on Guava 32, and B which depends on Guava 31, and B is declared first or closer to the root, Guava 31 wins. To control resolution: use <dependencyManagement> to force a specific version, use <exclusions> to remove unwanted transitive versions, or use the maven-enforcer-plugin with <dependencyConvergence/> to fail the build when versions conflict."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the Maven reactor, and how does it determine build order?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The reactor is Maven's mechanism for building multi-module projects. When you run mvn install on a parent POM with <modules>, the reactor analyzes inter-module dependencies and builds modules in topological order — a module is built only after all modules it depends on are built. If module service depends on module domain, the reactor builds domain first regardless of declaration order in <modules>. You can build a subset with -pl module-name (project list), -am (also make dependencies), and -amd (also make dependents). The reactor fails fast by default — if one module fails, subsequent modules are skipped unless -fae (fail at end) is specified."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you optimize Maven build times in CI/CD?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Key strategies: use Maven Daemon (mvnd) for persistent JVM and parallel module builds (30-50% faster). Enable parallel builds with -T 1C (one thread per CPU core). Cache the local repository (~/.m2/repository) between CI runs. Skip tests selectively — run unit tests on every commit but integration tests only on merge to main. Use -pl with -am to build only changed modules and their dependencies. Configure Surefire for parallel test execution (<parallel>methods</parallel>). For Docker builds, use layered JARs to maximize Docker layer caching. Consider splitting the build into stages: compile + unit test (fast, every PR) and integration test + deploy (slower, on merge)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Maven profiles and when you would use them."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Profiles are conditional configuration blocks activated by environment, JDK version, OS, property, or explicit flag (-P profileId). Use profiles for: environment-specific configuration (different database URLs for dev/staging/prod), CI-specific plugins (code coverage with JaCoCo, static analysis with SpotBugs), optional build steps (Docker image creation only in the docker profile), and JDK-specific compiler flags. Avoid using profiles for fundamentally different build outputs — if two profiles produce incompatible artifacts, they should be separate modules. Profiles should add to the base build, not replace it. Always declare a default profile for local development so mvn verify works without flags."
+        }
+      ],
+      "wordCount": 568,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use the Maven Enforcer plugin as a build quality gate. Configure <dependencyConvergence/> to fail when transitive dependencies resolve to different versions, <requireMavenVersion> to ensure consistent tooling, <banDuplicatePomDependencyVersions/> to catch copy-paste errors, and <requireReleaseDeps/> in release profiles to prevent SNAPSHOT dependencies from reaching production. These rules catch subtle issues that cause runtime ClassNotFoundException or NoSuchMethodError — problems that are expensive to debug in production."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement dependency vulnerability scanning in CI. Integrate the OWASP Dependency-Check plugin (dependency-check-maven) or Snyk into your build pipeline. Configure it to fail the build when vulnerabilities above a severity threshold (CVSS 7+) are detected. Run scans on a schedule (not just on code changes) because new CVEs are published daily against existing library versions. Maintain a suppression file for false positives and accepted risks with documented justification."
+        },
+        {
+          "type": "paragraph",
+          "text": "Cache Maven dependencies aggressively in CI. The local repository (~/.m2/repository) download on every build wastes 2-5 minutes. Cache this directory between CI runs (GitHub Actions cache, GitLab CI cache, or a shared NFS mount). For Docker-based CI, use a multi-stage build with a dependency-download stage that changes only when pom.xml changes, maximizing Docker layer cache hits. Consider running a local Nexus proxy in your CI environment to eliminate external network calls entirely."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor dependency freshness and automate updates. Use mvn versions:display-dependency-updates on a weekly schedule to identify outdated dependencies. Automate minor/patch updates with Renovate or Dependabot, which create PRs with changelogs. For major version updates, review breaking changes manually. Stale dependencies accumulate security vulnerabilities and miss performance improvements — a library 3 major versions behind is significantly harder to update than one that is kept current."
+        }
+      ],
+      "wordCount": 266,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Gradle — Alternative JVM build tool with incremental compilation and build cache advantages",
+            "CI/CD Pipelines — Pipeline integration patterns for Maven builds",
+            "Spring Boot — Spring Boot Maven plugin for executable JAR packaging and Docker image creation",
+            "Docker — Multi-stage Docker builds optimized for Maven projects"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "xml",
+      "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0\n         http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n    <modelVersion>4.0.0</modelVersion>\n\n    <groupId>com.example</groupId>\n    <artifactId>payment-service</artifactId>\n    <version>2.1.0-SNAPSHOT</version>\n    <packaging>jar</packaging>\n\n    <properties>\n        <java.version>21</java.version>\n        <maven.compiler.source>${java.version}</maven.compiler.source>\n        <maven.compiler.target>${java.version}</maven.compiler.target>\n        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n        <spring-boot.version>3.2.1</spring-boot.version>\n        <testcontainers.version>1.19.3</testcontainers.version>\n        <mapstruct.version>1.5.5.Final</mapstruct.version>\n    </properties>\n\n    <!-- BOM imports for version management -->\n    <dependencyManagement>\n        <dependencies>\n            <dependency>\n                <groupId>org.springframework.boot</groupId>\n                <artifactId>spring-boot-dependencies</artifactId>\n                <version>${spring-boot.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n            <dependency>\n                <groupId>org.testcontainers</groupId>\n                <artifactId>testcontainers-bom</artifactId>\n                <version>${testcontainers.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n        </dependencies>\n    </dependencyManagement>\n\n    <dependencies>\n        <!-- Compile scope (default) — available on all classpaths -->\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-web</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-data-jpa</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-validation</artifactId>\n        </dependency>\n\n        <!-- Provided scope — container supplies at runtime -->\n        <dependency>\n            <groupId>org.projectlombok</groupId>\n            <artifactId>lombok</artifactId>\n            <scope>provided</scope>\n        </dependency>\n\n        <!-- Runtime scope — not needed for compilation -->\n        <dependency>\n            <groupId>org.postgresql</groupId>\n            <artifactId>postgresql</artifactId>\n            <scope>runtime</scope>\n        </dependency>\n        <dependency>\n            <groupId>io.micrometer</groupId>\n            <artifactId>micrometer-registry-prometheus</artifactId>\n            <scope>runtime</scope>\n        </dependency>\n\n        <!-- Test scope — test classpath only -->\n        <dependency>\n            <groupId>org.springframework.boot</groupId>\n            <artifactId>spring-boot-starter-test</artifactId>\n            <scope>test</scope>\n        </dependency>\n        <dependency>\n            <groupId>org.testcontainers</groupId>\n            <artifactId>postgresql</artifactId>\n            <scope>test</scope>\n        </dependency>\n\n        <!-- Dependency with exclusion to resolve conflicts -->\n        <dependency>\n            <groupId>com.example</groupId>\n            <artifactId>shared-library</artifactId>\n            <version>1.4.0</version>\n            <exclusions>\n                <exclusion>\n                    <groupId>org.slf4j</groupId>\n                    <artifactId>slf4j-log4j12</artifactId>\n                </exclusion>\n            </exclusions>\n        </dependency>\n    </dependencies>\n</project>",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<!-- parent/pom.xml — aggregator and parent POM -->\n<project>\n    <modelVersion>4.0.0</modelVersion>\n    <groupId>com.example</groupId>\n    <artifactId>ecommerce-platform</artifactId>\n    <version>3.0.0-SNAPSHOT</version>\n    <packaging>pom</packaging>\n\n    <!-- Reactor modules — build order determined by dependencies -->\n    <modules>\n        <module>common</module>\n        <module>domain</module>\n        <module>persistence</module>\n        <module>service</module>\n        <module>api</module>\n        <module>integration-tests</module>\n    </modules>\n\n    <properties>\n        <java.version>21</java.version>\n        <spring-boot.version>3.2.1</spring-boot.version>\n    </properties>\n\n    <!-- Centralized version management for all modules -->\n    <dependencyManagement>\n        <dependencies>\n            <dependency>\n                <groupId>org.springframework.boot</groupId>\n                <artifactId>spring-boot-dependencies</artifactId>\n                <version>${spring-boot.version}</version>\n                <type>pom</type>\n                <scope>import</scope>\n            </dependency>\n            <!-- Internal module versions -->\n            <dependency>\n                <groupId>com.example</groupId>\n                <artifactId>ecommerce-common</artifactId>\n                <version>${project.version}</version>\n            </dependency>\n            <dependency>\n                <groupId>com.example</groupId>\n                <artifactId>ecommerce-domain</artifactId>\n                <version>${project.version}</version>\n            </dependency>\n        </dependencies>\n    </dependencyManagement>\n\n    <build>\n        <pluginManagement>\n            <plugins>\n                <plugin>\n                    <groupId>org.apache.maven.plugins</groupId>\n                    <artifactId>maven-compiler-plugin</artifactId>\n                    <version>3.12.1</version>\n                    <configuration>\n                        <release>${java.version}</release>\n                        <annotationProcessorPaths>\n                            <path>\n                                <groupId>org.projectlombok</groupId>\n                                <artifactId>lombok</artifactId>\n                                <version>1.18.30</version>\n                            </path>\n                            <path>\n                                <groupId>org.mapstruct</groupId>\n                                <artifactId>mapstruct-processor</artifactId>\n                                <version>${mapstruct.version}</version>\n                            </path>\n                        </annotationProcessorPaths>\n                    </configuration>\n                </plugin>\n            </plugins>\n        </pluginManagement>\n    </build>\n</project>\n\n<!-- domain/pom.xml — child module -->\n<project>\n    <modelVersion>4.0.0</modelVersion>\n    <parent>\n        <groupId>com.example</groupId>\n        <artifactId>ecommerce-platform</artifactId>\n        <version>3.0.0-SNAPSHOT</version>\n    </parent>\n\n    <artifactId>ecommerce-domain</artifactId>\n\n    <dependencies>\n        <dependency>\n            <groupId>com.example</groupId>\n            <artifactId>ecommerce-common</artifactId>\n        </dependency>\n        <dependency>\n            <groupId>jakarta.validation</groupId>\n            <artifactId>jakarta.validation-api</artifactId>\n        </dependency>\n    </dependencies>\n</project>",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<build>\n    <plugins>\n        <!-- Surefire — unit tests (runs during 'test' phase) -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-surefire-plugin</artifactId>\n            <version>3.2.3</version>\n            <configuration>\n                <includes>\n                    <include>**/*Test.java</include>\n                    <include>**/*Tests.java</include>\n                </includes>\n                <excludes>\n                    <exclude>**/*IntegrationTest.java</exclude>\n                    <exclude>**/*IT.java</exclude>\n                </excludes>\n                <argLine>-Xmx512m -XX:+EnableDynamicAgentLoading</argLine>\n                <parallel>methods</parallel>\n                <threadCount>4</threadCount>\n                <forkCount>1C</forkCount>\n                <reuseForks>true</reuseForks>\n            </configuration>\n        </plugin>\n\n        <!-- Failsafe — integration tests (runs during 'verify' phase) -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-failsafe-plugin</artifactId>\n            <version>3.2.3</version>\n            <configuration>\n                <includes>\n                    <include>**/*IntegrationTest.java</include>\n                    <include>**/*IT.java</include>\n                </includes>\n                <argLine>-Xmx1g</argLine>\n            </configuration>\n            <executions>\n                <execution>\n                    <goals>\n                        <goal>integration-test</goal>\n                        <goal>verify</goal>\n                    </goals>\n                </execution>\n            </executions>\n        </plugin>\n\n        <!-- Shade plugin — create uber-JAR with relocated dependencies -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-shade-plugin</artifactId>\n            <version>3.5.1</version>\n            <executions>\n                <execution>\n                    <phase>package</phase>\n                    <goals>\n                        <goal>shade</goal>\n                    </goals>\n                    <configuration>\n                        <relocations>\n                            <relocation>\n                                <pattern>com.google.common</pattern>\n                                <shadedPattern>com.example.shaded.guava</shadedPattern>\n                            </relocation>\n                        </relocations>\n                        <filters>\n                            <filter>\n                                <artifact>*:*</artifact>\n                                <excludes>\n                                    <exclude>META-INF/*.SF</exclude>\n                                    <exclude>META-INF/*.DSA</exclude>\n                                    <exclude>META-INF/*.RSA</exclude>\n                                </excludes>\n                            </filter>\n                        </filters>\n                        <transformers>\n                            <transformer implementation=\"org.apache.maven.plugins.shade.resource.ManifestResourceTransformer\">\n                                <mainClass>com.example.Application</mainClass>\n                            </transformer>\n                            <transformer implementation=\"org.apache.maven.plugins.shade.resource.ServicesResourceTransformer\"/>\n                        </transformers>\n                    </configuration>\n                </execution>\n            </executions>\n        </plugin>\n\n        <!-- Enforcer plugin — fail build on dependency conflicts -->\n        <plugin>\n            <groupId>org.apache.maven.plugins</groupId>\n            <artifactId>maven-enforcer-plugin</artifactId>\n            <version>3.4.1</version>\n            <executions>\n                <execution>\n                    <id>enforce-versions</id>\n                    <goals>\n                        <goal>enforce</goal>\n                    </goals>\n                    <configuration>\n                        <rules>\n                            <requireMavenVersion>\n                                <version>[3.9.0,)</version>\n                            </requireMavenVersion>\n                            <requireJavaVersion>\n                                <version>[21,)</version>\n                            </requireJavaVersion>\n                            <dependencyConvergence/>\n                            <banDuplicatePomDependencyVersions/>\n                        </rules>\n                    </configuration>\n                </execution>\n            </executions>\n        </plugin>\n    </plugins>\n</build>",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<profiles>\n    <!-- Development profile — active by default -->\n    <profile>\n        <id>dev</id>\n        <activation>\n            <activeByDefault>true</activeByDefault>\n        </activation>\n        <properties>\n            <spring.profiles.active>dev</spring.profiles.active>\n            <skip.integration.tests>true</skip.integration.tests>\n        </properties>\n    </profile>\n\n    <!-- CI profile — runs all tests, generates reports -->\n    <profile>\n        <id>ci</id>\n        <properties>\n            <spring.profiles.active>test</spring.profiles.active>\n            <skip.integration.tests>false</skip.integration.tests>\n        </properties>\n        <build>\n            <plugins>\n                <plugin>\n                    <groupId>org.jacoco</groupId>\n                    <artifactId>jacoco-maven-plugin</artifactId>\n                    <version>0.8.11</version>\n                    <executions>\n                        <execution>\n                            <id>prepare-agent</id>\n                            <goals><goal>prepare-agent</goal></goals>\n                        </execution>\n                        <execution>\n                            <id>report</id>\n                            <phase>verify</phase>\n                            <goals><goal>report</goal></goals>\n                        </execution>\n                        <execution>\n                            <id>check</id>\n                            <goals><goal>check</goal></goals>\n                            <configuration>\n                                <rules>\n                                    <rule>\n                                        <element>BUNDLE</element>\n                                        <limits>\n                                            <limit>\n                                                <counter>LINE</counter>\n                                                <value>COVEREDRATIO</value>\n                                                <minimum>0.80</minimum>\n                                            </limit>\n                                        </limits>\n                                    </rule>\n                                </rules>\n                            </configuration>\n                        </execution>\n                    </executions>\n                </plugin>\n            </plugins>\n        </build>\n    </profile>\n\n    <!-- Production profile — optimized packaging -->\n    <profile>\n        <id>production</id>\n        <properties>\n            <spring.profiles.active>prod</spring.profiles.active>\n        </properties>\n        <build>\n            <plugins>\n                <plugin>\n                    <groupId>org.springframework.boot</groupId>\n                    <artifactId>spring-boot-maven-plugin</artifactId>\n                    <configuration>\n                        <layers>\n                            <enabled>true</enabled>\n                        </layers>\n                        <image>\n                            <name>registry.example.com/${project.artifactId}:${project.version}</name>\n                        </image>\n                    </configuration>\n                </plugin>\n            </plugins>\n        </build>\n    </profile>\n</profiles>",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<!-- Enable reproducible builds -->\n<properties>\n    <project.build.outputTimestamp>2024-01-15T10:00:00Z</project.build.outputTimestamp>\n</properties>\n\n<!-- versions-maven-plugin for dependency updates -->\n<!-- Usage: mvn versions:display-dependency-updates -->\n<!-- Usage: mvn versions:use-latest-releases -->\n<plugin>\n    <groupId>org.codehaus.mojo</groupId>\n    <artifactId>versions-maven-plugin</artifactId>\n    <version>2.16.2</version>\n    <configuration>\n        <rulesUri>file:///${project.basedir}/maven-version-rules.xml</rulesUri>\n    </configuration>\n</plugin>",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Maven Wrapper setup\nmvn wrapper:wrapper -Dmaven=3.9.6\n\n# Common commands\n./mvnw clean verify                          # Full build with tests\n./mvnw clean package -DskipTests             # Package without tests\n./mvnw dependency:tree                       # Show dependency tree\n./mvnw dependency:tree -Dincludes=org.slf4j  # Filter dependency tree\n./mvnw versions:display-dependency-updates   # Check for updates\n./mvnw help:effective-pom                    # Show resolved POM\n./mvnw -pl service -am clean install         # Build module + dependencies\n./mvnw -pl service -amd clean install        # Build module + dependents\n./mvnw clean verify -P ci                    # Activate CI profile",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/build-tools/maven.md",
+    "wordCount": 1903,
+    "sectionCount": 14
+  }
+}

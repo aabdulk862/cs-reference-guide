@@ -1,0 +1,341 @@
+{
+  "id": "integration-testing-database-integration-testing",
+  "slug": "database-testing",
+  "title": "Database Integration Testing",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Testcontainers provides disposable Docker containers for PostgreSQL, MongoDB, Redis, and other databases, giving tests production-equivalent behavior without shared infrastructure",
+            "The transaction rollback pattern wraps each test in a database transaction and rolls back after assertions, providing fast isolation without re-seeding data",
+            "Test data builders (Object Mother, Builder pattern) create valid domain objects with sensible defaults, allowing tests to specify only the fields relevant to the scenario",
+            "Repository testing validates that queries return correct results, handle edge cases (empty results, large datasets), and respect database constraints",
+            "Migration testing verifies that schema changes apply cleanly to existing data and that rollbacks work correctly before deploying to production",
+            "In-memory databases (H2, SQLite) are faster but have different SQL dialects, locking behavior, and constraint enforcement than production databases — use real databases for fidelity",
+            "Data integrity tests verify foreign key constraints, unique indexes, check constraints, and cascading deletes behave correctly under concurrent access"
+          ]
+        }
+      ],
+      "wordCount": 149,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database integration testing is essential whenever your application persists data and correctness depends on database behavior. Apply these techniques when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building data access layers (repositories, DAOs) where SQL queries involve joins, aggregations, window functions, or database-specific features that cannot be validated without a real database engine",
+            "Testing database migrations before deploying to production, ensuring that ALTER TABLE statements, data transformations, and index changes work correctly on existing data",
+            "Validating that application code correctly handles database constraints (unique violations, foreign key failures, check constraints) and translates them into appropriate domain errors",
+            "Working with ORMs (Hibernate, Prisma, TypeORM) where generated SQL may differ from expectations, especially for complex relationships, lazy loading, and N+1 query patterns",
+            "Testing concurrent access patterns where race conditions, deadlocks, and isolation level behavior can only be reproduced with a real database engine"
+          ]
+        }
+      ],
+      "wordCount": 134,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "testcontainers-setup-for-postgresql-javajunit-5",
+          "heading": "Testcontainers Setup for PostgreSQL (Java/JUnit 5)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import org.junit.jupiter.api.*;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\n\n@Testcontainers\n@SpringBootTest\n@Transactional  // Each test runs in a transaction that rolls back\nclass OrderRepositoryIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n        .withDatabaseName(\"testdb\")\n        .withUsername(\"test\")\n        .withPassword(\"test\")\n        .withInitScript(\"schema/init.sql\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Autowired\n    private TestDataBuilder testData;\n\n    @Test\n    void findByCustomerId_returnsOrdersInDescendingDateOrder() {\n        // Arrange — create test data using builder\n        Customer customer = testData.aCustomer().withId(\"cust-1\").build();\n        Order order1 = testData.anOrder()\n            .withCustomer(customer)\n            .withCreatedAt(LocalDateTime.of(2024, 1, 15, 10, 0))\n            .withStatus(OrderStatus.COMPLETED)\n            .build();\n        Order order2 = testData.anOrder()\n            .withCustomer(customer)\n            .withCreatedAt(LocalDateTime.of(2024, 3, 20, 14, 30))\n            .withStatus(OrderStatus.PENDING)\n            .build();\n\n        // Act\n        List<Order> orders = orderRepository.findByCustomerId(\"cust-1\", PageRequest.of(0, 10));\n\n        // Assert — most recent first\n        assertThat(orders).hasSize(2);\n        assertThat(orders.get(0).getCreatedAt()).isAfter(orders.get(1).getCreatedAt());\n        assertThat(orders.get(0).getStatus()).isEqualTo(OrderStatus.PENDING);\n    }\n\n    @Test\n    void save_enforcesUniqueConstraintOnOrderNumber() {\n        Order order1 = testData.anOrder().withOrderNumber(\"ORD-001\").build();\n\n        Order duplicate = testData.anOrder().withOrderNumber(\"ORD-001\").buildWithoutPersist();\n\n        assertThatThrownBy(() -> orderRepository.save(duplicate))\n            .isInstanceOf(DataIntegrityViolationException.class)\n            .hasMessageContaining(\"unique constraint\");\n    }\n\n    @Test\n    void findByFilters_handlesComplexQueryWithPagination() {\n        // Seed 50 orders across different statuses and date ranges\n        testData.seedOrders(50, order -> order\n            .withRandomStatus()\n            .withCreatedAtBetween(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 6, 30)));\n\n        OrderFilter filter = OrderFilter.builder()\n            .status(OrderStatus.COMPLETED)\n            .dateFrom(LocalDate.of(2024, 3, 1))\n            .dateTo(LocalDate.of(2024, 5, 31))\n            .minAmount(BigDecimal.valueOf(100))\n            .build();\n\n        Page<Order> results = orderRepository.findByFilters(filter, PageRequest.of(0, 10));\n\n        assertThat(results.getContent()).allSatisfy(order -> {\n            assertThat(order.getStatus()).isEqualTo(OrderStatus.COMPLETED);\n            assertThat(order.getCreatedAt()).isBetween(\n                filter.getDateFrom().atStartOfDay(),\n                filter.getDateTo().plusDays(1).atStartOfDay()\n            );\n            assertThat(order.getTotalAmount()).isGreaterThanOrEqualTo(BigDecimal.valueOf(100));\n        });\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "testcontainers-with-typescript-nodejsjest",
+          "heading": "Testcontainers with TypeScript (Node.js/Jest)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { OrderRepository } from '../src/repositories/order-repository';\nimport { runMigrations } from '../src/db/migrations';\n\ndescribe('OrderRepository Integration Tests', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n  let repository: OrderRepository;\n\n  beforeAll(async () => {\n    container = await new GenericContainer('postgres:16-alpine')\n      .withEnvironment({\n        POSTGRES_DB: 'testdb',\n        POSTGRES_USER: 'test',\n        POSTGRES_PASSWORD: 'test'\n      })\n      .withExposedPorts(5432)\n      .withWaitStrategy(Wait.forLogMessage(/ready to accept connections/, 2))\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: 'testdb',\n      user: 'test',\n      password: 'test'\n    });\n\n    await runMigrations(pool);\n    repository = new OrderRepository(pool);\n  }, 60000);  // Container startup can take time\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  // Transaction rollback for test isolation\n  let client: PoolClient;\n  beforeEach(async () => {\n    client = await pool.connect();\n    await client.query('BEGIN');\n  });\n\n  afterEach(async () => {\n    await client.query('ROLLBACK');\n    client.release();\n  });\n\n  it('creates an order with line items in a single transaction', async () => {\n    const order = await repository.create({\n      customerId: 'cust-123',\n      items: [\n        { productId: 'prod-1', quantity: 2, unitPrice: 29.99 },\n        { productId: 'prod-2', quantity: 1, unitPrice: 49.99 }\n      ],\n      shippingAddress: { street: '123 Main St', city: 'Portland', state: 'OR', zip: '97201' }\n    });\n\n    expect(order.id).toBeDefined();\n    expect(order.orderNumber).toMatch(/^ORD-\\d{8}$/);\n    expect(order.totalAmount).toBe(109.97);  // (2 * 29.99) + 49.99\n\n    // Verify line items persisted\n    const retrieved = await repository.findById(order.id);\n    expect(retrieved?.items).toHaveLength(2);\n    expect(retrieved?.items[0].productId).toBe('prod-1');\n  });\n\n  it('handles concurrent order creation without duplicate order numbers', async () => {\n    const promises = Array.from({ length: 10 }, (_, i) =>\n      repository.create({\n        customerId: `cust-${i}`,\n        items: [{ productId: 'prod-1', quantity: 1, unitPrice: 10 }],\n        shippingAddress: { street: '123 Main', city: 'Test', state: 'OR', zip: '97201' }\n      })\n    );\n\n    const orders = await Promise.all(promises);\n    const orderNumbers = orders.map(o => o.orderNumber);\n    const uniqueNumbers = new Set(orderNumbers);\n\n    expect(uniqueNumbers.size).toBe(10);  // All unique\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "test-data-builder-pattern",
+          "heading": "Test Data Builder Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// test/builders/order-builder.ts\nimport { faker } from '@faker-js/faker';\n\ninterface OrderData {\n  id?: string;\n  customerId: string;\n  orderNumber: string;\n  status: OrderStatus;\n  items: OrderItem[];\n  totalAmount: number;\n  createdAt: Date;\n  shippingAddress: Address;\n}\n\nexport class OrderBuilder {\n  private data: OrderData;\n\n  constructor(private pool: Pool) {\n    // Sensible defaults — every field has a valid value\n    this.data = {\n      customerId: faker.string.uuid(),\n      orderNumber: `ORD-${faker.string.numeric(8)}`,\n      status: OrderStatus.PENDING,\n      items: [this.defaultItem()],\n      totalAmount: 29.99,\n      createdAt: faker.date.recent({ days: 30 }),\n      shippingAddress: this.defaultAddress()\n    };\n  }\n\n  withCustomerId(id: string): this {\n    this.data.customerId = id;\n    return this;\n  }\n\n  withStatus(status: OrderStatus): this {\n    this.data.status = status;\n    return this;\n  }\n\n  withItems(items: OrderItem[]): this {\n    this.data.items = items;\n    this.data.totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);\n    return this;\n  }\n\n  withCreatedAt(date: Date): this {\n    this.data.createdAt = date;\n    return this;\n  }\n\n  withTotalAmountAbove(min: number): this {\n    const price = min + faker.number.float({ min: 1, max: 100 });\n    this.data.items = [{ productId: faker.string.uuid(), quantity: 1, unitPrice: price }];\n    this.data.totalAmount = price;\n    return this;\n  }\n\n  async build(): Promise<Order> {\n    const result = await this.pool.query(\n      `INSERT INTO orders (customer_id, order_number, status, total_amount, created_at, shipping_address)\n       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,\n      [this.data.customerId, this.data.orderNumber, this.data.status,\n       this.data.totalAmount, this.data.createdAt, JSON.stringify(this.data.shippingAddress)]\n    );\n\n    // Insert line items\n    for (const item of this.data.items) {\n      await this.pool.query(\n        `INSERT INTO order_items (order_id, product_id, quantity, unit_price)\n         VALUES ($1, $2, $3, $4)`,\n        [result.rows[0].id, item.productId, item.quantity, item.unitPrice]\n      );\n    }\n\n    return this.mapToOrder(result.rows[0]);\n  }\n\n  buildWithoutPersist(): OrderData {\n    return { ...this.data };\n  }\n\n  private defaultItem(): OrderItem {\n    return { productId: faker.string.uuid(), quantity: 1, unitPrice: 29.99 };\n  }\n\n  private defaultAddress(): Address {\n    return {\n      street: faker.location.streetAddress(),\n      city: faker.location.city(),\n      state: faker.location.state({ abbreviated: true }),\n      zip: faker.location.zipCode()\n    };\n  }\n}\n\n// Usage in tests:\n// const order = await new OrderBuilder(pool).withStatus(OrderStatus.SHIPPED).build();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "migration-testing",
+          "heading": "Migration Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { GenericContainer, StartedTestContainer } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { Umzug, SequelizeStorage } from 'umzug';\n\ndescribe('Database Migration Tests', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n\n  beforeAll(async () => {\n    container = await new GenericContainer('postgres:16-alpine')\n      .withEnvironment({ POSTGRES_DB: 'migration_test', POSTGRES_USER: 'test', POSTGRES_PASSWORD: 'test' })\n      .withExposedPorts(5432)\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: 'migration_test',\n      user: 'test',\n      password: 'test'\n    });\n  });\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  it('all migrations apply cleanly to empty database', async () => {\n    const umzug = createMigrator(pool);\n    const pending = await umzug.pending();\n\n    expect(pending.length).toBeGreaterThan(0);\n\n    // Apply all migrations\n    const executed = await umzug.up();\n    expect(executed).toHaveLength(pending.length);\n\n    // Verify final schema\n    const tables = await pool.query(\n      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`\n    );\n    expect(tables.rows.map(r => r.table_name)).toContain('orders');\n    expect(tables.rows.map(r => r.table_name)).toContain('order_items');\n    expect(tables.rows.map(r => r.table_name)).toContain('customers');\n  });\n\n  it('migrations are reversible (up then down)', async () => {\n    const umzug = createMigrator(pool);\n\n    // Apply all\n    await umzug.up();\n\n    // Rollback all\n    await umzug.down({ to: 0 });\n\n    // Verify clean state\n    const tables = await pool.query(\n      `SELECT table_name FROM information_schema.tables\n       WHERE table_schema = 'public' AND table_name != 'migrations'`\n    );\n    expect(tables.rows).toHaveLength(0);\n  });\n\n  it('migration handles existing data correctly', async () => {\n    const umzug = createMigrator(pool);\n\n    // Apply migrations up to the one before our new migration\n    await umzug.up({ to: '20240301_add_orders_table' });\n\n    // Insert data in the old schema\n    await pool.query(`\n      INSERT INTO orders (id, customer_id, total, created_at)\n      VALUES ('ord-1', 'cust-1', 99.99, NOW())\n    `);\n\n    // Apply the new migration that adds a column with default\n    await umzug.up({ to: '20240315_add_order_status' });\n\n    // Verify existing data has the default value\n    const result = await pool.query(`SELECT status FROM orders WHERE id = 'ord-1'`);\n    expect(result.rows[0].status).toBe('pending');  // Default value applied\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "mongodb-integration-testing-with-testcontainers",
+          "heading": "MongoDB Integration Testing with Testcontainers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { MongoDBContainer, StartedMongoDBContainer } from '@testcontainers/mongodb';\nimport { MongoClient, Db, Collection } from 'mongodb';\n\ndescribe('Product Catalog Repository (MongoDB)', () => {\n  let container: StartedMongoDBContainer;\n  let client: MongoClient;\n  let db: Db;\n  let collection: Collection;\n\n  beforeAll(async () => {\n    container = await new MongoDBContainer('mongo:7').start();\n    client = new MongoClient(container.getConnectionString(), { directConnection: true });\n    await client.connect();\n    db = client.db('test_catalog');\n    collection = db.collection('products');\n\n    // Create indexes matching production\n    await collection.createIndex({ category: 1, price: 1 });\n    await collection.createIndex({ name: 'text', description: 'text' });\n    await collection.createIndex({ sku: 1 }, { unique: true });\n  }, 60000);\n\n  afterAll(async () => {\n    await client.close();\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    await collection.deleteMany({});\n  });\n\n  it('text search returns relevant products ranked by score', async () => {\n    await collection.insertMany([\n      { name: 'Wireless Bluetooth Headphones', category: 'audio', price: 79.99, sku: 'AUD-001' },\n      { name: 'Wired Studio Headphones', category: 'audio', price: 149.99, sku: 'AUD-002' },\n      { name: 'Bluetooth Speaker', category: 'audio', price: 49.99, sku: 'AUD-003' },\n      { name: 'USB Keyboard', category: 'peripherals', price: 39.99, sku: 'PER-001' }\n    ]);\n\n    const results = await collection\n      .find(\n        { $text: { $search: 'bluetooth headphones' } },\n        { score: { $meta: 'textScore' } }\n      )\n      .sort({ score: { $meta: 'textScore' } })\n      .toArray();\n\n    expect(results).toHaveLength(3);  // Matches bluetooth OR headphones\n    expect(results[0].name).toContain('Bluetooth Headphones');  // Best match first\n  });\n\n  it('aggregation pipeline computes category statistics', async () => {\n    await collection.insertMany([\n      { name: 'Product A', category: 'electronics', price: 299.99, sku: 'E-1', soldCount: 150 },\n      { name: 'Product B', category: 'electronics', price: 199.99, sku: 'E-2', soldCount: 300 },\n      { name: 'Product C', category: 'clothing', price: 49.99, sku: 'C-1', soldCount: 500 }\n    ]);\n\n    const stats = await collection.aggregate([\n      { $group: {\n        _id: '$category',\n        avgPrice: { $avg: '$price' },\n        totalRevenue: { $sum: { $multiply: ['$price', '$soldCount'] } },\n        productCount: { $sum: 1 }\n      }},\n      { $sort: { totalRevenue: -1 } }\n    ]).toArray();\n\n    expect(stats[0]._id).toBe('electronics');\n    expect(stats[0].productCount).toBe(2);\n    expect(stats[0].avgPrice).toBeCloseTo(249.99, 2);\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Test Isolation Strategies\"\n        A[Transaction Rollback<br/>Fast, simple] --> B[Each test in BEGIN/ROLLBACK]\n        C[Truncate + Re-seed<br/>Clean slate] --> D[TRUNCATE tables between tests]\n        E[Unique Prefixes<br/>Parallel-safe] --> F[Each test uses unique IDs]\n        G[Container Per Suite<br/>Maximum isolation] --> H[Fresh DB per test file]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant T as Test Suite\n    participant TC as Testcontainers\n    participant D as Docker\n    participant DB as PostgreSQL\n\n    T->>TC: Start PostgreSQL container\n    TC->>D: Pull image (cached)\n    D->>DB: Start container\n    DB-->>TC: Ready (health check passes)\n    TC-->>T: Connection URL\n\n    T->>DB: Run migrations\n    T->>DB: BEGIN transaction\n    T->>DB: Insert test data\n    T->>DB: Execute queries under test\n    T->>T: Assert results\n    T->>DB: ROLLBACK transaction\n\n    Note over T,DB: Repeat for each test\n\n    T->>TC: Stop container\n    TC->>D: Remove container"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Test Data Builder Pattern\"\n        A[Test Method] --> B[OrderBuilder]\n        B --> C[Set relevant fields only]\n        C --> D[Builder fills defaults]\n        D --> E[Persist to test DB]\n        E --> F[Return domain object]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Using H2 or SQLite as a substitute for PostgreSQL/MySQL in tests. In-memory databases have different SQL dialects, different behavior for NULL handling, different locking semantics, and don't support database-specific features (PostgreSQL arrays, JSON operators, window functions, CTEs with recursive). Tests pass against H2 but fail in production. Always test against the same database engine you deploy to — Testcontainers makes this practical with minimal overhead (5-10 second startup for PostgreSQL)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not testing database constraints and relying solely on application-level validation. Application validation can be bypassed (direct SQL access, race conditions, bugs in validation logic). Database constraints are the last line of defense. Test that unique constraints reject duplicates, foreign keys prevent orphaned records, check constraints reject invalid values, and NOT NULL columns reject nulls. These tests document the database's invariants and catch regressions when someone modifies the schema."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shared test database causing flaky tests in CI. When multiple test suites or parallel CI jobs share a database, tests interfere with each other. One test inserts a record that another test's COUNT(*) assertion doesn't expect. Use per-suite containers (Testcontainers), transaction rollback isolation, or unique data prefixes. Never rely on test execution order — tests must be independent and idempotent."
+        },
+        {
+          "type": "paragraph",
+          "text": "Slow test suites from excessive container restarts. Starting a PostgreSQL container takes 3-8 seconds. If each test file starts its own container, a suite of 20 files wastes 60-160 seconds on startup alone. Use a shared container across the entire test run (global setup in Jest, @Container with static in JUnit). Isolate tests within the shared container using transactions or schema-per-test patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not testing migration rollbacks. Teams test that migrations apply forward but never test rollback. When a production deployment fails and you need to rollback, untested down migrations may fail, leaving the database in an inconsistent state. Test both directions: up applies cleanly, down reverses cleanly, and re-applying up after down produces the same schema. Include data migration tests that verify existing rows are transformed correctly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring connection pool behavior in tests. Production applications use connection pools (HikariCP, pg-pool) with specific configurations (max connections, timeout, idle eviction). Tests that create a new connection per query miss pool exhaustion bugs, connection leak issues, and timeout behavior. Configure tests to use a pool with production-like settings (smaller max size to surface leaks faster)."
+        }
+      ],
+      "wordCount": 380,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Order Processing with Concurrent Access. An order system must handle multiple users purchasing the last item in stock simultaneously. Database integration tests verify that the inventory decrement uses SELECT FOR UPDATE or optimistic locking (version column) to prevent overselling. Tests create 10 concurrent transactions all attempting to purchase the last unit — exactly one succeeds, nine receive \"out of stock\" errors. This behavior cannot be tested without a real database with proper transaction isolation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-Tenant SaaS with Row-Level Security. A SaaS application uses PostgreSQL Row-Level Security (RLS) policies to ensure tenants can only access their own data. Integration tests verify that: queries with tenant A's context never return tenant B's data, bulk operations respect tenant boundaries, and administrative queries (cross-tenant reports) work with elevated privileges. Tests create data for multiple tenants and verify isolation at the database level, not just the application level."
+        },
+        {
+          "type": "paragraph",
+          "text": "Data Pipeline with Schema Evolution. A data analytics platform ingests events with evolving schemas. Migration tests verify that: adding nullable columns doesn't break existing queries, renaming columns with views maintains backward compatibility, adding indexes doesn't lock tables for extended periods (using CREATE INDEX CONCURRENTLY), and data backfills complete correctly for millions of existing rows (tested with representative data volumes)."
+        }
+      ],
+      "wordCount": 203,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Why use Testcontainers instead of in-memory databases for integration testing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Testcontainers runs the actual production database engine in Docker, providing identical behavior for SQL dialect, constraints, indexes, locking, and database-specific features. In-memory databases (H2, SQLite) have subtle differences that cause tests to pass locally but fail in production: different NULL handling, missing support for JSONB operators, different transaction isolation behavior, and incompatible SQL syntax for advanced queries. The startup cost (5-10 seconds per container) is acceptable for integration test suites that run in CI. Testcontainers also supports reusable containers that persist across test runs during local development, eliminating the startup penalty for rapid iteration."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the transaction rollback pattern for test isolation. What are its limitations?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The transaction rollback pattern wraps each test in a database transaction (BEGIN before test, ROLLBACK after). Since the transaction never commits, test data never persists, providing perfect isolation without cleanup overhead. It's fast (no truncate/re-seed between tests) and simple. Limitations: (1) Tests cannot verify commit behavior or trigger post-commit hooks. (2) Tests that themselves use transactions (testing transaction boundaries) conflict with the outer test transaction. (3) Tests that spawn threads or async operations may use different connections outside the test transaction. (4) Some databases don't support nested transactions (savepoints work as a workaround). For tests that need to verify commit behavior, use truncate-and-reseed or unique data prefixes instead."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you test database migrations safely before deploying to production?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Multi-layer approach: (1) Run migrations against an empty database in CI to verify they apply cleanly. (2) Run migrations against a database seeded with representative production-like data to catch data transformation issues. (3) Test rollback (down migration) to ensure you can revert if deployment fails. (4) For large tables, test migration duration — a migration that locks a 100M-row table for 30 minutes is unacceptable. Use pg_stat_activity monitoring in tests to detect long locks. (5) Test that the application works correctly with both the old and new schema during the migration window (backward compatibility). (6) In staging, run migrations against a recent production snapshot to catch edge cases in real data that synthetic test data misses."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What strategies exist for managing test data in large integration test suites?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Four main strategies with different trade-offs. (1) Transaction rollback: fastest, zero cleanup, but limited to single-connection tests. (2) Truncate and re-seed: clean slate per test, slower but supports multi-connection scenarios. Optimize with TRUNCATE CASCADE (faster than DELETE). (3) Unique prefixes: each test creates data with a UUID prefix, no cleanup needed, supports parallel execution. Downside: assertions must filter by prefix. (4) Fixture snapshots: restore a database snapshot (pg_restore) before each suite, providing consistent starting state. Best for read-heavy test suites. Combine strategies: use transaction rollback for most tests, truncate for tests that verify transaction behavior, and fixtures for complex scenarios requiring extensive pre-existing data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you test for N+1 query problems in ORM-based applications?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Instrument the database connection to count queries executed during a test. Assert that loading a list of N entities with relationships executes a bounded number of queries (typically 2-3 for eager loading, not N+1). In Spring/Hibernate, use DataSourceProxy or Hibernate statistics. In TypeORM/Prisma, use query logging middleware. Write tests like: \"loading 100 orders with their items should execute at most 3 queries.\" These tests catch regressions when someone adds a new relationship or changes a fetch strategy. Combine with slow query log analysis — if a test takes longer than expected, check the query count. Some teams add query count assertions to critical path tests as performance regression guards."
+        }
+      ],
+      "wordCount": 597,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use container reuse during local development to eliminate startup latency. Testcontainers supports a reuse flag that keeps containers running between test runs. The first run starts the container (5-10 seconds), subsequent runs connect to the existing container instantly. This makes the development feedback loop as fast as in-memory databases while maintaining production fidelity. Configure .testcontainers.properties with testcontainers.reuse.enable=true and add .withReuse(true) to container definitions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement database test fixtures as code, versioned alongside migrations. Maintain a set of fixture SQL files or builder configurations that create representative test data. Version these alongside your migration files — when a migration changes the schema, update fixtures to match. This ensures tests always have valid data for the current schema. For large datasets needed for performance testing, use pg_dump snapshots of anonymized production data, refreshed monthly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor test suite execution time and set budgets per test file. Database integration tests are inherently slower than unit tests. Set a budget (e.g., 30 seconds per test file, 5 minutes total for the database test suite). When a file exceeds its budget, investigate: are tests creating too much data? Are queries unoptimized? Should some tests move to the unit layer with mocked repositories? Track execution time in CI and alert on regressions — a test that suddenly takes 10x longer often indicates a missing index or N+1 query introduced by a recent change."
+        },
+        {
+          "type": "paragraph",
+          "text": "Test with production-representative data volumes, not just happy-path small datasets. A query that works fine with 10 rows may timeout with 1 million rows due to missing indexes or inefficient query plans. Include at least one test per critical query that seeds a representative volume (thousands to tens of thousands of rows) and asserts the query completes within an acceptable time. Use EXPLAIN ANALYZE in tests to verify query plans use expected indexes. This catches performance regressions before they reach production."
+        }
+      ],
+      "wordCount": 306,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "API & Contract Testing — Testing the HTTP layer that sits above the database layer",
+            "Integration Testing Overview — Broader integration testing strategies and patterns",
+            "PostgreSQL — PostgreSQL-specific features relevant to testing (RLS, JSONB, CTEs)",
+            "Docker Fundamentals — Understanding containers that power Testcontainers"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import org.junit.jupiter.api.*;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\n\n@Testcontainers\n@SpringBootTest\n@Transactional  // Each test runs in a transaction that rolls back\nclass OrderRepositoryIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n        .withDatabaseName(\"testdb\")\n        .withUsername(\"test\")\n        .withPassword(\"test\")\n        .withInitScript(\"schema/init.sql\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Autowired\n    private TestDataBuilder testData;\n\n    @Test\n    void findByCustomerId_returnsOrdersInDescendingDateOrder() {\n        // Arrange — create test data using builder\n        Customer customer = testData.aCustomer().withId(\"cust-1\").build();\n        Order order1 = testData.anOrder()\n            .withCustomer(customer)\n            .withCreatedAt(LocalDateTime.of(2024, 1, 15, 10, 0))\n            .withStatus(OrderStatus.COMPLETED)\n            .build();\n        Order order2 = testData.anOrder()\n            .withCustomer(customer)\n            .withCreatedAt(LocalDateTime.of(2024, 3, 20, 14, 30))\n            .withStatus(OrderStatus.PENDING)\n            .build();\n\n        // Act\n        List<Order> orders = orderRepository.findByCustomerId(\"cust-1\", PageRequest.of(0, 10));\n\n        // Assert — most recent first\n        assertThat(orders).hasSize(2);\n        assertThat(orders.get(0).getCreatedAt()).isAfter(orders.get(1).getCreatedAt());\n        assertThat(orders.get(0).getStatus()).isEqualTo(OrderStatus.PENDING);\n    }\n\n    @Test\n    void save_enforcesUniqueConstraintOnOrderNumber() {\n        Order order1 = testData.anOrder().withOrderNumber(\"ORD-001\").build();\n\n        Order duplicate = testData.anOrder().withOrderNumber(\"ORD-001\").buildWithoutPersist();\n\n        assertThatThrownBy(() -> orderRepository.save(duplicate))\n            .isInstanceOf(DataIntegrityViolationException.class)\n            .hasMessageContaining(\"unique constraint\");\n    }\n\n    @Test\n    void findByFilters_handlesComplexQueryWithPagination() {\n        // Seed 50 orders across different statuses and date ranges\n        testData.seedOrders(50, order -> order\n            .withRandomStatus()\n            .withCreatedAtBetween(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 6, 30)));\n\n        OrderFilter filter = OrderFilter.builder()\n            .status(OrderStatus.COMPLETED)\n            .dateFrom(LocalDate.of(2024, 3, 1))\n            .dateTo(LocalDate.of(2024, 5, 31))\n            .minAmount(BigDecimal.valueOf(100))\n            .build();\n\n        Page<Order> results = orderRepository.findByFilters(filter, PageRequest.of(0, 10));\n\n        assertThat(results.getContent()).allSatisfy(order -> {\n            assertThat(order.getStatus()).isEqualTo(OrderStatus.COMPLETED);\n            assertThat(order.getCreatedAt()).isBetween(\n                filter.getDateFrom().atStartOfDay(),\n                filter.getDateTo().plusDays(1).atStartOfDay()\n            );\n            assertThat(order.getTotalAmount()).isGreaterThanOrEqualTo(BigDecimal.valueOf(100));\n        });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { OrderRepository } from '../src/repositories/order-repository';\nimport { runMigrations } from '../src/db/migrations';\n\ndescribe('OrderRepository Integration Tests', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n  let repository: OrderRepository;\n\n  beforeAll(async () => {\n    container = await new GenericContainer('postgres:16-alpine')\n      .withEnvironment({\n        POSTGRES_DB: 'testdb',\n        POSTGRES_USER: 'test',\n        POSTGRES_PASSWORD: 'test'\n      })\n      .withExposedPorts(5432)\n      .withWaitStrategy(Wait.forLogMessage(/ready to accept connections/, 2))\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: 'testdb',\n      user: 'test',\n      password: 'test'\n    });\n\n    await runMigrations(pool);\n    repository = new OrderRepository(pool);\n  }, 60000);  // Container startup can take time\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  // Transaction rollback for test isolation\n  let client: PoolClient;\n  beforeEach(async () => {\n    client = await pool.connect();\n    await client.query('BEGIN');\n  });\n\n  afterEach(async () => {\n    await client.query('ROLLBACK');\n    client.release();\n  });\n\n  it('creates an order with line items in a single transaction', async () => {\n    const order = await repository.create({\n      customerId: 'cust-123',\n      items: [\n        { productId: 'prod-1', quantity: 2, unitPrice: 29.99 },\n        { productId: 'prod-2', quantity: 1, unitPrice: 49.99 }\n      ],\n      shippingAddress: { street: '123 Main St', city: 'Portland', state: 'OR', zip: '97201' }\n    });\n\n    expect(order.id).toBeDefined();\n    expect(order.orderNumber).toMatch(/^ORD-\\d{8}$/);\n    expect(order.totalAmount).toBe(109.97);  // (2 * 29.99) + 49.99\n\n    // Verify line items persisted\n    const retrieved = await repository.findById(order.id);\n    expect(retrieved?.items).toHaveLength(2);\n    expect(retrieved?.items[0].productId).toBe('prod-1');\n  });\n\n  it('handles concurrent order creation without duplicate order numbers', async () => {\n    const promises = Array.from({ length: 10 }, (_, i) =>\n      repository.create({\n        customerId: `cust-${i}`,\n        items: [{ productId: 'prod-1', quantity: 1, unitPrice: 10 }],\n        shippingAddress: { street: '123 Main', city: 'Test', state: 'OR', zip: '97201' }\n      })\n    );\n\n    const orders = await Promise.all(promises);\n    const orderNumbers = orders.map(o => o.orderNumber);\n    const uniqueNumbers = new Set(orderNumbers);\n\n    expect(uniqueNumbers.size).toBe(10);  // All unique\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// test/builders/order-builder.ts\nimport { faker } from '@faker-js/faker';\n\ninterface OrderData {\n  id?: string;\n  customerId: string;\n  orderNumber: string;\n  status: OrderStatus;\n  items: OrderItem[];\n  totalAmount: number;\n  createdAt: Date;\n  shippingAddress: Address;\n}\n\nexport class OrderBuilder {\n  private data: OrderData;\n\n  constructor(private pool: Pool) {\n    // Sensible defaults — every field has a valid value\n    this.data = {\n      customerId: faker.string.uuid(),\n      orderNumber: `ORD-${faker.string.numeric(8)}`,\n      status: OrderStatus.PENDING,\n      items: [this.defaultItem()],\n      totalAmount: 29.99,\n      createdAt: faker.date.recent({ days: 30 }),\n      shippingAddress: this.defaultAddress()\n    };\n  }\n\n  withCustomerId(id: string): this {\n    this.data.customerId = id;\n    return this;\n  }\n\n  withStatus(status: OrderStatus): this {\n    this.data.status = status;\n    return this;\n  }\n\n  withItems(items: OrderItem[]): this {\n    this.data.items = items;\n    this.data.totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);\n    return this;\n  }\n\n  withCreatedAt(date: Date): this {\n    this.data.createdAt = date;\n    return this;\n  }\n\n  withTotalAmountAbove(min: number): this {\n    const price = min + faker.number.float({ min: 1, max: 100 });\n    this.data.items = [{ productId: faker.string.uuid(), quantity: 1, unitPrice: price }];\n    this.data.totalAmount = price;\n    return this;\n  }\n\n  async build(): Promise<Order> {\n    const result = await this.pool.query(\n      `INSERT INTO orders (customer_id, order_number, status, total_amount, created_at, shipping_address)\n       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,\n      [this.data.customerId, this.data.orderNumber, this.data.status,\n       this.data.totalAmount, this.data.createdAt, JSON.stringify(this.data.shippingAddress)]\n    );\n\n    // Insert line items\n    for (const item of this.data.items) {\n      await this.pool.query(\n        `INSERT INTO order_items (order_id, product_id, quantity, unit_price)\n         VALUES ($1, $2, $3, $4)`,\n        [result.rows[0].id, item.productId, item.quantity, item.unitPrice]\n      );\n    }\n\n    return this.mapToOrder(result.rows[0]);\n  }\n\n  buildWithoutPersist(): OrderData {\n    return { ...this.data };\n  }\n\n  private defaultItem(): OrderItem {\n    return { productId: faker.string.uuid(), quantity: 1, unitPrice: 29.99 };\n  }\n\n  private defaultAddress(): Address {\n    return {\n      street: faker.location.streetAddress(),\n      city: faker.location.city(),\n      state: faker.location.state({ abbreviated: true }),\n      zip: faker.location.zipCode()\n    };\n  }\n}\n\n// Usage in tests:\n// const order = await new OrderBuilder(pool).withStatus(OrderStatus.SHIPPED).build();",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { GenericContainer, StartedTestContainer } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { Umzug, SequelizeStorage } from 'umzug';\n\ndescribe('Database Migration Tests', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n\n  beforeAll(async () => {\n    container = await new GenericContainer('postgres:16-alpine')\n      .withEnvironment({ POSTGRES_DB: 'migration_test', POSTGRES_USER: 'test', POSTGRES_PASSWORD: 'test' })\n      .withExposedPorts(5432)\n      .start();\n\n    pool = new Pool({\n      host: container.getHost(),\n      port: container.getMappedPort(5432),\n      database: 'migration_test',\n      user: 'test',\n      password: 'test'\n    });\n  });\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  it('all migrations apply cleanly to empty database', async () => {\n    const umzug = createMigrator(pool);\n    const pending = await umzug.pending();\n\n    expect(pending.length).toBeGreaterThan(0);\n\n    // Apply all migrations\n    const executed = await umzug.up();\n    expect(executed).toHaveLength(pending.length);\n\n    // Verify final schema\n    const tables = await pool.query(\n      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`\n    );\n    expect(tables.rows.map(r => r.table_name)).toContain('orders');\n    expect(tables.rows.map(r => r.table_name)).toContain('order_items');\n    expect(tables.rows.map(r => r.table_name)).toContain('customers');\n  });\n\n  it('migrations are reversible (up then down)', async () => {\n    const umzug = createMigrator(pool);\n\n    // Apply all\n    await umzug.up();\n\n    // Rollback all\n    await umzug.down({ to: 0 });\n\n    // Verify clean state\n    const tables = await pool.query(\n      `SELECT table_name FROM information_schema.tables\n       WHERE table_schema = 'public' AND table_name != 'migrations'`\n    );\n    expect(tables.rows).toHaveLength(0);\n  });\n\n  it('migration handles existing data correctly', async () => {\n    const umzug = createMigrator(pool);\n\n    // Apply migrations up to the one before our new migration\n    await umzug.up({ to: '20240301_add_orders_table' });\n\n    // Insert data in the old schema\n    await pool.query(`\n      INSERT INTO orders (id, customer_id, total, created_at)\n      VALUES ('ord-1', 'cust-1', 99.99, NOW())\n    `);\n\n    // Apply the new migration that adds a column with default\n    await umzug.up({ to: '20240315_add_order_status' });\n\n    // Verify existing data has the default value\n    const result = await pool.query(`SELECT status FROM orders WHERE id = 'ord-1'`);\n    expect(result.rows[0].status).toBe('pending');  // Default value applied\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { MongoDBContainer, StartedMongoDBContainer } from '@testcontainers/mongodb';\nimport { MongoClient, Db, Collection } from 'mongodb';\n\ndescribe('Product Catalog Repository (MongoDB)', () => {\n  let container: StartedMongoDBContainer;\n  let client: MongoClient;\n  let db: Db;\n  let collection: Collection;\n\n  beforeAll(async () => {\n    container = await new MongoDBContainer('mongo:7').start();\n    client = new MongoClient(container.getConnectionString(), { directConnection: true });\n    await client.connect();\n    db = client.db('test_catalog');\n    collection = db.collection('products');\n\n    // Create indexes matching production\n    await collection.createIndex({ category: 1, price: 1 });\n    await collection.createIndex({ name: 'text', description: 'text' });\n    await collection.createIndex({ sku: 1 }, { unique: true });\n  }, 60000);\n\n  afterAll(async () => {\n    await client.close();\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    await collection.deleteMany({});\n  });\n\n  it('text search returns relevant products ranked by score', async () => {\n    await collection.insertMany([\n      { name: 'Wireless Bluetooth Headphones', category: 'audio', price: 79.99, sku: 'AUD-001' },\n      { name: 'Wired Studio Headphones', category: 'audio', price: 149.99, sku: 'AUD-002' },\n      { name: 'Bluetooth Speaker', category: 'audio', price: 49.99, sku: 'AUD-003' },\n      { name: 'USB Keyboard', category: 'peripherals', price: 39.99, sku: 'PER-001' }\n    ]);\n\n    const results = await collection\n      .find(\n        { $text: { $search: 'bluetooth headphones' } },\n        { score: { $meta: 'textScore' } }\n      )\n      .sort({ score: { $meta: 'textScore' } })\n      .toArray();\n\n    expect(results).toHaveLength(3);  // Matches bluetooth OR headphones\n    expect(results[0].name).toContain('Bluetooth Headphones');  // Best match first\n  });\n\n  it('aggregation pipeline computes category statistics', async () => {\n    await collection.insertMany([\n      { name: 'Product A', category: 'electronics', price: 299.99, sku: 'E-1', soldCount: 150 },\n      { name: 'Product B', category: 'electronics', price: 199.99, sku: 'E-2', soldCount: 300 },\n      { name: 'Product C', category: 'clothing', price: 49.99, sku: 'C-1', soldCount: 500 }\n    ]);\n\n    const stats = await collection.aggregate([\n      { $group: {\n        _id: '$category',\n        avgPrice: { $avg: '$price' },\n        totalRevenue: { $sum: { $multiply: ['$price', '$soldCount'] } },\n        productCount: { $sum: 1 }\n      }},\n      { $sort: { totalRevenue: -1 } }\n    ]).toArray();\n\n    expect(stats[0]._id).toBe('electronics');\n    expect(stats[0].productCount).toBe(2);\n    expect(stats[0].avgPrice).toBeCloseTo(249.99, 2);\n  });\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/integration-testing/database-testing.md",
+    "wordCount": 1812,
+    "sectionCount": 14
+  }
+}

@@ -1,0 +1,355 @@
+{
+  "id": "mongodb-schema-design",
+  "slug": "schema-design",
+  "title": "Schema Design",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Schema Design",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "MongoDB schema design is fundamentally different from relational database design — instead of normalizing data across tables and joining at query time, MongoDB encourages denormalization and embedding related data within documents to optimize for the application's access patterns. The key insight is that schema design in MongoDB is driven by how the application reads and writes data, not by the logical relationships between entities. A well-designed MongoDB schema can serve complex queries with a single document read (no joins), while a poorly designed schema forces multiple round-trips and application-level joins that negate MongoDB's performance advantages. The document model offers flexibility that relational schemas cannot match: polymorphic collections where documents in the same collection have different structures, schema versioning that allows gradual migration without downtime, and nested documents that represent one-to-few relationships without separate collections. However, this flexibility requires discipline — without the guardrails of foreign keys and normalization rules, it's easy to create schemas that are difficult to query, impossible to index efficiently, or that grow documents beyond the 16MB BSON limit."
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Embedding: Store related data in nested documents/arrays within the parent document; optimal for one-to-few relationships and data accessed together",
+            "Referencing: Store ObjectId references to documents in other collections; necessary for one-to-many/many-to-many relationships and independently accessed data",
+            "16MB document limit: Maximum BSON document size; design schemas to avoid unbounded array growth that could hit this limit",
+            "Polymorphic pattern: Documents in the same collection with different structures; use a discriminator field (e.g., type) to distinguish variants",
+            "Bucket pattern: Group time-series or sequential data into fixed-size buckets (e.g., 1 hour of readings per document) to balance document size and query efficiency",
+            "Outlier pattern: Handle documents with abnormally large arrays by overflow into separate documents; flag the parent with has_overflow: true",
+            "Schema versioning: Include a schema_version field; application handles multiple versions simultaneously during gradual migration",
+            "Computed pattern: Store pre-computed values (counts, sums, averages) that are expensive to calculate on read; update on write",
+            "Extended reference: Embed frequently-accessed fields from a referenced document to avoid joins for common queries (denormalized copy)",
+            "Subset pattern: Embed only the most recent/relevant subset of related data; full data lives in a separate collection"
+          ]
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Embedding is the right choice when related data is always accessed together (a blog post and its comments displayed on the same page), when the relationship is one-to-few (a person's addresses, typically 1-3), when the embedded data doesn't change independently of the parent, and when the embedded array has a bounded size that won't approach the 16MB limit. Embedding provides atomic updates (the entire document is written atomically), eliminates the need for joins, and enables single-document reads for complex data structures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Referencing is appropriate when related data is accessed independently (users and their orders — you often query orders without needing user details), when the relationship is one-to-many or many-to-many (a product with thousands of reviews), when the related data changes frequently and independently, or when embedding would cause documents to exceed the 16MB limit. References require application-level joins ($lookup in aggregation pipeline) but keep documents small and independently manageable."
+        },
+        {
+          "type": "paragraph",
+          "text": "The bucket pattern should be used for time-series data, event logs, and IoT sensor readings where individual events are small but numerous. Instead of one document per event (millions of tiny documents with high index overhead) or one document per device (unbounded growth), bucket by time window (e.g., one document per device per hour containing all readings for that hour). This balances document size, index efficiency, and query patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "The polymorphic pattern is ideal for collections that store different entity types with shared base fields — a products collection containing electronics, clothing, and food items each with different attribute schemas but shared fields like name, price, and category. Use a discriminator field to enable type-specific queries and validation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Schema versioning is essential for production systems that cannot afford downtime for migrations. Include a schema_version field in every document, write application code that handles all active versions, and migrate documents lazily (on read) or in background batches. This enables zero-downtime schema evolution."
+        }
+      ],
+      "wordCount": 311,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "embedding-vs-referencing-patterns",
+          "heading": "Embedding vs Referencing Patterns",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// EMBEDDING: One-to-few relationship (user with addresses)\n// Good: addresses are always accessed with the user, bounded count\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Jane Smith\",\n  email: \"jane@example.com\",\n  addresses: [\n    {\n      type: \"home\",\n      street: \"123 Main St\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97201\",\n      is_default: true\n    },\n    {\n      type: \"work\",\n      street: \"456 Tech Ave\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97204\",\n      is_default: false\n    }\n  ],\n  created_at: ISODate(\"2024-01-15T10:00:00Z\")\n}\n\n// REFERENCING: One-to-many relationship (user with orders)\n// Good: orders are queried independently, unbounded count\n// Users collection\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Jane Smith\",\n  email: \"jane@example.com\"\n}\n\n// Orders collection (references user)\n{\n  _id: ObjectId(\"order456\"),\n  user_id: ObjectId(\"user123\"),  // reference\n  items: [\n    { product_id: ObjectId(\"prod789\"), name: \"Widget\", quantity: 2, price: 29.99 },\n    { product_id: ObjectId(\"prod012\"), name: \"Gadget\", quantity: 1, price: 49.99 }\n  ],\n  total: 109.97,\n  status: \"shipped\",\n  created_at: ISODate(\"2024-03-01T14:30:00Z\")\n}\n\n// EXTENDED REFERENCE: Embed frequently-needed fields to avoid joins\n// Order with embedded user summary (avoids $lookup for order listing page)\n{\n  _id: ObjectId(\"order456\"),\n  user: {\n    _id: ObjectId(\"user123\"),\n    name: \"Jane Smith\",      // denormalized copy\n    email: \"jane@example.com\" // denormalized copy\n  },\n  items: [...],\n  total: 109.97,\n  status: \"shipped\"\n}\n\n// SUBSET PATTERN: Embed only recent reviews, full set in separate collection\n// Products collection (embedded subset)\n{\n  _id: ObjectId(\"prod789\"),\n  name: \"Premium Widget\",\n  price: 29.99,\n  avg_rating: 4.5,\n  review_count: 1247,\n  recent_reviews: [  // only last 10 reviews embedded\n    { user_name: \"Alice\", rating: 5, text: \"Excellent!\", date: ISODate(\"2024-03-15\") },\n    { user_name: \"Bob\", rating: 4, text: \"Good value\", date: ISODate(\"2024-03-14\") }\n    // ... 8 more\n  ]\n}\n\n// Reviews collection (complete set)\n{\n  _id: ObjectId(\"review001\"),\n  product_id: ObjectId(\"prod789\"),\n  user_id: ObjectId(\"user456\"),\n  user_name: \"Alice\",\n  rating: 5,\n  text: \"Excellent product, exceeded expectations!\",\n  helpful_votes: 23,\n  created_at: ISODate(\"2024-03-15T09:00:00Z\")\n}",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "polymorphic-pattern",
+          "heading": "Polymorphic Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Products collection with different schemas per type\n// All share: name, price, category, type (discriminator)\n// Each type has unique attributes\n\n// Electronics product\n{\n  _id: ObjectId(\"prod001\"),\n  type: \"electronics\",\n  name: \"MacBook Pro 16\\\"\",\n  price: 2499.99,\n  category: \"laptops\",\n  brand: \"Apple\",\n  // Electronics-specific fields\n  specs: {\n    cpu: \"M3 Max\",\n    ram_gb: 36,\n    storage_gb: 1000,\n    display_inches: 16.2,\n    battery_hours: 22\n  },\n  warranty_months: 12,\n  weight_kg: 2.14\n}\n\n// Clothing product\n{\n  _id: ObjectId(\"prod002\"),\n  type: \"clothing\",\n  name: \"Merino Wool Sweater\",\n  price: 89.99,\n  category: \"sweaters\",\n  brand: \"Patagonia\",\n  // Clothing-specific fields\n  sizes_available: [\"S\", \"M\", \"L\", \"XL\"],\n  colors: [\"navy\", \"charcoal\", \"forest\"],\n  material: \"100% Merino Wool\",\n  care_instructions: \"Hand wash cold\",\n  gender: \"unisex\"\n}\n\n// Food product\n{\n  _id: ObjectId(\"prod003\"),\n  type: \"food\",\n  name: \"Organic Dark Chocolate Bar\",\n  price: 4.99,\n  category: \"chocolate\",\n  brand: \"Green & Black's\",\n  // Food-specific fields\n  nutrition: {\n    calories: 250,\n    fat_g: 18,\n    sugar_g: 14,\n    protein_g: 3\n  },\n  allergens: [\"milk\", \"soy\"],\n  expiry_date: ISODate(\"2024-12-31\"),\n  organic: true,\n  weight_g: 100\n}\n\n// Query all products (works across types)\ndb.products.find({ price: { $lt: 100 } }).sort({ price: 1 });\n\n// Query type-specific (only electronics with > 16GB RAM)\ndb.products.find({\n  type: \"electronics\",\n  \"specs.ram_gb\": { $gte: 16 }\n});\n\n// Index strategy for polymorphic collection\ndb.products.createIndex({ type: 1, category: 1, price: 1 });\ndb.products.createIndex({ \"specs.ram_gb\": 1 }, { sparse: true }); // only electronics",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "bucket-pattern",
+          "heading": "Bucket Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// BAD: One document per sensor reading (millions of tiny documents)\n// { sensor_id: \"temp_01\", value: 22.5, timestamp: ISODate(\"2024-03-15T10:00:01Z\") }\n\n// GOOD: Bucket pattern - one document per sensor per hour\n{\n  _id: ObjectId(\"bucket001\"),\n  sensor_id: \"temp_01\",\n  bucket_start: ISODate(\"2024-03-15T10:00:00Z\"),\n  bucket_end: ISODate(\"2024-03-15T11:00:00Z\"),\n  measurement_count: 3600,  // computed field for quick count\n  sum: 81000,               // computed for quick average\n  min: 21.2,                // computed for quick min\n  max: 23.8,                // computed for quick max\n  measurements: [\n    { timestamp: ISODate(\"2024-03-15T10:00:01Z\"), value: 22.5 },\n    { timestamp: ISODate(\"2024-03-15T10:00:02Z\"), value: 22.6 },\n    { timestamp: ISODate(\"2024-03-15T10:00:03Z\"), value: 22.4 },\n    // ... up to 3600 readings per hour\n  ]\n}\n\n// Insert new reading (upsert into current bucket)\ndb.sensor_data.updateOne(\n  {\n    sensor_id: \"temp_01\",\n    bucket_start: ISODate(\"2024-03-15T10:00:00Z\"),\n    measurement_count: { $lt: 3600 }  // prevent overflow\n  },\n  {\n    $push: { measurements: { timestamp: new Date(), value: 22.7 } },\n    $inc: { measurement_count: 1, sum: 22.7 },\n    $min: { min: 22.7 },\n    $max: { max: 22.7 },\n    $setOnInsert: {\n      bucket_end: ISODate(\"2024-03-15T11:00:00Z\")\n    }\n  },\n  { upsert: true }\n);\n\n// Query: Average temperature for a sensor over a day (reads 24 documents vs 86,400)\ndb.sensor_data.aggregate([\n  {\n    $match: {\n      sensor_id: \"temp_01\",\n      bucket_start: {\n        $gte: ISODate(\"2024-03-15T00:00:00Z\"),\n        $lt: ISODate(\"2024-03-16T00:00:00Z\")\n      }\n    }\n  },\n  {\n    $group: {\n      _id: null,\n      avg_temp: { $avg: { $divide: [\"$sum\", \"$measurement_count\"] } },\n      min_temp: { $min: \"$min\" },\n      max_temp: { $max: \"$max\" },\n      total_readings: { $sum: \"$measurement_count\" }\n    }\n  }\n]);\n\n// Index for bucket queries\ndb.sensor_data.createIndex({ sensor_id: 1, bucket_start: 1 });",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "outlier-pattern-and-schema-versioning",
+          "heading": "Outlier Pattern and Schema Versioning",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// OUTLIER PATTERN: Handle documents with abnormally large arrays\n// Most books have < 20 reviews, but bestsellers have 100,000+\n\n// Normal book (reviews embedded)\n{\n  _id: ObjectId(\"book001\"),\n  title: \"Clean Code\",\n  author: \"Robert C. Martin\",\n  has_overflow: false,\n  reviews: [\n    { user: \"alice\", rating: 5, text: \"Essential reading\" },\n    { user: \"bob\", rating: 4, text: \"Good but verbose\" }\n    // ... up to 100 reviews embedded\n  ]\n}\n\n// Bestseller with overflow (only first 100 embedded)\n{\n  _id: ObjectId(\"book002\"),\n  title: \"Harry Potter\",\n  author: \"J.K. Rowling\",\n  has_overflow: true,  // flag indicating overflow documents exist\n  review_count: 150000,\n  reviews: [\n    // only most recent 100 reviews embedded\n  ]\n}\n\n// Overflow collection for outlier reviews\n{\n  _id: ObjectId(\"overflow001\"),\n  book_id: ObjectId(\"book002\"),\n  page: 2,  // pagination for overflow\n  reviews: [\n    // next 100 reviews\n  ]\n}\n\n// Application logic:\n// if (book.has_overflow) {\n//   const overflow = await db.book_reviews_overflow.find({ book_id: book._id });\n// }\n\n// SCHEMA VERSIONING: Gradual migration without downtime\n// Version 1: Original schema\n{\n  _id: ObjectId(\"user001\"),\n  schema_version: 1,\n  name: \"Jane Smith\",\n  address: \"123 Main St, Portland, OR 97201\"  // single string\n}\n\n// Version 2: Structured address\n{\n  _id: ObjectId(\"user002\"),\n  schema_version: 2,\n  name: \"Jane Smith\",\n  address: {\n    street: \"123 Main St\",\n    city: \"Portland\",\n    state: \"OR\",\n    zip: \"97201\"\n  }\n}\n\n// Version 3: Multiple addresses with type\n{\n  _id: ObjectId(\"user003\"),\n  schema_version: 3,\n  name: { first: \"Jane\", last: \"Smith\" },  // name also evolved\n  addresses: [\n    { type: \"home\", street: \"123 Main St\", city: \"Portland\", state: \"OR\", zip: \"97201\" }\n  ]\n}\n\n// Application migration function\nfunction migrateUser(doc) {\n  if (doc.schema_version === 1) {\n    const parts = doc.address.split(', ');\n    doc.address = { street: parts[0], city: parts[1], state: parts[2]?.split(' ')[0], zip: parts[2]?.split(' ')[1] };\n    doc.schema_version = 2;\n  }\n  if (doc.schema_version === 2) {\n    doc.addresses = [{ type: \"home\", ...doc.address }];\n    delete doc.address;\n    doc.name = { first: doc.name.split(' ')[0], last: doc.name.split(' ')[1] };\n    doc.schema_version = 3;\n  }\n  return doc;\n}\n\n// Lazy migration: upgrade on read\nasync function getUser(userId) {\n  let user = await db.users.findOne({ _id: userId });\n  if (user.schema_version < 3) {\n    user = migrateUser(user);\n    await db.users.replaceOne({ _id: userId }, user);\n  }\n  return user;\n}",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Schema Design Decision Tree\"\n        START[Relationship Type?] --> ONE_FEW{One-to-Few?<br/>< 20 items}\n        START --> ONE_MANY{One-to-Many?<br/>20-10000 items}\n        START --> MANY_MANY{Many-to-Many?}\n\n        ONE_FEW --> EMBED[Embed in parent<br/>document]\n        ONE_MANY --> BOUNDED{Bounded<br/>growth?}\n        BOUNDED -->|Yes| EMBED_SUBSET[Embed subset +<br/>Reference full set]\n        BOUNDED -->|No| REFERENCE[Reference with<br/>ObjectId]\n        MANY_MANY --> REFERENCE\n\n        EMBED --> CHECK_ACCESS{Accessed<br/>together?}\n        CHECK_ACCESS -->|Yes| FINAL_EMBED[✓ Embed]\n        CHECK_ACCESS -->|No| FINAL_REF[Reference instead]\n\n        REFERENCE --> CHECK_SIZE{Document<br/>size OK?}\n        CHECK_SIZE -->|Yes| FINAL_REF2[✓ Reference]\n        CHECK_SIZE -->|No| BUCKET[Use Bucket or<br/>Outlier pattern]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Bucket Pattern Architecture\"\n        RAW[Raw Events<br/>1 per second] --> BUCKET_DOC[Bucket Document<br/>1 per hour<br/>3600 events]\n        BUCKET_DOC --> AGG[Aggregation<br/>Query 24 docs<br/>for daily stats]\n    end\n\n    subgraph \"vs Flat Design\"\n        RAW2[Raw Events<br/>1 per second] --> FLAT[86,400 documents<br/>per day per sensor]\n        FLAT --> AGG2[Aggregation<br/>Scan 86,400 docs<br/>for daily stats]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Unbounded array growth: Embedding arrays that grow without limit (e.g., all comments on a popular post, all orders for a customer) will eventually hit the 16MB document limit and cause write failures. Even before hitting the limit, large documents consume excessive memory and network bandwidth. Design with bounded arrays: embed only the N most recent items, use the subset pattern for the rest, or reference entirely for unbounded relationships."
+        },
+        {
+          "type": "paragraph",
+          "text": "Over-normalizing like a relational database: Developers with SQL backgrounds often create highly normalized MongoDB schemas with many small collections and frequent lookup operations. This negates MongoDB's primary advantage — single-document reads. If you're doing 5 lookups to assemble a single page view, your schema is too normalized. Denormalize data that's read together, accepting the trade-off of update complexity for read performance."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring the working set size: MongoDB performs best when the working set (frequently accessed documents and indexes) fits in RAM. Schemas with large documents that are partially accessed waste memory — if you only need 3 fields from a 50KB document, the entire 50KB is loaded into the WiredTiger cache. Use projection to limit returned fields, but understand that the full document still occupies cache space. Consider splitting rarely-accessed fields into a separate collection."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not designing for your query patterns: MongoDB schema design must be driven by access patterns, not entity relationships. A schema that's perfect for one query pattern may be terrible for another. Before designing, list your top 10 queries by frequency and importance, then design the schema to serve those queries efficiently. If a query requires scanning an entire collection, you need either an index or a schema redesign."
+        },
+        {
+          "type": "paragraph",
+          "text": "Embedding data that changes independently: If embedded data is updated frequently without the parent document being read, you're paying the cost of rewriting the entire parent document for every embedded update. For example, embedding a user's current location in every order document means updating thousands of order documents when the user moves. Reference independently-changing data instead."
+        },
+        {
+          "type": "paragraph",
+          "text": "**Using lookup as a substitute for joins**: While MongoDB's lookup enables join-like operations in the aggregation pipeline, it's significantly slower than embedding or application-level caching. Each lookup performs a separate collection scan or index lookup per input document. For high-throughput queries, denormalize the needed fields into the primary collection (extended reference pattern) rather than relying on lookup at query time."
+        }
+      ],
+      "wordCount": 388,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-commerce product catalog with polymorphic schema: An online marketplace stores 10M products across 500 categories in a single products collection using the polymorphic pattern. Each category has different attributes (electronics have specs, clothing has sizes/colors, food has nutrition info) but shares common fields (name, price, seller, images). A discriminator field category_type enables type-specific validation in the application layer. They use the subset pattern for reviews (last 5 embedded, full set in a reviews collection) and the computed pattern for aggregate ratings (avg_rating, review_count updated on each new review). This design serves the product detail page with a single document read — no joins needed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Social media platform with activity feeds: A social platform stores user activity feeds using the bucket pattern — each document contains one hour of activity items (likes, comments, shares) for a user. The feed page loads the most recent bucket (single document read) and paginates by loading older buckets on scroll. They use the extended reference pattern to embed author name and avatar URL in each activity item, avoiding $lookup for the feed rendering. For users with millions of followers (outlier pattern), fan-out-on-read is used instead of fan-out-on-write to avoid writing to millions of feed documents."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare patient records with schema versioning: A healthcare system stores patient records that have evolved over 10 years through 7 schema versions. Each document carries a schema_version field, and the application handles all versions transparently. New features use the latest schema, while legacy records are migrated lazily (upgraded when accessed by a clinician). This approach enabled continuous operation through multiple regulatory changes (new required fields, restructured medication records, added consent tracking) without any downtime for data migration. Background jobs gradually migrate old documents during off-peak hours."
+        },
+        {
+          "type": "paragraph",
+          "text": "IoT fleet management with bucket pattern: A logistics company tracks 50,000 vehicles with GPS readings every 5 seconds. Using the bucket pattern (one document per vehicle per 5-minute window, containing 60 readings), they reduced document count from 864M per day to 14.4M per day. Each bucket includes pre-computed fields: distance_traveled, max_speed, avg_speed, and geofence_violations. The 95th percentile query latency for \"show vehicle route for the last hour\" dropped from 800ms (scanning 720 individual documents) to 12ms (scanning 12 bucket documents)."
+        }
+      ],
+      "wordCount": 366,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose embedding over referencing in MongoDB? What are the trade-offs?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Embed when: data is accessed together (one read serves the use case), the relationship is one-to-few with bounded growth, embedded data doesn't change independently, and the combined document stays well under 16MB. Reference when: data is accessed independently, the relationship is one-to-many or many-to-many, related data changes frequently without the parent, or embedding would cause unbounded document growth. Trade-offs: embedding provides atomic operations, no joins, and single-document reads but increases document size, duplicates data (update anomalies), and can hit the 16MB limit. Referencing keeps documents small and independently manageable but requires multiple queries or $lookup, loses atomicity across documents (need transactions for multi-document updates), and increases query latency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the bucket pattern. When is it appropriate and what problems does it solve?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The bucket pattern groups related time-series or sequential data into fixed-size documents (buckets) instead of storing one document per event. For example, IoT sensor readings bucketed by hour: one document contains all 3,600 readings for one sensor for one hour. It solves three problems: (1) document count explosion — millions of tiny documents create excessive index overhead and metadata storage, (2) query efficiency — reading one hour of data requires 1 document read instead of 3,600, (3) pre-aggregation — each bucket stores computed values (min, max, avg, count) enabling fast aggregate queries without scanning individual readings. Appropriate for: time-series data, event logs, metrics, and any high-frequency sequential data. Size buckets based on query patterns — if most queries ask for \"last hour,\" bucket by hour."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you handle schema evolution in a production MongoDB system with zero downtime?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use schema versioning: add a schema_version field to every document. When the schema needs to change, increment the version for new documents and write application code that handles both old and new versions. Migration strategies: (1) Lazy migration — upgrade documents to the latest version when they're read, writing back the upgraded document. Gradually all active documents migrate without bulk operations. (2) Background migration — a worker process iterates through old-version documents in batches, upgrading them during off-peak hours. (3) Dual-write period — during transition, write both old and new format, then switch reads to new format, then stop writing old format. Key principles: never assume document structure without checking version, make migration functions idempotent (safe to run multiple times), and maintain backward compatibility in application code until migration is complete."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the outlier pattern and when would you use it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The outlier pattern handles documents that would normally use embedding but where a small percentage of documents have abnormally large embedded arrays that would exceed the 16MB limit or cause performance issues. Example: a book reviews system where 99% of books have <100 reviews (safely embedded) but bestsellers have 100,000+ reviews. Solution: embed reviews up to a threshold (e.g., 100), set a has_overflow: true flag when exceeded, and store additional reviews in an overflow collection. Application logic checks the flag and queries the overflow collection only for outlier documents. This optimizes for the common case (single document read for 99% of books) while handling outliers gracefully. The alternative — referencing all reviews for all books — penalizes the 99% to accommodate the 1%."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you design a MongoDB schema for a multi-tenant SaaS application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three approaches with different trade-offs: (1) Shared collection with tenant_id field — simplest operationally, all tenants in one collection with tenant_id as the first field in every index (compound indexes: {tenant_id: 1, ...}). Works for thousands of small tenants. Risk: noisy neighbor if one tenant's queries impact others. (2) Collection-per-tenant — each tenant gets dedicated collections (e.g., orders_tenant123). Better isolation, easier to drop a tenant's data, but operational complexity scales with tenant count. (3) Database-per-tenant — maximum isolation, independent backup/restore, but highest operational overhead. For most SaaS applications, shared collection with tenant_id is the right starting point. Add the tenant_id to every query and every index prefix. Use MongoDB's zone sharding to physically isolate large tenants on dedicated shards if needed."
+        }
+      ],
+      "wordCount": 682,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Design indexes before writing application code: In MongoDB, indexes are even more critical than in relational databases because there's no query optimizer that can choose between multiple join strategies. Without an appropriate index, every query performs a collection scan. List your top queries, design compound indexes that serve them (following the ESR rule: Equality, Sort, Range field order), and validate with explain() before deploying. A missing index on a high-frequency query can bring down a production cluster."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use schema validation for critical collections: MongoDB supports JSON Schema validation at the collection level (db.createCollection(\"orders\", { validator: { $jsonSchema: {...} } })). While MongoDB is \"schemaless,\" production systems benefit from validation that prevents obviously invalid documents (missing required fields, wrong types, invalid enum values). Set validationAction: \"warn\" initially to log violations without rejecting writes, then switch to \"error\" once you've confirmed no legitimate writes are rejected."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor document size distribution: Use the aggregation pipeline to periodically check document size distribution: $bsonSize (MongoDB 4.4+) reveals documents approaching the 16MB limit. Alert when any document exceeds 5MB — this usually indicates an unbounded array that needs the outlier or bucket pattern. Also monitor the ratio of document size to useful data accessed per query — if you're reading 50KB documents but only using 2KB of fields, consider restructuring."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement change streams for denormalized data consistency: When using the extended reference pattern (embedding copies of data from other collections), use MongoDB change streams to propagate updates. When a user changes their name, a change stream listener updates the denormalized name in all their orders, reviews, and comments. This is eventually consistent but handles the update propagation automatically without application-level coordination."
+        }
+      ],
+      "wordCount": 275,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MongoDB and Document Databases — Core MongoDB concepts, aggregation pipelines, and indexing strategies",
+            "Operations and Scaling — Sharding strategies, replica sets, and production operations",
+            "SQL Design Patterns — Relational schema design patterns for comparison",
+            "Redis Data Structures — Alternative data modeling approaches with Redis"
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// EMBEDDING: One-to-few relationship (user with addresses)\n// Good: addresses are always accessed with the user, bounded count\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Jane Smith\",\n  email: \"jane@example.com\",\n  addresses: [\n    {\n      type: \"home\",\n      street: \"123 Main St\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97201\",\n      is_default: true\n    },\n    {\n      type: \"work\",\n      street: \"456 Tech Ave\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97204\",\n      is_default: false\n    }\n  ],\n  created_at: ISODate(\"2024-01-15T10:00:00Z\")\n}\n\n// REFERENCING: One-to-many relationship (user with orders)\n// Good: orders are queried independently, unbounded count\n// Users collection\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Jane Smith\",\n  email: \"jane@example.com\"\n}\n\n// Orders collection (references user)\n{\n  _id: ObjectId(\"order456\"),\n  user_id: ObjectId(\"user123\"),  // reference\n  items: [\n    { product_id: ObjectId(\"prod789\"), name: \"Widget\", quantity: 2, price: 29.99 },\n    { product_id: ObjectId(\"prod012\"), name: \"Gadget\", quantity: 1, price: 49.99 }\n  ],\n  total: 109.97,\n  status: \"shipped\",\n  created_at: ISODate(\"2024-03-01T14:30:00Z\")\n}\n\n// EXTENDED REFERENCE: Embed frequently-needed fields to avoid joins\n// Order with embedded user summary (avoids $lookup for order listing page)\n{\n  _id: ObjectId(\"order456\"),\n  user: {\n    _id: ObjectId(\"user123\"),\n    name: \"Jane Smith\",      // denormalized copy\n    email: \"jane@example.com\" // denormalized copy\n  },\n  items: [...],\n  total: 109.97,\n  status: \"shipped\"\n}\n\n// SUBSET PATTERN: Embed only recent reviews, full set in separate collection\n// Products collection (embedded subset)\n{\n  _id: ObjectId(\"prod789\"),\n  name: \"Premium Widget\",\n  price: 29.99,\n  avg_rating: 4.5,\n  review_count: 1247,\n  recent_reviews: [  // only last 10 reviews embedded\n    { user_name: \"Alice\", rating: 5, text: \"Excellent!\", date: ISODate(\"2024-03-15\") },\n    { user_name: \"Bob\", rating: 4, text: \"Good value\", date: ISODate(\"2024-03-14\") }\n    // ... 8 more\n  ]\n}\n\n// Reviews collection (complete set)\n{\n  _id: ObjectId(\"review001\"),\n  product_id: ObjectId(\"prod789\"),\n  user_id: ObjectId(\"user456\"),\n  user_name: \"Alice\",\n  rating: 5,\n  text: \"Excellent product, exceeded expectations!\",\n  helpful_votes: 23,\n  created_at: ISODate(\"2024-03-15T09:00:00Z\")\n}",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Products collection with different schemas per type\n// All share: name, price, category, type (discriminator)\n// Each type has unique attributes\n\n// Electronics product\n{\n  _id: ObjectId(\"prod001\"),\n  type: \"electronics\",\n  name: \"MacBook Pro 16\\\"\",\n  price: 2499.99,\n  category: \"laptops\",\n  brand: \"Apple\",\n  // Electronics-specific fields\n  specs: {\n    cpu: \"M3 Max\",\n    ram_gb: 36,\n    storage_gb: 1000,\n    display_inches: 16.2,\n    battery_hours: 22\n  },\n  warranty_months: 12,\n  weight_kg: 2.14\n}\n\n// Clothing product\n{\n  _id: ObjectId(\"prod002\"),\n  type: \"clothing\",\n  name: \"Merino Wool Sweater\",\n  price: 89.99,\n  category: \"sweaters\",\n  brand: \"Patagonia\",\n  // Clothing-specific fields\n  sizes_available: [\"S\", \"M\", \"L\", \"XL\"],\n  colors: [\"navy\", \"charcoal\", \"forest\"],\n  material: \"100% Merino Wool\",\n  care_instructions: \"Hand wash cold\",\n  gender: \"unisex\"\n}\n\n// Food product\n{\n  _id: ObjectId(\"prod003\"),\n  type: \"food\",\n  name: \"Organic Dark Chocolate Bar\",\n  price: 4.99,\n  category: \"chocolate\",\n  brand: \"Green & Black's\",\n  // Food-specific fields\n  nutrition: {\n    calories: 250,\n    fat_g: 18,\n    sugar_g: 14,\n    protein_g: 3\n  },\n  allergens: [\"milk\", \"soy\"],\n  expiry_date: ISODate(\"2024-12-31\"),\n  organic: true,\n  weight_g: 100\n}\n\n// Query all products (works across types)\ndb.products.find({ price: { $lt: 100 } }).sort({ price: 1 });\n\n// Query type-specific (only electronics with > 16GB RAM)\ndb.products.find({\n  type: \"electronics\",\n  \"specs.ram_gb\": { $gte: 16 }\n});\n\n// Index strategy for polymorphic collection\ndb.products.createIndex({ type: 1, category: 1, price: 1 });\ndb.products.createIndex({ \"specs.ram_gb\": 1 }, { sparse: true }); // only electronics",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// BAD: One document per sensor reading (millions of tiny documents)\n// { sensor_id: \"temp_01\", value: 22.5, timestamp: ISODate(\"2024-03-15T10:00:01Z\") }\n\n// GOOD: Bucket pattern - one document per sensor per hour\n{\n  _id: ObjectId(\"bucket001\"),\n  sensor_id: \"temp_01\",\n  bucket_start: ISODate(\"2024-03-15T10:00:00Z\"),\n  bucket_end: ISODate(\"2024-03-15T11:00:00Z\"),\n  measurement_count: 3600,  // computed field for quick count\n  sum: 81000,               // computed for quick average\n  min: 21.2,                // computed for quick min\n  max: 23.8,                // computed for quick max\n  measurements: [\n    { timestamp: ISODate(\"2024-03-15T10:00:01Z\"), value: 22.5 },\n    { timestamp: ISODate(\"2024-03-15T10:00:02Z\"), value: 22.6 },\n    { timestamp: ISODate(\"2024-03-15T10:00:03Z\"), value: 22.4 },\n    // ... up to 3600 readings per hour\n  ]\n}\n\n// Insert new reading (upsert into current bucket)\ndb.sensor_data.updateOne(\n  {\n    sensor_id: \"temp_01\",\n    bucket_start: ISODate(\"2024-03-15T10:00:00Z\"),\n    measurement_count: { $lt: 3600 }  // prevent overflow\n  },\n  {\n    $push: { measurements: { timestamp: new Date(), value: 22.7 } },\n    $inc: { measurement_count: 1, sum: 22.7 },\n    $min: { min: 22.7 },\n    $max: { max: 22.7 },\n    $setOnInsert: {\n      bucket_end: ISODate(\"2024-03-15T11:00:00Z\")\n    }\n  },\n  { upsert: true }\n);\n\n// Query: Average temperature for a sensor over a day (reads 24 documents vs 86,400)\ndb.sensor_data.aggregate([\n  {\n    $match: {\n      sensor_id: \"temp_01\",\n      bucket_start: {\n        $gte: ISODate(\"2024-03-15T00:00:00Z\"),\n        $lt: ISODate(\"2024-03-16T00:00:00Z\")\n      }\n    }\n  },\n  {\n    $group: {\n      _id: null,\n      avg_temp: { $avg: { $divide: [\"$sum\", \"$measurement_count\"] } },\n      min_temp: { $min: \"$min\" },\n      max_temp: { $max: \"$max\" },\n      total_readings: { $sum: \"$measurement_count\" }\n    }\n  }\n]);\n\n// Index for bucket queries\ndb.sensor_data.createIndex({ sensor_id: 1, bucket_start: 1 });",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// OUTLIER PATTERN: Handle documents with abnormally large arrays\n// Most books have < 20 reviews, but bestsellers have 100,000+\n\n// Normal book (reviews embedded)\n{\n  _id: ObjectId(\"book001\"),\n  title: \"Clean Code\",\n  author: \"Robert C. Martin\",\n  has_overflow: false,\n  reviews: [\n    { user: \"alice\", rating: 5, text: \"Essential reading\" },\n    { user: \"bob\", rating: 4, text: \"Good but verbose\" }\n    // ... up to 100 reviews embedded\n  ]\n}\n\n// Bestseller with overflow (only first 100 embedded)\n{\n  _id: ObjectId(\"book002\"),\n  title: \"Harry Potter\",\n  author: \"J.K. Rowling\",\n  has_overflow: true,  // flag indicating overflow documents exist\n  review_count: 150000,\n  reviews: [\n    // only most recent 100 reviews embedded\n  ]\n}\n\n// Overflow collection for outlier reviews\n{\n  _id: ObjectId(\"overflow001\"),\n  book_id: ObjectId(\"book002\"),\n  page: 2,  // pagination for overflow\n  reviews: [\n    // next 100 reviews\n  ]\n}\n\n// Application logic:\n// if (book.has_overflow) {\n//   const overflow = await db.book_reviews_overflow.find({ book_id: book._id });\n// }\n\n// SCHEMA VERSIONING: Gradual migration without downtime\n// Version 1: Original schema\n{\n  _id: ObjectId(\"user001\"),\n  schema_version: 1,\n  name: \"Jane Smith\",\n  address: \"123 Main St, Portland, OR 97201\"  // single string\n}\n\n// Version 2: Structured address\n{\n  _id: ObjectId(\"user002\"),\n  schema_version: 2,\n  name: \"Jane Smith\",\n  address: {\n    street: \"123 Main St\",\n    city: \"Portland\",\n    state: \"OR\",\n    zip: \"97201\"\n  }\n}\n\n// Version 3: Multiple addresses with type\n{\n  _id: ObjectId(\"user003\"),\n  schema_version: 3,\n  name: { first: \"Jane\", last: \"Smith\" },  // name also evolved\n  addresses: [\n    { type: \"home\", street: \"123 Main St\", city: \"Portland\", state: \"OR\", zip: \"97201\" }\n  ]\n}\n\n// Application migration function\nfunction migrateUser(doc) {\n  if (doc.schema_version === 1) {\n    const parts = doc.address.split(', ');\n    doc.address = { street: parts[0], city: parts[1], state: parts[2]?.split(' ')[0], zip: parts[2]?.split(' ')[1] };\n    doc.schema_version = 2;\n  }\n  if (doc.schema_version === 2) {\n    doc.addresses = [{ type: \"home\", ...doc.address }];\n    delete doc.address;\n    doc.name = { first: doc.name.split(' ')[0], last: doc.name.split(' ')[1] };\n    doc.schema_version = 3;\n  }\n  return doc;\n}\n\n// Lazy migration: upgrade on read\nasync function getUser(userId) {\n  let user = await db.users.findOne({ _id: userId });\n  if (user.schema_version < 3) {\n    user = migrateUser(user);\n    await db.users.replaceOne({ _id: userId }, user);\n  }\n  return user;\n}",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [
+    {
+      "expression": "lookup operations. This negates MongoDB's primary advantage — single-document reads. If you're doing 5 ",
+      "display": "inline"
+    },
+    {
+      "expression": "lookup as a substitute for joins**: While MongoDB's ",
+      "display": "inline"
+    },
+    {
+      "expression": "lookup performs a separate collection scan or index lookup per input document. For high-throughput queries, denormalize the needed fields into the primary collection (extended reference pattern) rather than relying on ",
+      "display": "inline"
+    }
+  ],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/schema-design.md",
+    "wordCount": 2422,
+    "sectionCount": 14
+  }
+}

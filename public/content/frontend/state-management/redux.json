@@ -1,0 +1,366 @@
+{
+  "id": "state-management-redux-redux-toolkit",
+  "slug": "redux",
+  "title": "Redux & Redux Toolkit",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Redux follows three principles: single source of truth (one store), state is read-only (only changed via dispatched actions), and changes are made with pure reducer functions",
+            "Redux Toolkit (RTK) is the official recommended way to write Redux — it includes createSlice, configureStore, createAsyncThunk, and RTK Query out of the box",
+            "createSlice combines action creators and reducers in one declaration, using Immer internally so you can write \"mutating\" logic that produces immutable updates",
+            "createAsyncThunk handles async operations with automatic pending/fulfilled/rejected action dispatching and lifecycle management",
+            "RTK Query eliminates manual data fetching boilerplate — it generates hooks, handles caching, deduplication, polling, and cache invalidation automatically",
+            "Selectors (via createSelector from Reselect) compute derived state with memoization, preventing unnecessary re-renders when unrelated state changes",
+            "createEntityAdapter provides normalized state management with CRUD operations, sorted IDs, and pre-built selectors for entity collections",
+            "Redux DevTools enable time-travel debugging, action replay, state diff inspection, and export/import of state snapshots"
+          ]
+        }
+      ],
+      "wordCount": 151,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Redux and Redux Toolkit are appropriate for specific application profiles. Choose Redux when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Building large applications with complex state interactions where multiple components across different routes need access to the same data and must stay synchronized",
+            "Working on teams of 5+ developers where enforced patterns (actions, reducers, selectors) provide consistency and make code reviews predictable regardless of who wrote the feature",
+            "Implementing complex async workflows (multi-step forms, optimistic updates with rollback, real-time synchronization) where middleware provides structured side-effect management",
+            "Requiring time-travel debugging and state inspection capabilities for complex business logic where reproducing bugs requires replaying exact action sequences",
+            "Building applications where server state caching, deduplication, and background refetching are critical (RTK Query replaces React Query/SWR for Redux-based apps)"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid Redux for simple applications with 2-3 pages and minimal shared state — React's built-in useState, useReducer, and Context handle these cases with less complexity."
+        }
+      ],
+      "wordCount": 143,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "store-configuration-with-redux-toolkit",
+          "heading": "Store Configuration with Redux Toolkit",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { configureStore, combineReducers } from '@reduxjs/toolkit';\nimport { setupListeners } from '@reduxjs/toolkit/query';\nimport { productsSlice } from './features/products/productsSlice';\nimport { cartSlice } from './features/cart/cartSlice';\nimport { authSlice } from './features/auth/authSlice';\nimport { apiSlice } from './features/api/apiSlice';\nimport { listenerMiddleware } from './middleware/listenerMiddleware';\n\nconst rootReducer = combineReducers({\n  products: productsSlice.reducer,\n  cart: cartSlice.reducer,\n  auth: authSlice.reducer,\n  [apiSlice.reducerPath]: apiSlice.reducer,\n});\n\nexport const store = configureStore({\n  reducer: rootReducer,\n  middleware: (getDefaultMiddleware) =>\n    getDefaultMiddleware({\n      serializableCheck: {\n        // Ignore non-serializable values in specific paths\n        ignoredActions: ['auth/setCredentials'],\n        ignoredPaths: ['auth.tokenExpiry'],\n      },\n    })\n      .prepend(listenerMiddleware.middleware)\n      .concat(apiSlice.middleware),\n  devTools: process.env.NODE_ENV !== 'production',\n});\n\n// Enable refetchOnFocus and refetchOnReconnect for RTK Query\nsetupListeners(store.dispatch);\n\n// Infer types from the store\nexport type RootState = ReturnType<typeof store.getState>;\nexport type AppDispatch = typeof store.dispatch;\n\n// Typed hooks\nimport { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux';\nexport const useAppDispatch = () => useDispatch<AppDispatch>();\nexport const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "createslice-with-immer-and-prepared-actions",
+          "heading": "createSlice with Immer and Prepared Actions",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createSlice, PayloadAction, nanoid } from '@reduxjs/toolkit';\n\ninterface CartItem {\n  id: string;\n  productId: string;\n  name: string;\n  price: number;\n  quantity: number;\n  addedAt: string;\n}\n\ninterface CartState {\n  items: CartItem[];\n  couponCode: string | null;\n  discountPercent: number;\n}\n\nconst initialState: CartState = {\n  items: [],\n  couponCode: null,\n  discountPercent: 0,\n};\n\nexport const cartSlice = createSlice({\n  name: 'cart',\n  initialState,\n  reducers: {\n    // Simple reducer — Immer allows \"mutating\" syntax\n    addItem: {\n      reducer(state, action: PayloadAction<CartItem>) {\n        const existing = state.items.find(i => i.productId === action.payload.productId);\n        if (existing) {\n          existing.quantity += action.payload.quantity;\n        } else {\n          state.items.push(action.payload);\n        }\n      },\n      // Prepare callback — add generated fields before reaching reducer\n      prepare(product: { id: string; name: string; price: number }, quantity = 1) {\n        return {\n          payload: {\n            id: nanoid(),\n            productId: product.id,\n            name: product.name,\n            price: product.price,\n            quantity,\n            addedAt: new Date().toISOString(),\n          },\n        };\n      },\n    },\n\n    removeItem(state, action: PayloadAction<string>) {\n      state.items = state.items.filter(item => item.id !== action.payload);\n    },\n\n    updateQuantity(state, action: PayloadAction<{ id: string; quantity: number }>) {\n      const item = state.items.find(i => i.id === action.payload.id);\n      if (item) {\n        item.quantity = Math.max(0, action.payload.quantity);\n        if (item.quantity === 0) {\n          state.items = state.items.filter(i => i.id !== action.payload.id);\n        }\n      }\n    },\n\n    applyCoupon(state, action: PayloadAction<{ code: string; discount: number }>) {\n      state.couponCode = action.payload.code;\n      state.discountPercent = action.payload.discount;\n    },\n\n    clearCart() {\n      return initialState;\n    },\n  },\n});\n\nexport const { addItem, removeItem, updateQuantity, applyCoupon, clearCart } = cartSlice.actions;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "createasyncthunk-with-error-handling",
+          "heading": "createAsyncThunk with Error Handling",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n  stock: number;\n}\n\ninterface ProductsState {\n  items: Product[];\n  selectedProduct: Product | null;\n  status: 'idle' | 'loading' | 'succeeded' | 'failed';\n  error: string | null;\n  currentPage: number;\n  totalPages: number;\n}\n\n// Async thunk with typed error handling\nexport const fetchProducts = createAsyncThunk<\n  { products: Product[]; totalPages: number },  // Return type\n  { page: number; category?: string },           // Argument type\n  { state: RootState; rejectValue: string }      // ThunkAPI config\n>(\n  'products/fetchProducts',\n  async ({ page, category }, { rejectWithValue, signal }) => {\n    try {\n      const params = new URLSearchParams({ page: String(page) });\n      if (category) params.set('category', category);\n\n      const response = await fetch(`/api/products?${params}`, { signal });\n\n      if (!response.ok) {\n        const error = await response.json();\n        return rejectWithValue(error.message || 'Failed to fetch products');\n      }\n\n      return await response.json();\n    } catch (err) {\n      if (err instanceof Error && err.name === 'AbortError') {\n        return rejectWithValue('Request cancelled');\n      }\n      return rejectWithValue('Network error');\n    }\n  },\n  {\n    // Condition — prevent duplicate requests\n    condition: (_, { getState }) => {\n      const { products } = getState();\n      if (products.status === 'loading') return false;  // Already loading\n    },\n  }\n);\n\nexport const productsSlice = createSlice({\n  name: 'products',\n  initialState: {\n    items: [],\n    selectedProduct: null,\n    status: 'idle',\n    error: null,\n    currentPage: 1,\n    totalPages: 0,\n  } as ProductsState,\n  reducers: {\n    selectProduct(state, action: PayloadAction<string>) {\n      state.selectedProduct = state.items.find(p => p.id === action.payload) || null;\n    },\n    clearError(state) {\n      state.error = null;\n    },\n  },\n  extraReducers: (builder) => {\n    builder\n      .addCase(fetchProducts.pending, (state) => {\n        state.status = 'loading';\n        state.error = null;\n      })\n      .addCase(fetchProducts.fulfilled, (state, action) => {\n        state.status = 'succeeded';\n        state.items = action.payload.products;\n        state.totalPages = action.payload.totalPages;\n      })\n      .addCase(fetchProducts.rejected, (state, action) => {\n        state.status = 'failed';\n        state.error = action.payload ?? 'Unknown error';\n      });\n  },\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "selectors-with-memoization-reselect",
+          "heading": "Selectors with Memoization (Reselect)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createSelector } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\n// Base selectors — simple state access\nconst selectCartItems = (state: RootState) => state.cart.items;\nconst selectDiscountPercent = (state: RootState) => state.cart.discountPercent;\nconst selectCouponCode = (state: RootState) => state.cart.couponCode;\n\n// Memoized derived selectors\nexport const selectCartTotal = createSelector(\n  [selectCartItems],\n  (items) => items.reduce((total, item) => total + item.price * item.quantity, 0)\n);\n\nexport const selectCartTotalWithDiscount = createSelector(\n  [selectCartTotal, selectDiscountPercent],\n  (total, discount) => {\n    const discountAmount = total * (discount / 100);\n    return {\n      subtotal: total,\n      discount: discountAmount,\n      total: total - discountAmount,\n    };\n  }\n);\n\nexport const selectCartItemCount = createSelector(\n  [selectCartItems],\n  (items) => items.reduce((count, item) => count + item.quantity, 0)\n);\n\n// Parameterized selector using factory pattern\nexport const makeSelectCartItemsByCategory = () =>\n  createSelector(\n    [selectCartItems, (_state: RootState, category: string) => category],\n    (items, category) => items.filter(item => item.productId.startsWith(category))\n  );\n\n// Selector composition\nexport const selectCartSummary = createSelector(\n  [selectCartItems, selectCartTotalWithDiscount, selectCartItemCount, selectCouponCode],\n  (items, totals, itemCount, coupon) => ({\n    items,\n    ...totals,\n    itemCount,\n    coupon,\n    isEmpty: itemCount === 0,\n    qualifiesForFreeShipping: totals.total >= 50,\n  })\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "rtk-query-api-definition-and-auto-generated-hooks",
+          "heading": "RTK Query — API Definition and Auto-Generated Hooks",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';\nimport type { RootState } from '../../store';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n  description: string;\n}\n\ninterface PaginatedResponse<T> {\n  data: T[];\n  page: number;\n  totalPages: number;\n  total: number;\n}\n\nexport const apiSlice = createApi({\n  reducerPath: 'api',\n  baseQuery: fetchBaseQuery({\n    baseUrl: '/api',\n    prepareHeaders: (headers, { getState }) => {\n      const token = (getState() as RootState).auth.token;\n      if (token) {\n        headers.set('Authorization', `Bearer ${token}`);\n      }\n      return headers;\n    },\n  }),\n  tagTypes: ['Product', 'Order', 'User'],\n  endpoints: (builder) => ({\n    // Query — GET request with caching\n    getProducts: builder.query<PaginatedResponse<Product>, { page?: number; category?: string }>({\n      query: ({ page = 1, category }) => ({\n        url: 'products',\n        params: { page, ...(category && { category }) },\n      }),\n      providesTags: (result) =>\n        result\n          ? [\n              ...result.data.map(({ id }) => ({ type: 'Product' as const, id })),\n              { type: 'Product', id: 'LIST' },\n            ]\n          : [{ type: 'Product', id: 'LIST' }],\n    }),\n\n    getProduct: builder.query<Product, string>({\n      query: (id) => `products/${id}`,\n      providesTags: (result, error, id) => [{ type: 'Product', id }],\n    }),\n\n    // Mutation — POST/PUT/DELETE with cache invalidation\n    createProduct: builder.mutation<Product, Omit<Product, 'id'>>({\n      query: (newProduct) => ({\n        url: 'products',\n        method: 'POST',\n        body: newProduct,\n      }),\n      invalidatesTags: [{ type: 'Product', id: 'LIST' }],\n    }),\n\n    updateProduct: builder.mutation<Product, { id: string; updates: Partial<Product> }>({\n      query: ({ id, updates }) => ({\n        url: `products/${id}`,\n        method: 'PATCH',\n        body: updates,\n      }),\n      // Optimistic update\n      async onQueryStarted({ id, updates }, { dispatch, queryFulfilled }) {\n        const patchResult = dispatch(\n          apiSlice.util.updateQueryData('getProduct', id, (draft) => {\n            Object.assign(draft, updates);\n          })\n        );\n        try {\n          await queryFulfilled;\n        } catch {\n          patchResult.undo();  // Rollback on failure\n        }\n      },\n      invalidatesTags: (result, error, { id }) => [{ type: 'Product', id }],\n    }),\n\n    deleteProduct: builder.mutation<void, string>({\n      query: (id) => ({\n        url: `products/${id}`,\n        method: 'DELETE',\n      }),\n      invalidatesTags: (result, error, id) => [\n        { type: 'Product', id },\n        { type: 'Product', id: 'LIST' },\n      ],\n    }),\n  }),\n});\n\n// Auto-generated hooks\nexport const {\n  useGetProductsQuery,\n  useGetProductQuery,\n  useCreateProductMutation,\n  useUpdateProductMutation,\n  useDeleteProductMutation,\n} = apiSlice;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "createentityadapter-for-normalized-state",
+          "heading": "createEntityAdapter for Normalized State",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createSlice, createEntityAdapter, createAsyncThunk } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\ninterface Notification {\n  id: string;\n  title: string;\n  message: string;\n  type: 'info' | 'warning' | 'error' | 'success';\n  read: boolean;\n  createdAt: string;\n}\n\n// Entity adapter with custom sorting\nconst notificationsAdapter = createEntityAdapter<Notification>({\n  selectId: (notification) => notification.id,\n  sortComparer: (a, b) => b.createdAt.localeCompare(a.createdAt),  // Newest first\n});\n\nexport const fetchNotifications = createAsyncThunk(\n  'notifications/fetchAll',\n  async () => {\n    const response = await fetch('/api/notifications');\n    return (await response.json()) as Notification[];\n  }\n);\n\nconst notificationsSlice = createSlice({\n  name: 'notifications',\n  initialState: notificationsAdapter.getInitialState({\n    status: 'idle' as 'idle' | 'loading' | 'succeeded' | 'failed',\n  }),\n  reducers: {\n    markAsRead: notificationsAdapter.updateOne,\n    markAllAsRead(state) {\n      const updates = state.ids.map(id => ({\n        id: id as string,\n        changes: { read: true },\n      }));\n      notificationsAdapter.updateMany(state, updates);\n    },\n    removeNotification: notificationsAdapter.removeOne,\n    addNotification: notificationsAdapter.addOne,\n  },\n  extraReducers: (builder) => {\n    builder\n      .addCase(fetchNotifications.pending, (state) => { state.status = 'loading'; })\n      .addCase(fetchNotifications.fulfilled, (state, action) => {\n        state.status = 'succeeded';\n        notificationsAdapter.setAll(state, action.payload);\n      });\n  },\n});\n\n// Pre-built selectors from adapter\nexport const {\n  selectAll: selectAllNotifications,\n  selectById: selectNotificationById,\n  selectIds: selectNotificationIds,\n  selectTotal: selectNotificationCount,\n} = notificationsAdapter.getSelectors((state: RootState) => state.notifications);\n\n// Custom derived selectors\nexport const selectUnreadNotifications = createSelector(\n  selectAllNotifications,\n  (notifications) => notifications.filter(n => !n.read)\n);\n\nexport const selectUnreadCount = createSelector(\n  selectUnreadNotifications,\n  (unread) => unread.length\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Redux Data Flow\"\n        A[UI Component] -->|dispatch action| B[Action Creator]\n        B --> C[Middleware<br/>Thunk / Saga / Listener]\n        C --> D[Reducer]\n        D --> E[Store<br/>Single State Tree]\n        E --> F[Selectors<br/>Memoized]\n        F --> A\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"RTK Query Cache Lifecycle\"\n        A[Component Mounts] --> B[useGetProductsQuery hook]\n        B --> C{Cache exists?}\n        C -->|Yes, fresh| D[Return cached data]\n        C -->|Yes, stale| E[Return cached + refetch]\n        C -->|No| F[Fetch from server]\n        F --> G[Store in cache with tags]\n        E --> G\n        G --> H[Component receives data]\n\n        I[Mutation dispatched] --> J[Invalidate matching tags]\n        J --> K[Refetch affected queries]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Normalized State Shape\"\n        A[entities<br/>Record of id → entity] --> B[\"{ 'p1': {id:'p1', name:'Widget'} }\"]\n        C[ids<br/>Sorted array] --> D[\"['p1', 'p2', 'p3']\"]\n        E[Component] --> F[selectById selector]\n        F --> A\n        E --> G[selectAll selector]\n        G --> A\n        G --> C\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Storing derived state in the store instead of computing it with selectors. Developers often store totalPrice, filteredItems, or isCartEmpty in the store alongside the source data. This creates synchronization bugs — if you update items but forget to recalculate the total, state becomes inconsistent. Store only the minimal source data and compute everything else with memoized selectors. Selectors recompute only when their inputs change, so performance is equivalent to storing derived values."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not using RTK Query for server state and manually managing loading/error/data. Before RTK Query, every feature needed loading states, error handling, cache management, and refetch logic — hundreds of lines of boilerplate per endpoint. RTK Query handles all of this declaratively. Teams that continue writing manual createAsyncThunk + loading state for CRUD operations are doing unnecessary work. Reserve manual thunks for complex multi-step workflows that don't fit the query/mutation model."
+        },
+        {
+          "type": "paragraph",
+          "text": "Putting everything in global Redux state. Not all state belongs in Redux. Form input values, UI toggle states (is this dropdown open?), animation states, and component-local data should use useState or useReducer. Redux is for state that multiple unrelated components need, state that persists across route changes, or state that requires complex update logic. Over-globalizing state causes unnecessary re-renders and makes components harder to test in isolation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mutating state outside of Immer's proxy in createSlice. While createSlice uses Immer to allow \"mutating\" syntax, this only works inside the reducer function. Mutating state in selectors, components, or middleware causes bugs. Also, returning a new value AND mutating in the same reducer confuses Immer — either mutate the draft OR return a new value, never both."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not using createSelector for expensive computations. Without memoization, a selector that filters or sorts a large array runs on every state change, even if the relevant slice didn't change. This causes unnecessary re-renders in every connected component. Always wrap derived computations in createSelector — it only recomputes when its input selectors return new values."
+        },
+        {
+          "type": "paragraph",
+          "text": "Dispatching actions in a loop instead of batching. Dispatching 100 actions in a forEach loop triggers 100 state updates and 100 re-renders. Use createEntityAdapter.setAll() for bulk entity operations, or batch multiple updates into a single action with a payload containing all changes. React 18's automatic batching helps, but reducing dispatch count is still better for DevTools readability and middleware performance."
+        }
+      ],
+      "wordCount": 380,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Platform with Complex Cart and Checkout. A large retail application uses Redux for cart state (items, quantities, applied coupons, shipping options), user authentication, and product catalog caching. RTK Query manages product listings with pagination, search, and category filtering — cache tags ensure that adding a review invalidates the product detail cache. The checkout flow uses a multi-step thunk that coordinates inventory reservation, payment processing, and order creation with rollback on failure. Redux DevTools enables customer support to replay user actions when investigating order issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-Time Collaborative Dashboard. A project management tool uses Redux to synchronize state across WebSocket updates from multiple users. When a teammate moves a task card, the WebSocket middleware dispatches an action that updates the board state. Optimistic updates move the card immediately in the current user's view, with rollback if the server rejects the change. Selectors compute board statistics (tasks per column, overdue items, team workload) without re-rendering the entire board when a single card changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial Trading Application. A trading platform processes hundreds of price updates per second via WebSocket. Redux middleware batches incoming price updates (collecting updates for 100ms before dispatching a single batch action) to prevent render thrashing. Normalized state with createEntityAdapter stores instrument data, and memoized selectors compute portfolio value, P&L, and risk metrics. The DevTools action log provides an audit trail of every price update and user trade for compliance purposes."
+        }
+      ],
+      "wordCount": 231,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Redux's three principles and why they matter for large applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: (1) Single source of truth: the entire application state lives in one store object. This makes state predictable, debuggable (one place to inspect), and enables features like undo/redo and state persistence. (2) State is read-only: components cannot directly mutate state; they must dispatch actions describing what happened. This creates an audit trail of every state change and prevents race conditions from concurrent mutations. (3) Changes via pure functions: reducers are pure functions (state, action) => newState with no side effects. This makes state transitions testable (given this state and this action, expect this result), predictable, and replayable. Together, these principles trade flexibility for predictability — in a 50-developer team, everyone follows the same pattern, making code reviews and debugging consistent regardless of who wrote the feature."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does RTK Query differ from React Query/TanStack Query? When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: RTK Query is built into Redux Toolkit and stores server cache in the Redux store, making it accessible to Redux middleware, DevTools, and existing Redux selectors. React Query is standalone and stores cache in its own context. Choose RTK Query when: you already use Redux for client state and want unified DevTools, you need middleware to react to cache events, or you want selectors that combine server and client state. Choose React Query when: you don't use Redux (no need to add it just for data fetching), you want framework-agnostic caching (works with Vue, Svelte), or you need features RTK Query lacks (infinite queries, optimistic mutations are simpler in React Query). Both handle caching, deduplication, background refetching, and stale-while-revalidate. The choice is primarily about whether Redux is already in your architecture."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you test Redux slices, thunks, and selectors?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Test each layer independently. Reducers: call the reducer function directly with a state and action, assert the returned state — no store needed, pure function testing. Selectors: call the selector with a mock state object, assert the derived value. For createSelector, verify memoization by calling twice with the same input and checking reference equality. Thunks: use a mock store (configureStore with the real reducer) or test the thunk function directly by providing mock dispatch and getState. For RTK Query: use setupServer from MSW to mock API responses, render components with the real store, and assert that hooks return expected data/loading/error states. Integration tests that render a component connected to a real store with mocked APIs provide the highest confidence."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is normalized state and why does createEntityAdapter use it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Normalized state stores entities in a lookup table ({ [id]: entity }) with a separate array of IDs for ordering. Without normalization, the same entity might exist in multiple places (a product in the product list, in the cart, in recently viewed) — updating it requires finding and updating every copy. With normalization, each entity exists once; references use IDs. createEntityAdapter provides this pattern with pre-built CRUD operations (addOne, updateOne, removeOne, setAll) and selectors (selectById, selectAll). It also handles sorting via sortComparer. The trade-off is slightly more complex component code (must look up entities by ID) but dramatically simpler update logic and guaranteed consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain middleware in Redux. How do thunks, sagas, and the listener middleware differ?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Middleware intercepts dispatched actions before they reach reducers, enabling side effects. Thunks (default in RTK): dispatch a function instead of an action object; the function receives dispatch and getState. Simple, good for basic async (API calls, conditional dispatch). Sagas (redux-saga): use generator functions to describe complex async flows declaratively — support cancellation, racing, debouncing, and complex orchestration. Higher learning curve but powerful for complex workflows. Listener middleware (RTK): a modern alternative to sagas — register listeners that react to specific actions or state changes. Supports take patterns, fork for background tasks, and condition for waiting. Lighter than sagas, built into RTK. Choose thunks for simple async, listener middleware for reactive patterns and moderate complexity, sagas only for very complex orchestration (rare in modern apps)."
+        }
+      ],
+      "wordCount": 674,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enable Redux DevTools in development but strip them from production builds. DevTools add memory overhead by recording every action and state snapshot. Configure devTools: process.env.NODE_ENV !== 'production' in configureStore. For production debugging, implement a \"debug mode\" that users can activate (URL parameter or hidden setting) which enables a lightweight action logger that captures the last 50 actions without full state snapshots."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement RTK Query cache invalidation strategies deliberately. Over-invalidation (invalidating the entire product list when one product updates) causes unnecessary refetches. Under-invalidation (not invalidating after a mutation) shows stale data. Use granular tags: { type: 'Product', id: specificId } for individual items and { type: 'Product', id: 'LIST' } for list queries. Mutations should invalidate only the specific tags they affect. Monitor cache hit rates and refetch frequency in production to identify over-invalidation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use the listener middleware for cross-slice coordination instead of dispatching from reducers. When an action in one slice should trigger effects in another (e.g., successful login should fetch user preferences), don't import and dispatch from within the reducer. Use the listener middleware to react to the login action and dispatch the preferences fetch. This keeps slices decoupled and makes the coordination logic explicit and testable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Profile selector performance with the Redux DevTools Profiler. Selectors that recompute on every action (because their input selectors return new references) cause cascading re-renders. Use the DevTools profiler to identify components that re-render when they shouldn't. Common fix: ensure input selectors return stable references (don't create new arrays/objects in the selector chain unless the underlying data actually changed)."
+        }
+      ],
+      "wordCount": 256,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Zustand & Lightweight Alternatives — When Redux is too heavy and simpler solutions suffice",
+            "React Hooks & Components — React's built-in state management with useState and useReducer",
+            "TypeScript Advanced Types — Typing Redux stores, actions, and selectors effectively",
+            "Angular Services & DI — Compare Redux patterns with Angular's service-based state management"
+          ]
+        }
+      ],
+      "wordCount": 51,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { configureStore, combineReducers } from '@reduxjs/toolkit';\nimport { setupListeners } from '@reduxjs/toolkit/query';\nimport { productsSlice } from './features/products/productsSlice';\nimport { cartSlice } from './features/cart/cartSlice';\nimport { authSlice } from './features/auth/authSlice';\nimport { apiSlice } from './features/api/apiSlice';\nimport { listenerMiddleware } from './middleware/listenerMiddleware';\n\nconst rootReducer = combineReducers({\n  products: productsSlice.reducer,\n  cart: cartSlice.reducer,\n  auth: authSlice.reducer,\n  [apiSlice.reducerPath]: apiSlice.reducer,\n});\n\nexport const store = configureStore({\n  reducer: rootReducer,\n  middleware: (getDefaultMiddleware) =>\n    getDefaultMiddleware({\n      serializableCheck: {\n        // Ignore non-serializable values in specific paths\n        ignoredActions: ['auth/setCredentials'],\n        ignoredPaths: ['auth.tokenExpiry'],\n      },\n    })\n      .prepend(listenerMiddleware.middleware)\n      .concat(apiSlice.middleware),\n  devTools: process.env.NODE_ENV !== 'production',\n});\n\n// Enable refetchOnFocus and refetchOnReconnect for RTK Query\nsetupListeners(store.dispatch);\n\n// Infer types from the store\nexport type RootState = ReturnType<typeof store.getState>;\nexport type AppDispatch = typeof store.dispatch;\n\n// Typed hooks\nimport { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux';\nexport const useAppDispatch = () => useDispatch<AppDispatch>();\nexport const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createSlice, PayloadAction, nanoid } from '@reduxjs/toolkit';\n\ninterface CartItem {\n  id: string;\n  productId: string;\n  name: string;\n  price: number;\n  quantity: number;\n  addedAt: string;\n}\n\ninterface CartState {\n  items: CartItem[];\n  couponCode: string | null;\n  discountPercent: number;\n}\n\nconst initialState: CartState = {\n  items: [],\n  couponCode: null,\n  discountPercent: 0,\n};\n\nexport const cartSlice = createSlice({\n  name: 'cart',\n  initialState,\n  reducers: {\n    // Simple reducer — Immer allows \"mutating\" syntax\n    addItem: {\n      reducer(state, action: PayloadAction<CartItem>) {\n        const existing = state.items.find(i => i.productId === action.payload.productId);\n        if (existing) {\n          existing.quantity += action.payload.quantity;\n        } else {\n          state.items.push(action.payload);\n        }\n      },\n      // Prepare callback — add generated fields before reaching reducer\n      prepare(product: { id: string; name: string; price: number }, quantity = 1) {\n        return {\n          payload: {\n            id: nanoid(),\n            productId: product.id,\n            name: product.name,\n            price: product.price,\n            quantity,\n            addedAt: new Date().toISOString(),\n          },\n        };\n      },\n    },\n\n    removeItem(state, action: PayloadAction<string>) {\n      state.items = state.items.filter(item => item.id !== action.payload);\n    },\n\n    updateQuantity(state, action: PayloadAction<{ id: string; quantity: number }>) {\n      const item = state.items.find(i => i.id === action.payload.id);\n      if (item) {\n        item.quantity = Math.max(0, action.payload.quantity);\n        if (item.quantity === 0) {\n          state.items = state.items.filter(i => i.id !== action.payload.id);\n        }\n      }\n    },\n\n    applyCoupon(state, action: PayloadAction<{ code: string; discount: number }>) {\n      state.couponCode = action.payload.code;\n      state.discountPercent = action.payload.discount;\n    },\n\n    clearCart() {\n      return initialState;\n    },\n  },\n});\n\nexport const { addItem, removeItem, updateQuantity, applyCoupon, clearCart } = cartSlice.actions;",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n  stock: number;\n}\n\ninterface ProductsState {\n  items: Product[];\n  selectedProduct: Product | null;\n  status: 'idle' | 'loading' | 'succeeded' | 'failed';\n  error: string | null;\n  currentPage: number;\n  totalPages: number;\n}\n\n// Async thunk with typed error handling\nexport const fetchProducts = createAsyncThunk<\n  { products: Product[]; totalPages: number },  // Return type\n  { page: number; category?: string },           // Argument type\n  { state: RootState; rejectValue: string }      // ThunkAPI config\n>(\n  'products/fetchProducts',\n  async ({ page, category }, { rejectWithValue, signal }) => {\n    try {\n      const params = new URLSearchParams({ page: String(page) });\n      if (category) params.set('category', category);\n\n      const response = await fetch(`/api/products?${params}`, { signal });\n\n      if (!response.ok) {\n        const error = await response.json();\n        return rejectWithValue(error.message || 'Failed to fetch products');\n      }\n\n      return await response.json();\n    } catch (err) {\n      if (err instanceof Error && err.name === 'AbortError') {\n        return rejectWithValue('Request cancelled');\n      }\n      return rejectWithValue('Network error');\n    }\n  },\n  {\n    // Condition — prevent duplicate requests\n    condition: (_, { getState }) => {\n      const { products } = getState();\n      if (products.status === 'loading') return false;  // Already loading\n    },\n  }\n);\n\nexport const productsSlice = createSlice({\n  name: 'products',\n  initialState: {\n    items: [],\n    selectedProduct: null,\n    status: 'idle',\n    error: null,\n    currentPage: 1,\n    totalPages: 0,\n  } as ProductsState,\n  reducers: {\n    selectProduct(state, action: PayloadAction<string>) {\n      state.selectedProduct = state.items.find(p => p.id === action.payload) || null;\n    },\n    clearError(state) {\n      state.error = null;\n    },\n  },\n  extraReducers: (builder) => {\n    builder\n      .addCase(fetchProducts.pending, (state) => {\n        state.status = 'loading';\n        state.error = null;\n      })\n      .addCase(fetchProducts.fulfilled, (state, action) => {\n        state.status = 'succeeded';\n        state.items = action.payload.products;\n        state.totalPages = action.payload.totalPages;\n      })\n      .addCase(fetchProducts.rejected, (state, action) => {\n        state.status = 'failed';\n        state.error = action.payload ?? 'Unknown error';\n      });\n  },\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createSelector } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\n// Base selectors — simple state access\nconst selectCartItems = (state: RootState) => state.cart.items;\nconst selectDiscountPercent = (state: RootState) => state.cart.discountPercent;\nconst selectCouponCode = (state: RootState) => state.cart.couponCode;\n\n// Memoized derived selectors\nexport const selectCartTotal = createSelector(\n  [selectCartItems],\n  (items) => items.reduce((total, item) => total + item.price * item.quantity, 0)\n);\n\nexport const selectCartTotalWithDiscount = createSelector(\n  [selectCartTotal, selectDiscountPercent],\n  (total, discount) => {\n    const discountAmount = total * (discount / 100);\n    return {\n      subtotal: total,\n      discount: discountAmount,\n      total: total - discountAmount,\n    };\n  }\n);\n\nexport const selectCartItemCount = createSelector(\n  [selectCartItems],\n  (items) => items.reduce((count, item) => count + item.quantity, 0)\n);\n\n// Parameterized selector using factory pattern\nexport const makeSelectCartItemsByCategory = () =>\n  createSelector(\n    [selectCartItems, (_state: RootState, category: string) => category],\n    (items, category) => items.filter(item => item.productId.startsWith(category))\n  );\n\n// Selector composition\nexport const selectCartSummary = createSelector(\n  [selectCartItems, selectCartTotalWithDiscount, selectCartItemCount, selectCouponCode],\n  (items, totals, itemCount, coupon) => ({\n    items,\n    ...totals,\n    itemCount,\n    coupon,\n    isEmpty: itemCount === 0,\n    qualifiesForFreeShipping: totals.total >= 50,\n  })\n);",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';\nimport type { RootState } from '../../store';\n\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  category: string;\n  description: string;\n}\n\ninterface PaginatedResponse<T> {\n  data: T[];\n  page: number;\n  totalPages: number;\n  total: number;\n}\n\nexport const apiSlice = createApi({\n  reducerPath: 'api',\n  baseQuery: fetchBaseQuery({\n    baseUrl: '/api',\n    prepareHeaders: (headers, { getState }) => {\n      const token = (getState() as RootState).auth.token;\n      if (token) {\n        headers.set('Authorization', `Bearer ${token}`);\n      }\n      return headers;\n    },\n  }),\n  tagTypes: ['Product', 'Order', 'User'],\n  endpoints: (builder) => ({\n    // Query — GET request with caching\n    getProducts: builder.query<PaginatedResponse<Product>, { page?: number; category?: string }>({\n      query: ({ page = 1, category }) => ({\n        url: 'products',\n        params: { page, ...(category && { category }) },\n      }),\n      providesTags: (result) =>\n        result\n          ? [\n              ...result.data.map(({ id }) => ({ type: 'Product' as const, id })),\n              { type: 'Product', id: 'LIST' },\n            ]\n          : [{ type: 'Product', id: 'LIST' }],\n    }),\n\n    getProduct: builder.query<Product, string>({\n      query: (id) => `products/${id}`,\n      providesTags: (result, error, id) => [{ type: 'Product', id }],\n    }),\n\n    // Mutation — POST/PUT/DELETE with cache invalidation\n    createProduct: builder.mutation<Product, Omit<Product, 'id'>>({\n      query: (newProduct) => ({\n        url: 'products',\n        method: 'POST',\n        body: newProduct,\n      }),\n      invalidatesTags: [{ type: 'Product', id: 'LIST' }],\n    }),\n\n    updateProduct: builder.mutation<Product, { id: string; updates: Partial<Product> }>({\n      query: ({ id, updates }) => ({\n        url: `products/${id}`,\n        method: 'PATCH',\n        body: updates,\n      }),\n      // Optimistic update\n      async onQueryStarted({ id, updates }, { dispatch, queryFulfilled }) {\n        const patchResult = dispatch(\n          apiSlice.util.updateQueryData('getProduct', id, (draft) => {\n            Object.assign(draft, updates);\n          })\n        );\n        try {\n          await queryFulfilled;\n        } catch {\n          patchResult.undo();  // Rollback on failure\n        }\n      },\n      invalidatesTags: (result, error, { id }) => [{ type: 'Product', id }],\n    }),\n\n    deleteProduct: builder.mutation<void, string>({\n      query: (id) => ({\n        url: `products/${id}`,\n        method: 'DELETE',\n      }),\n      invalidatesTags: (result, error, id) => [\n        { type: 'Product', id },\n        { type: 'Product', id: 'LIST' },\n      ],\n    }),\n  }),\n});\n\n// Auto-generated hooks\nexport const {\n  useGetProductsQuery,\n  useGetProductQuery,\n  useCreateProductMutation,\n  useUpdateProductMutation,\n  useDeleteProductMutation,\n} = apiSlice;",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createSlice, createEntityAdapter, createAsyncThunk } from '@reduxjs/toolkit';\nimport type { RootState } from '../../store';\n\ninterface Notification {\n  id: string;\n  title: string;\n  message: string;\n  type: 'info' | 'warning' | 'error' | 'success';\n  read: boolean;\n  createdAt: string;\n}\n\n// Entity adapter with custom sorting\nconst notificationsAdapter = createEntityAdapter<Notification>({\n  selectId: (notification) => notification.id,\n  sortComparer: (a, b) => b.createdAt.localeCompare(a.createdAt),  // Newest first\n});\n\nexport const fetchNotifications = createAsyncThunk(\n  'notifications/fetchAll',\n  async () => {\n    const response = await fetch('/api/notifications');\n    return (await response.json()) as Notification[];\n  }\n);\n\nconst notificationsSlice = createSlice({\n  name: 'notifications',\n  initialState: notificationsAdapter.getInitialState({\n    status: 'idle' as 'idle' | 'loading' | 'succeeded' | 'failed',\n  }),\n  reducers: {\n    markAsRead: notificationsAdapter.updateOne,\n    markAllAsRead(state) {\n      const updates = state.ids.map(id => ({\n        id: id as string,\n        changes: { read: true },\n      }));\n      notificationsAdapter.updateMany(state, updates);\n    },\n    removeNotification: notificationsAdapter.removeOne,\n    addNotification: notificationsAdapter.addOne,\n  },\n  extraReducers: (builder) => {\n    builder\n      .addCase(fetchNotifications.pending, (state) => { state.status = 'loading'; })\n      .addCase(fetchNotifications.fulfilled, (state, action) => {\n        state.status = 'succeeded';\n        notificationsAdapter.setAll(state, action.payload);\n      });\n  },\n});\n\n// Pre-built selectors from adapter\nexport const {\n  selectAll: selectAllNotifications,\n  selectById: selectNotificationById,\n  selectIds: selectNotificationIds,\n  selectTotal: selectNotificationCount,\n} = notificationsAdapter.getSelectors((state: RootState) => state.notifications);\n\n// Custom derived selectors\nexport const selectUnreadNotifications = createSelector(\n  selectAllNotifications,\n  (notifications) => notifications.filter(n => !n.read)\n);\n\nexport const selectUnreadCount = createSelector(\n  selectUnreadNotifications,\n  (unread) => unread.length\n);",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/redux.md",
+    "wordCount": 1886,
+    "sectionCount": 15
+  }
+}

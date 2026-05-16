@@ -1,0 +1,384 @@
+{
+  "id": "mongodb-mongodb-schema-design-patterns",
+  "slug": "schema-design-patterns",
+  "title": "MongoDB Schema Design Patterns",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Embedding stores related data in a single document for atomic reads; best when data is accessed together and the embedded array is bounded",
+            "Referencing stores related data in separate collections with ObjectId links; best for many-to-many relationships or unbounded growth",
+            "Polymorphic Pattern stores documents with different shapes in the same collection, using a discriminator field to identify the type",
+            "Bucket Pattern groups time-series or sequential data into fixed-size buckets (e.g., 1 hour of readings per document) to reduce document count",
+            "Outlier Pattern handles documents that exceed normal size by flagging them and storing overflow in separate documents",
+            "Computed Pattern pre-computes and stores derived values (aggregations, counts) to avoid expensive real-time calculations",
+            "Schema Versioning adds a version field to documents, allowing gradual migration between schema shapes without downtime",
+            "Tree Structures can be modeled as materialized paths, nested sets, parent references, or child references depending on query patterns",
+            "16MB document size limit is a hard constraint — design schemas to stay well under this limit (target < 1MB for performance)",
+            "Anti-patterns: massive unbounded arrays, unnecessary normalization, storing large binary data inline, deep nesting beyond 3 levels"
+          ]
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use embedding when the related data has a one-to-one or one-to-few relationship, is always accessed together with the parent document, and has a bounded size. For example, embedding a shipping address within an order document is ideal — the address is always read with the order, there's exactly one per order, and it never grows."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use referencing when the related data has a one-to-many or many-to-many relationship with unbounded growth, when the related data is frequently accessed independently, or when the embedded data would push documents near the 16MB limit. For example, comments on a popular blog post should be referenced — a viral post could accumulate millions of comments."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply the Bucket Pattern for time-series data, IoT sensor readings, or any scenario where you'd otherwise create millions of tiny documents. Grouping 60 sensor readings into one document (one per minute for an hour) reduces collection size by 60x and dramatically improves query performance for time-range queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Computed Pattern is essential when your application frequently displays aggregated data (counts, sums, averages) that would otherwise require expensive aggregation pipeline queries on every page load. Pre-compute these values on write and store them alongside the source data."
+        }
+      ],
+      "wordCount": 196,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "embedding-vs-referencing",
+          "heading": "Embedding vs Referencing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// EMBEDDING: One-to-few relationship (address within user)\n// Good: always accessed together, bounded, atomic updates\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Alice Johnson\",\n  email: \"alice@example.com\",\n  addresses: [\n    {\n      type: \"home\",\n      street: \"123 Main St\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97201\",\n      isPrimary: true\n    },\n    {\n      type: \"work\",\n      street: \"456 Tech Ave\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97204\",\n      isPrimary: false\n    }\n  ],\n  preferences: {\n    theme: \"dark\",\n    notifications: { email: true, sms: false },\n    language: \"en\"\n  }\n}\n\n// REFERENCING: One-to-many with unbounded growth (orders reference user)\n// orders collection\n{\n  _id: ObjectId(\"order789\"),\n  userId: ObjectId(\"user123\"),  // reference to users collection\n  items: [\n    { productId: ObjectId(\"prod456\"), name: \"Widget\", qty: 2, price: 29.99 },\n    { productId: ObjectId(\"prod789\"), name: \"Gadget\", qty: 1, price: 49.99 }\n  ],\n  total: 109.97,\n  status: \"shipped\",\n  createdAt: ISODate(\"2024-03-15T10:30:00Z\")\n}\n\n// HYBRID: Embed summary, reference details\n// Embed the most-accessed fields, reference the full document\n{\n  _id: ObjectId(\"order789\"),\n  customer: {\n    _id: ObjectId(\"user123\"),\n    name: \"Alice Johnson\",      // denormalized for display\n    email: \"alice@example.com\"  // denormalized for notifications\n  },\n  // Full customer details fetched via userId when needed\n  itemCount: 3,\n  total: 109.97,\n  status: \"shipped\"\n}",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "polymorphic-pattern",
+          "heading": "Polymorphic Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Single collection storing different product types\n// All share common fields; type-specific fields vary\ndb.products.insertMany([\n  {\n    _id: ObjectId(\"prod001\"),\n    type: \"book\",\n    name: \"Design Patterns\",\n    price: 49.99,\n    category: \"technology\",\n    // Book-specific fields\n    author: \"Gang of Four\",\n    isbn: \"978-0201633610\",\n    pages: 395,\n    publisher: \"Addison-Wesley\"\n  },\n  {\n    _id: ObjectId(\"prod002\"),\n    type: \"electronics\",\n    name: \"Wireless Headphones\",\n    price: 199.99,\n    category: \"audio\",\n    // Electronics-specific fields\n    brand: \"SoundMax\",\n    warranty_months: 24,\n    specs: {\n      battery_hours: 30,\n      bluetooth: \"5.3\",\n      weight_grams: 250\n    }\n  },\n  {\n    _id: ObjectId(\"prod003\"),\n    type: \"clothing\",\n    name: \"Performance T-Shirt\",\n    price: 34.99,\n    category: \"athletic\",\n    // Clothing-specific fields\n    sizes: [\"S\", \"M\", \"L\", \"XL\"],\n    colors: [\"black\", \"navy\", \"gray\"],\n    material: \"polyester blend\",\n    gender: \"unisex\"\n  }\n]);\n\n// Query all products (polymorphic - works regardless of type)\ndb.products.find({ price: { $lt: 50 } });\n\n// Query type-specific fields\ndb.products.find({ type: \"book\", pages: { $gt: 300 } });\n\n// Index strategy for polymorphic collections\ndb.products.createIndex({ type: 1, category: 1 });\ndb.products.createIndex({ type: 1, \"specs.bluetooth\": 1 }, { sparse: true });",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "bucket-pattern",
+          "heading": "Bucket Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// ANTI-PATTERN: One document per sensor reading (millions of tiny documents)\n// { sensorId: \"temp-01\", value: 22.5, timestamp: ISODate(\"2024-03-15T10:00:01Z\") }\n// { sensorId: \"temp-01\", value: 22.6, timestamp: ISODate(\"2024-03-15T10:00:02Z\") }\n// ... millions more\n\n// BUCKET PATTERN: Group readings into hourly buckets\n{\n  _id: ObjectId(\"bucket001\"),\n  sensorId: \"temp-01\",\n  bucketStart: ISODate(\"2024-03-15T10:00:00Z\"),\n  bucketEnd: ISODate(\"2024-03-15T11:00:00Z\"),\n  count: 3600,  // readings in this bucket\n  measurements: [\n    { timestamp: ISODate(\"2024-03-15T10:00:01Z\"), value: 22.5 },\n    { timestamp: ISODate(\"2024-03-15T10:00:02Z\"), value: 22.6 },\n    { timestamp: ISODate(\"2024-03-15T10:00:03Z\"), value: 22.4 },\n    // ... up to 3600 readings per hour\n  ],\n  // Pre-computed statistics for the bucket\n  stats: {\n    min: 21.8,\n    max: 23.2,\n    avg: 22.5,\n    sum: 81000\n  }\n}\n\n// Insert a new reading into the current bucket\ndb.sensorData.updateOne(\n  {\n    sensorId: \"temp-01\",\n    count: { $lt: 3600 },  // bucket not full\n    bucketStart: {\n      $gte: new Date(new Date().setMinutes(0, 0, 0))  // current hour\n    }\n  },\n  {\n    $push: { measurements: { timestamp: new Date(), value: 22.7 } },\n    $inc: { count: 1, \"stats.sum\": 22.7 },\n    $min: { \"stats.min\": 22.7 },\n    $max: { \"stats.max\": 22.7 },\n    $setOnInsert: {\n      sensorId: \"temp-01\",\n      bucketStart: new Date(new Date().setMinutes(0, 0, 0)),\n      bucketEnd: new Date(new Date().setMinutes(0, 0, 0) + 3600000)\n    }\n  },\n  { upsert: true }\n);\n\n// Query: average temperature for a sensor over a day (reads 24 documents, not 86400)\ndb.sensorData.aggregate([\n  { $match: {\n    sensorId: \"temp-01\",\n    bucketStart: { $gte: ISODate(\"2024-03-15\"), $lt: ISODate(\"2024-03-16\") }\n  }},\n  { $group: {\n    _id: \"$sensorId\",\n    avgTemp: { $avg: \"$stats.avg\" },\n    minTemp: { $min: \"$stats.min\" },\n    maxTemp: { $max: \"$stats.max\" }\n  }}\n]);",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "outlier-pattern",
+          "heading": "Outlier Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Problem: Most users have 10-50 followers, but celebrities have millions\n// Embedding all followers would exceed 16MB for celebrities\n\n// Normal user (followers embedded)\n{\n  _id: ObjectId(\"user001\"),\n  username: \"regular_user\",\n  followers: [\n    ObjectId(\"user010\"), ObjectId(\"user011\"), ObjectId(\"user012\")\n    // ... up to ~1000 followers embedded\n  ],\n  followerCount: 45,\n  hasOverflow: false\n}\n\n// Celebrity user (flagged as outlier, overflow in separate collection)\n{\n  _id: ObjectId(\"user002\"),\n  username: \"celebrity\",\n  followers: [\n    // First 1000 followers embedded for common operations\n    ObjectId(\"user100\"), ObjectId(\"user101\"), // ...\n  ],\n  followerCount: 2500000,\n  hasOverflow: true  // Flag indicating overflow documents exist\n}\n\n// Overflow collection for outliers\n// followers_overflow collection\n{\n  _id: ObjectId(\"overflow001\"),\n  userId: ObjectId(\"user002\"),\n  page: 1,\n  followers: [\n    ObjectId(\"user1001\"), ObjectId(\"user1002\"), // ... next 1000\n  ]\n}\n\n// Query: get all followers (handles both normal and outlier)\nasync function getFollowers(userId) {\n  const user = await db.users.findOne({ _id: userId });\n\n  if (!user.hasOverflow) {\n    return user.followers;\n  }\n\n  // Fetch overflow pages\n  const overflowDocs = await db.followers_overflow\n    .find({ userId: userId })\n    .sort({ page: 1 })\n    .toArray();\n\n  return [\n    ...user.followers,\n    ...overflowDocs.flatMap(doc => doc.followers)\n  ];\n}",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "computed-pattern",
+          "heading": "Computed Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Problem: Displaying product ratings requires aggregating all reviews every time\n// Solution: Pre-compute and store the aggregation\n\n// Product with computed rating stats\n{\n  _id: ObjectId(\"prod001\"),\n  name: \"Wireless Headphones\",\n  price: 199.99,\n  // Computed fields (updated on each review write)\n  rating: {\n    average: 4.3,\n    count: 1247,\n    distribution: { 1: 23, 2: 45, 3: 156, 4: 489, 5: 534 }\n  },\n  // Computed sales stats (updated by background job)\n  sales: {\n    totalUnits: 15420,\n    last30Days: 892,\n    revenue: 3072780.00\n  }\n}\n\n// When a new review is submitted, atomically update computed fields\ndb.products.updateOne(\n  { _id: ObjectId(\"prod001\") },\n  [\n    {\n      $set: {\n        \"rating.count\": { $add: [\"$rating.count\", 1] },\n        \"rating.distribution.4\": { $add: [\"$rating.distribution.4\", 1] },\n        \"rating.average\": {\n          $divide: [\n            { $add: [\n              { $multiply: [\"$rating.average\", \"$rating.count\"] },\n              4  // new rating value\n            ]},\n            { $add: [\"$rating.count\", 1] }\n          ]\n        }\n      }\n    }\n  ]\n);\n\n// Background job to recompute (handles drift from failed updates)\ndb.reviews.aggregate([\n  { $match: { productId: ObjectId(\"prod001\") } },\n  { $group: {\n    _id: \"$productId\",\n    average: { $avg: \"$rating\" },\n    count: { $sum: 1 },\n    dist: { $push: \"$rating\" }\n  }},\n  { $merge: { into: \"products\", on: \"_id\", whenMatched: \"merge\" } }\n]);",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "schema-versioning-pattern",
+          "heading": "Schema Versioning Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Version 1: Original schema\n{\n  _id: ObjectId(\"user001\"),\n  schemaVersion: 1,\n  name: \"Alice Johnson\",\n  address: \"123 Main St, Portland, OR 97201\"  // single string\n}\n\n// Version 2: Structured address\n{\n  _id: ObjectId(\"user002\"),\n  schemaVersion: 2,\n  name: \"Bob Smith\",\n  address: {\n    street: \"456 Oak Ave\",\n    city: \"Seattle\",\n    state: \"WA\",\n    zip: \"98101\",\n    country: \"US\"\n  }\n}\n\n// Version 3: Added phone numbers array\n{\n  _id: ObjectId(\"user003\"),\n  schemaVersion: 3,\n  firstName: \"Carol\",\n  lastName: \"Davis\",\n  address: {\n    street: \"789 Pine Rd\",\n    city: \"Denver\",\n    state: \"CO\",\n    zip: \"80201\",\n    country: \"US\"\n  },\n  phones: [\n    { type: \"mobile\", number: \"+1-555-0123\", primary: true },\n    { type: \"work\", number: \"+1-555-0456\", primary: false }\n  ]\n}\n\n// Application-level migration handler\nfunction normalizeUser(doc) {\n  switch (doc.schemaVersion) {\n    case 1:\n      // Parse address string into structured format\n      const parts = doc.address.split(', ');\n      const [city, stateZip] = [parts[1], parts[2]];\n      const [state, zip] = stateZip.split(' ');\n      return {\n        ...doc,\n        schemaVersion: 3,\n        firstName: doc.name.split(' ')[0],\n        lastName: doc.name.split(' ').slice(1).join(' '),\n        address: { street: parts[0], city, state, zip, country: 'US' },\n        phones: []\n      };\n    case 2:\n      return {\n        ...doc,\n        schemaVersion: 3,\n        firstName: doc.name.split(' ')[0],\n        lastName: doc.name.split(' ').slice(1).join(' '),\n        phones: []\n      };\n    case 3:\n      return doc;  // current version\n  }\n}\n\n// Lazy migration: update on read\nasync function getUser(userId) {\n  const doc = await db.users.findOne({ _id: userId });\n  if (doc.schemaVersion < 3) {\n    const normalized = normalizeUser(doc);\n    await db.users.replaceOne({ _id: userId }, normalized);\n    return normalized;\n  }\n  return doc;\n}",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "tree-structures",
+          "heading": "Tree Structures",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// MATERIALIZED PATHS: Store full ancestry path as a string\n// Best for: subtree queries, finding all ancestors\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  path: \",root,electronics,\",\n  depth: 1\n}\n{\n  _id: \"phones\",\n  name: \"Phones\",\n  path: \",root,electronics,phones,\",\n  depth: 2\n}\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  path: \",root,electronics,phones,smartphones,\",\n  depth: 3\n}\n\n// Find all descendants of \"electronics\"\ndb.categories.find({ path: /,electronics,/ });\n\n// Find all ancestors of \"smartphones\"\nconst doc = await db.categories.findOne({ _id: \"smartphones\" });\nconst ancestorIds = doc.path.split(',').filter(Boolean);\ndb.categories.find({ _id: { $in: ancestorIds } });\n\n// Index for path queries\ndb.categories.createIndex({ path: 1 });\n\n// PARENT REFERENCE: Simple, good for finding parent\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  parent: \"phones\"\n}\n\n// CHILD REFERENCE: Good for finding children\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  children: [\"phones\", \"computers\", \"tablets\"]\n}\n\n// NESTED SETS: Optimal for read-heavy trees (rare updates)\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  left: 1,\n  right: 12  // all descendants have left > 1 AND right < 12\n}\n{\n  _id: \"phones\",\n  name: \"Phones\",\n  left: 2,\n  right: 7\n}\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  left: 3,\n  right: 4\n}\n\n// Find all descendants using nested sets (single query, no recursion)\ndb.categories.find({\n  left: { $gt: 1 },   // electronics.left\n  right: { $lt: 12 }  // electronics.right\n});",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Schema Design Decision Tree\"\n        START{Relationship Type?}\n        START -->|One-to-One| EMBED1[Embed in parent document]\n        START -->|One-to-Few<br/>bounded| EMBED2[Embed array in parent]\n        START -->|One-to-Many<br/>bounded < 1000| DECIDE{Access pattern?}\n        START -->|One-to-Many<br/>unbounded| REF1[Reference with ObjectId]\n        START -->|Many-to-Many| REF2[Reference array or<br/>junction collection]\n\n        DECIDE -->|Always together| EMBED3[Embed]\n        DECIDE -->|Independent access| REF3[Reference]\n        DECIDE -->|Mixed| HYBRID[Hybrid: embed summary<br/>+ reference full doc]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Pattern Selection by Use Case\"\n        direction TB\n        UC1[Time-series data] --> BP[Bucket Pattern]\n        UC2[Pre-computed aggregates] --> CP[Computed Pattern]\n        UC3[Mixed document types] --> PP[Polymorphic Pattern]\n        UC4[Extreme size variance] --> OP[Outlier Pattern]\n        UC5[Schema evolution] --> SV[Schema Versioning]\n        UC6[Hierarchical data] --> TS[Tree Structures]\n        UC7[Attribute variety] --> AP[Attribute Pattern]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Unbounded array growth: Embedding an array that grows without limit (e.g., all comments on a post, all events for a user) will eventually hit the 16MB document limit and cause write failures. Even before hitting the limit, large arrays degrade performance because MongoDB must rewrite the entire document on every array push. Rule of thumb: if an array can grow beyond a few hundred elements, use a separate collection with a reference."
+        },
+        {
+          "type": "paragraph",
+          "text": "Over-normalizing like a relational database: Splitting every entity into its own collection and joining with $lookup negates MongoDB's strengths. Each $lookup is essentially a left outer join that requires additional network round-trips in sharded clusters. Embrace denormalization for data that's read together — the storage cost of duplicated data is almost always cheaper than the performance cost of joins."
+        },
+        {
+          "type": "paragraph",
+          "text": "Massive documents causing working set pressure: Documents larger than a few KB consume disproportionate buffer cache space. If your working set (frequently accessed documents) doesn't fit in RAM because documents are bloated with rarely-accessed embedded data, query performance degrades dramatically. Keep hot documents small; move cold or large data (file attachments, full history) to separate collections."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not using the Subset Pattern for large embedded arrays: When you embed 1000 items but only display the latest 10 on the UI, you're transferring 100x more data than needed on every read. Use the Subset Pattern: embed only the most recent/relevant N items in the main document, and store the full history in a separate collection. Update both atomically using transactions or accept eventual consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring document growth and padding: When documents grow (array pushes, new fields), MongoDB may need to relocate them on disk if they outgrow their allocated space. This causes write amplification and fragmentation. Design schemas with predictable document sizes. If growth is expected, pre-allocate space or use the Bucket Pattern to create fixed-size documents."
+        },
+        {
+          "type": "paragraph",
+          "text": "Deep nesting beyond 3 levels: Deeply nested documents (e.g., order.items[0].variants[2].options[1].value) are difficult to index, query, and update atomically. MongoDB's dot notation for updates becomes unwieldy, and positional operators ($) only work on the first matching array element. Flatten nested structures or use separate collections for deeply nested entities."
+        }
+      ],
+      "wordCount": 354,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-commerce product catalog with Polymorphic Pattern: An online marketplace stores electronics, clothing, books, and food items in a single products collection. Each product type has different attributes (electronics have specs, clothing has sizes/colors, books have ISBN/author). The polymorphic pattern with a type discriminator field allows a single collection with type-specific indexes (sparse: true for type-specific fields). The product listing page queries all types uniformly, while detail pages render type-specific templates based on the discriminator."
+        },
+        {
+          "type": "paragraph",
+          "text": "Social media feed with Computed + Bucket Patterns: A social platform stores post engagement metrics using the Computed Pattern — each post document contains pre-computed likeCount, commentCount, and shareCount updated atomically on each interaction. The activity feed uses the Bucket Pattern, grouping a user's feed items into daily buckets (one document per user per day containing up to 200 feed items). This reduces the feed query from scanning thousands of individual activity documents to reading 1-7 bucket documents for a week's feed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare records with Schema Versioning: A health records system evolved its patient schema through 5 versions over 3 years (adding structured medications, splitting name fields, adding insurance arrays). Rather than migrating 50 million patient records in a single operation, they use schema versioning with lazy migration — documents are upgraded to the latest schema when accessed. A background job gradually migrates cold records during off-peak hours. The application layer handles all versions transparently through a normalization function."
+        },
+        {
+          "type": "paragraph",
+          "text": "Content management with Tree Structures: A CMS uses materialized paths for its category hierarchy (5 levels deep, 10,000 categories). The path field enables efficient queries for \"all articles in Electronics and subcategories\" with a single regex query on the path index. Breadcrumb generation extracts ancestor IDs directly from the path string without additional queries. Category moves update the path prefix for the moved subtree in a single updateMany operation."
+        }
+      ],
+      "wordCount": 302,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose embedding over referencing in MongoDB?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Embed when: (1) the relationship is one-to-one or one-to-few with a bounded upper limit; (2) the embedded data is always accessed with the parent (no independent access pattern); (3) updates to the embedded data are infrequent or can be done atomically with the parent; (4) the embedded data doesn't push the document near 16MB. Reference when: (1) the relationship is one-to-many with unbounded growth; (2) the related data is frequently accessed independently; (3) many-to-many relationships exist; (4) the related data is large and would bloat the parent document. The hybrid approach (embed a summary, reference the full document) works well when you need fast reads of key fields but the full related data is large or independently accessed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the Bucket Pattern and when you'd use it over individual documents."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The Bucket Pattern groups related documents into fixed-size containers. Instead of one document per event (e.g., one per sensor reading per second = 86,400 documents/day/sensor), you create one document per time bucket (e.g., one per hour = 24 documents/day/sensor). Each bucket contains an array of measurements plus pre-computed statistics (min, max, avg, count). Benefits: 60x fewer documents reduces index size and improves query performance; pre-computed stats enable fast aggregations without scanning individual readings; time-range queries read fewer documents. Use it for: IoT telemetry, financial tick data, user activity logs, or any time-series data with high write frequency. The trade-off is more complex insert logic (upsert into current bucket) and potential for uneven bucket sizes if data arrives irregularly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle schema changes in MongoDB without downtime?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use the Schema Versioning Pattern: add a schemaVersion field to every document. When the schema evolves, increment the version for new documents but don't migrate existing ones immediately. The application layer includes a normalization function that transforms any version to the current expected shape on read. Optionally, write the normalized version back (lazy migration). For bulk migration, run a background process during off-peak hours that reads old-version documents in batches and updates them. This approach provides zero-downtime schema evolution because: old and new documents coexist in the same collection, the application handles both transparently, and migration happens gradually without locking. Combine with MongoDB's schema validation ($jsonSchema) set to warn mode during transition periods to log non-conforming documents without rejecting writes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the anti-patterns in MongoDB schema design?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The major anti-patterns are: (1) Massive arrays — embedding unbounded arrays that grow indefinitely, eventually hitting 16MB or causing write amplification on every push; (2) Unnecessary normalization — splitting data into many collections and using $lookup everywhere, negating MongoDB's document model advantages; (3) Bloated documents — storing large binary data (images, files) inline instead of using GridFS or external storage; (4) Deep nesting — documents nested 4+ levels deep that are impossible to index and painful to update with positional operators; (5) No schema at all — treating MongoDB as truly \"schemaless\" without any structure, leading to inconsistent data that breaks application logic; (6) Using MongoDB as a queue — polling a collection for unprocessed documents instead of using a proper message queue; (7) Storing computed values without refresh logic — denormalized counts/sums that drift from reality because the update logic doesn't handle all edge cases."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you model a many-to-many relationship in MongoDB?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three approaches depending on the access pattern: (1) Embed array of references on both sides — store an array of related IDs in both documents. Works when both sides are bounded (e.g., students and courses where a student takes < 50 courses and a course has < 500 students). (2) Embed on the side you query most — if you always query \"which courses does this student take?\" but rarely \"which students are in this course?\", embed course references only in the student document. (3) Junction collection — create a separate collection with documents like { studentId, courseId, enrolledAt, grade }. This is best when the relationship itself has attributes, when both sides are unbounded, or when you need to query the relationships independently. In practice, most many-to-many relationships in MongoDB use approach 1 or 2 with denormalized summary data to avoid joins."
+        }
+      ],
+      "wordCount": 703,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Document size monitoring: Set up alerts when any document exceeds 5MB (well before the 16MB limit). Query for large documents periodically: db.collection.find({ $expr: { $gt: [{ $bsonSize: \"$$ROOT\" }, 5000000] } }). Large documents indicate an unbounded array or embedded data that should be refactored into a separate collection."
+        },
+        {
+          "type": "paragraph",
+          "text": "Index strategy for polymorphic collections: Use partial indexes with filter expressions matching the document type. For example, db.products.createIndex({ \"specs.cpu\": 1 }, { partialFilterExpression: { type: \"laptop\" } }) creates a small, efficient index only for laptop documents. This avoids indexing null values for documents of other types and keeps index sizes manageable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Denormalization consistency: When you denormalize data (e.g., storing customer name in order documents), implement a change stream listener that propagates updates to all denormalized copies. Accept that denormalized data may be briefly stale (eventual consistency) and design your UI to handle this gracefully. Run periodic reconciliation jobs to catch any missed updates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Schema validation in production: Use MongoDB's $jsonSchema validator with validationAction: \"warn\" initially to log non-conforming documents without rejecting writes. Once you're confident the schema is correct, switch to validationAction: \"error\" for strict enforcement. This prevents data quality issues from accumulating over time while allowing safe rollout."
+        }
+      ],
+      "wordCount": 199,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MongoDB Replication & Sharding — Replica sets, sharding architecture, and distributed operations",
+            "MongoDB and Document Databases — Aggregation pipelines, indexing, and core MongoDB features",
+            "SQL Design Patterns — Relational schema design for comparison"
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// EMBEDDING: One-to-few relationship (address within user)\n// Good: always accessed together, bounded, atomic updates\n{\n  _id: ObjectId(\"user123\"),\n  name: \"Alice Johnson\",\n  email: \"alice@example.com\",\n  addresses: [\n    {\n      type: \"home\",\n      street: \"123 Main St\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97201\",\n      isPrimary: true\n    },\n    {\n      type: \"work\",\n      street: \"456 Tech Ave\",\n      city: \"Portland\",\n      state: \"OR\",\n      zip: \"97204\",\n      isPrimary: false\n    }\n  ],\n  preferences: {\n    theme: \"dark\",\n    notifications: { email: true, sms: false },\n    language: \"en\"\n  }\n}\n\n// REFERENCING: One-to-many with unbounded growth (orders reference user)\n// orders collection\n{\n  _id: ObjectId(\"order789\"),\n  userId: ObjectId(\"user123\"),  // reference to users collection\n  items: [\n    { productId: ObjectId(\"prod456\"), name: \"Widget\", qty: 2, price: 29.99 },\n    { productId: ObjectId(\"prod789\"), name: \"Gadget\", qty: 1, price: 49.99 }\n  ],\n  total: 109.97,\n  status: \"shipped\",\n  createdAt: ISODate(\"2024-03-15T10:30:00Z\")\n}\n\n// HYBRID: Embed summary, reference details\n// Embed the most-accessed fields, reference the full document\n{\n  _id: ObjectId(\"order789\"),\n  customer: {\n    _id: ObjectId(\"user123\"),\n    name: \"Alice Johnson\",      // denormalized for display\n    email: \"alice@example.com\"  // denormalized for notifications\n  },\n  // Full customer details fetched via userId when needed\n  itemCount: 3,\n  total: 109.97,\n  status: \"shipped\"\n}",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Single collection storing different product types\n// All share common fields; type-specific fields vary\ndb.products.insertMany([\n  {\n    _id: ObjectId(\"prod001\"),\n    type: \"book\",\n    name: \"Design Patterns\",\n    price: 49.99,\n    category: \"technology\",\n    // Book-specific fields\n    author: \"Gang of Four\",\n    isbn: \"978-0201633610\",\n    pages: 395,\n    publisher: \"Addison-Wesley\"\n  },\n  {\n    _id: ObjectId(\"prod002\"),\n    type: \"electronics\",\n    name: \"Wireless Headphones\",\n    price: 199.99,\n    category: \"audio\",\n    // Electronics-specific fields\n    brand: \"SoundMax\",\n    warranty_months: 24,\n    specs: {\n      battery_hours: 30,\n      bluetooth: \"5.3\",\n      weight_grams: 250\n    }\n  },\n  {\n    _id: ObjectId(\"prod003\"),\n    type: \"clothing\",\n    name: \"Performance T-Shirt\",\n    price: 34.99,\n    category: \"athletic\",\n    // Clothing-specific fields\n    sizes: [\"S\", \"M\", \"L\", \"XL\"],\n    colors: [\"black\", \"navy\", \"gray\"],\n    material: \"polyester blend\",\n    gender: \"unisex\"\n  }\n]);\n\n// Query all products (polymorphic - works regardless of type)\ndb.products.find({ price: { $lt: 50 } });\n\n// Query type-specific fields\ndb.products.find({ type: \"book\", pages: { $gt: 300 } });\n\n// Index strategy for polymorphic collections\ndb.products.createIndex({ type: 1, category: 1 });\ndb.products.createIndex({ type: 1, \"specs.bluetooth\": 1 }, { sparse: true });",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// ANTI-PATTERN: One document per sensor reading (millions of tiny documents)\n// { sensorId: \"temp-01\", value: 22.5, timestamp: ISODate(\"2024-03-15T10:00:01Z\") }\n// { sensorId: \"temp-01\", value: 22.6, timestamp: ISODate(\"2024-03-15T10:00:02Z\") }\n// ... millions more\n\n// BUCKET PATTERN: Group readings into hourly buckets\n{\n  _id: ObjectId(\"bucket001\"),\n  sensorId: \"temp-01\",\n  bucketStart: ISODate(\"2024-03-15T10:00:00Z\"),\n  bucketEnd: ISODate(\"2024-03-15T11:00:00Z\"),\n  count: 3600,  // readings in this bucket\n  measurements: [\n    { timestamp: ISODate(\"2024-03-15T10:00:01Z\"), value: 22.5 },\n    { timestamp: ISODate(\"2024-03-15T10:00:02Z\"), value: 22.6 },\n    { timestamp: ISODate(\"2024-03-15T10:00:03Z\"), value: 22.4 },\n    // ... up to 3600 readings per hour\n  ],\n  // Pre-computed statistics for the bucket\n  stats: {\n    min: 21.8,\n    max: 23.2,\n    avg: 22.5,\n    sum: 81000\n  }\n}\n\n// Insert a new reading into the current bucket\ndb.sensorData.updateOne(\n  {\n    sensorId: \"temp-01\",\n    count: { $lt: 3600 },  // bucket not full\n    bucketStart: {\n      $gte: new Date(new Date().setMinutes(0, 0, 0))  // current hour\n    }\n  },\n  {\n    $push: { measurements: { timestamp: new Date(), value: 22.7 } },\n    $inc: { count: 1, \"stats.sum\": 22.7 },\n    $min: { \"stats.min\": 22.7 },\n    $max: { \"stats.max\": 22.7 },\n    $setOnInsert: {\n      sensorId: \"temp-01\",\n      bucketStart: new Date(new Date().setMinutes(0, 0, 0)),\n      bucketEnd: new Date(new Date().setMinutes(0, 0, 0) + 3600000)\n    }\n  },\n  { upsert: true }\n);\n\n// Query: average temperature for a sensor over a day (reads 24 documents, not 86400)\ndb.sensorData.aggregate([\n  { $match: {\n    sensorId: \"temp-01\",\n    bucketStart: { $gte: ISODate(\"2024-03-15\"), $lt: ISODate(\"2024-03-16\") }\n  }},\n  { $group: {\n    _id: \"$sensorId\",\n    avgTemp: { $avg: \"$stats.avg\" },\n    minTemp: { $min: \"$stats.min\" },\n    maxTemp: { $max: \"$stats.max\" }\n  }}\n]);",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Problem: Most users have 10-50 followers, but celebrities have millions\n// Embedding all followers would exceed 16MB for celebrities\n\n// Normal user (followers embedded)\n{\n  _id: ObjectId(\"user001\"),\n  username: \"regular_user\",\n  followers: [\n    ObjectId(\"user010\"), ObjectId(\"user011\"), ObjectId(\"user012\")\n    // ... up to ~1000 followers embedded\n  ],\n  followerCount: 45,\n  hasOverflow: false\n}\n\n// Celebrity user (flagged as outlier, overflow in separate collection)\n{\n  _id: ObjectId(\"user002\"),\n  username: \"celebrity\",\n  followers: [\n    // First 1000 followers embedded for common operations\n    ObjectId(\"user100\"), ObjectId(\"user101\"), // ...\n  ],\n  followerCount: 2500000,\n  hasOverflow: true  // Flag indicating overflow documents exist\n}\n\n// Overflow collection for outliers\n// followers_overflow collection\n{\n  _id: ObjectId(\"overflow001\"),\n  userId: ObjectId(\"user002\"),\n  page: 1,\n  followers: [\n    ObjectId(\"user1001\"), ObjectId(\"user1002\"), // ... next 1000\n  ]\n}\n\n// Query: get all followers (handles both normal and outlier)\nasync function getFollowers(userId) {\n  const user = await db.users.findOne({ _id: userId });\n\n  if (!user.hasOverflow) {\n    return user.followers;\n  }\n\n  // Fetch overflow pages\n  const overflowDocs = await db.followers_overflow\n    .find({ userId: userId })\n    .sort({ page: 1 })\n    .toArray();\n\n  return [\n    ...user.followers,\n    ...overflowDocs.flatMap(doc => doc.followers)\n  ];\n}",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Problem: Displaying product ratings requires aggregating all reviews every time\n// Solution: Pre-compute and store the aggregation\n\n// Product with computed rating stats\n{\n  _id: ObjectId(\"prod001\"),\n  name: \"Wireless Headphones\",\n  price: 199.99,\n  // Computed fields (updated on each review write)\n  rating: {\n    average: 4.3,\n    count: 1247,\n    distribution: { 1: 23, 2: 45, 3: 156, 4: 489, 5: 534 }\n  },\n  // Computed sales stats (updated by background job)\n  sales: {\n    totalUnits: 15420,\n    last30Days: 892,\n    revenue: 3072780.00\n  }\n}\n\n// When a new review is submitted, atomically update computed fields\ndb.products.updateOne(\n  { _id: ObjectId(\"prod001\") },\n  [\n    {\n      $set: {\n        \"rating.count\": { $add: [\"$rating.count\", 1] },\n        \"rating.distribution.4\": { $add: [\"$rating.distribution.4\", 1] },\n        \"rating.average\": {\n          $divide: [\n            { $add: [\n              { $multiply: [\"$rating.average\", \"$rating.count\"] },\n              4  // new rating value\n            ]},\n            { $add: [\"$rating.count\", 1] }\n          ]\n        }\n      }\n    }\n  ]\n);\n\n// Background job to recompute (handles drift from failed updates)\ndb.reviews.aggregate([\n  { $match: { productId: ObjectId(\"prod001\") } },\n  { $group: {\n    _id: \"$productId\",\n    average: { $avg: \"$rating\" },\n    count: { $sum: 1 },\n    dist: { $push: \"$rating\" }\n  }},\n  { $merge: { into: \"products\", on: \"_id\", whenMatched: \"merge\" } }\n]);",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Version 1: Original schema\n{\n  _id: ObjectId(\"user001\"),\n  schemaVersion: 1,\n  name: \"Alice Johnson\",\n  address: \"123 Main St, Portland, OR 97201\"  // single string\n}\n\n// Version 2: Structured address\n{\n  _id: ObjectId(\"user002\"),\n  schemaVersion: 2,\n  name: \"Bob Smith\",\n  address: {\n    street: \"456 Oak Ave\",\n    city: \"Seattle\",\n    state: \"WA\",\n    zip: \"98101\",\n    country: \"US\"\n  }\n}\n\n// Version 3: Added phone numbers array\n{\n  _id: ObjectId(\"user003\"),\n  schemaVersion: 3,\n  firstName: \"Carol\",\n  lastName: \"Davis\",\n  address: {\n    street: \"789 Pine Rd\",\n    city: \"Denver\",\n    state: \"CO\",\n    zip: \"80201\",\n    country: \"US\"\n  },\n  phones: [\n    { type: \"mobile\", number: \"+1-555-0123\", primary: true },\n    { type: \"work\", number: \"+1-555-0456\", primary: false }\n  ]\n}\n\n// Application-level migration handler\nfunction normalizeUser(doc) {\n  switch (doc.schemaVersion) {\n    case 1:\n      // Parse address string into structured format\n      const parts = doc.address.split(', ');\n      const [city, stateZip] = [parts[1], parts[2]];\n      const [state, zip] = stateZip.split(' ');\n      return {\n        ...doc,\n        schemaVersion: 3,\n        firstName: doc.name.split(' ')[0],\n        lastName: doc.name.split(' ').slice(1).join(' '),\n        address: { street: parts[0], city, state, zip, country: 'US' },\n        phones: []\n      };\n    case 2:\n      return {\n        ...doc,\n        schemaVersion: 3,\n        firstName: doc.name.split(' ')[0],\n        lastName: doc.name.split(' ').slice(1).join(' '),\n        phones: []\n      };\n    case 3:\n      return doc;  // current version\n  }\n}\n\n// Lazy migration: update on read\nasync function getUser(userId) {\n  const doc = await db.users.findOne({ _id: userId });\n  if (doc.schemaVersion < 3) {\n    const normalized = normalizeUser(doc);\n    await db.users.replaceOne({ _id: userId }, normalized);\n    return normalized;\n  }\n  return doc;\n}",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// MATERIALIZED PATHS: Store full ancestry path as a string\n// Best for: subtree queries, finding all ancestors\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  path: \",root,electronics,\",\n  depth: 1\n}\n{\n  _id: \"phones\",\n  name: \"Phones\",\n  path: \",root,electronics,phones,\",\n  depth: 2\n}\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  path: \",root,electronics,phones,smartphones,\",\n  depth: 3\n}\n\n// Find all descendants of \"electronics\"\ndb.categories.find({ path: /,electronics,/ });\n\n// Find all ancestors of \"smartphones\"\nconst doc = await db.categories.findOne({ _id: \"smartphones\" });\nconst ancestorIds = doc.path.split(',').filter(Boolean);\ndb.categories.find({ _id: { $in: ancestorIds } });\n\n// Index for path queries\ndb.categories.createIndex({ path: 1 });\n\n// PARENT REFERENCE: Simple, good for finding parent\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  parent: \"phones\"\n}\n\n// CHILD REFERENCE: Good for finding children\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  children: [\"phones\", \"computers\", \"tablets\"]\n}\n\n// NESTED SETS: Optimal for read-heavy trees (rare updates)\n{\n  _id: \"electronics\",\n  name: \"Electronics\",\n  left: 1,\n  right: 12  // all descendants have left > 1 AND right < 12\n}\n{\n  _id: \"phones\",\n  name: \"Phones\",\n  left: 2,\n  right: 7\n}\n{\n  _id: \"smartphones\",\n  name: \"Smartphones\",\n  left: 3,\n  right: 4\n}\n\n// Find all descendants using nested sets (single query, no recursion)\ndb.categories.find({\n  left: { $gt: 1 },   // electronics.left\n  right: { $lt: 12 }  // electronics.right\n});",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/schema-design-patterns.md",
+    "wordCount": 1971,
+    "sectionCount": 16
+  }
+}

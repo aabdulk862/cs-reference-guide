@@ -1,0 +1,366 @@
+{
+  "id": "postgresql-replication-and-high-availability",
+  "slug": "replication-and-ha",
+  "title": "Replication and High Availability",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Replication and High Availability",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "PostgreSQL provides enterprise-grade replication and high availability capabilities that enable organizations to build fault-tolerant database architectures capable of surviving hardware failures, network partitions, and even entire datacenter outages. Understanding the distinction between physical (streaming) replication and logical replication is fundamental to designing PostgreSQL HA architectures — physical replication provides byte-for-byte copies ideal for failover, while logical replication enables selective table-level data distribution, cross-version replication, and zero-downtime major version upgrades. Production PostgreSQL deployments require careful orchestration of connection pooling (PgBouncer), automated failover management (Patroni), and monitoring to achieve the five-nines availability that modern applications demand. The WAL (Write-Ahead Log) is the foundation of all PostgreSQL replication — every change is first written to WAL segments, which are then shipped to replicas either as raw bytes (streaming replication) or as decoded logical changes (logical replication)."
+        }
+      ],
+      "wordCount": 133,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Streaming replication: Ships WAL bytes to standby servers; supports synchronous (zero data loss) and asynchronous (minimal lag) modes; standby can serve read queries (hot standby)",
+            "Logical replication: Decodes WAL into logical change events; publishes specific tables to subscribers; supports cross-version replication and selective data distribution",
+            "WAL archiving: Continuous archiving of WAL segments to object storage (S3, GCS) enables Point-in-Time Recovery (PITR) to any moment within the retention window",
+            "Patroni: Industry-standard HA framework using distributed consensus (etcd/ZooKeeper/Consul) for leader election and automated failover with configurable fencing",
+            "PgBouncer: Lightweight connection pooler supporting transaction-mode pooling; maps thousands of application connections to a small pool of PostgreSQL backend connections",
+            "Synchronous commit levels: off (async), local (local WAL flush), remote_write (standby received), on (standby flushed), remote_apply (standby applied and queryable)",
+            "Replication slots: Guarantee WAL retention until consumed by replica; prevent premature WAL recycling but can cause disk exhaustion if replica falls behind",
+            "pg_basebackup: Built-in tool for taking consistent base backups from a running primary; foundation for initializing new replicas",
+            "Timeline IDs: Increment on promotion; prevent accidentally connecting to a former primary after failover; WAL filenames include timeline for disambiguation"
+          ]
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Streaming replication is the correct choice for high availability failover architectures where you need an identical copy of the entire database ready to take over within seconds. Use synchronous replication when zero data loss (RPO=0) is a hard requirement — financial systems, healthcare records, and audit logs where even a single lost transaction is unacceptable. Asynchronous streaming replication suits read-heavy workloads where you can tolerate milliseconds of replication lag in exchange for no write latency penalty on the primary. Deploy hot standby replicas to offload reporting queries, analytics workloads, and backup operations from the primary."
+        },
+        {
+          "type": "paragraph",
+          "text": "Logical replication is appropriate when you need selective table replication rather than full database copies — for example, replicating only the orders and customers tables to a reporting database while excluding large audit logs. Use logical replication for zero-downtime major version upgrades: set up logical replication from PostgreSQL 14 to PostgreSQL 16, let it catch up, then switch application connections. Logical replication also enables multi-master-like patterns where different databases own different tables but replicate subsets to each other for local reads."
+        },
+        {
+          "type": "paragraph",
+          "text": "PgBouncer is essential for any PostgreSQL deployment serving more than a few hundred concurrent connections. PostgreSQL forks a dedicated backend process per connection (~10MB RSS each), so 1,000 direct connections consume ~10GB of RAM just for connection overhead. PgBouncer in transaction mode allows 10,000+ application connections to share 100-200 actual PostgreSQL connections, dramatically reducing memory usage and context-switching overhead."
+        },
+        {
+          "type": "paragraph",
+          "text": "Patroni should be deployed whenever automated failover is required. Manual failover processes are error-prone and slow — Patroni detects primary failure within seconds and promotes the most up-to-date replica automatically, updating the distributed consensus store so connection routing (via HAProxy or DNS) redirects traffic to the new primary."
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "configuring-streaming-replication",
+          "heading": "Configuring Streaming Replication",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- On the PRIMARY: Create replication user and configure\nCREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'secure_password';\n\n-- postgresql.conf on PRIMARY\n-- wal_level = replica                    -- minimum for streaming replication\n-- max_wal_senders = 10                   -- max concurrent replication connections\n-- wal_keep_size = 1GB                    -- retain WAL for slow replicas\n-- synchronous_standby_names = 'FIRST 1 (standby1, standby2)'  -- sync replication\n-- synchronous_commit = on                -- wait for standby WAL flush\n\n-- pg_hba.conf: Allow replication connections from standby subnet\n-- host replication replicator 10.0.1.0/24 scram-sha-256\n\n-- On the STANDBY: Initialize from base backup\n-- pg_basebackup -h primary-host -D /var/lib/postgresql/16/main -U replicator -Fp -Xs -P -R\n\n-- The -R flag creates standby.signal and populates postgresql.auto.conf with:\n-- primary_conninfo = 'host=primary-host port=5432 user=replicator password=secure_password'",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "configuring-logical-replication",
+          "heading": "Configuring Logical Replication",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- On the PUBLISHER (source database):\n-- postgresql.conf: wal_level = logical\n\n-- Create a publication for specific tables\nCREATE PUBLICATION orders_pub FOR TABLE orders, order_items, customers;\n\n-- Or publish all tables in a schema\nCREATE PUBLICATION analytics_pub FOR TABLES IN SCHEMA analytics;\n\n-- On the SUBSCRIBER (target database):\n-- Create matching table structures first (schema must exist)\nCREATE SUBSCRIPTION orders_sub\n    CONNECTION 'host=publisher-host port=5432 dbname=production user=replicator password=secret'\n    PUBLICATION orders_pub\n    WITH (copy_data = true, create_slot = true, synchronous_commit = 'off');\n\n-- Monitor replication lag\nSELECT slot_name, confirmed_flush_lsn, pg_current_wal_lsn(),\n       pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag_bytes\nFROM pg_replication_slots;\n\n-- Monitor subscription status\nSELECT subname, received_lsn, latest_end_lsn,\n       latest_end_time, last_msg_send_time\nFROM pg_stat_subscription;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pgbouncer-configuration",
+          "heading": "PgBouncer Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "ini",
+              "code": ";; pgbouncer.ini - Production configuration\n\n[databases]\n; Map logical database names to actual PostgreSQL connections\nproduction = host=primary.internal port=5432 dbname=myapp\nproduction_ro = host=replica.internal port=5432 dbname=myapp\n\n[pgbouncer]\n; Listening configuration\nlisten_addr = 0.0.0.0\nlisten_port = 6432\n\n; Pool mode: transaction mode is recommended for most applications\npool_mode = transaction\n\n; Pool sizing\ndefault_pool_size = 50          ; connections per user/database pair\nmin_pool_size = 10              ; pre-create connections\nreserve_pool_size = 10          ; extra connections for burst traffic\nreserve_pool_timeout = 3        ; seconds before using reserve pool\n\n; Connection limits\nmax_client_conn = 10000         ; max application connections\nmax_db_connections = 200        ; max connections to PostgreSQL per database\n\n; Timeouts\nserver_idle_timeout = 300       ; close idle server connections after 5 min\nclient_idle_timeout = 3600      ; close idle client connections after 1 hour\nquery_timeout = 30              ; kill queries running longer than 30s\nclient_login_timeout = 60       ; timeout for client authentication\n\n; Health checks\nserver_check_query = SELECT 1\nserver_check_delay = 10\n\n; Authentication\nauth_type = scram-sha-256\nauth_file = /etc/pgbouncer/userlist.txt\n\n; Logging\nlog_connections = 1\nlog_disconnections = 1\nlog_pooler_errors = 1\nstats_period = 60",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "patroni-configuration",
+          "heading": "Patroni Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# patroni.yml - HA cluster configuration\nscope: production-cluster\nname: node1\n\nrestapi:\n  listen: 0.0.0.0:8008\n  connect_address: 10.0.1.10:8008\n\netcd3:\n  hosts:\n    - etcd1.internal:2379\n    - etcd2.internal:2379\n    - etcd3.internal:2379\n\nbootstrap:\n  dcs:\n    ttl: 30\n    loop_wait: 10\n    retry_timeout: 10\n    maximum_lag_on_failover: 1048576  # 1MB max lag for promotion candidate\n    synchronous_mode: true            # enable synchronous replication\n    synchronous_mode_strict: false    # allow async if no sync standby available\n    postgresql:\n      use_pg_rewind: true\n      use_slots: true\n      parameters:\n        max_connections: 200\n        max_wal_senders: 10\n        wal_level: replica\n        hot_standby: 'on'\n        wal_log_hints: 'on'\n        max_replication_slots: 10\n        wal_keep_size: '2GB'\n\n  initdb:\n    - encoding: UTF8\n    - data-checksums\n\npostgresql:\n  listen: 0.0.0.0:5432\n  connect_address: 10.0.1.10:5432\n  data_dir: /var/lib/postgresql/16/main\n  authentication:\n    superuser:\n      username: postgres\n      password: 'super_secret'\n    replication:\n      username: replicator\n      password: 'repl_secret'\n  parameters:\n    shared_buffers: '8GB'\n    effective_cache_size: '24GB'\n    work_mem: '256MB'\n    maintenance_work_mem: '2GB'\n\ntags:\n  nofailover: false\n  noloadbalance: false\n  clonefrom: false\n  nosync: false",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "monitoring-replication-health",
+          "heading": "Monitoring Replication Health",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Check replication status on PRIMARY\nSELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,\n       pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replay_lag_bytes,\n       write_lag, flush_lag, replay_lag,\n       sync_state\nFROM pg_stat_replication;\n\n-- Check replication slot status (prevent WAL bloat)\nSELECT slot_name, slot_type, active,\n       pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) AS retained_bytes,\n       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained_size\nFROM pg_replication_slots;\n\n-- On STANDBY: Check how far behind we are\nSELECT now() - pg_last_xact_replay_timestamp() AS replication_delay,\n       pg_is_in_recovery() AS is_standby,\n       pg_last_wal_receive_lsn() AS last_received,\n       pg_last_wal_replay_lsn() AS last_replayed;\n\n-- Alert query: find slots retaining more than 10GB of WAL\nSELECT slot_name, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained\nFROM pg_replication_slots\nWHERE pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) > 10737418240;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Application Layer\"\n        APP[Application Servers]\n    end\n\n    subgraph \"Connection Pooling\"\n        PGB_RW[PgBouncer - Read/Write<br/>port 6432]\n        PGB_RO[PgBouncer - Read Only<br/>port 6433]\n    end\n\n    subgraph \"HA Management\"\n        PATRONI1[Patroni Agent]\n        PATRONI2[Patroni Agent]\n        PATRONI3[Patroni Agent]\n        ETCD[etcd Cluster<br/>Leader Election]\n    end\n\n    subgraph \"PostgreSQL Cluster\"\n        PRIMARY[(Primary<br/>PostgreSQL)]\n        STANDBY1[(Sync Standby<br/>PostgreSQL)]\n        STANDBY2[(Async Standby<br/>PostgreSQL)]\n    end\n\n    subgraph \"Backup & Archive\"\n        WAL_ARCHIVE[WAL Archive<br/>S3/GCS]\n        BACKUP[Base Backups<br/>pgBackRest]\n    end\n\n    APP --> PGB_RW\n    APP --> PGB_RO\n    PGB_RW --> PRIMARY\n    PGB_RO --> STANDBY1\n    PGB_RO --> STANDBY2\n\n    PATRONI1 --> PRIMARY\n    PATRONI2 --> STANDBY1\n    PATRONI3 --> STANDBY2\n    PATRONI1 <--> ETCD\n    PATRONI2 <--> ETCD\n    PATRONI3 <--> ETCD\n\n    PRIMARY -->|\"Streaming WAL\"| STANDBY1\n    PRIMARY -->|\"Streaming WAL\"| STANDBY2\n    PRIMARY -->|\"WAL Archive\"| WAL_ARCHIVE\n    PRIMARY -->|\"Base Backup\"| BACKUP"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant App as Application\n    participant PGB as PgBouncer\n    participant P as Primary\n    participant S as Sync Standby\n    participant E as etcd\n\n    Note over P,S: Normal Operation\n    App->>PGB: INSERT INTO orders...\n    PGB->>P: Forward query\n    P->>P: Write to WAL\n    P->>S: Stream WAL bytes\n    S->>S: Write WAL to disk\n    S->>P: ACK (flush confirmed)\n    P->>PGB: COMMIT success\n    PGB->>App: Query result\n\n    Note over P,S: Failover Scenario\n    P-xP: Primary crashes\n    E->>E: Leader key TTL expires\n    S->>E: Acquire leader lock\n    E->>S: Lock granted - promote\n    S->>S: pg_promote()\n    Note over S: New Primary\n    PGB->>S: Reconnect (new primary)\n    App->>PGB: Queries resume"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Replication slot WAL accumulation: Inactive replication slots prevent WAL recycling indefinitely. A disconnected replica with an active slot can cause the primary to fill its disk with retained WAL segments. Always monitor pg_replication_slots and set max_slot_wal_keep_size (PostgreSQL 13+) to cap retention. Drop slots for permanently decommissioned replicas immediately."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using session-mode PgBouncer with prepared statements: Transaction-mode pooling (recommended) breaks prepared statements because the backend connection changes between transactions. Applications using prepared statements must either switch to session mode (losing pooling benefits), use DEALLOCATE ALL at transaction boundaries, or use PgBouncer 1.21+ which supports protocol-level prepared statement tracking."
+        },
+        {
+          "type": "paragraph",
+          "text": "Split-brain after network partition: Without proper fencing, a partitioned primary may continue accepting writes while a new primary is promoted. Patroni prevents this through the DCS (distributed consensus store) — a primary that cannot reach the DCS demotes itself. Never disable watchdog or fencing mechanisms in production. Configure watchdog.mode = required in Patroni for critical workloads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Synchronous replication blocking writes on standby failure: When synchronous_commit = on and the synchronous standby goes down, all writes on the primary block until the standby recovers or another standby is promoted to synchronous. Use synchronous_mode_strict: false in Patroni to allow temporary async operation, or configure multiple synchronous standbys with FIRST 1 (standby1, standby2)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Logical replication conflicts: Logical replication does not replicate DDL changes. If you ALTER TABLE on the publisher without applying the same change on the subscriber, replication breaks. Establish a DDL change process that applies schema changes to subscribers first, then publishers. Also, logical replication can conflict with local writes on the subscriber — use ALTER SUBSCRIPTION ... SET (disable_on_error = true) and monitor for conflicts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Promoting a lagging async replica: Promoting an asynchronous replica that is significantly behind the primary results in data loss equal to the replication lag at the time of failure. Patroni's maximum_lag_on_failover setting prevents promoting replicas that are too far behind, but this means failover may fail entirely if all replicas are lagging. Monitor replay lag continuously and investigate any sustained lag above your RPO threshold."
+        },
+        {
+          "type": "paragraph",
+          "text": "Connection storm after failover: When the primary fails and PgBouncer reconnects to the new primary, all queued client connections attempt to execute simultaneously, potentially overwhelming the new primary. Configure PgBouncer's server_login_retry and implement application-level circuit breakers with exponential backoff to smooth the reconnection surge."
+        }
+      ],
+      "wordCount": 380,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-commerce platform with global read replicas: A large e-commerce company runs a primary PostgreSQL cluster in us-east-1 with synchronous replication to a standby in the same region (for HA) and asynchronous streaming replication to replicas in eu-west-1 and ap-southeast-1. Product catalog reads are served from local replicas (50ms latency vs 200ms cross-region), while all writes go to the primary. PgBouncer runs on each replica with 5,000 max client connections mapped to 100 PostgreSQL connections. During Black Friday, they temporarily increase max_db_connections and add additional read replicas using pg_basebackup from existing standbys."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial services zero-downtime upgrades: A payment processing company uses logical replication to perform major version upgrades (PostgreSQL 14 → 16) with zero downtime. They set up a new PostgreSQL 16 cluster, create logical subscriptions to all critical tables, wait for the initial data copy and catch-up to complete (verified by monitoring pg_stat_subscription), then perform a coordinated cutover: stop writes, verify replication is fully caught up (lag = 0 bytes), switch application connection strings, and resume. Total write downtime: under 5 seconds. They rehearse this process quarterly in staging environments."
+        },
+        {
+          "type": "paragraph",
+          "text": "SaaS multi-tenant with Patroni: A B2B SaaS platform runs 50 Patroni-managed PostgreSQL clusters (one per large enterprise tenant, shared clusters for smaller tenants). Each cluster has 3 nodes across 3 availability zones. Patroni uses etcd for consensus, with etcd itself running as a 5-node cluster for maximum resilience. Automated failover completes in under 30 seconds, and PgBouncer's health checks detect the new primary within 10 seconds. They use Patroni's REST API for operational automation: scheduled switchovers during maintenance windows, replica rebuilds after hardware replacement, and configuration changes rolled out node-by-node."
+        },
+        {
+          "type": "paragraph",
+          "text": "Analytics pipeline with delayed replicas: A data analytics company maintains a \"delayed replica\" that intentionally lags 1 hour behind the primary using recovery_min_apply_delay = '1h'. This provides a safety net against accidental data deletion — if someone drops a table or runs a bad UPDATE, they can query the delayed replica to recover the data without needing to restore from backup. They also use this replica for running expensive analytical queries that would otherwise impact production performance."
+        }
+      ],
+      "wordCount": 347,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between streaming replication and logical replication in PostgreSQL? When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Streaming replication ships raw WAL bytes to create an exact physical copy of the primary — every database, table, index, and system catalog is replicated. It's used for HA failover because the standby is immediately promotable. Logical replication decodes WAL into logical change events (INSERT, UPDATE, DELETE) and applies them to subscriber tables. Choose streaming for HA/failover (identical copy, fast promotion). Choose logical for selective table replication, cross-version replication, zero-downtime upgrades, or when the subscriber needs to have additional indexes or local tables not present on the publisher. Key limitation: logical replication doesn't replicate DDL, sequences, or large objects automatically."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Patroni handle a split-brain scenario during a network partition?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Patroni prevents split-brain through the distributed consensus store (DCS). The primary must continuously renew its leader key in etcd/ZooKeeper/Consul within the TTL period. During a network partition, if the primary cannot reach the DCS, it cannot renew its key and must demote itself to read-only (or shut down PostgreSQL entirely if watchdog.mode = required). The remaining nodes that can reach the DCS will elect a new leader from the available standbys. The key insight is that the DCS acts as a fencing mechanism — a node that cannot prove it's the leader must assume it isn't. This is why the DCS cluster itself must be highly available (minimum 3 nodes, ideally 5) and distributed across failure domains."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain PgBouncer's pool modes and why transaction mode is preferred for most applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: PgBouncer offers three pool modes: session mode (client owns a server connection for the entire session), transaction mode (client gets a server connection only during a transaction), and statement mode (connection returned after each statement). Transaction mode is preferred because it maximizes connection sharing — a typical web request holds a connection for milliseconds during queries but the session lasts seconds. With transaction mode, 10,000 application connections can share 100 PostgreSQL connections because at any given moment only ~100 are actively in a transaction. The trade-off: session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY) don't work across transactions because you may get a different backend connection. Applications must either avoid these features or use server_reset_query to clean state between transactions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a PostgreSQL HA architecture that achieves RPO=0 and RTO<30 seconds?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: For RPO=0 (zero data loss), configure synchronous streaming replication with at least one synchronous standby (synchronous_commit = on, synchronous_standby_names = 'FIRST 1 (standby1, standby2)'). This ensures every committed transaction is confirmed written to at least one standby's WAL before acknowledging to the client. For RTO<30s, deploy Patroni with aggressive timing: ttl=20, loop_wait=5, retry_timeout=10. Use PgBouncer with health checks every 5 seconds so it detects the new primary quickly. The architecture: 3 PostgreSQL nodes across 3 AZs, Patroni on each node, 5-node etcd cluster (also cross-AZ), PgBouncer on application servers or as a separate tier with HAProxy for load balancing. Test failover monthly in production to verify RTO meets requirements."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens to in-flight transactions during a PostgreSQL failover?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: During failover, all in-flight transactions on the old primary are lost — they were never committed, so they don't exist in WAL and aren't replicated. Clients connected to the old primary receive connection errors. With synchronous replication, any transaction that received a COMMIT acknowledgment is guaranteed to exist on the new primary. Transactions that were in the COMMIT phase but hadn't received acknowledgment may or may not be on the new primary depending on exact timing. Applications must handle this by implementing idempotent operations and retry logic. PgBouncer clients will see connection errors and must reconnect — well-designed applications retry failed transactions automatically with exponential backoff."
+        }
+      ],
+      "wordCount": 630,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Monitor replication lag with alerting thresholds: Set up monitoring on pg_stat_replication.replay_lag with tiered alerts: warning at 10 seconds, critical at 60 seconds. For synchronous replicas, any sustained lag indicates a performance problem on the standby (slow disk, CPU contention). For async replicas, lag during peak write periods is normal but should recover during off-peak. Use pg_wal_lsn_diff() for byte-level precision. Alert on replication slot retained WAL exceeding 50% of available disk space."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement connection pooling health checks: Configure PgBouncer's server_check_query and set server_check_delay to 10-30 seconds. On the application side, implement connection validation (test query before use) and circuit breaker patterns. During failover, PgBouncer will return errors for a brief period — applications should retry with backoff rather than failing immediately. Consider running PgBouncer as a sidecar on each application server to eliminate the pooler as a single point of failure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Test failover regularly in production: Schedule monthly failover tests using Patroni's patronictl switchover command during low-traffic periods. Measure actual RTO (time from initiation to first successful query on new primary), verify application reconnection behavior, and confirm monitoring alerts fire correctly. Document the runbook and rotate on-call engineers through the process so everyone is familiar with failover procedures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use pgBackRest for backup and PITR: pgBackRest provides parallel backup/restore, incremental backups, backup verification, and S3/GCS/Azure storage. Configure daily full backups and continuous WAL archiving for point-in-time recovery. Test restore procedures monthly — a backup you haven't tested restoring is not a backup. Set retention to match your compliance requirements (typically 30-90 days for PITR, 1 year for full backups)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Size your connection pool correctly: The optimal PostgreSQL max_connections is typically 2-4x CPU cores for OLTP workloads. A 16-core server should have max_connections = 200 with PgBouncer's default_pool_size = 50 per database. Monitor pg_stat_activity to find the actual peak concurrent active queries — if it's consistently below your pool size, you're over-provisioned (wasting memory). If queries frequently wait for connections, increase the pool or optimize slow queries."
+        }
+      ],
+      "wordCount": 324,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "PostgreSQL Deep Dive — Core PostgreSQL concepts, MVCC, indexing, and JSONB operations",
+            "Performance Tuning — Query optimization, EXPLAIN ANALYZE, and vacuum tuning",
+            "Advanced Features — Partitioning, full-text search, window functions, and extensions",
+            "SQL Performance Tuning — General SQL optimization techniques applicable to PostgreSQL",
+            "Distributed Systems — CAP theorem and consistency models relevant to replication design"
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- On the PRIMARY: Create replication user and configure\nCREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'secure_password';\n\n-- postgresql.conf on PRIMARY\n-- wal_level = replica                    -- minimum for streaming replication\n-- max_wal_senders = 10                   -- max concurrent replication connections\n-- wal_keep_size = 1GB                    -- retain WAL for slow replicas\n-- synchronous_standby_names = 'FIRST 1 (standby1, standby2)'  -- sync replication\n-- synchronous_commit = on                -- wait for standby WAL flush\n\n-- pg_hba.conf: Allow replication connections from standby subnet\n-- host replication replicator 10.0.1.0/24 scram-sha-256\n\n-- On the STANDBY: Initialize from base backup\n-- pg_basebackup -h primary-host -D /var/lib/postgresql/16/main -U replicator -Fp -Xs -P -R\n\n-- The -R flag creates standby.signal and populates postgresql.auto.conf with:\n-- primary_conninfo = 'host=primary-host port=5432 user=replicator password=secure_password'",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- On the PUBLISHER (source database):\n-- postgresql.conf: wal_level = logical\n\n-- Create a publication for specific tables\nCREATE PUBLICATION orders_pub FOR TABLE orders, order_items, customers;\n\n-- Or publish all tables in a schema\nCREATE PUBLICATION analytics_pub FOR TABLES IN SCHEMA analytics;\n\n-- On the SUBSCRIBER (target database):\n-- Create matching table structures first (schema must exist)\nCREATE SUBSCRIPTION orders_sub\n    CONNECTION 'host=publisher-host port=5432 dbname=production user=replicator password=secret'\n    PUBLICATION orders_pub\n    WITH (copy_data = true, create_slot = true, synchronous_commit = 'off');\n\n-- Monitor replication lag\nSELECT slot_name, confirmed_flush_lsn, pg_current_wal_lsn(),\n       pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag_bytes\nFROM pg_replication_slots;\n\n-- Monitor subscription status\nSELECT subname, received_lsn, latest_end_lsn,\n       latest_end_time, last_msg_send_time\nFROM pg_stat_subscription;",
+      "runnable": false
+    },
+    {
+      "language": "ini",
+      "code": ";; pgbouncer.ini - Production configuration\n\n[databases]\n; Map logical database names to actual PostgreSQL connections\nproduction = host=primary.internal port=5432 dbname=myapp\nproduction_ro = host=replica.internal port=5432 dbname=myapp\n\n[pgbouncer]\n; Listening configuration\nlisten_addr = 0.0.0.0\nlisten_port = 6432\n\n; Pool mode: transaction mode is recommended for most applications\npool_mode = transaction\n\n; Pool sizing\ndefault_pool_size = 50          ; connections per user/database pair\nmin_pool_size = 10              ; pre-create connections\nreserve_pool_size = 10          ; extra connections for burst traffic\nreserve_pool_timeout = 3        ; seconds before using reserve pool\n\n; Connection limits\nmax_client_conn = 10000         ; max application connections\nmax_db_connections = 200        ; max connections to PostgreSQL per database\n\n; Timeouts\nserver_idle_timeout = 300       ; close idle server connections after 5 min\nclient_idle_timeout = 3600      ; close idle client connections after 1 hour\nquery_timeout = 30              ; kill queries running longer than 30s\nclient_login_timeout = 60       ; timeout for client authentication\n\n; Health checks\nserver_check_query = SELECT 1\nserver_check_delay = 10\n\n; Authentication\nauth_type = scram-sha-256\nauth_file = /etc/pgbouncer/userlist.txt\n\n; Logging\nlog_connections = 1\nlog_disconnections = 1\nlog_pooler_errors = 1\nstats_period = 60",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# patroni.yml - HA cluster configuration\nscope: production-cluster\nname: node1\n\nrestapi:\n  listen: 0.0.0.0:8008\n  connect_address: 10.0.1.10:8008\n\netcd3:\n  hosts:\n    - etcd1.internal:2379\n    - etcd2.internal:2379\n    - etcd3.internal:2379\n\nbootstrap:\n  dcs:\n    ttl: 30\n    loop_wait: 10\n    retry_timeout: 10\n    maximum_lag_on_failover: 1048576  # 1MB max lag for promotion candidate\n    synchronous_mode: true            # enable synchronous replication\n    synchronous_mode_strict: false    # allow async if no sync standby available\n    postgresql:\n      use_pg_rewind: true\n      use_slots: true\n      parameters:\n        max_connections: 200\n        max_wal_senders: 10\n        wal_level: replica\n        hot_standby: 'on'\n        wal_log_hints: 'on'\n        max_replication_slots: 10\n        wal_keep_size: '2GB'\n\n  initdb:\n    - encoding: UTF8\n    - data-checksums\n\npostgresql:\n  listen: 0.0.0.0:5432\n  connect_address: 10.0.1.10:5432\n  data_dir: /var/lib/postgresql/16/main\n  authentication:\n    superuser:\n      username: postgres\n      password: 'super_secret'\n    replication:\n      username: replicator\n      password: 'repl_secret'\n  parameters:\n    shared_buffers: '8GB'\n    effective_cache_size: '24GB'\n    work_mem: '256MB'\n    maintenance_work_mem: '2GB'\n\ntags:\n  nofailover: false\n  noloadbalance: false\n  clonefrom: false\n  nosync: false",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Check replication status on PRIMARY\nSELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,\n       pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replay_lag_bytes,\n       write_lag, flush_lag, replay_lag,\n       sync_state\nFROM pg_stat_replication;\n\n-- Check replication slot status (prevent WAL bloat)\nSELECT slot_name, slot_type, active,\n       pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) AS retained_bytes,\n       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained_size\nFROM pg_replication_slots;\n\n-- On STANDBY: Check how far behind we are\nSELECT now() - pg_last_xact_replay_timestamp() AS replication_delay,\n       pg_is_in_recovery() AS is_standby,\n       pg_last_wal_receive_lsn() AS last_received,\n       pg_last_wal_replay_lsn() AS last_replayed;\n\n-- Alert query: find slots retaining more than 10GB of WAL\nSELECT slot_name, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS retained\nFROM pg_replication_slots\nWHERE pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) > 10737418240;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/replication-and-ha.md",
+    "wordCount": 2336,
+    "sectionCount": 15
+  }
+}

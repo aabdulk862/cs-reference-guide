@@ -1,0 +1,358 @@
+{
+  "id": "mongodb-operations-and-scaling",
+  "slug": "operations-and-scaling",
+  "title": "Operations and Scaling",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Operations and Scaling",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "MongoDB's operational model is built around replica sets for high availability and sharded clusters for horizontal scalability, providing a clear path from single-server deployments to globally distributed architectures handling millions of operations per second. Unlike relational databases where scaling typically means vertical upgrades or complex read-replica configurations, MongoDB's sharding distributes both data and query load across commodity servers with automatic balancing and transparent routing.\nReplica sets provide automatic failover with elections completing in 10-12 seconds, while sharded clusters can scale to petabytes of data across hundreds of shards. The choice of shard key is the single most important operational decision in a sharded MongoDB deployment — it determines data distribution, query routing efficiency, and the ability to scale writes. Change streams enable real-time event-driven architectures by providing a reliable, ordered stream of all data changes in a collection, database, or entire cluster. MongoDB Atlas (the managed cloud service) abstracts much of the operational complexity but understanding the underlying architecture is essential for capacity planning, performance troubleshooting, and disaster recovery design."
+        }
+      ],
+      "wordCount": 170,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Replica set: Minimum 3 members (1 primary + 2 secondaries); automatic failover via election; primary handles all writes; secondaries can serve reads with configurable read preference",
+            "Shard key: Immutable field(s) determining data distribution across shards; must be present in every document; cannot be changed after sharding (until MongoDB 5.0 resharding)",
+            "Mongos router: Stateless query router for sharded clusters; directs queries to appropriate shard(s); merges results from multiple shards for scatter-gather queries",
+            "Config servers: Store cluster metadata (chunk ranges, shard locations); deployed as a 3-member replica set; critical for cluster operation",
+            "Balancer: Background process that migrates chunks between shards to maintain even distribution; runs during configurable windows to minimize production impact",
+            "Change streams: Real-time notification of data changes (insert, update, delete, replace); resumable with resume tokens; available on collections, databases, or entire deployments",
+            "Oplog: Capped collection recording all write operations; foundation for replication; size determines maximum replication lag tolerance before full resync required",
+            "Read preference: primary (default), primaryPreferred, secondary, secondaryPreferred, nearest — controls which replica set members serve read queries",
+            "Write concern: w:1 (primary acknowledged), w:majority (majority acknowledged), w:0 (fire-and-forget) — controls durability guarantees for writes",
+            "Atlas: MongoDB's managed cloud service; provides automated backups, monitoring, scaling, global clusters, and serverless instances"
+          ]
+        }
+      ],
+      "wordCount": 200,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Sharding is necessary when a single replica set cannot handle the workload — either the data volume exceeds single-server storage capacity (typically >2TB for optimal performance), write throughput exceeds what a single primary can handle, or read throughput exceeds what a replica set with read preference secondary can serve. Don't shard prematurely — a well-configured replica set on modern hardware handles most workloads. Shard when you have concrete evidence of capacity limits, not speculatively."
+        },
+        {
+          "type": "paragraph",
+          "text": "Replica sets should be deployed for every production MongoDB workload, even single-server deployments. A 3-member replica set provides automatic failover (10-12 second election), data redundancy (survive disk failures), and read scaling (secondary reads for analytics/reporting). Use w:majority write concern for data that cannot be lost, and readPreference: secondaryPreferred for read-heavy workloads that can tolerate slight staleness."
+        },
+        {
+          "type": "paragraph",
+          "text": "Change streams are appropriate for event-driven architectures, real-time synchronization between services, cache invalidation, audit logging, and triggering downstream processing when data changes. They replace polling patterns (repeatedly querying for changes) with push-based notifications, reducing database load and providing lower latency. Use change streams instead of triggers (which MongoDB doesn't have) or application-level event publishing (which can lose events during failures)."
+        },
+        {
+          "type": "paragraph",
+          "text": "MongoDB Atlas is the right choice when you want to minimize operational overhead — it handles backups, monitoring, patching, scaling, and security configuration. Use Atlas for: teams without dedicated MongoDB DBAs, applications requiring global distribution (Atlas Global Clusters), serverless workloads with unpredictable traffic (Atlas Serverless), and when you need integrated search (Atlas Search powered by Lucene). Self-managed MongoDB is appropriate when you need full control over configuration, have strict data residency requirements, or when cost optimization at scale justifies the operational investment."
+        }
+      ],
+      "wordCount": 272,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "replica-set-configuration-and-operations",
+          "heading": "Replica Set Configuration and Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Initialize a replica set\nrs.initiate({\n  _id: \"prod-rs\",\n  members: [\n    { _id: 0, host: \"mongo1.internal:27017\", priority: 2 },  // preferred primary\n    { _id: 1, host: \"mongo2.internal:27017\", priority: 1 },\n    { _id: 2, host: \"mongo3.internal:27017\", priority: 1 }\n  ],\n  settings: {\n    chainingAllowed: true,\n    heartbeatTimeoutSecs: 10,\n    electionTimeoutMillis: 10000\n  }\n});\n\n// Add an arbiter (for cost savings - not recommended for production)\nrs.addArb(\"mongo-arbiter.internal:27017\");\n\n// Add a hidden member for analytics (never becomes primary, invisible to clients)\nrs.add({\n  host: \"mongo-analytics.internal:27017\",\n  priority: 0,\n  hidden: true,\n  votes: 0,\n  tags: { purpose: \"analytics\" }\n});\n\n// Add a delayed member (disaster recovery - 1 hour behind)\nrs.add({\n  host: \"mongo-delayed.internal:27017\",\n  priority: 0,\n  hidden: true,\n  votes: 0,\n  secondaryDelaySecs: 3600,  // 1 hour delay\n  tags: { purpose: \"delayed-recovery\" }\n});\n\n// Configure read preference in connection string\n// mongodb://mongo1:27017,mongo2:27017,mongo3:27017/mydb?replicaSet=prod-rs&readPreference=secondaryPreferred\n\n// Application-level read preference (Node.js driver)\nconst collection = db.collection('orders');\n\n// Read from nearest member (lowest latency)\nconst result = await collection.find({ status: 'active' })\n  .readPreference('nearest')\n  .toArray();\n\n// Read from secondary with max staleness\nconst analytics = await collection.find({ created_at: { $gte: lastHour } })\n  .readPreference('secondary', [], { maxStalenessSeconds: 120 })\n  .toArray();\n\n// Write concern examples\n// Majority write concern (recommended for important data)\nawait collection.insertOne(\n  { order_id: \"ORD-123\", amount: 99.99 },\n  { writeConcern: { w: \"majority\", j: true, wtimeout: 5000 } }\n);\n\n// Monitor replica set status\nrs.status();  // member states, optime, election info\nrs.printReplicationInfo();  // oplog size and time range\nrs.printSecondaryReplicationInfo();  // secondary lag",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "sharding-configuration-and-shard-key-selection",
+          "heading": "Sharding Configuration and Shard Key Selection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Enable sharding on a database\nsh.enableSharding(\"ecommerce\");\n\n// GOOD shard key: High cardinality, even distribution, supports query patterns\n// Hashed shard key for even distribution (good for writes, bad for range queries)\nsh.shardCollection(\"ecommerce.events\", { event_id: \"hashed\" });\n\n// Compound shard key (supports targeted queries on tenant_id)\nsh.shardCollection(\"ecommerce.orders\", { tenant_id: 1, order_date: 1 });\n// Queries with tenant_id are targeted to specific shard\n// Range queries on order_date within a tenant are efficient\n\n// Zone-based sharding (data locality / compliance)\nsh.addShardTag(\"shard-us-east\", \"US\");\nsh.addShardTag(\"shard-eu-west\", \"EU\");\n\nsh.addTagRange(\n  \"ecommerce.users\",\n  { region: \"US\", _id: MinKey },\n  { region: \"US\", _id: MaxKey },\n  \"US\"\n);\nsh.addTagRange(\n  \"ecommerce.users\",\n  { region: \"EU\", _id: MinKey },\n  { region: \"EU\", _id: MaxKey },\n  \"EU\"\n);\n\n// Monitor sharding status\nsh.status();           // chunk distribution, balancer state\ndb.orders.getShardDistribution();  // data distribution per shard\n\n// Check balancer status\nsh.getBalancerState();\nsh.isBalancerRunning();\n\n// Configure balancer window (only balance during off-peak)\ndb.settings.updateOne(\n  { _id: \"balancer\" },\n  { $set: { activeWindow: { start: \"02:00\", stop: \"06:00\" } } },\n  { upsert: true }\n);\n\n// Resharding (MongoDB 5.0+) - change shard key without downtime\ndb.adminCommand({\n  reshardCollection: \"ecommerce.orders\",\n  key: { customer_id: 1, order_date: 1 }  // new shard key\n});\n\n// Pre-split chunks for predictable distribution (before bulk load)\nsh.splitAt(\"ecommerce.orders\", { tenant_id: \"tenant_100\", order_date: ISODate(\"2024-01-01\") });\nsh.splitAt(\"ecommerce.orders\", { tenant_id: \"tenant_200\", order_date: ISODate(\"2024-01-01\") });",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "backup-and-restore-operations",
+          "heading": "Backup and Restore Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// mongodump: Logical backup (for smaller databases < 100GB)\n// $ mongodump --uri=\"mongodb://user:pass@mongo1:27017/mydb?replicaSet=prod-rs&readPreference=secondary\" \\\n//   --out=/backup/2024-03-15 --oplog --gzip\n\n// mongorestore: Restore from logical backup\n// $ mongorestore --uri=\"mongodb://user:pass@mongo1:27017/mydb\" \\\n//   --dir=/backup/2024-03-15 --oplogReplay --gzip --drop\n\n// Point-in-time restore with oplog replay\n// $ mongorestore --oplogReplay --oplogLimit=\"1710500000:1\" \\\n//   --dir=/backup/2024-03-15\n\n// Atlas: Continuous backup with point-in-time recovery\n// Configured via Atlas UI or API - automated snapshots every 6 hours\n// PITR available to any second within the retention window\n\n// Filesystem snapshot backup (for large databases)\n// 1. Lock writes (or use secondary)\ndb.fsyncLock();\n// 2. Take LVM/EBS snapshot (external to MongoDB)\n// 3. Unlock\ndb.fsyncUnlock();\n\n// Verify backup integrity\n// $ mongorestore --dryRun --dir=/backup/2024-03-15\n\n// Export specific collection to JSON (for data migration)\n// $ mongoexport --uri=\"mongodb://...\" --collection=orders \\\n//   --query='{\"status\":\"completed\",\"date\":{\"$gte\":{\"$date\":\"2024-01-01T00:00:00Z\"}}}' \\\n//   --out=completed_orders.json",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "change-streams",
+          "heading": "Change Streams",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Watch a collection for all changes\nconst changeStream = db.collection('orders').watch([], {\n  fullDocument: 'updateLookup'  // include full document on updates\n});\n\nchangeStream.on('change', (change) => {\n  console.log('Operation:', change.operationType);\n  console.log('Document:', change.fullDocument);\n  console.log('Resume Token:', change._id);\n\n  switch (change.operationType) {\n    case 'insert':\n      // Trigger order processing pipeline\n      processNewOrder(change.fullDocument);\n      break;\n    case 'update':\n      // Invalidate cache, notify customer\n      if (change.updateDescription.updatedFields.status) {\n        notifyStatusChange(change.fullDocument);\n      }\n      break;\n    case 'delete':\n      // Clean up related data\n      cleanupOrderReferences(change.documentKey._id);\n      break;\n  }\n});\n\n// Watch with pipeline filter (only specific changes)\nconst pipeline = [\n  { $match: {\n    'operationType': { $in: ['insert', 'update'] },\n    'fullDocument.status': 'payment_confirmed'\n  }},\n  { $project: {\n    'fullDocument.order_id': 1,\n    'fullDocument.customer_id': 1,\n    'fullDocument.total': 1,\n    'operationType': 1\n  }}\n];\n\nconst filteredStream = db.collection('orders').watch(pipeline);\n\n// Resume from a specific point (crash recovery)\nconst resumeToken = loadResumeTokenFromStorage();\nconst resumedStream = db.collection('orders').watch([], {\n  resumeAfter: resumeToken,\n  fullDocument: 'updateLookup'\n});\n\n// Watch entire database (all collections)\nconst dbStream = db.watch([\n  { $match: { 'ns.coll': { $in: ['orders', 'payments', 'shipments'] } } }\n]);\n\n// Change stream with pre-image and post-image (MongoDB 6.0+)\ndb.createCollection('orders', {\n  changeStreamPreAndPostImages: { enabled: true }\n});\n\nconst streamWithImages = db.collection('orders').watch([], {\n  fullDocument: 'required',\n  fullDocumentBeforeChange: 'required'\n});\n\nstreamWithImages.on('change', (change) => {\n  console.log('Before:', change.fullDocumentBeforeChange);\n  console.log('After:', change.fullDocument);\n});",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "monitoring-and-performance",
+          "heading": "Monitoring and Performance",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "javascript",
+              "code": "// Server status overview\ndb.serverStatus();\n\n// Current operations (find slow/blocking operations)\ndb.currentOp({\n  \"active\": true,\n  \"secs_running\": { \"$gt\": 5 },\n  \"op\": { \"$ne\": \"none\" }\n});\n\n// Kill a long-running operation\ndb.killOp(opId);\n\n// Collection statistics\ndb.orders.stats({ scale: 1024 * 1024 });  // sizes in MB\n\n// Index usage statistics\ndb.orders.aggregate([{ $indexStats: {} }]);\n\n// Profiler: Log slow queries\ndb.setProfilingLevel(1, { slowms: 100 });  // log queries > 100ms\ndb.system.profile.find().sort({ ts: -1 }).limit(10);\n\n// Explain query execution\ndb.orders.find({ customer_id: \"cust123\", status: \"active\" })\n  .explain(\"executionStats\");\n\n// Key metrics to monitor:\n// - opcounters (insert/query/update/delete rates)\n// - connections.current vs connections.available\n// - globalLock.currentQueue (read/write queue depth)\n// - wiredTiger.cache.bytes currently in the cache\n// - wiredTiger.cache.tracked dirty bytes in the cache\n// - repl.apply.ops (replication apply rate)\n// - repl.buffer.count (oplog buffer)\n\n// Atlas monitoring equivalent: Performance Advisor\n// Suggests indexes based on slow query log analysis\n// Available via Atlas UI or API",
+              "runnable": true
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Sharded Cluster Architecture\"\n        subgraph \"Application Layer\"\n            APP1[App Server 1]\n            APP2[App Server 2]\n            APP3[App Server 3]\n        end\n\n        subgraph \"Query Routing\"\n            MONGOS1[mongos Router 1]\n            MONGOS2[mongos Router 2]\n        end\n\n        subgraph \"Config Servers (Replica Set)\"\n            CFG1[(Config 1)]\n            CFG2[(Config 2)]\n            CFG3[(Config 3)]\n        end\n\n        subgraph \"Shard 1 (Replica Set)\"\n            S1P[(Primary)]\n            S1S1[(Secondary)]\n            S1S2[(Secondary)]\n        end\n\n        subgraph \"Shard 2 (Replica Set)\"\n            S2P[(Primary)]\n            S2S1[(Secondary)]\n            S2S2[(Secondary)]\n        end\n\n        subgraph \"Shard 3 (Replica Set)\"\n            S3P[(Primary)]\n            S3S1[(Secondary)]\n            S3S2[(Secondary)]\n        end\n    end\n\n    APP1 --> MONGOS1\n    APP2 --> MONGOS1\n    APP3 --> MONGOS2\n    MONGOS1 --> CFG1\n    MONGOS2 --> CFG1\n    MONGOS1 --> S1P\n    MONGOS1 --> S2P\n    MONGOS1 --> S3P\n    MONGOS2 --> S1P\n    MONGOS2 --> S2P\n    MONGOS2 --> S3P\n    S1P --> S1S1\n    S1P --> S1S2\n    S2P --> S2S1\n    S2P --> S2S2\n    S3P --> S3S1\n    S3P --> S3S2"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant App as Application\n    participant MS as mongos Router\n    participant CFG as Config Server\n    participant S1 as Shard 1\n    participant S2 as Shard 2\n\n    Note over App,S2: Targeted Query (shard key in filter)\n    App->>MS: find({tenant_id: \"T1\", status: \"active\"})\n    MS->>CFG: Lookup chunk ranges for tenant_id=\"T1\"\n    CFG->>MS: Chunk on Shard 1\n    MS->>S1: Forward query to Shard 1 only\n    S1->>MS: Results\n    MS->>App: Results (single shard, fast)\n\n    Note over App,S2: Scatter-Gather Query (no shard key)\n    App->>MS: find({status: \"active\"}).sort({date: -1}).limit(10)\n    MS->>S1: Forward query to all shards\n    MS->>S2: Forward query to all shards\n    S1->>MS: Partial results\n    S2->>MS: Partial results\n    MS->>MS: Merge and sort results\n    MS->>App: Final merged results (slower)"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Choosing a monotonically increasing shard key: Using _id (ObjectId), timestamps, or auto-incrementing values as the shard key creates a \"hot shard\" problem — all new writes go to the shard owning the maximum chunk range. This single shard becomes the write bottleneck while other shards sit idle. Solutions: use a hashed shard key for even write distribution, or use a compound shard key with a high-cardinality prefix (e.g., {tenant_id: 1, created_at: 1})."
+        },
+        {
+          "type": "paragraph",
+          "text": "Undersizing the oplog: The oplog is a capped collection that determines how far behind a secondary can fall before requiring a full resync (hours-long process). If the oplog is too small and a secondary goes offline for maintenance, it may not be able to catch up from the oplog and requires a full initial sync. Size the oplog to cover at least 24-48 hours of write activity. Monitor with rs.printReplicationInfo() — if the oplog window is less than your maintenance window, increase it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not using write concern majority for important data: Default write concern w:1 only waits for the primary to acknowledge the write. If the primary fails before replicating to secondaries, the write is lost (rolled back when the old primary rejoins as a secondary). For data that cannot be lost (financial transactions, user registrations), always use w:\"majority\" which waits for the write to be replicated to a majority of members before acknowledging."
+        },
+        {
+          "type": "paragraph",
+          "text": "Running scatter-gather queries on sharded collections: Queries that don't include the shard key in the filter must be sent to ALL shards (scatter-gather), which is significantly slower than targeted queries. If your most frequent query doesn't include the shard key, you've chosen the wrong shard key. Analyze your query patterns before selecting a shard key — the shard key should be present in 80%+ of your queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring chunk migration impact on performance: The balancer migrates chunks between shards to maintain even distribution. Each migration copies data over the network and can impact query latency on the source and destination shards. Schedule the balancer window during off-peak hours, monitor migration rate, and investigate if chunks are splitting/migrating excessively (indicates a poor shard key choice with hot spots)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Not configuring change stream resume tokens: Change streams can disconnect due to network issues, server restarts, or elections. Without storing and using resume tokens, you'll miss events during disconnection. Always persist the resume token after processing each change event (to a separate collection or external store), and use resumeAfter when reconnecting. For critical event processing, implement at-least-once delivery with idempotent consumers."
+        }
+      ],
+      "wordCount": 414,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Global e-commerce with zone sharding: A multinational retailer uses MongoDB zone sharding to keep customer data in the region where the customer resides (GDPR compliance). US customers' data lives on shards in us-east-1, EU customers on shards in eu-west-1, and APAC customers on shards in ap-southeast-1. The shard key is {region: 1, customer_id: 1}, with zone ranges configured per region. Each region's application servers connect to local mongos routers, ensuring low-latency reads. Cross-region queries (global analytics) use scatter-gather but run on dedicated analytics mongos routers with higher timeouts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-time fraud detection with change streams: A payment processor uses MongoDB change streams to trigger real-time fraud analysis. When a new transaction is inserted into the transactions collection, a change stream consumer picks it up within 50ms, enriches it with customer history (from a read-optimized secondary), runs it through ML scoring, and either approves or flags it. The change stream consumer runs on 3 instances for redundancy, with resume tokens stored in a separate stream_checkpoints collection. If a consumer crashes, another instance resumes from the last checkpoint with at-most 1 second of reprocessing."
+        },
+        {
+          "type": "paragraph",
+          "text": "IoT platform scaling from startup to enterprise: A smart home company started with a single replica set handling 10,000 devices. As they grew to 2M devices generating 50,000 writes/second, they sharded the device_events collection with a compound shard key {device_id: \"hashed\"} for even write distribution. They added shards incrementally (started with 3, grew to 12) without application changes — mongos routing is transparent. For time-based queries (show device history), they maintain a secondary index on {device_id: 1, timestamp: -1} which enables targeted queries since device_id is the shard key prefix."
+        },
+        {
+          "type": "paragraph",
+          "text": "Content management with Atlas Search: A media company stores 50M articles in MongoDB Atlas with full-text search powered by Atlas Search (Lucene-based). Articles are stored with rich metadata, embedded author information (extended reference pattern), and content in multiple formats. Atlas Search indexes provide faceted search, autocomplete, fuzzy matching, and relevance scoring without a separate Elasticsearch cluster. Change streams trigger re-indexing when articles are updated. Atlas's auto-scaling handles traffic spikes during breaking news events (10x normal read traffic) by automatically adding read capacity."
+        }
+      ],
+      "wordCount": 353,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you choose a shard key for a MongoDB collection? What properties make a good shard key?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A good shard key has four properties: (1) High cardinality — many distinct values to enable fine-grained distribution (avoid boolean or enum fields with few values). (2) Even distribution — values should be uniformly distributed to prevent hot shards (avoid monotonically increasing values like timestamps or ObjectIds). (3) Query targeting — the shard key should be present in your most frequent queries so mongos can route to a single shard instead of scatter-gathering. (4) Non-monotonic writes — new documents should distribute across shards, not concentrate on one. A compound shard key like {tenant_id: 1, created_at: 1} often works well: tenant_id provides query targeting and distribution, while created_at provides ordering within a tenant. For write-heavy workloads with no natural distribution key, a hashed shard key provides even distribution at the cost of range query efficiency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain MongoDB's replica set election process. What happens during a failover?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When the primary becomes unreachable (heartbeat timeout, default 10 seconds), secondaries initiate an election. The election protocol (Raft-based since MongoDB 3.6) works as follows: an eligible secondary (priority > 0, not hidden, data is recent enough) calls for a vote. Other members vote based on: the candidate's optime (must be at least as up-to-date as the voter), priority (higher priority preferred), and whether they've already voted in this term. A candidate needs votes from a majority of members to win. The election typically completes in 10-12 seconds. During this window, the replica set cannot accept writes (reads from secondaries continue if read preference allows). After election, the new primary accepts writes and the old primary (when it recovers) performs a rollback of any writes not replicated to the new primary, then syncs as a secondary."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the trade-offs between different MongoDB write concern levels?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: w:0 (unacknowledged): fastest, no durability guarantee, application doesn't know if write succeeded. Use only for non-critical telemetry data. w:1 (primary acknowledged): write confirmed on primary's memory, but not yet replicated. If primary fails before replication, write is lost (rolled back). Default for most drivers. w:\"majority\": write confirmed replicated to majority of members. Survives primary failure — the write exists on enough members to be preserved during any election. Adds latency (must wait for replication). j:true (journaled): write confirmed written to the on-disk journal. Survives primary crash without data loss even for w:1. Adds disk I/O latency. For production: use w:\"majority\", j:true for financial/critical data (highest durability, ~2-5ms additional latency), w:1 for general application data (good balance), and w:0 only for metrics/logs where occasional loss is acceptable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do change streams work internally, and how do you handle failures in change stream consumers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Change streams are built on top of the oplog (replication log). When you open a change stream, MongoDB tails the oplog and filters for changes matching your pipeline. Each change event includes a resume token (an opaque BSON value encoding the oplog position). Internally, the driver maintains a cursor on the oplog with a $changeStream aggregation stage. For failure handling: (1) Store the resume token after successfully processing each event (in a separate collection or external store like Redis). (2) On consumer restart, open the change stream with resumeAfter: lastToken to continue from where you left off. (3) Handle invalidate events (collection dropped, renamed) by restarting the stream without a resume token. (4) Implement idempotent processing since at-least-once delivery means events may be replayed after a crash. (5) Monitor consumer lag by comparing the resume token's cluster time to the current cluster time."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose MongoDB Atlas over self-managed MongoDB? What are the operational differences?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose Atlas when: your team lacks dedicated MongoDB expertise, you need global distribution (Atlas Global Clusters with zone sharding across regions), you want integrated features (Atlas Search, Atlas Data Lake, Charts) without managing separate infrastructure, you need automated compliance (SOC2, HIPAA, PCI-DSS certifications), or when operational simplicity outweighs cost optimization. Choose self-managed when: you need full control over configuration and versions, have strict data residency requirements that Atlas regions don't satisfy, need custom storage engines or plugins, or when cost at scale (>$50K/month) justifies dedicated operations staff. Operational differences: Atlas handles backups (continuous with PITR), monitoring (built-in alerts and Performance Advisor), scaling (auto-scale compute and storage), patching (rolling upgrades), and security (encryption, VPC peering, private endpoints). Self-managed requires you to build all of this with tools like Ops Manager, custom monitoring, and manual upgrade procedures."
+        }
+      ],
+      "wordCount": 752,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Size your oplog for at least 48 hours of write activity: The oplog window determines how long a secondary can be offline before requiring a full resync. Calculate your write rate: db.getReplicationInfo() shows current oplog window. For a 50GB oplog with 1GB/hour write rate, you have ~50 hours. If maintenance windows or network issues could take a secondary offline for longer, increase the oplog. Use replSetResizeOplog command (MongoDB 3.6+) to resize without restart."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement connection pool tuning for your driver: Default connection pool settings are often too conservative for production. For the Node.js driver: set maxPoolSize to 100-200 (default 100), minPoolSize to 10-20 for warm connections, maxIdleTimeMS to 60000, and serverSelectionTimeoutMS to 5000. Monitor serverStatus().connections to ensure you're not exhausting the server's connection limit (default 65536). Each mongos in a sharded cluster maintains separate connection pools to each shard."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use read preference tags for workload isolation: Tag replica set members by purpose ({ purpose: \"analytics\" }, { purpose: \"realtime\" }) and configure read preferences with tag sets. Analytics queries use readPreference: secondary, readPreferenceTags: [{purpose: \"analytics\"}] to hit dedicated analytics secondaries without impacting the primary or real-time read secondaries. This provides workload isolation without separate clusters."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor and alert on replication lag: Set up alerts when secondary lag exceeds 10 seconds (warning) and 60 seconds (critical). Sustained lag indicates the secondary cannot keep up with write volume (CPU/IO bottleneck) or network issues. Use rs.printSecondaryReplicationInfo() for manual checks and integrate with monitoring (Prometheus mongodb_exporter, Datadog, Atlas alerts). Lag approaching the oplog window is an emergency — the secondary will need a full resync if it falls off the oplog."
+        }
+      ],
+      "wordCount": 267,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MongoDB and Document Databases — Core MongoDB concepts, aggregation pipelines, and indexing strategies",
+            "Schema Design — Document modeling patterns, embedding vs referencing, and schema evolution",
+            "PostgreSQL Replication and HA — Comparative HA approach with streaming replication",
+            "Redis Clustering and Persistence — Alternative distributed architecture with Redis Cluster"
+          ]
+        }
+      ],
+      "wordCount": 47,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// Initialize a replica set\nrs.initiate({\n  _id: \"prod-rs\",\n  members: [\n    { _id: 0, host: \"mongo1.internal:27017\", priority: 2 },  // preferred primary\n    { _id: 1, host: \"mongo2.internal:27017\", priority: 1 },\n    { _id: 2, host: \"mongo3.internal:27017\", priority: 1 }\n  ],\n  settings: {\n    chainingAllowed: true,\n    heartbeatTimeoutSecs: 10,\n    electionTimeoutMillis: 10000\n  }\n});\n\n// Add an arbiter (for cost savings - not recommended for production)\nrs.addArb(\"mongo-arbiter.internal:27017\");\n\n// Add a hidden member for analytics (never becomes primary, invisible to clients)\nrs.add({\n  host: \"mongo-analytics.internal:27017\",\n  priority: 0,\n  hidden: true,\n  votes: 0,\n  tags: { purpose: \"analytics\" }\n});\n\n// Add a delayed member (disaster recovery - 1 hour behind)\nrs.add({\n  host: \"mongo-delayed.internal:27017\",\n  priority: 0,\n  hidden: true,\n  votes: 0,\n  secondaryDelaySecs: 3600,  // 1 hour delay\n  tags: { purpose: \"delayed-recovery\" }\n});\n\n// Configure read preference in connection string\n// mongodb://mongo1:27017,mongo2:27017,mongo3:27017/mydb?replicaSet=prod-rs&readPreference=secondaryPreferred\n\n// Application-level read preference (Node.js driver)\nconst collection = db.collection('orders');\n\n// Read from nearest member (lowest latency)\nconst result = await collection.find({ status: 'active' })\n  .readPreference('nearest')\n  .toArray();\n\n// Read from secondary with max staleness\nconst analytics = await collection.find({ created_at: { $gte: lastHour } })\n  .readPreference('secondary', [], { maxStalenessSeconds: 120 })\n  .toArray();\n\n// Write concern examples\n// Majority write concern (recommended for important data)\nawait collection.insertOne(\n  { order_id: \"ORD-123\", amount: 99.99 },\n  { writeConcern: { w: \"majority\", j: true, wtimeout: 5000 } }\n);\n\n// Monitor replica set status\nrs.status();  // member states, optime, election info\nrs.printReplicationInfo();  // oplog size and time range\nrs.printSecondaryReplicationInfo();  // secondary lag",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Enable sharding on a database\nsh.enableSharding(\"ecommerce\");\n\n// GOOD shard key: High cardinality, even distribution, supports query patterns\n// Hashed shard key for even distribution (good for writes, bad for range queries)\nsh.shardCollection(\"ecommerce.events\", { event_id: \"hashed\" });\n\n// Compound shard key (supports targeted queries on tenant_id)\nsh.shardCollection(\"ecommerce.orders\", { tenant_id: 1, order_date: 1 });\n// Queries with tenant_id are targeted to specific shard\n// Range queries on order_date within a tenant are efficient\n\n// Zone-based sharding (data locality / compliance)\nsh.addShardTag(\"shard-us-east\", \"US\");\nsh.addShardTag(\"shard-eu-west\", \"EU\");\n\nsh.addTagRange(\n  \"ecommerce.users\",\n  { region: \"US\", _id: MinKey },\n  { region: \"US\", _id: MaxKey },\n  \"US\"\n);\nsh.addTagRange(\n  \"ecommerce.users\",\n  { region: \"EU\", _id: MinKey },\n  { region: \"EU\", _id: MaxKey },\n  \"EU\"\n);\n\n// Monitor sharding status\nsh.status();           // chunk distribution, balancer state\ndb.orders.getShardDistribution();  // data distribution per shard\n\n// Check balancer status\nsh.getBalancerState();\nsh.isBalancerRunning();\n\n// Configure balancer window (only balance during off-peak)\ndb.settings.updateOne(\n  { _id: \"balancer\" },\n  { $set: { activeWindow: { start: \"02:00\", stop: \"06:00\" } } },\n  { upsert: true }\n);\n\n// Resharding (MongoDB 5.0+) - change shard key without downtime\ndb.adminCommand({\n  reshardCollection: \"ecommerce.orders\",\n  key: { customer_id: 1, order_date: 1 }  // new shard key\n});\n\n// Pre-split chunks for predictable distribution (before bulk load)\nsh.splitAt(\"ecommerce.orders\", { tenant_id: \"tenant_100\", order_date: ISODate(\"2024-01-01\") });\nsh.splitAt(\"ecommerce.orders\", { tenant_id: \"tenant_200\", order_date: ISODate(\"2024-01-01\") });",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// mongodump: Logical backup (for smaller databases < 100GB)\n// $ mongodump --uri=\"mongodb://user:pass@mongo1:27017/mydb?replicaSet=prod-rs&readPreference=secondary\" \\\n//   --out=/backup/2024-03-15 --oplog --gzip\n\n// mongorestore: Restore from logical backup\n// $ mongorestore --uri=\"mongodb://user:pass@mongo1:27017/mydb\" \\\n//   --dir=/backup/2024-03-15 --oplogReplay --gzip --drop\n\n// Point-in-time restore with oplog replay\n// $ mongorestore --oplogReplay --oplogLimit=\"1710500000:1\" \\\n//   --dir=/backup/2024-03-15\n\n// Atlas: Continuous backup with point-in-time recovery\n// Configured via Atlas UI or API - automated snapshots every 6 hours\n// PITR available to any second within the retention window\n\n// Filesystem snapshot backup (for large databases)\n// 1. Lock writes (or use secondary)\ndb.fsyncLock();\n// 2. Take LVM/EBS snapshot (external to MongoDB)\n// 3. Unlock\ndb.fsyncUnlock();\n\n// Verify backup integrity\n// $ mongorestore --dryRun --dir=/backup/2024-03-15\n\n// Export specific collection to JSON (for data migration)\n// $ mongoexport --uri=\"mongodb://...\" --collection=orders \\\n//   --query='{\"status\":\"completed\",\"date\":{\"$gte\":{\"$date\":\"2024-01-01T00:00:00Z\"}}}' \\\n//   --out=completed_orders.json",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Watch a collection for all changes\nconst changeStream = db.collection('orders').watch([], {\n  fullDocument: 'updateLookup'  // include full document on updates\n});\n\nchangeStream.on('change', (change) => {\n  console.log('Operation:', change.operationType);\n  console.log('Document:', change.fullDocument);\n  console.log('Resume Token:', change._id);\n\n  switch (change.operationType) {\n    case 'insert':\n      // Trigger order processing pipeline\n      processNewOrder(change.fullDocument);\n      break;\n    case 'update':\n      // Invalidate cache, notify customer\n      if (change.updateDescription.updatedFields.status) {\n        notifyStatusChange(change.fullDocument);\n      }\n      break;\n    case 'delete':\n      // Clean up related data\n      cleanupOrderReferences(change.documentKey._id);\n      break;\n  }\n});\n\n// Watch with pipeline filter (only specific changes)\nconst pipeline = [\n  { $match: {\n    'operationType': { $in: ['insert', 'update'] },\n    'fullDocument.status': 'payment_confirmed'\n  }},\n  { $project: {\n    'fullDocument.order_id': 1,\n    'fullDocument.customer_id': 1,\n    'fullDocument.total': 1,\n    'operationType': 1\n  }}\n];\n\nconst filteredStream = db.collection('orders').watch(pipeline);\n\n// Resume from a specific point (crash recovery)\nconst resumeToken = loadResumeTokenFromStorage();\nconst resumedStream = db.collection('orders').watch([], {\n  resumeAfter: resumeToken,\n  fullDocument: 'updateLookup'\n});\n\n// Watch entire database (all collections)\nconst dbStream = db.watch([\n  { $match: { 'ns.coll': { $in: ['orders', 'payments', 'shipments'] } } }\n]);\n\n// Change stream with pre-image and post-image (MongoDB 6.0+)\ndb.createCollection('orders', {\n  changeStreamPreAndPostImages: { enabled: true }\n});\n\nconst streamWithImages = db.collection('orders').watch([], {\n  fullDocument: 'required',\n  fullDocumentBeforeChange: 'required'\n});\n\nstreamWithImages.on('change', (change) => {\n  console.log('Before:', change.fullDocumentBeforeChange);\n  console.log('After:', change.fullDocument);\n});",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Server status overview\ndb.serverStatus();\n\n// Current operations (find slow/blocking operations)\ndb.currentOp({\n  \"active\": true,\n  \"secs_running\": { \"$gt\": 5 },\n  \"op\": { \"$ne\": \"none\" }\n});\n\n// Kill a long-running operation\ndb.killOp(opId);\n\n// Collection statistics\ndb.orders.stats({ scale: 1024 * 1024 });  // sizes in MB\n\n// Index usage statistics\ndb.orders.aggregate([{ $indexStats: {} }]);\n\n// Profiler: Log slow queries\ndb.setProfilingLevel(1, { slowms: 100 });  // log queries > 100ms\ndb.system.profile.find().sort({ ts: -1 }).limit(10);\n\n// Explain query execution\ndb.orders.find({ customer_id: \"cust123\", status: \"active\" })\n  .explain(\"executionStats\");\n\n// Key metrics to monitor:\n// - opcounters (insert/query/update/delete rates)\n// - connections.current vs connections.available\n// - globalLock.currentQueue (read/write queue depth)\n// - wiredTiger.cache.bytes currently in the cache\n// - wiredTiger.cache.tracked dirty bytes in the cache\n// - repl.apply.ops (replication apply rate)\n// - repl.buffer.count (oplog buffer)\n\n// Atlas monitoring equivalent: Performance Advisor\n// Suggests indexes based on slow query log analysis\n// Available via Atlas UI or API",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/operations-and-scaling.md",
+    "wordCount": 2475,
+    "sectionCount": 15
+  }
+}

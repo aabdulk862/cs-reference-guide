@@ -16,14 +16,20 @@
             "Spring Boot is a convention-over-configuration framework that simplifies Spring application development with embedded servers, auto-configuration, and starter dependencies",
             "@SpringBootApplication combines @Configuration, @EnableAutoConfiguration, and @ComponentScan into a single annotation",
             "Starters aggregate dependencies: spring-boot-starter-web, spring-boot-starter-data-jpa, spring-boot-starter-security, spring-boot-starter-actuator",
-            "Configuration priority (highest to lowest): command-line args → config/application.properties → application.properties → defaults",
-            "Profiles enable environment-specific config: application-dev.properties, application-prod.properties, activated via spring.profiles.active",
-            "Actuator exposes production endpoints: /actuator/health, /actuator/metrics, /actuator/env, /actuator/beans",
-            "Auto-configuration backs off when you define your own beans, giving you full control without fighting the framework"
+            "Configuration priority (highest to lowest): command-line args → SPRING_APPLICATION_JSON → config/application.properties → application.properties → @PropertySource → defaults",
+            "Profiles enable environment-specific config: application-dev.yml, application-prod.yml, activated via spring.profiles.active",
+            "Actuator exposes production endpoints: /actuator/health, /actuator/metrics, /actuator/env, /actuator/beans, /actuator/prometheus",
+            "Auto-configuration backs off when you define your own beans via @ConditionalOnMissingBean, giving you full control without fighting the framework",
+            "Custom starters follow naming convention {company}-spring-boot-starter with auto-configuration in a separate {company}-spring-boot-autoconfigure module",
+            "Spring Boot 3.x requires Java 17+ and uses Jakarta EE 9+ namespace (jakarta.* instead of javax.*)",
+            "GraalVM native image support via spring-boot-starter-parent with -Pnative Maven profile or nativeCompile Gradle task",
+            "Virtual threads enabled with spring.threads.virtual.enabled=true (Boot 3.2+) for massive concurrency without reactive programming",
+            "Testcontainers integration via spring-boot-testcontainers for realistic integration tests with real databases and message brokers",
+            "Externalized configuration supports application.yml, environment variables, Kubernetes ConfigMaps, Spring Cloud Config Server, and HashiCorp Vault"
           ]
         }
       ],
-      "wordCount": 82,
+      "wordCount": 174,
       "subsections": []
     },
     {
@@ -34,9 +40,13 @@
         {
           "type": "paragraph",
           "text": "Spring Boot is the standard choice for building production-grade Java applications where rapid development, embedded deployment, and minimal configuration are priorities. Use Spring Boot when you need a standalone application with an embedded server (Tomcat, Jetty, or Netty) that can be deployed as a single JAR without external application server management. It excels in microservice architectures where each service needs independent deployment, health monitoring, and externalized configuration. Spring Boot's auto-configuration eliminates boilerplate for common patterns like database connections, security filters, and message broker integration. Choose Spring Boot when your team needs consistent project structure across services, built-in observability through Actuator and Micrometer, and seamless integration with Spring Cloud for distributed systems patterns like service discovery, circuit breakers, and centralized configuration. The framework's opinionated defaults mean new developers can be productive immediately while experienced developers can override any default when needed."
+        },
+        {
+          "type": "paragraph",
+          "text": "Spring Boot is also the right choice for serverless functions (AWS Lambda via Spring Cloud Function), CLI tools (using CommandLineRunner), and batch processing jobs that run on schedules. Its embedded server model eliminates the operational overhead of managing application server installations, version upgrades, and configuration drift across environments."
         }
       ],
-      "wordCount": 140,
+      "wordCount": 188,
       "subsections": []
     },
     {
@@ -47,14 +57,14 @@
       "wordCount": 0,
       "subsections": [
         {
-          "id": "application-entry-point-with-configuration",
-          "heading": "Application Entry Point with Configuration",
+          "id": "application-entry-point-with-custom-banner-and-startup-hooks",
+          "heading": "Application Entry Point with Custom Banner and Startup Hooks",
           "level": 3,
           "content": [
             {
               "type": "code",
               "language": "java",
-              "code": "@SpringBootApplication\n@PropertySource(\"classpath:custom.properties\")\npublic class OrderServiceApplication {\n\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}",
+              "code": "@SpringBootApplication\n@EnableConfigurationProperties(AppProperties.class)\npublic class OrderServiceApplication {\n\n    public static void main(String[] args) {\n        SpringApplication app = new SpringApplication(OrderServiceApplication.class);\n        app.setApplicationStartup(new BufferingApplicationStartup(2048));\n        app.run(args);\n    }\n\n    @Bean\n    public ApplicationRunner startupValidator(DataSource dataSource,\n                                              AppProperties properties) {\n        return args -> {\n            // Validate critical infrastructure on startup\n            try (Connection conn = dataSource.getConnection()) {\n                log.info(\"Database connection verified: {}\", conn.getMetaData().getURL());\n            }\n            log.info(\"Application started with config: maxRetries={}, timeout={}\",\n                properties.getMaxRetries(), properties.getTimeout());\n        };\n    }\n}\n\n// Type-safe configuration properties\n@ConfigurationProperties(prefix = \"app\")\n@Validated\npublic record AppProperties(\n    @NotNull String name,\n    @Min(1) @Max(10) int maxRetries,\n    @DurationMin(seconds = 1) Duration timeout,\n    @Valid RetryProperties retry,\n    Map<String, FeatureFlag> features\n) {\n    public record RetryProperties(\n        int maxAttempts,\n        Duration initialBackoff,\n        double multiplier\n    ) {}\n\n    public record FeatureFlag(\n        boolean enabled,\n        @DecimalMin(\"0.0\") @DecimalMax(\"1.0\") double rolloutPercentage\n    ) {}\n}",
               "runnable": false
             }
           ],
@@ -62,14 +72,14 @@
           "subsections": []
         },
         {
-          "id": "rest-controller-with-validation-and-exception-handling",
-          "heading": "REST Controller with Validation and Exception Handling",
+          "id": "auto-configuration-deep-dive-writing-a-custom-starter",
+          "heading": "Auto-Configuration Deep Dive — Writing a Custom Starter",
           "level": 3,
           "content": [
             {
               "type": "code",
               "language": "java",
-              "code": "@RestController\n@RequestMapping(\"/api/v1/customers\")\npublic class CustomerController {\n\n    private final CustomerService customerService;\n\n    public CustomerController(CustomerService customerService) {\n        this.customerService = customerService;\n    }\n\n    @GetMapping(\"/{id}\")\n    public ResponseEntity<CustomerDTO> getCustomer(@PathVariable Long id) {\n        return ResponseEntity.ok(customerService.findById(id));\n    }\n\n    @PostMapping\n    public ResponseEntity<CustomerDTO> createCustomer(\n            @Valid @RequestBody CreateCustomerRequest request) {\n        CustomerDTO created = customerService.create(request);\n        URI location = ServletUriComponentsBuilder.fromCurrentRequest()\n                .path(\"/{id}\").buildAndExpand(created.getId()).toUri();\n        return ResponseEntity.created(location).body(created);\n    }\n}\n\n@RestControllerAdvice\npublic class GlobalExceptionHandler {\n\n    @ExceptionHandler(ResourceNotFoundException.class)\n    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {\n        ErrorResponse error = new ErrorResponse(\n            HttpStatus.NOT_FOUND.value(), ex.getMessage());\n        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);\n    }\n\n    @ExceptionHandler(MethodArgumentNotValidException.class)\n    public ResponseEntity<ErrorResponse> handleValidation(\n            MethodArgumentNotValidException ex) {\n        String message = ex.getBindingResult().getAllErrors().stream()\n                .map(ObjectError::getDefaultMessage)\n                .collect(Collectors.joining(\", \"));\n        return new ResponseEntity<>(\n            new ErrorResponse(HttpStatus.BAD_REQUEST.value(), message),\n            HttpStatus.BAD_REQUEST);\n    }\n}",
+              "code": "// Module: mycompany-spring-boot-autoconfigure\n@AutoConfiguration\n@ConditionalOnClass(NotificationService.class)\n@ConditionalOnProperty(prefix = \"mycompany.notifications\", name = \"enabled\",\n                       havingValue = \"true\", matchIfMissing = true)\n@EnableConfigurationProperties(NotificationProperties.class)\npublic class NotificationAutoConfiguration {\n\n    @Bean\n    @ConditionalOnMissingBean\n    public NotificationService notificationService(NotificationProperties props) {\n        return new DefaultNotificationService(props.getProvider(), props.getApiKey());\n    }\n\n    @Bean\n    @ConditionalOnMissingBean\n    @ConditionalOnBean(NotificationService.class)\n    public NotificationHealthIndicator notificationHealthIndicator(\n            NotificationService service) {\n        return new NotificationHealthIndicator(service);\n    }\n\n    @Configuration\n    @ConditionalOnClass(name = \"com.sendgrid.SendGrid\")\n    static class SendGridConfiguration {\n        @Bean\n        @ConditionalOnMissingBean\n        public EmailSender sendGridEmailSender(NotificationProperties props) {\n            return new SendGridEmailSender(props.getSendgrid().getApiKey());\n        }\n    }\n\n    @Configuration\n    @ConditionalOnClass(name = \"com.twilio.Twilio\")\n    static class TwilioConfiguration {\n        @Bean\n        @ConditionalOnMissingBean\n        public SmsSender twilioSmsSender(NotificationProperties props) {\n            return new TwilioSmsSender(\n                props.getTwilio().getAccountSid(),\n                props.getTwilio().getAuthToken());\n        }\n    }\n}\n\n// Register in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports:\n// com.mycompany.autoconfigure.NotificationAutoConfiguration",
               "runnable": false
             }
           ],
@@ -77,29 +87,59 @@
           "subsections": []
         },
         {
-          "id": "spring-data-jpa-repository-with-custom-queries",
-          "heading": "Spring Data JPA Repository with Custom Queries",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Entity\n@Table(name = \"customers\")\npublic class Customer {\n    @Id\n    @GeneratedValue(strategy = GenerationType.IDENTITY)\n    private Long id;\n\n    @Column(nullable = false)\n    private String name;\n\n    @Column(unique = true, nullable = false)\n    private String email;\n\n    @Column(name = \"created_at\")\n    private LocalDateTime createdAt;\n}\n\npublic interface CustomerRepository extends JpaRepository<Customer, Long> {\n    Optional<Customer> findByEmail(String email);\n\n    @Query(\"SELECT c FROM Customer c WHERE c.createdAt > :since\")\n    List<Customer> findRecentCustomers(@Param(\"since\") LocalDateTime since);\n\n    Page<Customer> findByNameContainingIgnoreCase(String name, Pageable pageable);\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "profile-based-configuration-with-yaml",
-          "heading": "Profile-Based Configuration with YAML",
+          "id": "externalized-configuration-with-profiles-and-config-server",
+          "heading": "Externalized Configuration with Profiles and Config Server",
           "level": 3,
           "content": [
             {
               "type": "code",
               "language": "yaml",
-              "code": "# application.yml - shared configuration\nspring:\n  application:\n    name: order-service\n  jpa:\n    open-in-view: false\n    hibernate:\n      ddl-auto: validate\n\nserver:\n  port: 8080\n  servlet:\n    context-path: /api\n\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,metrics,info,prometheus\n  endpoint:\n    health:\n      show-details: when-authorized\n\n---\n# application-dev.yml\nspring:\n  config:\n    activate:\n      on-profile: dev\n  datasource:\n    url: jdbc:h2:mem:devdb\n    driver-class-name: org.h2.Driver\n  jpa:\n    show-sql: true\n    hibernate:\n      ddl-auto: create-drop\n\n---\n# application-prod.yml\nspring:\n  config:\n    activate:\n      on-profile: prod\n  datasource:\n    url: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}\n    username: ${DB_USER}\n    password: ${DB_PASS}\n    hikari:\n      maximum-pool-size: 20\n      minimum-idle: 5",
+              "code": "# application.yml - shared configuration across all environments\nspring:\n  application:\n    name: order-service\n  jpa:\n    open-in-view: false\n    hibernate:\n      ddl-auto: validate\n    properties:\n      hibernate:\n        jdbc:\n          batch_size: 50\n        order_inserts: true\n        order_updates: true\n\nserver:\n  port: 8080\n  shutdown: graceful\n  servlet:\n    context-path: /api\n\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,metrics,info,prometheus,env\n  endpoint:\n    health:\n      show-details: when-authorized\n      probes:\n        enabled: true\n  metrics:\n    distribution:\n      percentiles-histogram:\n        http.server.requests: true\n    tags:\n      application: ${spring.application.name}\n\napp:\n  name: Order Service\n  max-retries: 3\n  timeout: 5s\n  retry:\n    max-attempts: 3\n    initial-backoff: 100ms\n    multiplier: 2.0\n\n---\nspring:\n  config:\n    activate:\n      on-profile: dev\n  datasource:\n    url: jdbc:h2:mem:devdb\n    driver-class-name: org.h2.Driver\n  jpa:\n    show-sql: true\n    hibernate:\n      ddl-auto: create-drop\n\n---\nspring:\n  config:\n    activate:\n      on-profile: prod\n  datasource:\n    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:orders}\n    username: ${DB_USER}\n    password: ${DB_PASS}\n    hikari:\n      maximum-pool-size: ${HIKARI_MAX_POOL:20}\n      minimum-idle: 5\n      connection-timeout: 30000\n      idle-timeout: 600000\n      max-lifetime: 1800000\n      leak-detection-threshold: 60000\n  config:\n    import: optional:configserver:${CONFIG_SERVER_URI:http://config-server:8888}\n\n---\nspring:\n  config:\n    activate:\n      on-profile: kubernetes\n  config:\n    import: optional:kubernetes:\n  cloud:\n    kubernetes:\n      config:\n        enabled: true\n        sources:\n          - name: order-service-config\n      reload:\n        enabled: true\n        strategy: refresh",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "actuator-custom-endpoints-and-health-indicators",
+          "heading": "Actuator Custom Endpoints and Health Indicators",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom health indicator for downstream service\n@Component\npublic class PaymentServiceHealthIndicator implements HealthIndicator {\n\n    private final RestClient paymentClient;\n\n    @Override\n    public Health health() {\n        try {\n            ResponseEntity<Void> response = paymentClient.get()\n                .uri(\"/health\")\n                .retrieve()\n                .toBodilessEntity();\n\n            if (response.getStatusCode().is2xxSuccessful()) {\n                return Health.up()\n                    .withDetail(\"service\", \"payment-service\")\n                    .withDetail(\"responseTime\", \"< 500ms\")\n                    .build();\n            }\n            return Health.down()\n                .withDetail(\"status\", response.getStatusCode().value())\n                .build();\n        } catch (Exception e) {\n            return Health.down()\n                .withDetail(\"error\", e.getMessage())\n                .build();\n        }\n    }\n}\n\n// Custom actuator endpoint for business metrics\n@Component\n@Endpoint(id = \"orders\")\npublic class OrdersEndpoint {\n\n    private final OrderRepository orderRepository;\n\n    @ReadOperation\n    public Map<String, Object> orderStats() {\n        return Map.of(\n            \"totalOrders\", orderRepository.count(),\n            \"pendingOrders\", orderRepository.countByStatus(OrderStatus.PENDING),\n            \"todayOrders\", orderRepository.countCreatedToday(),\n            \"averageOrderValue\", orderRepository.averageOrderValue()\n        );\n    }\n\n    @ReadOperation\n    public Map<String, Object> ordersByStatus(@Selector String status) {\n        OrderStatus orderStatus = OrderStatus.valueOf(status.toUpperCase());\n        return Map.of(\n            \"status\", orderStatus,\n            \"count\", orderRepository.countByStatus(orderStatus)\n        );\n    }\n\n    @WriteOperation\n    public void cancelStaleOrders(@Selector int olderThanHours) {\n        orderRepository.cancelOrdersOlderThan(\n            Instant.now().minus(olderThanHours, ChronoUnit.HOURS));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "testcontainers-integration-for-integration-testing",
+          "heading": "Testcontainers Integration for Integration Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)\n@Testcontainers\nclass OrderServiceIntegrationTest {\n\n    @Container\n    @ServiceConnection\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n            .withDatabaseName(\"testdb\")\n            .withUsername(\"test\")\n            .withPassword(\"test\");\n\n    @Container\n    @ServiceConnection\n    static GenericContainer<?> redis = new GenericContainer<>(\"redis:7-alpine\")\n            .withExposedPorts(6379);\n\n    @Container\n    static KafkaContainer kafka = new KafkaContainer(\n            DockerImageName.parse(\"confluentinc/cp-kafka:7.5.0\"));\n\n    @DynamicPropertySource\n    static void kafkaProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.kafka.bootstrap-servers\", kafka::getBootstrapServers);\n    }\n\n    @Autowired\n    private TestRestTemplate restTemplate;\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Test\n    void shouldCreateOrderAndPersistToDatabase() {\n        CreateOrderRequest request = new CreateOrderRequest(\n                UUID.randomUUID(), List.of(new OrderItem(\"SKU-001\", 2)));\n\n        ResponseEntity<OrderDTO> response = restTemplate.postForEntity(\n            \"/api/v1/orders\", request, OrderDTO.class);\n\n        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);\n        assertThat(response.getBody().getId()).isNotNull();\n        assertThat(orderRepository.findById(response.getBody().getId())).isPresent();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "virtual-threads-and-observability-configuration",
+          "heading": "Virtual Threads and Observability Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\n@RequiredArgsConstructor\npublic class ObservableOrderService {\n\n    private final OrderRepository orderRepository;\n    private final ObservationRegistry observationRegistry;\n\n    @Observed(name = \"order.creation\",\n              contextualName = \"creating-order\",\n              lowCardinalityKeyValues = {\"order.type\", \"standard\"})\n    public OrderDTO createOrder(CreateOrderRequest request) {\n        return Observation.createNotStarted(\"order.validation\", observationRegistry)\n                .observe(() -> {\n                    validateRequest(request);\n                    Order order = Order.from(request);\n                    order = orderRepository.save(order);\n                    return OrderDTO.from(order);\n                });\n    }\n}",
               "runnable": false
             }
           ],
@@ -114,22 +154,7 @@
             {
               "type": "code",
               "language": "java",
-              "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\", \"/actuator/health\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));\n        return http.build();\n    }\n\n    @Bean\n    public PasswordEncoder passwordEncoder() {\n        return new BCryptPasswordEncoder();\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "caching-with-redis",
-          "heading": "Caching with Redis",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Configuration\n@EnableCaching\npublic class CacheConfig {\n\n    @Bean\n    public RedisCacheManager cacheManager(RedisConnectionFactory factory) {\n        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()\n                .entryTtl(Duration.ofMinutes(30))\n                .serializeValuesWith(\n                    SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));\n        return RedisCacheManager.builder(factory)\n                .cacheDefaults(config)\n                .build();\n    }\n}\n\n@Service\npublic class ProductService {\n\n    @Cacheable(value = \"products\", key = \"#id\")\n    public ProductDTO findById(Long id) {\n        return productRepository.findById(id)\n                .map(this::toDTO)\n                .orElseThrow(() -> new ResourceNotFoundException(\"Product not found\"));\n    }\n\n    @CacheEvict(value = \"products\", key = \"#id\")\n    public void update(Long id, UpdateProductRequest request) {\n        // update logic\n    }\n}",
+              "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\", \"/actuator/health/**\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));\n        return http.build();\n    }\n}",
               "runnable": false
             }
           ],
@@ -149,7 +174,11 @@
         },
         {
           "type": "mermaid",
-          "source": "graph LR\n    subgraph \"Auto-Configuration Flow\"\n        CLASSPATH[Classpath Scan] --> CONDITIONS[Conditional Checks<br/>@ConditionalOnClass<br/>@ConditionalOnMissingBean]\n        CONDITIONS --> AUTOCONFIG[Auto-Configure Beans]\n        AUTOCONFIG --> OVERRIDE[User Beans Override<br/>Auto-Configured Beans]\n    end\n\n    subgraph \"Configuration Priority\"\n        CMD[Command Line Args] --> CONFIG_DIR[config/ directory]\n        CONFIG_DIR --> APP_PROPS[application.properties]\n        APP_PROPS --> DEFAULTS[Spring Boot Defaults]\n    end"
+          "source": "graph LR\n    subgraph \"Auto-Configuration Flow\"\n        CLASSPATH[Classpath Scan] --> CONDITIONS[Conditional Checks<br/>@ConditionalOnClass<br/>@ConditionalOnMissingBean<br/>@ConditionalOnProperty]\n        CONDITIONS --> AUTOCONFIG[Auto-Configure Beans]\n        AUTOCONFIG --> OVERRIDE[User Beans Override<br/>Auto-Configured Beans]\n    end\n\n    subgraph \"Configuration Priority (highest → lowest)\"\n        CMD[Command Line Args] --> JSON[SPRING_APPLICATION_JSON]\n        JSON --> CONFIG_DIR[config/ directory]\n        CONFIG_DIR --> APP_PROPS[application.properties/yml]\n        APP_PROPS --> PROFILE[Profile-specific files]\n        PROFILE --> DEFAULTS[Spring Boot Defaults]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Custom Starter Architecture\"\n        STARTER[mycompany-spring-boot-starter<br/>pom.xml only — aggregates deps]\n        AUTOCONFIG[mycompany-spring-boot-autoconfigure<br/>@AutoConfiguration classes]\n        LIB[mycompany-core-library<br/>Business logic]\n\n        STARTER --> AUTOCONFIG\n        STARTER --> LIB\n        AUTOCONFIG --> LIB\n    end\n\n    subgraph \"Consumer Application\"\n        APP[Application] --> STARTER\n    end"
         }
       ],
       "wordCount": 0,
@@ -168,11 +197,15 @@
             "N+1 query problem with JPA: Lazy-loaded associations trigger individual queries for each parent entity. Use @EntityGraph, JOIN FETCH in JPQL, or batch fetching (@BatchSize) to load associations efficiently. Enable spring.jpa.show-sql=true in development to catch this early.",
             "Exposing entity classes directly in REST responses: Coupling your API contract to your database schema means any schema change breaks clients. Use DTOs with MapStruct or manual mapping to decouple persistence from presentation. This also prevents accidentally serializing lazy-loaded proxies.",
             "Not configuring connection pool properly: Default HikariCP settings may not suit production workloads. Set maximum-pool-size based on your database's max connections divided by application instances. Monitor pool metrics via Actuator to detect connection leaks or exhaustion before they cause outages.",
-            "Ignoring Actuator security in production: Exposing all Actuator endpoints without authentication leaks sensitive information (environment variables, bean definitions, heap dumps). Restrict exposure with management.endpoints.web.exposure.include and secure with Spring Security. Run Actuator on a separate management port in production."
+            "Ignoring Actuator security in production: Exposing all Actuator endpoints without authentication leaks sensitive information (environment variables, bean definitions, heap dumps). Restrict exposure with management.endpoints.web.exposure.include and secure with Spring Security. Run Actuator on a separate management port in production.",
+            "Jakarta EE namespace migration issues (Boot 3.x): Spring Boot 3 requires Jakarta EE 9+ (jakarta.servlet, jakarta.persistence, jakarta.validation). Libraries still using javax.* packages are incompatible and fail at runtime with ClassNotFoundException. Audit all dependencies before upgrading — use openrewrite recipes for automated migration.",
+            "GraalVM native image reflection failures: Native images require all reflective access to be declared at build time. Missing RuntimeHints registrations cause ClassNotFoundException or NoSuchMethodException at runtime. Test native compilation in CI with mvn -Pnative native:compile and run the full test suite against the native binary.",
+            "Auto-configuration ordering conflicts: When your custom configuration competes with auto-configuration for the same bean type, use @AutoConfigureBefore or @AutoConfigureAfter to control ordering. More commonly, rely on @ConditionalOnMissingBean in auto-configurations so user beans always win.",
+            "Profile activation confusion: Multiple profiles can be active simultaneously, and profile-specific properties override base properties. But spring.profiles.active in application.yml is overridden by environment variables and command-line args. Use spring.profiles.include for profiles that should always be active alongside the main profile. Test profile combinations explicitly — unexpected interactions between profiles cause production incidents."
           ]
         }
       ],
-      "wordCount": 197,
+      "wordCount": 370,
       "subsections": []
     },
     {
@@ -187,11 +220,13 @@
             "Microservice backends: Each Spring Boot service owns a bounded context (orders, payments, inventory), deploys independently as a Docker container, and communicates via REST or messaging. Spring Boot's embedded server, health checks, and externalized configuration make it ideal for container orchestration with Kubernetes.",
             "Event-driven architectures: Spring Boot with spring-boot-starter-amqp or spring-kafka enables building event producers and consumers that react to domain events. Auto-configuration handles connection factories, serialization, and retry policies, while Actuator exposes consumer lag and message throughput metrics.",
             "API gateways and BFF patterns: Spring Boot with Spring Cloud Gateway provides routing, rate limiting, and authentication at the edge. The Backend-for-Frontend pattern uses a thin Spring Boot service to aggregate multiple downstream microservice calls into a single optimized response for specific client types.",
-            "Scheduled batch processing: Spring Boot with @Scheduled or Spring Batch handles periodic data processing jobs like report generation, data synchronization, and cleanup tasks. Actuator health checks integrate with Kubernetes liveness probes to restart stuck jobs automatically."
+            "Scheduled batch processing: Spring Boot with @Scheduled or Spring Batch handles periodic data processing jobs like report generation, data synchronization, and cleanup tasks. Actuator health checks integrate with Kubernetes liveness probes to restart stuck jobs automatically.",
+            "Serverless functions: Spring Cloud Function on Spring Boot enables deploying business logic as AWS Lambda functions, Azure Functions, or Google Cloud Functions. The same code runs locally as a web endpoint and in production as a serverless function, with auto-configuration adapting to the target platform.",
+            "Custom starter libraries: Organizations build internal starters that standardize cross-cutting concerns (logging format, security configuration, metrics export, error handling) across dozens of microservices. A single starter dependency ensures consistent behavior and simplifies upgrades across the fleet."
           ]
         }
       ],
-      "wordCount": 158,
+      "wordCount": 239,
       "subsections": []
     },
     {
@@ -205,7 +240,47 @@
         },
         {
           "type": "paragraph",
-          "text": "A: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or spring.factories in older versions) for auto-configuration classes. Each class uses conditional annotations like @ConditionalOnClass, @ConditionalOnMissingBean, and @ConditionalOnProperty to decide whether to create beans. User-defined beans always take precedence because @ConditionalOnMissingBean checks if you already defined one. This is why you can override any auto-configured behavior by simply declaring your own bean."
+          "text": "A: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or spring.factories in older versions) for auto-configuration classes. Each class uses conditional annotations like @ConditionalOnClass, @ConditionalOnMissingBean, and @ConditionalOnProperty to decide whether to create beans. User-defined beans always take precedence because @ConditionalOnMissingBean checks if you already defined one. Auto-configurations are ordered via @AutoConfigureBefore/@AutoConfigureAfter to handle dependencies between them. This is why you can override any auto-configured behavior by simply declaring your own bean."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you create a custom Spring Boot starter?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A custom starter consists of two modules: the autoconfigure module containing @AutoConfiguration classes with conditional bean definitions and @ConfigurationProperties for type-safe configuration, and the starter module which is a POM-only artifact aggregating the autoconfigure module plus required dependencies. Register auto-configuration classes in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Follow naming convention: {company}-spring-boot-starter for the starter, {company}-spring-boot-autoconfigure for the configuration module. Use @ConditionalOnMissingBean on all beans so consumers can override defaults."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Spring Boot's externalized configuration and property resolution order."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Boot resolves properties in a defined order where later sources override earlier ones: default properties → application.properties in classpath → profile-specific properties → SPRING_APPLICATION_JSON environment variable → OS environment variables → command-line arguments. This allows the same JAR to run in any environment by changing external configuration. In Kubernetes, configuration comes from ConfigMaps and Secrets mounted as environment variables or files. Spring Cloud Config Server adds centralized, versioned configuration for microservice fleets. The @ConfigurationProperties annotation binds properties to type-safe Java objects with validation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the benefits and trade-offs of GraalVM native images with Spring Boot 3?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Native images compile Java applications ahead-of-time into standalone executables. Benefits include startup times under 100ms (vs. 5-30 seconds for JVM), 50-80% lower memory usage, and instant peak performance (no JIT warmup). Trade-offs include longer build times (2-5 minutes), no runtime class loading or dynamic proxies without explicit configuration, limited reflection support requiring RuntimeHints, and reduced peak throughput compared to JIT-optimized JVM for long-running applications. Use native images for serverless functions, CLI tools, and microservices where startup time matters. Keep JVM deployment for compute-intensive services that benefit from JIT optimization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do virtual threads in Spring Boot 3.2+ change application architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Virtual threads (Project Loom) allow millions of concurrent threads without the memory overhead of platform threads. With spring.threads.virtual.enabled=true, each HTTP request runs on a virtual thread that can block on I/O without consuming OS thread resources. This eliminates the primary motivation for reactive programming (WebFlux) in I/O-bound applications — you get the concurrency benefits of non-blocking I/O with the simplicity of synchronous code. The main caveats are: avoid synchronized blocks (use ReentrantLock), be aware that thread-local variables are cheap but not free at scale, and ensure your connection pools can handle the increased parallelism."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Spring Boot Actuator support Kubernetes deployments?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Actuator provides separate liveness (/actuator/health/liveness) and readiness (/actuator/health/readiness) probe endpoints enabled via management.endpoint.health.probes.enabled=true. Liveness checks if the JVM is responsive (should only fail if the app is unrecoverable). Readiness checks if the app can serve traffic (database connected, caches warmed, downstream services reachable). Kubernetes uses these to decide whether to restart pods (liveness failure) or stop routing traffic (readiness failure). Actuator also exposes Prometheus-format metrics at /actuator/prometheus for monitoring, and the /actuator/info endpoint for build metadata in deployment dashboards."
         },
         {
           "type": "paragraph",
@@ -221,18 +296,10 @@
         },
         {
           "type": "paragraph",
-          "text": "A: Avoid distributed transactions (2PC) in microservices due to coupling and performance costs. Instead, use the Saga pattern with choreography (events) or orchestration (a coordinator service). Spring Boot supports this via Spring Cloud Stream for event-driven sagas or frameworks like Axon. For eventual consistency, implement compensating transactions and idempotent operations. Use outbox pattern with Debezium for reliable event publishing."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain Spring Boot's externalized configuration and property resolution order."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Spring Boot resolves properties in a defined order where later sources override earlier ones: default properties → application.properties in classpath → profile-specific properties → environment variables → command-line arguments. This allows the same JAR to run in any environment by changing external configuration. In production, sensitive values come from environment variables or a secrets manager, while application.properties holds non-sensitive defaults. Spring Cloud Config Server adds centralized, versioned configuration for microservice fleets."
+          "text": "A: Avoid distributed transactions (2PC) in microservices due to coupling and performance costs. Instead, use the Saga pattern with choreography (events) or orchestration (a coordinator service). Spring Boot supports this via Spring Cloud Stream for event-driven sagas or frameworks like Axon. For eventual consistency, implement compensating transactions and idempotent operations. Use the outbox pattern with Debezium for reliable event publishing that guarantees at-least-once delivery without distributed transactions."
         }
       ],
-      "wordCount": 291,
+      "wordCount": 699,
       "subsections": []
     },
     {
@@ -247,11 +314,14 @@
             "Graceful shutdown: Enable server.shutdown=graceful with spring.lifecycle.timeout-per-shutdown-phase=30s to allow in-flight requests to complete before the application stops. This prevents 502 errors during rolling deployments in Kubernetes. Combine with readiness probes that mark the pod as not-ready before shutdown begins.",
             "Structured logging for observability: Configure Logback to output JSON-formatted logs with correlation IDs for distributed tracing. Use MDC (Mapped Diagnostic Context) to propagate trace IDs across async boundaries. Ship logs to ELK or Loki for centralized querying. Set logging.level.org.springframework=WARN in production to reduce noise while keeping application-level logs at INFO.",
             "Health check granularity: Configure separate liveness (/actuator/health/liveness) and readiness (/actuator/health/readiness) probes. Liveness should only check if the JVM is responsive. Readiness should verify database connectivity, cache availability, and downstream service health. This prevents Kubernetes from killing pods that are temporarily unable to serve traffic but are otherwise healthy.",
-            "Connection pool monitoring: Export HikariCP metrics to Prometheus via Micrometer (management.metrics.export.prometheus.enabled=true). Alert on hikaricp_connections_pending exceeding zero for more than 30 seconds, which indicates pool exhaustion. Set spring.datasource.hikari.leak-detection-threshold=60000 to log stack traces of connections held longer than 60 seconds."
+            "Connection pool monitoring: Export HikariCP metrics to Prometheus via Micrometer (management.metrics.export.prometheus.enabled=true). Alert on hikaricp_connections_pending exceeding zero for more than 30 seconds, which indicates pool exhaustion. Set spring.datasource.hikari.leak-detection-threshold=60000 to log stack traces of connections held longer than 60 seconds.",
+            "Kubernetes deployment with proper probe configuration: Configure distinct liveness and readiness probes pointing to /actuator/health/liveness and /actuator/health/readiness. Set initialDelaySeconds based on your application's startup time (use ApplicationStartup to measure). Enable graceful shutdown with server.shutdown=graceful and set terminationGracePeriodSeconds in the pod spec to match spring.lifecycle.timeout-per-shutdown-phase. Use preStop hooks to add a delay before SIGTERM, allowing the load balancer to drain connections.",
+            "Native image CI/CD pipeline: Add a native compilation step to your CI pipeline that builds and tests the native binary. Use multi-stage Docker builds: compile with ghcr.io/graalvm/native-image-community:17 and run with gcr.io/distroless/base-debian12 for minimal attack surface. The resulting image is typically 80-150MB compared to 300-500MB for JVM-based images. Cache the native image build layers in CI to reduce build times.",
+            "Configuration encryption: Never store secrets in plain text in configuration files or environment variables visible in /actuator/env. Use Spring Cloud Config Server's encryption support, HashiCorp Vault integration (spring-cloud-vault), or Kubernetes Secrets with volume mounts. Sanitize sensitive keys in Actuator output with management.endpoint.env.keys-to-sanitize."
           ]
         }
       ],
-      "wordCount": 174,
+      "wordCount": 335,
       "subsections": []
     },
     {
@@ -263,13 +333,14 @@
           "type": "list",
           "ordered": false,
           "items": [
-            "Spring Framework — Spring Boot builds on top of the core Spring Framework IoC container and modules",
+            "Core Container and Dependency Injection — Spring Boot builds on top of the core Spring Framework IoC container and modules",
             "Spring REST — Building RESTful APIs with Spring Boot's web layer",
+            "Spring Data and Persistence — Auto-configured JPA repositories and datasource management",
             "Spring Batch — Batch processing framework that integrates with Spring Boot for scheduled data jobs"
           ]
         }
       ],
-      "wordCount": 43,
+      "wordCount": 57,
       "subsections": []
     }
   ],
@@ -277,32 +348,37 @@
   "codeBlocks": [
     {
       "language": "java",
-      "code": "@SpringBootApplication\n@PropertySource(\"classpath:custom.properties\")\npublic class OrderServiceApplication {\n\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}",
+      "code": "@SpringBootApplication\n@EnableConfigurationProperties(AppProperties.class)\npublic class OrderServiceApplication {\n\n    public static void main(String[] args) {\n        SpringApplication app = new SpringApplication(OrderServiceApplication.class);\n        app.setApplicationStartup(new BufferingApplicationStartup(2048));\n        app.run(args);\n    }\n\n    @Bean\n    public ApplicationRunner startupValidator(DataSource dataSource,\n                                              AppProperties properties) {\n        return args -> {\n            // Validate critical infrastructure on startup\n            try (Connection conn = dataSource.getConnection()) {\n                log.info(\"Database connection verified: {}\", conn.getMetaData().getURL());\n            }\n            log.info(\"Application started with config: maxRetries={}, timeout={}\",\n                properties.getMaxRetries(), properties.getTimeout());\n        };\n    }\n}\n\n// Type-safe configuration properties\n@ConfigurationProperties(prefix = \"app\")\n@Validated\npublic record AppProperties(\n    @NotNull String name,\n    @Min(1) @Max(10) int maxRetries,\n    @DurationMin(seconds = 1) Duration timeout,\n    @Valid RetryProperties retry,\n    Map<String, FeatureFlag> features\n) {\n    public record RetryProperties(\n        int maxAttempts,\n        Duration initialBackoff,\n        double multiplier\n    ) {}\n\n    public record FeatureFlag(\n        boolean enabled,\n        @DecimalMin(\"0.0\") @DecimalMax(\"1.0\") double rolloutPercentage\n    ) {}\n}",
       "runnable": false
     },
     {
       "language": "java",
-      "code": "@RestController\n@RequestMapping(\"/api/v1/customers\")\npublic class CustomerController {\n\n    private final CustomerService customerService;\n\n    public CustomerController(CustomerService customerService) {\n        this.customerService = customerService;\n    }\n\n    @GetMapping(\"/{id}\")\n    public ResponseEntity<CustomerDTO> getCustomer(@PathVariable Long id) {\n        return ResponseEntity.ok(customerService.findById(id));\n    }\n\n    @PostMapping\n    public ResponseEntity<CustomerDTO> createCustomer(\n            @Valid @RequestBody CreateCustomerRequest request) {\n        CustomerDTO created = customerService.create(request);\n        URI location = ServletUriComponentsBuilder.fromCurrentRequest()\n                .path(\"/{id}\").buildAndExpand(created.getId()).toUri();\n        return ResponseEntity.created(location).body(created);\n    }\n}\n\n@RestControllerAdvice\npublic class GlobalExceptionHandler {\n\n    @ExceptionHandler(ResourceNotFoundException.class)\n    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {\n        ErrorResponse error = new ErrorResponse(\n            HttpStatus.NOT_FOUND.value(), ex.getMessage());\n        return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);\n    }\n\n    @ExceptionHandler(MethodArgumentNotValidException.class)\n    public ResponseEntity<ErrorResponse> handleValidation(\n            MethodArgumentNotValidException ex) {\n        String message = ex.getBindingResult().getAllErrors().stream()\n                .map(ObjectError::getDefaultMessage)\n                .collect(Collectors.joining(\", \"));\n        return new ResponseEntity<>(\n            new ErrorResponse(HttpStatus.BAD_REQUEST.value(), message),\n            HttpStatus.BAD_REQUEST);\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "@Entity\n@Table(name = \"customers\")\npublic class Customer {\n    @Id\n    @GeneratedValue(strategy = GenerationType.IDENTITY)\n    private Long id;\n\n    @Column(nullable = false)\n    private String name;\n\n    @Column(unique = true, nullable = false)\n    private String email;\n\n    @Column(name = \"created_at\")\n    private LocalDateTime createdAt;\n}\n\npublic interface CustomerRepository extends JpaRepository<Customer, Long> {\n    Optional<Customer> findByEmail(String email);\n\n    @Query(\"SELECT c FROM Customer c WHERE c.createdAt > :since\")\n    List<Customer> findRecentCustomers(@Param(\"since\") LocalDateTime since);\n\n    Page<Customer> findByNameContainingIgnoreCase(String name, Pageable pageable);\n}",
+      "code": "// Module: mycompany-spring-boot-autoconfigure\n@AutoConfiguration\n@ConditionalOnClass(NotificationService.class)\n@ConditionalOnProperty(prefix = \"mycompany.notifications\", name = \"enabled\",\n                       havingValue = \"true\", matchIfMissing = true)\n@EnableConfigurationProperties(NotificationProperties.class)\npublic class NotificationAutoConfiguration {\n\n    @Bean\n    @ConditionalOnMissingBean\n    public NotificationService notificationService(NotificationProperties props) {\n        return new DefaultNotificationService(props.getProvider(), props.getApiKey());\n    }\n\n    @Bean\n    @ConditionalOnMissingBean\n    @ConditionalOnBean(NotificationService.class)\n    public NotificationHealthIndicator notificationHealthIndicator(\n            NotificationService service) {\n        return new NotificationHealthIndicator(service);\n    }\n\n    @Configuration\n    @ConditionalOnClass(name = \"com.sendgrid.SendGrid\")\n    static class SendGridConfiguration {\n        @Bean\n        @ConditionalOnMissingBean\n        public EmailSender sendGridEmailSender(NotificationProperties props) {\n            return new SendGridEmailSender(props.getSendgrid().getApiKey());\n        }\n    }\n\n    @Configuration\n    @ConditionalOnClass(name = \"com.twilio.Twilio\")\n    static class TwilioConfiguration {\n        @Bean\n        @ConditionalOnMissingBean\n        public SmsSender twilioSmsSender(NotificationProperties props) {\n            return new TwilioSmsSender(\n                props.getTwilio().getAccountSid(),\n                props.getTwilio().getAuthToken());\n        }\n    }\n}\n\n// Register in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports:\n// com.mycompany.autoconfigure.NotificationAutoConfiguration",
       "runnable": false
     },
     {
       "language": "yaml",
-      "code": "# application.yml - shared configuration\nspring:\n  application:\n    name: order-service\n  jpa:\n    open-in-view: false\n    hibernate:\n      ddl-auto: validate\n\nserver:\n  port: 8080\n  servlet:\n    context-path: /api\n\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,metrics,info,prometheus\n  endpoint:\n    health:\n      show-details: when-authorized\n\n---\n# application-dev.yml\nspring:\n  config:\n    activate:\n      on-profile: dev\n  datasource:\n    url: jdbc:h2:mem:devdb\n    driver-class-name: org.h2.Driver\n  jpa:\n    show-sql: true\n    hibernate:\n      ddl-auto: create-drop\n\n---\n# application-prod.yml\nspring:\n  config:\n    activate:\n      on-profile: prod\n  datasource:\n    url: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}\n    username: ${DB_USER}\n    password: ${DB_PASS}\n    hikari:\n      maximum-pool-size: 20\n      minimum-idle: 5",
+      "code": "# application.yml - shared configuration across all environments\nspring:\n  application:\n    name: order-service\n  jpa:\n    open-in-view: false\n    hibernate:\n      ddl-auto: validate\n    properties:\n      hibernate:\n        jdbc:\n          batch_size: 50\n        order_inserts: true\n        order_updates: true\n\nserver:\n  port: 8080\n  shutdown: graceful\n  servlet:\n    context-path: /api\n\nmanagement:\n  endpoints:\n    web:\n      exposure:\n        include: health,metrics,info,prometheus,env\n  endpoint:\n    health:\n      show-details: when-authorized\n      probes:\n        enabled: true\n  metrics:\n    distribution:\n      percentiles-histogram:\n        http.server.requests: true\n    tags:\n      application: ${spring.application.name}\n\napp:\n  name: Order Service\n  max-retries: 3\n  timeout: 5s\n  retry:\n    max-attempts: 3\n    initial-backoff: 100ms\n    multiplier: 2.0\n\n---\nspring:\n  config:\n    activate:\n      on-profile: dev\n  datasource:\n    url: jdbc:h2:mem:devdb\n    driver-class-name: org.h2.Driver\n  jpa:\n    show-sql: true\n    hibernate:\n      ddl-auto: create-drop\n\n---\nspring:\n  config:\n    activate:\n      on-profile: prod\n  datasource:\n    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:orders}\n    username: ${DB_USER}\n    password: ${DB_PASS}\n    hikari:\n      maximum-pool-size: ${HIKARI_MAX_POOL:20}\n      minimum-idle: 5\n      connection-timeout: 30000\n      idle-timeout: 600000\n      max-lifetime: 1800000\n      leak-detection-threshold: 60000\n  config:\n    import: optional:configserver:${CONFIG_SERVER_URI:http://config-server:8888}\n\n---\nspring:\n  config:\n    activate:\n      on-profile: kubernetes\n  config:\n    import: optional:kubernetes:\n  cloud:\n    kubernetes:\n      config:\n        enabled: true\n        sources:\n          - name: order-service-config\n      reload:\n        enabled: true\n        strategy: refresh",
       "runnable": false
     },
     {
       "language": "java",
-      "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\", \"/actuator/health\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));\n        return http.build();\n    }\n\n    @Bean\n    public PasswordEncoder passwordEncoder() {\n        return new BCryptPasswordEncoder();\n    }\n}",
+      "code": "// Custom health indicator for downstream service\n@Component\npublic class PaymentServiceHealthIndicator implements HealthIndicator {\n\n    private final RestClient paymentClient;\n\n    @Override\n    public Health health() {\n        try {\n            ResponseEntity<Void> response = paymentClient.get()\n                .uri(\"/health\")\n                .retrieve()\n                .toBodilessEntity();\n\n            if (response.getStatusCode().is2xxSuccessful()) {\n                return Health.up()\n                    .withDetail(\"service\", \"payment-service\")\n                    .withDetail(\"responseTime\", \"< 500ms\")\n                    .build();\n            }\n            return Health.down()\n                .withDetail(\"status\", response.getStatusCode().value())\n                .build();\n        } catch (Exception e) {\n            return Health.down()\n                .withDetail(\"error\", e.getMessage())\n                .build();\n        }\n    }\n}\n\n// Custom actuator endpoint for business metrics\n@Component\n@Endpoint(id = \"orders\")\npublic class OrdersEndpoint {\n\n    private final OrderRepository orderRepository;\n\n    @ReadOperation\n    public Map<String, Object> orderStats() {\n        return Map.of(\n            \"totalOrders\", orderRepository.count(),\n            \"pendingOrders\", orderRepository.countByStatus(OrderStatus.PENDING),\n            \"todayOrders\", orderRepository.countCreatedToday(),\n            \"averageOrderValue\", orderRepository.averageOrderValue()\n        );\n    }\n\n    @ReadOperation\n    public Map<String, Object> ordersByStatus(@Selector String status) {\n        OrderStatus orderStatus = OrderStatus.valueOf(status.toUpperCase());\n        return Map.of(\n            \"status\", orderStatus,\n            \"count\", orderRepository.countByStatus(orderStatus)\n        );\n    }\n\n    @WriteOperation\n    public void cancelStaleOrders(@Selector int olderThanHours) {\n        orderRepository.cancelOrdersOlderThan(\n            Instant.now().minus(olderThanHours, ChronoUnit.HOURS));\n    }\n}",
       "runnable": false
     },
     {
       "language": "java",
-      "code": "@Configuration\n@EnableCaching\npublic class CacheConfig {\n\n    @Bean\n    public RedisCacheManager cacheManager(RedisConnectionFactory factory) {\n        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()\n                .entryTtl(Duration.ofMinutes(30))\n                .serializeValuesWith(\n                    SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));\n        return RedisCacheManager.builder(factory)\n                .cacheDefaults(config)\n                .build();\n    }\n}\n\n@Service\npublic class ProductService {\n\n    @Cacheable(value = \"products\", key = \"#id\")\n    public ProductDTO findById(Long id) {\n        return productRepository.findById(id)\n                .map(this::toDTO)\n                .orElseThrow(() -> new ResourceNotFoundException(\"Product not found\"));\n    }\n\n    @CacheEvict(value = \"products\", key = \"#id\")\n    public void update(Long id, UpdateProductRequest request) {\n        // update logic\n    }\n}",
+      "code": "@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)\n@Testcontainers\nclass OrderServiceIntegrationTest {\n\n    @Container\n    @ServiceConnection\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:16-alpine\")\n            .withDatabaseName(\"testdb\")\n            .withUsername(\"test\")\n            .withPassword(\"test\");\n\n    @Container\n    @ServiceConnection\n    static GenericContainer<?> redis = new GenericContainer<>(\"redis:7-alpine\")\n            .withExposedPorts(6379);\n\n    @Container\n    static KafkaContainer kafka = new KafkaContainer(\n            DockerImageName.parse(\"confluentinc/cp-kafka:7.5.0\"));\n\n    @DynamicPropertySource\n    static void kafkaProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.kafka.bootstrap-servers\", kafka::getBootstrapServers);\n    }\n\n    @Autowired\n    private TestRestTemplate restTemplate;\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @Test\n    void shouldCreateOrderAndPersistToDatabase() {\n        CreateOrderRequest request = new CreateOrderRequest(\n                UUID.randomUUID(), List.of(new OrderItem(\"SKU-001\", 2)));\n\n        ResponseEntity<OrderDTO> response = restTemplate.postForEntity(\n            \"/api/v1/orders\", request, OrderDTO.class);\n\n        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);\n        assertThat(response.getBody().getId()).isNotNull();\n        assertThat(orderRepository.findById(response.getBody().getId())).isPresent();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\n@RequiredArgsConstructor\npublic class ObservableOrderService {\n\n    private final OrderRepository orderRepository;\n    private final ObservationRegistry observationRegistry;\n\n    @Observed(name = \"order.creation\",\n              contextualName = \"creating-order\",\n              lowCardinalityKeyValues = {\"order.type\", \"standard\"})\n    public OrderDTO createOrder(CreateOrderRequest request) {\n        return Observation.createNotStarted(\"order.validation\", observationRegistry)\n                .observe(() -> {\n                    validateRequest(request);\n                    Order order = Order.from(request);\n                    order = orderRepository.save(order);\n                    return OrderDTO.from(order);\n                });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\", \"/actuator/health/**\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));\n        return http.build();\n    }\n}",
       "runnable": false
     }
   ],
@@ -310,7 +386,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-boot.md",
-    "wordCount": 1085,
-    "sectionCount": 15
+    "wordCount": 2062,
+    "sectionCount": 16
   }
 }

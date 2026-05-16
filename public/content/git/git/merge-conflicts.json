@@ -20,11 +20,13 @@
             "git diff --check — check for conflict markers before committing",
             "git mergetool — launch configured visual merge tool",
             "Conflicts can occur during: git merge, git rebase, git pull, git cherry-pick, git stash pop",
-            "Prevention: frequent pulls, small branches, clear code ownership, communication"
+            "Prevention: frequent pulls, small branches, clear code ownership, communication",
+            "git rerere — reuse recorded resolution for recurring conflicts",
+            "Three conflict types: content (same lines changed), delete/modify (file deleted vs edited), rename (different new names)"
           ]
         }
       ],
-      "wordCount": 94,
+      "wordCount": 119,
       "subsections": []
     },
     {
@@ -35,9 +37,23 @@
         {
           "type": "paragraph",
           "text": "Merge conflict resolution is not something you choose to do — it is something you must handle when Git cannot automatically combine changes. Conflicts arise when two branches modify the same lines of the same file, when one branch deletes a file that another branch modifies, or when both branches add different content at the same location. You will encounter conflicts most frequently when pulling remote changes that overlap with your local work, when merging long-lived feature branches back into main, during interactive rebases that replay commits onto a changed base, and when cherry-picking commits that touch code that has since been modified. Understanding conflict resolution is a critical skill because avoiding conflicts entirely is impossible in collaborative development. The goal is to minimize their frequency through good practices and resolve them quickly and correctly when they occur."
+        },
+        {
+          "type": "paragraph",
+          "text": "Specific scenarios where conflict resolution expertise is critical:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Release branch maintenance: When cherry-picking hotfixes from main to a release branch, the surrounding code may have diverged, causing conflicts that require understanding both the fix intent and the release branch context.",
+            "Dependency upgrades: Upgrading a major dependency often conflicts with other branches that import from the old API. Coordinating these upgrades requires resolving conflicts across multiple files simultaneously.",
+            "Rebase-heavy workflows: Teams that rebase feature branches onto main before merging encounter conflicts more frequently during the rebase process, where each replayed commit may conflict independently.",
+            "Monorepo shared utilities: When multiple teams modify shared utility files in a monorepo, conflicts are frequent. Clear module boundaries and CODEOWNERS help, but resolution skills remain essential."
+          ]
         }
       ],
-      "wordCount": 138,
+      "wordCount": 258,
       "subsections": []
     },
     {
@@ -112,6 +128,158 @@
           ],
           "wordCount": 0,
           "subsections": []
+        },
+        {
+          "id": "configuring-merge-tools",
+          "heading": "Configuring Merge Tools",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Set VS Code as the default merge tool\ngit config --global merge.tool vscode\ngit config --global mergetool.vscode.cmd 'code --wait --merge $REMOTE $LOCAL $BASE $MERGED'\n\n# Set IntelliJ as the merge tool\ngit config --global merge.tool intellij\ngit config --global mergetool.intellij.cmd 'idea merge $LOCAL $REMOTE $BASE $MERGED'\n\n# Set vimdiff as the merge tool (terminal-based)\ngit config --global merge.tool vimdiff\n\n# Launch the merge tool for all conflicted files\ngit mergetool\n\n# Don't keep .orig backup files after merge tool resolution\ngit config --global mergetool.keepBackup false",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "advanced-conflict-resolution",
+          "heading": "Advanced Conflict Resolution",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Show the merge base (common ancestor) version of a conflicted file\ngit show :1:path/to/file.txt   # base version\ngit show :2:path/to/file.txt   # ours (current branch)\ngit show :3:path/to/file.txt   # theirs (incoming branch)\n\n# Use diff3 conflict style (shows base version in markers)\ngit config --global merge.conflictstyle diff3\n# This adds a ||||||| section showing the original text before either change\n\n# Find the merge base commit\ngit merge-base main feature/branch\n\n# Three-way diff to understand what each side changed\ngit diff $(git merge-base main feature/branch) main -- file.txt\ngit diff $(git merge-base main feature/branch) feature/branch -- file.txt\n\n# Check for whitespace-only conflicts (auto-resolve)\ngit merge -Xignore-space-change feature/branch\n\n# Prefer our version for specific files during merge\necho \"generated-file.lock merge=ours\" >> .gitattributes\ngit config merge.ours.driver true",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "the-three-way-merge-algorithm-explained",
+          "heading": "The Three-Way Merge Algorithm Explained",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Git's three-way merge algorithm is the foundation of all automatic conflict resolution. Understanding it explains why conflicts occur and how Git resolves non-conflicting changes."
+            },
+            {
+              "type": "paragraph",
+              "text": "The three inputs to the algorithm are:"
+            },
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Base (common ancestor): The last commit where both branches shared the same content",
+                "Ours (current branch): The version on the branch you are merging into",
+                "Theirs (incoming branch): The version on the branch being merged"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "For each section of a file, Git compares both branches against the base:"
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "If only ours changed a section → take ours (the other side did not touch it)",
+                "If only theirs changed a section → take theirs (we did not touch it)",
+                "If neither changed a section → keep the base version",
+                "If both changed the same section identically → take either (they agree)",
+                "If both changed the same section differently → CONFLICT (human must decide)"
+              ]
+            },
+            {
+              "type": "code",
+              "language": "text",
+              "code": "# Example: Three-way merge in action\n# Base version (common ancestor):\nfunction getUser(id) {\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Ours (we added caching):\nfunction getUser(id) {\n  const cached = cache.get(`user:${id}`);\n  if (cached) return cached;\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Theirs (they added logging):\nfunction getUser(id) {\n  logger.info(`Fetching user ${id}`);\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Git's resolution: CONFLICT because both modified the function body\n# A human must decide how to combine caching AND logging",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Without the base, a two-way diff cannot determine intent. It would see two different versions and always conflict. The three-way approach lets Git determine that each side independently added something new, which is why diff3 conflict style (showing the base) is so valuable for resolution."
+            }
+          ],
+          "wordCount": 188,
+          "subsections": []
+        },
+        {
+          "id": "merge-strategies-and-drivers",
+          "heading": "Merge Strategies and Drivers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Use the recursive strategy (default for two-branch merges)\ngit merge -s recursive feature/branch\n\n# Use the ort strategy (newer, faster replacement for recursive)\ngit merge -s ort feature/branch\n\n# Octopus merge (merge multiple branches simultaneously)\ngit merge feature/a feature/b feature/c\n# Creates a single merge commit with multiple parents\n# Only works if there are no conflicts\n\n# Resolve strategy (simpler, for two branches only)\ngit merge -s resolve feature/branch\n\n# Subtree strategy (merge a project into a subdirectory)\ngit merge -s subtree --allow-unrelated-histories library/main\n\n# Strategy options for automatic resolution preferences\ngit merge -X ours feature/branch      # prefer our version on conflicts\ngit merge -X theirs feature/branch    # prefer their version on conflicts\ngit merge -X patience feature/branch  # use patience diff algorithm\n\n# Custom merge driver for specific file types\n# In .gitattributes:\n# *.lock merge=ours\n# database.json merge=union\n\n# Configure the union merge driver (concatenates both versions)\ngit config merge.union.driver \"union %O %A %B\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "conflict-prevention-strategies",
+          "heading": "Conflict Prevention Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Preventing conflicts is more efficient than resolving them. These strategies reduce conflict frequency:"
+            },
+            {
+              "type": "list",
+              "ordered": true,
+              "items": [
+                "Keep branches short-lived: Branches that live for 1-3 days have far fewer conflicts than branches that live for weeks. The longer a branch lives, the more the base diverges.",
+                "Merge main into feature branches daily: Run git pull --rebase origin main every morning. This keeps your branch close to main and surfaces conflicts early when they are small.",
+                "Establish clear code ownership: When different developers own different modules, they rarely modify the same files. Use CODEOWNERS to formalize this.",
+                "Use feature flags instead of long-lived branches: Deploy incomplete features behind flags rather than keeping them on branches for weeks. This eliminates the branch divergence problem entirely.",
+                "Coordinate large refactorings: Before a large rename or restructuring, announce it to the team. Ask everyone to merge their in-flight work first, then perform the refactoring atomically.",
+                "Split files that conflict frequently: If a file is a constant source of conflicts (e.g., a routes file, a constants file), consider splitting it into smaller, more focused files that different developers can modify independently.",
+                "Use git rerere for recurring conflicts: Enable rerere to automatically resolve conflicts you have already handled. This is especially valuable during repeated rebases."
+              ]
+            }
+          ],
+          "wordCount": 204,
+          "subsections": []
+        },
+        {
+          "id": "using-visual-merge-tools",
+          "heading": "Using Visual Merge Tools",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Configure and use various merge tools\n\n# VS Code (most popular for web developers)\ngit config --global merge.tool vscode\ngit config --global mergetool.vscode.cmd 'code --wait --merge $REMOTE $LOCAL $BASE $MERGED'\n\n# IntelliJ IDEA (popular for Java developers)\ngit config --global merge.tool intellij\ngit config --global mergetool.intellij.cmd 'idea merge $LOCAL $REMOTE $BASE $MERGED'\n\n# Meld (cross-platform, free)\ngit config --global merge.tool meld\n\n# Beyond Compare (commercial, powerful)\ngit config --global merge.tool bc\ngit config --global mergetool.bc.path '/usr/local/bin/bcomp'\n\n# vimdiff (terminal-based, no GUI needed)\ngit config --global merge.tool vimdiff\ngit config --global mergetool.vimdiff.layout \"LOCAL,MERGED,REMOTE\"\n\n# kdiff3 (three-way merge with auto-resolution)\ngit config --global merge.tool kdiff3\n\n# Launch the configured merge tool\ngit mergetool\n\n# Launch for a specific file\ngit mergetool -- src/conflicted-file.ts\n\n# Don't create .orig backup files\ngit config --global mergetool.keepBackup false\n\n# Prompt before launching tool for each file\ngit config --global mergetool.prompt false",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "resolving-conflicts-during-rebase",
+          "heading": "Resolving Conflicts During Rebase",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Start a rebase (conflicts may occur at each replayed commit)\ngit rebase main\n\n# When a conflict occurs during rebase:\n# 1. Resolve the conflict in the file\n# 2. Stage the resolution\ngit add resolved-file.txt\n\n# 3. Continue to the next commit\ngit rebase --continue\n\n# If a commit becomes empty after resolution, skip it\ngit rebase --skip\n\n# If the rebase is too complex, abort and try a different approach\ngit rebase --abort\n\n# Use interactive rebase to squash before rebasing (fewer conflicts)\ngit rebase -i HEAD~5  # squash related commits first\ngit rebase main       # then rebase the squashed result",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
         }
       ]
     },
@@ -164,6 +332,67 @@
       "subsections": []
     },
     {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "large-scale-refactoring-conflicts",
+          "heading": "Large-Scale Refactoring Conflicts",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When a team performs a large-scale refactoring (renaming a module, restructuring directories, changing an API signature used across many files), every in-flight feature branch will conflict when it tries to merge. The best approach is to coordinate: announce the refactoring, ask developers to merge or rebase their branches before the refactoring lands, then perform the refactoring in a single atomic PR. After it merges, remaining branches rebase onto the new structure. Tools like git rerere help when multiple branches encounter the same conflict pattern."
+            }
+          ],
+          "wordCount": 84,
+          "subsections": []
+        },
+        {
+          "id": "lock-file-conflicts-in-package-managers",
+          "heading": "Lock File Conflicts in Package Managers",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Files like package-lock.json, yarn.lock, and Gemfile.lock are frequent sources of merge conflicts because any dependency change modifies them. The resolution strategy is typically to accept one version entirely (usually \"theirs\" or the main branch version) and then regenerate the lock file by running the package manager (npm install, yarn install). Some teams configure custom merge drivers in .gitattributes to handle lock files automatically."
+            }
+          ],
+          "wordCount": 63,
+          "subsections": []
+        },
+        {
+          "id": "database-migration-conflicts",
+          "heading": "Database Migration Conflicts",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When two developers create database migrations simultaneously, they may conflict on migration ordering or sequence numbers. The resolution is not just textual — you must ensure migrations run in a valid order and do not create conflicting schema changes. Teams mitigate this by using timestamp-based migration naming (e.g., 20240115_120000_add_users_table.sql) and requiring developers to rebase and renumber migrations before merging."
+            }
+          ],
+          "wordCount": 59,
+          "subsections": []
+        },
+        {
+          "id": "conflict-resolution-in-cicd-merge-queues",
+          "heading": "Conflict Resolution in CI/CD (Merge Queues)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Modern CI platforms implement merge queues that automatically rebase PRs onto the latest main before testing. If a conflict occurs during this automated rebase, the PR is ejected from the queue and the author is notified to resolve conflicts manually. This prevents the \"works on my branch but breaks after merge\" problem where two PRs individually pass CI but conflict when combined."
+            }
+          ],
+          "wordCount": 62,
+          "subsections": []
+        }
+      ]
+    },
+    {
       "id": "interview-questions",
       "heading": "Interview Questions",
       "level": 2,
@@ -187,9 +416,21 @@
         {
           "type": "paragraph",
           "text": "Q5: What is a three-way merge and why does Git use it?\nA three-way merge uses three reference points: the two branch tips being merged and their common ancestor (merge base). By comparing each branch against the ancestor, Git can determine what each side changed independently. If only one side changed a section, Git takes that change. If both sides changed the same section differently, Git declares a conflict. This is more accurate than a two-way diff which cannot distinguish additions from deletions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q6: What is the diff3 conflict style and why should you use it?\nThe default conflict style shows only \"ours\" and \"theirs\" versions. The diff3 style (git config merge.conflictstyle diff3) adds a third section showing the merge base (original) version between ||||||| markers. This is invaluable because it shows what the code looked like before either branch changed it, making it much easier to understand what each side intended to accomplish. Without the base, you are guessing at intent from two endpoints."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q7: How do you handle conflicts in auto-generated files like lock files or compiled assets?\nFor lock files (package-lock.json, yarn.lock), accept one version entirely (typically theirs/main) and regenerate by running the package manager. Configure .gitattributes with custom merge drivers for these files. For compiled assets, regenerate from source after resolving source conflicts. Never manually edit auto-generated files during conflict resolution — always regenerate them from their source of truth."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q8: Describe a strategy for resolving conflicts in a large rebase with many commits.\nFirst, consider squashing related commits before rebasing to reduce the number of potential conflict points. If conflicts are extensive, try git rebase --strategy-option=theirs to auto-resolve in favor of the target branch where safe, then manually fix semantic issues. For very divergent branches, it may be more efficient to create a new branch from main and manually re-apply your changes rather than fighting through dozens of conflict resolutions."
         }
       ],
-      "wordCount": 350,
+      "wordCount": 582,
       "subsections": []
     },
     {
@@ -205,11 +446,13 @@
             "Enable rerere for repeated rebases: If your workflow involves frequently rebasing feature branches onto an updated main, git config rerere.enabled true saves significant time by automatically resolving conflicts you have already handled.",
             "Use CI checks to prevent conflict-prone merges: Configure your CI pipeline to require branches be up-to-date with main before merging. This catches conflicts at PR time rather than after merge, when they are harder to attribute and fix.",
             "Establish code ownership boundaries: When possible, organize code so that different features or modules are owned by different developers or teams. Clear boundaries reduce the frequency of conflicts because developers rarely modify the same files simultaneously.",
-            "Document conflict resolution decisions: When resolving non-trivial conflicts, add a comment in the commit message explaining why you chose a particular resolution. This helps future developers understand the decision if the merged code behaves unexpectedly."
+            "Document conflict resolution decisions: When resolving non-trivial conflicts, add a comment in the commit message explaining why you chose a particular resolution. This helps future developers understand the decision if the merged code behaves unexpectedly.",
+            "Use merge.conflictstyle diff3 globally: The diff3 style shows the common ancestor alongside both branch versions, providing crucial context for understanding what each side changed. This single configuration change dramatically improves resolution accuracy: git config --global merge.conflictstyle diff3.",
+            "Set up pre-commit hooks to catch conflict markers: Add a pre-commit hook that greps for <<<<<<<, =======, and >>>>>>> in staged files. This prevents accidentally committing unresolved conflicts, which is surprisingly common during complex multi-file resolutions."
           ]
         }
       ],
-      "wordCount": 184,
+      "wordCount": 257,
       "subsections": []
     },
     {
@@ -258,13 +501,43 @@
       "language": "bash",
       "code": "# Enable rerere (reuse recorded resolution)\ngit config --global rerere.enabled true\n\n# Git will remember how you resolved a conflict\n# and automatically apply the same resolution next time\n# the same conflict appears (common during rebases)\n\n# View recorded resolutions\ngit rerere status\n\n# Forget a recorded resolution\ngit rerere forget path/to/file.txt",
       "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Set VS Code as the default merge tool\ngit config --global merge.tool vscode\ngit config --global mergetool.vscode.cmd 'code --wait --merge $REMOTE $LOCAL $BASE $MERGED'\n\n# Set IntelliJ as the merge tool\ngit config --global merge.tool intellij\ngit config --global mergetool.intellij.cmd 'idea merge $LOCAL $REMOTE $BASE $MERGED'\n\n# Set vimdiff as the merge tool (terminal-based)\ngit config --global merge.tool vimdiff\n\n# Launch the merge tool for all conflicted files\ngit mergetool\n\n# Don't keep .orig backup files after merge tool resolution\ngit config --global mergetool.keepBackup false",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Show the merge base (common ancestor) version of a conflicted file\ngit show :1:path/to/file.txt   # base version\ngit show :2:path/to/file.txt   # ours (current branch)\ngit show :3:path/to/file.txt   # theirs (incoming branch)\n\n# Use diff3 conflict style (shows base version in markers)\ngit config --global merge.conflictstyle diff3\n# This adds a ||||||| section showing the original text before either change\n\n# Find the merge base commit\ngit merge-base main feature/branch\n\n# Three-way diff to understand what each side changed\ngit diff $(git merge-base main feature/branch) main -- file.txt\ngit diff $(git merge-base main feature/branch) feature/branch -- file.txt\n\n# Check for whitespace-only conflicts (auto-resolve)\ngit merge -Xignore-space-change feature/branch\n\n# Prefer our version for specific files during merge\necho \"generated-file.lock merge=ours\" >> .gitattributes\ngit config merge.ours.driver true",
+      "runnable": false
+    },
+    {
+      "language": "text",
+      "code": "# Example: Three-way merge in action\n# Base version (common ancestor):\nfunction getUser(id) {\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Ours (we added caching):\nfunction getUser(id) {\n  const cached = cache.get(`user:${id}`);\n  if (cached) return cached;\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Theirs (they added logging):\nfunction getUser(id) {\n  logger.info(`Fetching user ${id}`);\n  return db.query(\"SELECT * FROM users WHERE id = ?\", [id]);\n}\n\n# Git's resolution: CONFLICT because both modified the function body\n# A human must decide how to combine caching AND logging",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Use the recursive strategy (default for two-branch merges)\ngit merge -s recursive feature/branch\n\n# Use the ort strategy (newer, faster replacement for recursive)\ngit merge -s ort feature/branch\n\n# Octopus merge (merge multiple branches simultaneously)\ngit merge feature/a feature/b feature/c\n# Creates a single merge commit with multiple parents\n# Only works if there are no conflicts\n\n# Resolve strategy (simpler, for two branches only)\ngit merge -s resolve feature/branch\n\n# Subtree strategy (merge a project into a subdirectory)\ngit merge -s subtree --allow-unrelated-histories library/main\n\n# Strategy options for automatic resolution preferences\ngit merge -X ours feature/branch      # prefer our version on conflicts\ngit merge -X theirs feature/branch    # prefer their version on conflicts\ngit merge -X patience feature/branch  # use patience diff algorithm\n\n# Custom merge driver for specific file types\n# In .gitattributes:\n# *.lock merge=ours\n# database.json merge=union\n\n# Configure the union merge driver (concatenates both versions)\ngit config merge.union.driver \"union %O %A %B\"",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Configure and use various merge tools\n\n# VS Code (most popular for web developers)\ngit config --global merge.tool vscode\ngit config --global mergetool.vscode.cmd 'code --wait --merge $REMOTE $LOCAL $BASE $MERGED'\n\n# IntelliJ IDEA (popular for Java developers)\ngit config --global merge.tool intellij\ngit config --global mergetool.intellij.cmd 'idea merge $LOCAL $REMOTE $BASE $MERGED'\n\n# Meld (cross-platform, free)\ngit config --global merge.tool meld\n\n# Beyond Compare (commercial, powerful)\ngit config --global merge.tool bc\ngit config --global mergetool.bc.path '/usr/local/bin/bcomp'\n\n# vimdiff (terminal-based, no GUI needed)\ngit config --global merge.tool vimdiff\ngit config --global mergetool.vimdiff.layout \"LOCAL,MERGED,REMOTE\"\n\n# kdiff3 (three-way merge with auto-resolution)\ngit config --global merge.tool kdiff3\n\n# Launch the configured merge tool\ngit mergetool\n\n# Launch for a specific file\ngit mergetool -- src/conflicted-file.ts\n\n# Don't create .orig backup files\ngit config --global mergetool.keepBackup false\n\n# Prompt before launching tool for each file\ngit config --global mergetool.prompt false",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Start a rebase (conflicts may occur at each replayed commit)\ngit rebase main\n\n# When a conflict occurs during rebase:\n# 1. Resolve the conflict in the file\n# 2. Stage the resolution\ngit add resolved-file.txt\n\n# 3. Continue to the next commit\ngit rebase --continue\n\n# If a commit becomes empty after resolution, skip it\ngit rebase --skip\n\n# If the rebase is too complex, abort and try a different approach\ngit rebase --abort\n\n# Use interactive rebase to squash before rebasing (fewer conflicts)\ngit rebase -i HEAD~5  # squash related commits first\ngit rebase main       # then rebase the squashed result",
+      "runnable": false
     }
   ],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/git/git/merge-conflicts.md",
-    "wordCount": 1004,
-    "sectionCount": 13
+    "wordCount": 2114,
+    "sectionCount": 25
   }
 }

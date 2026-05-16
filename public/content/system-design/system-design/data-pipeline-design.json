@@ -1,0 +1,397 @@
+{
+  "id": "system-design-data-pipeline-design",
+  "slug": "data-pipeline-design",
+  "title": "Data Pipeline Design",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Batch processing handles bounded datasets on a schedule (hourly, daily) — optimized for throughput over latency, using frameworks like Apache Spark, Hadoop MapReduce, and AWS Glue",
+            "Stream processing handles unbounded, continuous data flows in real-time — optimized for low latency, using Apache Kafka Streams, Apache Flink, and AWS Kinesis",
+            "Lambda architecture combines batch (accuracy) and speed (low latency) layers with a serving layer that merges results — trades operational complexity for completeness guarantees",
+            "Kappa architecture eliminates the batch layer entirely, processing everything as streams with replayable logs (Kafka) — simpler operations but requires careful offset management",
+            "ETL (Extract, Transform, Load) transforms data before loading into the target; ELT (Extract, Load, Transform) loads raw data first and transforms in-place using the target's compute (modern data warehouses favor ELT)",
+            "Change Data Capture (CDC) streams database changes (inserts, updates, deletes) as events — Debezium reads WAL/binlog without impacting source database performance",
+            "Schema evolution manages backward/forward compatibility as data formats change — Avro with a Schema Registry enforces compatibility rules across producers and consumers",
+            "Backpressure prevents fast producers from overwhelming slow consumers — mechanisms include pull-based consumption, rate limiting, buffering with overflow policies, and reactive streams",
+            "Exactly-once semantics guarantees each record is processed precisely once despite failures — achieved through idempotent producers, transactional writes, and checkpoint-based recovery",
+            "Data quality encompasses validation (schema conformance, null checks), freshness (SLA monitoring), completeness (row count reconciliation), and accuracy (statistical profiling)"
+          ]
+        }
+      ],
+      "wordCount": 232,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Data pipeline design is essential whenever your system needs to move, transform, or aggregate data across boundaries — between operational databases and analytical stores, between microservices, between on-premises systems and cloud platforms, or between raw event streams and machine learning feature stores. Design batch pipelines when data freshness requirements are measured in hours or days (daily financial reconciliation, nightly data warehouse loads, weekly reporting aggregations), when the source data is naturally bounded (file drops, database snapshots, API pagination), or when the transformation logic requires global context (sorting, windowed aggregations over complete datasets). Design streaming pipelines when business value depends on sub-second or sub-minute latency (fraud detection, real-time recommendations, operational dashboards, alerting), when data arrives continuously without natural boundaries (clickstreams, IoT sensor readings, application logs), or when downstream consumers need incremental updates rather than full refreshes. Choose Lambda architecture when you need both real-time approximations and batch-corrected accurate results — common in advertising analytics where real-time bid optimization needs immediate signals but billing requires exact batch-reconciled numbers. Choose Kappa architecture when your streaming framework can handle both real-time and historical reprocessing (Kafka with compacted topics, Flink with savepoints) and when the operational simplicity of a single processing path outweighs the flexibility of separate batch and speed layers. Avoid over-engineering pipelines for simple use cases — a cron job running a SQL query is a valid pipeline for small-scale, low-frequency data movement."
+        }
+      ],
+      "wordCount": 230,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "apache-kafka-streams-real-time-event-processing",
+          "heading": "Apache Kafka Streams — Real-Time Event Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Kafka Streams topology for real-time order analytics\n@Configuration\npublic class OrderAnalyticsTopology {\n\n    @Bean\n    public KStream<String, OrderEvent> orderAnalyticsStream(StreamsBuilder builder) {\n        // Source: order events topic\n        KStream<String, OrderEvent> orders = builder.stream(\n            \"order-events\",\n            Consumed.with(Serdes.String(), orderEventSerde())\n        );\n\n        // Branch: separate completed orders from cancellations\n        Map<String, KStream<String, OrderEvent>> branches = orders\n            .split(Named.as(\"order-\"))\n            .branch((key, event) -> event.getStatus() == OrderStatus.COMPLETED,\n                    Branched.as(\"completed\"))\n            .branch((key, event) -> event.getStatus() == OrderStatus.CANCELLED,\n                    Branched.as(\"cancelled\"))\n            .defaultBranch(Branched.as(\"other\"));\n\n        KStream<String, OrderEvent> completedOrders = branches.get(\"order-completed\");\n\n        // Windowed aggregation: revenue per category per 5-minute window\n        KTable<Windowed<String>, RevenueAggregate> revenueByCategory = completedOrders\n            .groupBy((key, order) -> order.getCategory(),\n                     Grouped.with(Serdes.String(), orderEventSerde()))\n            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))\n            .aggregate(\n                RevenueAggregate::new,\n                (category, order, aggregate) -> aggregate.add(order.getAmount()),\n                Materialized.<String, RevenueAggregate, WindowStore<Bytes, byte[]>>as(\n                    \"revenue-by-category-store\")\n                    .withKeySerde(Serdes.String())\n                    .withValueSerde(revenueAggregateSerde())\n            );\n\n        // Sink: write aggregated results to output topic\n        revenueByCategory.toStream()\n            .map((windowedKey, aggregate) -> KeyValue.pair(\n                windowedKey.key(),\n                new CategoryRevenue(\n                    windowedKey.key(),\n                    aggregate.getTotalRevenue(),\n                    aggregate.getOrderCount(),\n                    windowedKey.window().startTime(),\n                    windowedKey.window().endTime()\n                )))\n            .to(\"category-revenue\", Produced.with(Serdes.String(), categoryRevenueSerde()));\n\n        // Enrichment: join orders with customer data\n        GlobalKTable<String, CustomerProfile> customers = builder.globalTable(\n            \"customer-profiles\",\n            Consumed.with(Serdes.String(), customerProfileSerde())\n        );\n\n        KStream<String, EnrichedOrder> enrichedOrders = completedOrders.join(\n            customers,\n            (key, order) -> order.getCustomerId(),\n            (order, customer) -> EnrichedOrder.builder()\n                .orderId(order.getOrderId())\n                .customerTier(customer.getTier())\n                .customerRegion(customer.getRegion())\n                .amount(order.getAmount())\n                .category(order.getCategory())\n                .build()\n        );\n\n        enrichedOrders.to(\"enriched-orders\",\n            Produced.with(Serdes.String(), enrichedOrderSerde()));\n\n        return orders;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "apache-flink-stateful-stream-processing-with-exactly-once",
+          "heading": "Apache Flink — Stateful Stream Processing with Exactly-Once",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Flink job for fraud detection with complex event processing\npublic class FraudDetectionJob {\n\n    public static void main(String[] args) throws Exception {\n        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();\n\n        // Enable exactly-once checkpointing\n        env.enableCheckpointing(60_000, CheckpointingMode.EXACTLY_ONCE);\n        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30_000);\n        env.getCheckpointConfig().setCheckpointTimeout(120_000);\n        env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);\n        env.getCheckpointConfig().setExternalizedCheckpointCleanup(\n            ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);\n\n        // Source: Kafka transactions topic\n        KafkaSource<Transaction> source = KafkaSource.<Transaction>builder()\n            .setBootstrapServers(\"kafka:9092\")\n            .setTopics(\"transactions\")\n            .setGroupId(\"fraud-detection\")\n            .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))\n            .setDeserializer(new TransactionDeserializer())\n            .build();\n\n        DataStream<Transaction> transactions = env.fromSource(\n            source, WatermarkStrategy\n                .<Transaction>forBoundedOutOfOrderness(Duration.ofSeconds(5))\n                .withTimestampAssigner((txn, ts) -> txn.getTimestamp()),\n            \"Kafka Transactions\"\n        );\n\n        // Pattern: detect rapid successive transactions from same account\n        Pattern<Transaction, ?> fraudPattern = Pattern.<Transaction>begin(\"first\")\n            .where(new SimpleCondition<Transaction>() {\n                @Override\n                public boolean filter(Transaction txn) {\n                    return txn.getAmount() > 1000;\n                }\n            })\n            .next(\"second\")\n            .where(new SimpleCondition<Transaction>() {\n                @Override\n                public boolean filter(Transaction txn) {\n                    return txn.getAmount() > 1000;\n                }\n            })\n            .within(Duration.ofMinutes(5));\n\n        DataStream<Transaction> keyedTransactions = transactions\n            .keyBy(Transaction::getAccountId);\n\n        PatternStream<Transaction> patternStream = CEP.pattern(\n            keyedTransactions, fraudPattern);\n\n        DataStream<FraudAlert> alerts = patternStream.process(\n            new PatternProcessFunction<Transaction, FraudAlert>() {\n                @Override\n                public void processMatch(Map<String, List<Transaction>> match,\n                                         Context ctx, Collector<FraudAlert> out) {\n                    Transaction first = match.get(\"first\").get(0);\n                    Transaction second = match.get(\"second\").get(0);\n                    out.collect(new FraudAlert(\n                        first.getAccountId(),\n                        first.getAmount() + second.getAmount(),\n                        \"Rapid high-value transactions detected\",\n                        Instant.now()\n                    ));\n                }\n            });\n\n        // Sink: write alerts to Kafka and Elasticsearch\n        alerts.sinkTo(KafkaSink.<FraudAlert>builder()\n            .setBootstrapServers(\"kafka:9092\")\n            .setRecordSerializer(new FraudAlertSerializer(\"fraud-alerts\"))\n            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)\n            .build());\n\n        env.execute(\"Fraud Detection Pipeline\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "change-data-capture-with-debezium",
+          "heading": "Change Data Capture with Debezium",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Debezium PostgreSQL connector configuration\napiVersion: kafka.strimzi.io/v1beta2\nkind: KafkaConnector\nmetadata:\n  name: orders-cdc-connector\n  labels:\n    strimzi.io/cluster: kafka-connect\nspec:\n  class: io.debezium.connector.postgresql.PostgresConnector\n  tasksMax: 1\n  config:\n    database.hostname: orders-db.internal\n    database.port: 5432\n    database.user: debezium\n    database.password: ${secrets:cdc-credentials:password}\n    database.dbname: orders\n    database.server.name: orders\n    \n    # Logical decoding slot\n    plugin.name: pgoutput\n    slot.name: debezium_orders\n    publication.name: orders_publication\n    \n    # Table filtering\n    table.include.list: public.orders,public.order_items,public.payments\n    \n    # Schema history\n    schema.history.internal.kafka.bootstrap.servers: kafka:9092\n    schema.history.internal.kafka.topic: schema-changes.orders\n    \n    # Transforms: route to topic per table\n    transforms: route\n    transforms.route.type: io.debezium.transforms.ByLogicalTableRouter\n    transforms.route.topic.regex: (.*)\n    transforms.route.topic.replacement: cdc.$1\n    \n    # Exactly-once delivery\n    exactly.once.support: required\n    \n    # Snapshot mode for initial load\n    snapshot.mode: initial\n    \n    # Heartbeat to prevent WAL retention issues\n    heartbeat.interval.ms: 30000",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Consuming CDC events for materialized view updates\n@Component\npublic class OrderMaterializedViewUpdater {\n\n    private final ElasticsearchClient esClient;\n    private final ObjectMapper mapper;\n\n    @KafkaListener(topics = \"cdc.public.orders\", groupId = \"order-search-indexer\")\n    public void handleOrderChange(ConsumerRecord<String, String> record) {\n        DebeziumEvent event = mapper.readValue(record.value(), DebeziumEvent.class);\n\n        switch (event.getOperation()) {\n            case \"c\": // Create\n            case \"u\": // Update\n                OrderDocument doc = mapToSearchDocument(event.getAfter());\n                esClient.index(IndexRequest.of(r -> r\n                    .index(\"orders\")\n                    .id(doc.getOrderId())\n                    .document(doc)\n                ));\n                break;\n            case \"d\": // Delete\n                String orderId = event.getBefore().get(\"order_id\").asText();\n                esClient.delete(DeleteRequest.of(r -> r\n                    .index(\"orders\")\n                    .id(orderId)\n                ));\n                break;\n        }\n    }\n\n    @KafkaListener(topics = \"cdc.public.order_items\", groupId = \"order-search-indexer\")\n    public void handleOrderItemChange(ConsumerRecord<String, String> record) {\n        DebeziumEvent event = mapper.readValue(record.value(), DebeziumEvent.class);\n        String orderId = event.getAfter().get(\"order_id\").asText();\n\n        // Update parent order document with new item data\n        esClient.update(UpdateRequest.of(r -> r\n            .index(\"orders\")\n            .id(orderId)\n            .script(Script.of(s -> s\n                .inline(InlineScript.of(i -> i\n                    .source(\"ctx._source.items = params.items\")\n                    .params(\"items\", JsonData.of(fetchOrderItems(orderId)))\n                ))))\n        ));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "schema-evolution-with-avro-and-schema-registry",
+          "heading": "Schema Evolution with Avro and Schema Registry",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Avro schema with backward-compatible evolution\n// Version 1: Original schema\n{\n  \"type\": \"record\",\n  \"name\": \"OrderEvent\",\n  \"namespace\": \"com.example.events\",\n  \"fields\": [\n    {\"name\": \"orderId\", \"type\": \"string\"},\n    {\"name\": \"customerId\", \"type\": \"string\"},\n    {\"name\": \"amount\", \"type\": \"double\"},\n    {\"name\": \"currency\", \"type\": \"string\"},\n    {\"name\": \"timestamp\", \"type\": \"long\", \"logicalType\": \"timestamp-millis\"}\n  ]\n}\n\n// Version 2: Backward-compatible addition (new field with default)\n{\n  \"type\": \"record\",\n  \"name\": \"OrderEvent\",\n  \"namespace\": \"com.example.events\",\n  \"fields\": [\n    {\"name\": \"orderId\", \"type\": \"string\"},\n    {\"name\": \"customerId\", \"type\": \"string\"},\n    {\"name\": \"amount\", \"type\": \"double\"},\n    {\"name\": \"currency\", \"type\": \"string\"},\n    {\"name\": \"timestamp\", \"type\": \"long\", \"logicalType\": \"timestamp-millis\"},\n    {\"name\": \"region\", \"type\": \"string\", \"default\": \"UNKNOWN\"},\n    {\"name\": \"channel\", \"type\": [\"null\", \"string\"], \"default\": null}\n  ]\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Schema Registry integration with Kafka producer\n@Configuration\npublic class KafkaProducerConfig {\n\n    @Bean\n    public ProducerFactory<String, OrderEvent> producerFactory() {\n        Map<String, Object> config = new HashMap<>();\n        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"kafka:9092\");\n        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);\n        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);\n        config.put(\"schema.registry.url\", \"http://schema-registry:8081\");\n        \n        // Auto-register schemas (disable in production — use CI/CD registration)\n        config.put(\"auto.register.schemas\", false);\n        config.put(\"use.latest.version\", true);\n        \n        // Exactly-once producer settings\n        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);\n        config.put(ProducerConfig.ACKS_CONFIG, \"all\");\n        config.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);\n        config.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);\n        \n        return new DefaultKafkaProducerFactory<>(config);\n    }\n}\n\n// Schema compatibility check in CI/CD pipeline\npublic class SchemaCompatibilityValidator {\n\n    public boolean validateCompatibility(String subject, Schema newSchema) {\n        SchemaRegistryClient client = new CachedSchemaRegistryClient(\n            \"http://schema-registry:8081\", 100);\n\n        try {\n            // Check backward compatibility (new schema can read old data)\n            List<String> incompatibilities = client.testCompatibility(\n                subject, new AvroSchema(newSchema), true);\n\n            if (!incompatibilities.isEmpty()) {\n                log.error(\"Schema incompatible: {}\", incompatibilities);\n                return false;\n            }\n            return true;\n        } catch (Exception e) {\n            throw new SchemaValidationException(\"Compatibility check failed\", e);\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "batch-pipeline-with-apache-spark",
+          "heading": "Batch Pipeline with Apache Spark",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "# PySpark ETL pipeline for data warehouse loading\nfrom pyspark.sql import SparkSession\nfrom pyspark.sql.functions import (\n    col, when, lit, current_timestamp, sha2, concat_ws,\n    year, month, dayofmonth, hour, window\n)\nfrom pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType\nfrom delta import DeltaTable\n\ndef create_spark_session():\n    return SparkSession.builder \\\n        .appName(\"OrderDataWarehouseETL\") \\\n        .config(\"spark.sql.extensions\", \"io.delta.sql.DeltaSparkSessionExtension\") \\\n        .config(\"spark.sql.catalog.spark_catalog\", \"org.apache.spark.sql.delta.catalog.DeltaCatalog\") \\\n        .config(\"spark.sql.adaptive.enabled\", \"true\") \\\n        .config(\"spark.sql.adaptive.coalescePartitions.enabled\", \"true\") \\\n        .config(\"spark.sql.shuffle.partitions\", \"200\") \\\n        .getOrCreate()\n\ndef extract_orders(spark, date_partition):\n    \"\"\"Extract orders from source database using JDBC with partition pruning.\"\"\"\n    return spark.read \\\n        .format(\"jdbc\") \\\n        .option(\"url\", \"jdbc:postgresql://orders-db:5432/orders\") \\\n        .option(\"dbtable\", f\"(SELECT * FROM orders WHERE created_at::date = '{date_partition}') AS t\") \\\n        .option(\"user\", \"etl_reader\") \\\n        .option(\"password\", get_secret(\"orders-db-password\")) \\\n        .option(\"fetchsize\", \"10000\") \\\n        .option(\"numPartitions\", \"8\") \\\n        .option(\"partitionColumn\", \"order_id\") \\\n        .option(\"lowerBound\", \"1\") \\\n        .option(\"upperBound\", \"10000000\") \\\n        .load()\n\ndef transform_orders(orders_df):\n    \"\"\"Apply business transformations and data quality rules.\"\"\"\n    return orders_df \\\n        .withColumn(\"order_date\", col(\"created_at\").cast(\"date\")) \\\n        .withColumn(\"year\", year(\"created_at\")) \\\n        .withColumn(\"month\", month(\"created_at\")) \\\n        .withColumn(\"day\", dayofmonth(\"created_at\")) \\\n        .withColumn(\"amount_usd\", \n            when(col(\"currency\") == \"EUR\", col(\"amount\") * 1.08)\n            .when(col(\"currency\") == \"GBP\", col(\"amount\") * 1.26)\n            .otherwise(col(\"amount\"))) \\\n        .withColumn(\"customer_segment\",\n            when(col(\"total_lifetime_value\") > 10000, \"enterprise\")\n            .when(col(\"total_lifetime_value\") > 1000, \"mid-market\")\n            .otherwise(\"smb\")) \\\n        .withColumn(\"surrogate_key\", sha2(concat_ws(\"||\", \n            col(\"order_id\"), col(\"created_at\")), 256)) \\\n        .withColumn(\"etl_loaded_at\", current_timestamp()) \\\n        .filter(col(\"amount\") > 0) \\\n        .filter(col(\"status\").isin(\"completed\", \"refunded\", \"partially_refunded\")) \\\n        .dropDuplicates([\"order_id\"])\n\ndef load_to_delta(transformed_df, target_path):\n    \"\"\"Upsert into Delta Lake table with merge semantics.\"\"\"\n    if DeltaTable.isDeltaTable(spark, target_path):\n        delta_table = DeltaTable.forPath(spark, target_path)\n        \n        delta_table.alias(\"target\").merge(\n            transformed_df.alias(\"source\"),\n            \"target.order_id = source.order_id\"\n        ).whenMatchedUpdate(\n            condition=\"source.updated_at > target.updated_at\",\n            set={\n                \"status\": \"source.status\",\n                \"amount\": \"source.amount\",\n                \"amount_usd\": \"source.amount_usd\",\n                \"updated_at\": \"source.updated_at\",\n                \"etl_loaded_at\": \"source.etl_loaded_at\"\n            }\n        ).whenNotMatchedInsertAll() \\\n        .execute()\n    else:\n        transformed_df.write \\\n            .format(\"delta\") \\\n            .partitionBy(\"year\", \"month\") \\\n            .mode(\"overwrite\") \\\n            .save(target_path)\n\ndef run_data_quality_checks(spark, target_path):\n    \"\"\"Post-load data quality validation.\"\"\"\n    df = spark.read.format(\"delta\").load(target_path)\n    \n    checks = {\n        \"null_order_ids\": df.filter(col(\"order_id\").isNull()).count(),\n        \"negative_amounts\": df.filter(col(\"amount\") < 0).count(),\n        \"future_dates\": df.filter(col(\"created_at\") > current_timestamp()).count(),\n        \"duplicate_orders\": df.count() - df.dropDuplicates([\"order_id\"]).count(),\n    }\n    \n    failures = {k: v for k, v in checks.items() if v > 0}\n    if failures:\n        raise DataQualityException(f\"Quality checks failed: {failures}\")\n    \n    return checks\n\n# Main execution\nif __name__ == \"__main__\":\n    spark = create_spark_session()\n    date_partition = sys.argv[1]  # e.g., \"2024-01-15\"\n    \n    orders = extract_orders(spark, date_partition)\n    transformed = transform_orders(orders)\n    load_to_delta(transformed, \"s3://data-lake/warehouse/orders\")\n    run_data_quality_checks(spark, \"s3://data-lake/warehouse/orders\")",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "backpressure-implementation",
+          "heading": "Backpressure Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Reactive Streams backpressure with Project Reactor\n@Service\npublic class EventProcessingPipeline {\n\n    private final Sinks.Many<RawEvent> eventSink;\n    private final EventProcessor processor;\n    private final MetricsRegistry metrics;\n\n    public EventProcessingPipeline(EventProcessor processor, MetricsRegistry metrics) {\n        this.processor = processor;\n        this.metrics = metrics;\n        \n        // Bounded buffer with overflow strategy\n        this.eventSink = Sinks.many().multicast()\n            .onBackpressureBuffer(10_000, false);\n\n        // Processing pipeline with backpressure-aware operators\n        eventSink.asFlux()\n            .onBackpressureBuffer(\n                5000,\n                event -> metrics.increment(\"events.dropped\"),\n                BufferOverflowStrategy.DROP_OLDEST\n            )\n            .flatMap(event -> processWithRetry(event), \n                     64)  // Concurrency limit\n            .buffer(Duration.ofSeconds(1), 100)  // Micro-batch for efficiency\n            .flatMap(batch -> writeBatch(batch))\n            .doOnError(e -> metrics.increment(\"pipeline.errors\"))\n            .retry(3)\n            .subscribe();\n    }\n\n    public void ingest(RawEvent event) {\n        Sinks.EmitResult result = eventSink.tryEmitNext(event);\n        if (result.isFailure()) {\n            metrics.increment(\"events.rejected\");\n            // Apply backpressure to upstream (return HTTP 429 or Kafka pause)\n            throw new BackpressureException(\"Pipeline at capacity\");\n        }\n    }\n\n    private Mono<ProcessedEvent> processWithRetry(RawEvent event) {\n        return Mono.fromCallable(() -> processor.process(event))\n            .timeout(Duration.ofSeconds(5))\n            .retryWhen(Retry.backoff(3, Duration.ofMillis(100))\n                .maxBackoff(Duration.ofSeconds(2))\n                .filter(e -> e instanceof TransientException));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Lambda Architecture\"\n        SRC[Data Sources] --> BL[Batch Layer]\n        SRC --> SL[Speed Layer]\n        \n        BL --> BV[Batch Views]\n        SL --> RV[Real-time Views]\n        \n        BV --> SERVE[Serving Layer]\n        RV --> SERVE\n        \n        SERVE --> Q[Queries]\n    end\n\n    subgraph \"Batch Layer Detail\"\n        BL --> HDFS[HDFS / S3]\n        HDFS --> SPARK[Apache Spark]\n        SPARK --> DW[Data Warehouse]\n    end\n\n    subgraph \"Speed Layer Detail\"\n        SL --> KAFKA[Apache Kafka]\n        KAFKA --> FLINK[Apache Flink]\n        FLINK --> REDIS[Redis / Elasticsearch]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Kappa Architecture\"\n        SRC[Sources] --> KAFKA[Kafka - Immutable Log]\n        KAFKA --> SP1[Stream Processor v1]\n        KAFKA --> SP2[Stream Processor v2 - Reprocessing]\n        SP1 --> SERVE[Serving Store]\n        SP2 --> SERVE\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"CDC Pipeline\"\n        DB[(PostgreSQL)] -->|WAL| DEB[Debezium]\n        DEB --> KAFKA[Kafka Topics]\n        KAFKA --> ES[Elasticsearch - Search]\n        KAFKA --> DW[Data Warehouse]\n        KAFKA --> CACHE[Redis Cache]\n        KAFKA --> ANALYTICS[Analytics Service]\n    end\n\n    subgraph \"Schema Evolution\"\n        PROD[Producer] -->|Serialize| SR[Schema Registry]\n        SR -->|Compatibility Check| SR\n        CONS[Consumer] -->|Deserialize| SR\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant Source as Source DB\n    participant CDC as Debezium CDC\n    participant Kafka as Kafka\n    participant Flink as Flink Job\n    participant DW as Data Warehouse\n    participant Monitor as Data Quality Monitor\n\n    Source->>CDC: WAL Changes\n    CDC->>Kafka: CDC Events (Avro)\n    Kafka->>Flink: Consume Stream\n    Flink->>Flink: Transform + Enrich\n    Flink->>DW: Write (Exactly-Once)\n    Flink->>Monitor: Emit Metrics\n    Monitor->>Monitor: Check SLAs\n    Monitor-->>Ops: Alert if SLA Breach"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Treating streaming as \"faster batch\" without rethinking semantics. Streaming introduces challenges absent in batch: out-of-order events, late arrivals, partial windows, and non-deterministic processing order. Applying batch logic (sort everything, process sequentially) to streams creates bottlenecks and incorrect results. Design for event-time processing with watermarks, handle late data with allowed lateness policies, and accept that streaming results are approximations until windows close."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Ignoring schema evolution and breaking consumers. Changing a field name, removing a field, or altering a type in a message schema breaks all downstream consumers simultaneously. Without a schema registry enforcing compatibility rules (backward, forward, full), a single producer deployment can cascade failures across dozens of consumers. Register schemas in CI/CD, enforce compatibility checks before deployment, and use Avro or Protobuf (not JSON) for schema-enforced serialization."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Building pipelines without idempotency, then losing data on retries. Network failures, consumer crashes, and rebalances cause message redelivery. Without idempotent processing (deduplication keys, upsert semantics, conditional writes), retries produce duplicate records in the target — double-counted revenue, duplicate notifications, corrupted aggregations. Design every pipeline stage to be safely re-executable with the same input."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Monolithic pipelines that cannot be independently scaled or debugged. A single pipeline that extracts from 10 sources, applies 50 transformations, and loads into 5 targets is impossible to debug when one transformation fails. Decompose into stages with intermediate topics or storage — extract → raw zone → transform → curated zone → load. Each stage can be monitored, scaled, and restarted independently."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Not monitoring data freshness and completeness. A pipeline that runs without errors but produces stale or incomplete data is worse than one that fails loudly. Implement freshness SLAs (data must arrive within X minutes of generation), completeness checks (row counts match between source and target), and accuracy validation (statistical profiling detects anomalies). Alert on SLA breaches, not just pipeline failures."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Underestimating backpressure in streaming systems. A fast producer overwhelming a slow consumer causes unbounded memory growth, OOM kills, and data loss. Without explicit backpressure mechanisms (Kafka consumer lag monitoring, reactive streams demand signaling, bounded buffers with overflow policies), the system degrades silently until catastrophic failure. Design backpressure into every pipeline boundary."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Using exactly-once semantics everywhere without understanding the cost. Exactly-once processing requires transactional producers, idempotent consumers, and coordinated checkpointing — adding latency and reducing throughput by 20-40%. Many use cases tolerate at-least-once with idempotent sinks (upserts, deduplication). Reserve exactly-once for financial transactions and billing; use at-least-once with idempotency for everything else."
+        },
+        {
+          "type": "paragraph",
+          "text": "8. Coupling pipeline logic to specific infrastructure. Hardcoding Kafka topic names, S3 bucket paths, and database connection strings into transformation logic makes pipelines non-portable and untestable. Abstract infrastructure behind interfaces, use configuration injection, and design transformations as pure functions that can be unit-tested without spinning up Kafka or Spark clusters."
+        }
+      ],
+      "wordCount": 460,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Real-time fraud detection at a payment processor. A payment company processes 50,000 transactions per second through a Flink-based streaming pipeline. Raw transaction events flow from Kafka through a series of enrichment stages (customer profile lookup, merchant risk scoring, velocity checks) before reaching a machine learning model that scores fraud probability in under 50ms. High-risk transactions are routed to a manual review queue while low-risk transactions proceed automatically. The pipeline maintains exactly-once semantics for the fraud decision — a transaction is never scored twice, preventing duplicate blocks or duplicate approvals. Checkpointing to S3 every 60 seconds enables recovery within 2 minutes of any failure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Data lake architecture for a SaaS analytics platform. A B2B SaaS company ingests data from 500+ customer databases using Debezium CDC connectors. Raw CDC events land in a Kafka cluster (Bronze layer), are transformed by Spark Structured Streaming into cleaned, deduplicated records (Silver layer), and finally aggregated into business metrics (Gold layer) stored in Delta Lake on S3. The platform serves both real-time dashboards (reading from the Silver layer via Presto) and batch reports (reading from the Gold layer). Schema evolution is managed through a Confluent Schema Registry with backward compatibility enforcement — customers can add columns to their source databases without breaking the pipeline."
+        },
+        {
+          "type": "paragraph",
+          "text": "Event-driven data warehouse refresh replacing nightly batch. An e-commerce company replaced a 6-hour nightly ETL batch job with a streaming CDC pipeline. Instead of extracting full table snapshots at midnight, Debezium streams row-level changes continuously into Kafka. A Flink job transforms and loads changes into Snowflake within 5 minutes of the source transaction. The data warehouse is always within 5 minutes of the operational database, enabling real-time inventory dashboards and same-day shipping analytics. The migration reduced warehouse compute costs by 70% (incremental loads vs. full table scans) and eliminated the 6-hour data staleness window."
+        },
+        {
+          "type": "paragraph",
+          "text": "Machine learning feature store with dual-serving architecture. A recommendation engine requires features computed from both real-time user behavior (last 5 minutes of clicks) and historical patterns (30-day purchase history). A Kafka Streams application computes real-time features (session duration, click velocity, cart value) and writes them to Redis for online serving. A daily Spark job computes historical features (purchase frequency, category affinity, lifetime value) and writes them to a feature store (Feast) backed by BigQuery. The ML model reads both feature sets at inference time — Redis for real-time signals and BigQuery for historical context — combining them for personalized recommendations with sub-100ms latency."
+        }
+      ],
+      "wordCount": 405,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare Lambda and Kappa architectures. When would you choose each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Lambda architecture maintains two parallel processing paths: a batch layer that processes the complete dataset for accuracy (recomputing views from raw data) and a speed layer that processes recent data for low latency (approximate, incremental results). A serving layer merges both views for queries. Choose Lambda when you need guaranteed accuracy (batch corrects speed layer approximations), when reprocessing logic differs fundamentally from real-time logic, or when your streaming framework cannot handle historical reprocessing. Kappa architecture eliminates the batch layer — everything is a stream, and reprocessing means replaying the log from an earlier offset through an updated processor version. Choose Kappa when your streaming framework supports reprocessing (Kafka with retention, Flink with savepoints), when batch and stream logic are identical, and when operational simplicity matters more than the ability to run fundamentally different batch algorithms. The tradeoff: Lambda gives flexibility at the cost of maintaining two codebases; Kappa gives simplicity at the cost of requiring your streaming framework to handle both real-time and historical scale."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Change Data Capture work, and what are its advantages over traditional ETL?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CDC captures row-level changes (inserts, updates, deletes) from a database's transaction log (PostgreSQL WAL, MySQL binlog, Oracle redo log) and streams them as events. Tools like Debezium read the log without querying the database, adding zero load to the source system. Advantages over traditional ETL: near-real-time data freshness (seconds vs. hours), no impact on source database performance (log reading vs. full table scans), captures all changes including intermediate states (batch ETL misses updates between snapshots), and naturally produces an event stream consumable by multiple downstream systems. Challenges: log retention limits (WAL segments are recycled), schema changes require connector reconfiguration, and initial snapshot for existing data can be resource-intensive. CDC is ideal for keeping read replicas, search indexes, caches, and data warehouses synchronized with operational databases."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain exactly-once semantics in stream processing. How is it achieved?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Exactly-once means each input record affects the output exactly once, even in the presence of failures and retries. It is achieved through the combination of three mechanisms: idempotent producers (Kafka assigns sequence numbers to detect and discard duplicate sends), transactional writes (Kafka transactions atomically commit offsets and output records together — either both succeed or neither does), and checkpoint-based recovery (Flink periodically snapshots operator state and Kafka offsets; on failure, it restores the last checkpoint and replays from the saved offset, reprocessing records but producing the same output due to deterministic processing). The key insight: exactly-once is not about preventing reprocessing — it is about ensuring reprocessing produces no observable duplicates in the output. End-to-end exactly-once requires the sink to support idempotent writes (upserts, deduplication) or transactional commits. The cost is increased latency (checkpoint barriers, transactional overhead) and reduced throughput (typically 20-40% compared to at-least-once)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle schema evolution in a data pipeline without breaking consumers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a schema registry (Confluent Schema Registry, AWS Glue Schema Registry) that enforces compatibility rules. Backward compatibility means new schemas can read data written with old schemas — achieved by only adding fields with defaults and never removing or renaming fields. Forward compatibility means old schemas can read data written with new schemas. Full compatibility satisfies both. In practice: use Avro or Protobuf (not JSON) for schema-enforced serialization, register schemas in CI/CD pipelines with compatibility checks before deployment, version schemas explicitly, and design consumers to ignore unknown fields. For breaking changes that cannot maintain compatibility: create a new topic/table version, run both old and new pipelines in parallel during migration, switch consumers to the new version, then decommission the old pipeline. Never make breaking schema changes in-place on a production topic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is backpressure, and how do you implement it in a streaming pipeline?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Backpressure is a mechanism for slow consumers to signal fast producers to reduce their sending rate, preventing unbounded buffer growth and eventual system failure. Implementation approaches: pull-based consumption (Kafka consumers control their own read rate by polling — if processing is slow, they simply poll less frequently, and lag increases visibly), reactive streams demand signaling (Project Reactor, RxJava — downstream operators request N items from upstream, upstream produces only what is requested), bounded buffers with overflow policies (drop oldest, drop newest, or block the producer when the buffer is full), and rate limiting at ingestion (return HTTP 429 or pause Kafka partitions when the pipeline cannot keep up). In Kafka specifically, consumer lag is the primary backpressure signal — monitoring lag and scaling consumers horizontally when lag exceeds thresholds provides elastic backpressure. The key principle: make backpressure visible through metrics and alerts rather than letting it manifest as OOM errors or data loss."
+        }
+      ],
+      "wordCount": 789,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Implement data contracts between producers and consumers. Define explicit contracts specifying schema, SLAs (freshness, completeness), and ownership for every data pipeline boundary. Use tools like Soda Core or Great Expectations to codify data quality expectations as executable tests that run after every pipeline execution. When a contract is violated (null rate exceeds 1%, row count drops by more than 10%, freshness exceeds 15 minutes), alert the producing team — not just the consuming team. Data contracts shift quality responsibility left to the source, preventing garbage-in-garbage-out cascades across the organization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Design pipelines for reprocessing from day one. Every pipeline will eventually need to reprocess historical data — schema changes, bug fixes, new business logic, or backfills after outages. Design for this: use immutable, append-only raw storage (Kafka with long retention, S3 with versioning), make transformations deterministic and idempotent, store pipeline state externally (checkpoints, watermarks) so it can be reset, and partition output by time so reprocessing can target specific date ranges without rewriting everything. Test reprocessing regularly — a pipeline that has never been reprocessed will fail when you need it most."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor pipeline health with the four pillars: freshness, volume, completeness, and schema. Freshness: how old is the newest record in the target? Alert when freshness exceeds the SLA (e.g., data is more than 10 minutes stale). Volume: how many records arrived in the last interval? Alert on significant deviations from historical patterns (50% drop or 200% spike). Completeness: do row counts in the target match expectations from the source? Alert on mismatches. Schema: did the source schema change unexpectedly? Alert on new columns, type changes, or removed fields. These four signals catch 90% of pipeline issues before downstream consumers notice."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use dead letter queues for poison messages instead of failing the entire pipeline. A single malformed record should not halt processing of millions of valid records. Route unparseable, schema-violating, or transformation-failing records to a dead letter queue (DLQ) — a separate Kafka topic or S3 prefix — with full context (original message, error details, timestamp, pipeline stage). Monitor DLQ depth and alert when it exceeds thresholds. Periodically review and either fix the root cause (schema mismatch, upstream bug) or discard records that are genuinely invalid. This pattern maintains pipeline availability while preserving problematic data for investigation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Separate compute and storage for independent scaling. Decouple processing frameworks (Flink, Spark) from storage (S3, Delta Lake, Kafka) so each can scale independently. A pipeline that processes 10x more data should not require 10x more storage if the output is aggregated. Use object storage (S3, GCS) for raw and processed data — it scales infinitely and costs $0.023/GB/month. Use Kafka for inter-stage buffering — it handles backpressure naturally through consumer lag. Run compute on ephemeral infrastructure (Kubernetes pods, EMR clusters) that scales to zero when idle. This architecture reduces costs by 60-80% compared to always-on dedicated infrastructure."
+        }
+      ],
+      "wordCount": 474,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Event-Driven Architecture — Event sourcing, CQRS, and messaging patterns that form the foundation of streaming pipelines",
+            "Distributed Systems — Consistency, fault tolerance, and coordination primitives underlying pipeline infrastructure",
+            "Microservices Patterns — Service decomposition and communication patterns that generate pipeline source data",
+            "Caching — Cache invalidation strategies that CDC pipelines enable through real-time change propagation",
+            "Apache Kafka — The dominant streaming platform used as the backbone of modern data pipelines",
+            "Database Sharding — Data partitioning strategies that affect how pipelines extract from distributed sources"
+          ]
+        }
+      ],
+      "wordCount": 83,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Kafka Streams topology for real-time order analytics\n@Configuration\npublic class OrderAnalyticsTopology {\n\n    @Bean\n    public KStream<String, OrderEvent> orderAnalyticsStream(StreamsBuilder builder) {\n        // Source: order events topic\n        KStream<String, OrderEvent> orders = builder.stream(\n            \"order-events\",\n            Consumed.with(Serdes.String(), orderEventSerde())\n        );\n\n        // Branch: separate completed orders from cancellations\n        Map<String, KStream<String, OrderEvent>> branches = orders\n            .split(Named.as(\"order-\"))\n            .branch((key, event) -> event.getStatus() == OrderStatus.COMPLETED,\n                    Branched.as(\"completed\"))\n            .branch((key, event) -> event.getStatus() == OrderStatus.CANCELLED,\n                    Branched.as(\"cancelled\"))\n            .defaultBranch(Branched.as(\"other\"));\n\n        KStream<String, OrderEvent> completedOrders = branches.get(\"order-completed\");\n\n        // Windowed aggregation: revenue per category per 5-minute window\n        KTable<Windowed<String>, RevenueAggregate> revenueByCategory = completedOrders\n            .groupBy((key, order) -> order.getCategory(),\n                     Grouped.with(Serdes.String(), orderEventSerde()))\n            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofMinutes(5)))\n            .aggregate(\n                RevenueAggregate::new,\n                (category, order, aggregate) -> aggregate.add(order.getAmount()),\n                Materialized.<String, RevenueAggregate, WindowStore<Bytes, byte[]>>as(\n                    \"revenue-by-category-store\")\n                    .withKeySerde(Serdes.String())\n                    .withValueSerde(revenueAggregateSerde())\n            );\n\n        // Sink: write aggregated results to output topic\n        revenueByCategory.toStream()\n            .map((windowedKey, aggregate) -> KeyValue.pair(\n                windowedKey.key(),\n                new CategoryRevenue(\n                    windowedKey.key(),\n                    aggregate.getTotalRevenue(),\n                    aggregate.getOrderCount(),\n                    windowedKey.window().startTime(),\n                    windowedKey.window().endTime()\n                )))\n            .to(\"category-revenue\", Produced.with(Serdes.String(), categoryRevenueSerde()));\n\n        // Enrichment: join orders with customer data\n        GlobalKTable<String, CustomerProfile> customers = builder.globalTable(\n            \"customer-profiles\",\n            Consumed.with(Serdes.String(), customerProfileSerde())\n        );\n\n        KStream<String, EnrichedOrder> enrichedOrders = completedOrders.join(\n            customers,\n            (key, order) -> order.getCustomerId(),\n            (order, customer) -> EnrichedOrder.builder()\n                .orderId(order.getOrderId())\n                .customerTier(customer.getTier())\n                .customerRegion(customer.getRegion())\n                .amount(order.getAmount())\n                .category(order.getCategory())\n                .build()\n        );\n\n        enrichedOrders.to(\"enriched-orders\",\n            Produced.with(Serdes.String(), enrichedOrderSerde()));\n\n        return orders;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Flink job for fraud detection with complex event processing\npublic class FraudDetectionJob {\n\n    public static void main(String[] args) throws Exception {\n        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();\n\n        // Enable exactly-once checkpointing\n        env.enableCheckpointing(60_000, CheckpointingMode.EXACTLY_ONCE);\n        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30_000);\n        env.getCheckpointConfig().setCheckpointTimeout(120_000);\n        env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);\n        env.getCheckpointConfig().setExternalizedCheckpointCleanup(\n            ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);\n\n        // Source: Kafka transactions topic\n        KafkaSource<Transaction> source = KafkaSource.<Transaction>builder()\n            .setBootstrapServers(\"kafka:9092\")\n            .setTopics(\"transactions\")\n            .setGroupId(\"fraud-detection\")\n            .setStartingOffsets(OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST))\n            .setDeserializer(new TransactionDeserializer())\n            .build();\n\n        DataStream<Transaction> transactions = env.fromSource(\n            source, WatermarkStrategy\n                .<Transaction>forBoundedOutOfOrderness(Duration.ofSeconds(5))\n                .withTimestampAssigner((txn, ts) -> txn.getTimestamp()),\n            \"Kafka Transactions\"\n        );\n\n        // Pattern: detect rapid successive transactions from same account\n        Pattern<Transaction, ?> fraudPattern = Pattern.<Transaction>begin(\"first\")\n            .where(new SimpleCondition<Transaction>() {\n                @Override\n                public boolean filter(Transaction txn) {\n                    return txn.getAmount() > 1000;\n                }\n            })\n            .next(\"second\")\n            .where(new SimpleCondition<Transaction>() {\n                @Override\n                public boolean filter(Transaction txn) {\n                    return txn.getAmount() > 1000;\n                }\n            })\n            .within(Duration.ofMinutes(5));\n\n        DataStream<Transaction> keyedTransactions = transactions\n            .keyBy(Transaction::getAccountId);\n\n        PatternStream<Transaction> patternStream = CEP.pattern(\n            keyedTransactions, fraudPattern);\n\n        DataStream<FraudAlert> alerts = patternStream.process(\n            new PatternProcessFunction<Transaction, FraudAlert>() {\n                @Override\n                public void processMatch(Map<String, List<Transaction>> match,\n                                         Context ctx, Collector<FraudAlert> out) {\n                    Transaction first = match.get(\"first\").get(0);\n                    Transaction second = match.get(\"second\").get(0);\n                    out.collect(new FraudAlert(\n                        first.getAccountId(),\n                        first.getAmount() + second.getAmount(),\n                        \"Rapid high-value transactions detected\",\n                        Instant.now()\n                    ));\n                }\n            });\n\n        // Sink: write alerts to Kafka and Elasticsearch\n        alerts.sinkTo(KafkaSink.<FraudAlert>builder()\n            .setBootstrapServers(\"kafka:9092\")\n            .setRecordSerializer(new FraudAlertSerializer(\"fraud-alerts\"))\n            .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)\n            .build());\n\n        env.execute(\"Fraud Detection Pipeline\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Debezium PostgreSQL connector configuration\napiVersion: kafka.strimzi.io/v1beta2\nkind: KafkaConnector\nmetadata:\n  name: orders-cdc-connector\n  labels:\n    strimzi.io/cluster: kafka-connect\nspec:\n  class: io.debezium.connector.postgresql.PostgresConnector\n  tasksMax: 1\n  config:\n    database.hostname: orders-db.internal\n    database.port: 5432\n    database.user: debezium\n    database.password: ${secrets:cdc-credentials:password}\n    database.dbname: orders\n    database.server.name: orders\n    \n    # Logical decoding slot\n    plugin.name: pgoutput\n    slot.name: debezium_orders\n    publication.name: orders_publication\n    \n    # Table filtering\n    table.include.list: public.orders,public.order_items,public.payments\n    \n    # Schema history\n    schema.history.internal.kafka.bootstrap.servers: kafka:9092\n    schema.history.internal.kafka.topic: schema-changes.orders\n    \n    # Transforms: route to topic per table\n    transforms: route\n    transforms.route.type: io.debezium.transforms.ByLogicalTableRouter\n    transforms.route.topic.regex: (.*)\n    transforms.route.topic.replacement: cdc.$1\n    \n    # Exactly-once delivery\n    exactly.once.support: required\n    \n    # Snapshot mode for initial load\n    snapshot.mode: initial\n    \n    # Heartbeat to prevent WAL retention issues\n    heartbeat.interval.ms: 30000",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Consuming CDC events for materialized view updates\n@Component\npublic class OrderMaterializedViewUpdater {\n\n    private final ElasticsearchClient esClient;\n    private final ObjectMapper mapper;\n\n    @KafkaListener(topics = \"cdc.public.orders\", groupId = \"order-search-indexer\")\n    public void handleOrderChange(ConsumerRecord<String, String> record) {\n        DebeziumEvent event = mapper.readValue(record.value(), DebeziumEvent.class);\n\n        switch (event.getOperation()) {\n            case \"c\": // Create\n            case \"u\": // Update\n                OrderDocument doc = mapToSearchDocument(event.getAfter());\n                esClient.index(IndexRequest.of(r -> r\n                    .index(\"orders\")\n                    .id(doc.getOrderId())\n                    .document(doc)\n                ));\n                break;\n            case \"d\": // Delete\n                String orderId = event.getBefore().get(\"order_id\").asText();\n                esClient.delete(DeleteRequest.of(r -> r\n                    .index(\"orders\")\n                    .id(orderId)\n                ));\n                break;\n        }\n    }\n\n    @KafkaListener(topics = \"cdc.public.order_items\", groupId = \"order-search-indexer\")\n    public void handleOrderItemChange(ConsumerRecord<String, String> record) {\n        DebeziumEvent event = mapper.readValue(record.value(), DebeziumEvent.class);\n        String orderId = event.getAfter().get(\"order_id\").asText();\n\n        // Update parent order document with new item data\n        esClient.update(UpdateRequest.of(r -> r\n            .index(\"orders\")\n            .id(orderId)\n            .script(Script.of(s -> s\n                .inline(InlineScript.of(i -> i\n                    .source(\"ctx._source.items = params.items\")\n                    .params(\"items\", JsonData.of(fetchOrderItems(orderId)))\n                ))))\n        ));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Avro schema with backward-compatible evolution\n// Version 1: Original schema\n{\n  \"type\": \"record\",\n  \"name\": \"OrderEvent\",\n  \"namespace\": \"com.example.events\",\n  \"fields\": [\n    {\"name\": \"orderId\", \"type\": \"string\"},\n    {\"name\": \"customerId\", \"type\": \"string\"},\n    {\"name\": \"amount\", \"type\": \"double\"},\n    {\"name\": \"currency\", \"type\": \"string\"},\n    {\"name\": \"timestamp\", \"type\": \"long\", \"logicalType\": \"timestamp-millis\"}\n  ]\n}\n\n// Version 2: Backward-compatible addition (new field with default)\n{\n  \"type\": \"record\",\n  \"name\": \"OrderEvent\",\n  \"namespace\": \"com.example.events\",\n  \"fields\": [\n    {\"name\": \"orderId\", \"type\": \"string\"},\n    {\"name\": \"customerId\", \"type\": \"string\"},\n    {\"name\": \"amount\", \"type\": \"double\"},\n    {\"name\": \"currency\", \"type\": \"string\"},\n    {\"name\": \"timestamp\", \"type\": \"long\", \"logicalType\": \"timestamp-millis\"},\n    {\"name\": \"region\", \"type\": \"string\", \"default\": \"UNKNOWN\"},\n    {\"name\": \"channel\", \"type\": [\"null\", \"string\"], \"default\": null}\n  ]\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Schema Registry integration with Kafka producer\n@Configuration\npublic class KafkaProducerConfig {\n\n    @Bean\n    public ProducerFactory<String, OrderEvent> producerFactory() {\n        Map<String, Object> config = new HashMap<>();\n        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"kafka:9092\");\n        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);\n        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);\n        config.put(\"schema.registry.url\", \"http://schema-registry:8081\");\n        \n        // Auto-register schemas (disable in production — use CI/CD registration)\n        config.put(\"auto.register.schemas\", false);\n        config.put(\"use.latest.version\", true);\n        \n        // Exactly-once producer settings\n        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);\n        config.put(ProducerConfig.ACKS_CONFIG, \"all\");\n        config.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);\n        config.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);\n        \n        return new DefaultKafkaProducerFactory<>(config);\n    }\n}\n\n// Schema compatibility check in CI/CD pipeline\npublic class SchemaCompatibilityValidator {\n\n    public boolean validateCompatibility(String subject, Schema newSchema) {\n        SchemaRegistryClient client = new CachedSchemaRegistryClient(\n            \"http://schema-registry:8081\", 100);\n\n        try {\n            // Check backward compatibility (new schema can read old data)\n            List<String> incompatibilities = client.testCompatibility(\n                subject, new AvroSchema(newSchema), true);\n\n            if (!incompatibilities.isEmpty()) {\n                log.error(\"Schema incompatible: {}\", incompatibilities);\n                return false;\n            }\n            return true;\n        } catch (Exception e) {\n            throw new SchemaValidationException(\"Compatibility check failed\", e);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "# PySpark ETL pipeline for data warehouse loading\nfrom pyspark.sql import SparkSession\nfrom pyspark.sql.functions import (\n    col, when, lit, current_timestamp, sha2, concat_ws,\n    year, month, dayofmonth, hour, window\n)\nfrom pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType\nfrom delta import DeltaTable\n\ndef create_spark_session():\n    return SparkSession.builder \\\n        .appName(\"OrderDataWarehouseETL\") \\\n        .config(\"spark.sql.extensions\", \"io.delta.sql.DeltaSparkSessionExtension\") \\\n        .config(\"spark.sql.catalog.spark_catalog\", \"org.apache.spark.sql.delta.catalog.DeltaCatalog\") \\\n        .config(\"spark.sql.adaptive.enabled\", \"true\") \\\n        .config(\"spark.sql.adaptive.coalescePartitions.enabled\", \"true\") \\\n        .config(\"spark.sql.shuffle.partitions\", \"200\") \\\n        .getOrCreate()\n\ndef extract_orders(spark, date_partition):\n    \"\"\"Extract orders from source database using JDBC with partition pruning.\"\"\"\n    return spark.read \\\n        .format(\"jdbc\") \\\n        .option(\"url\", \"jdbc:postgresql://orders-db:5432/orders\") \\\n        .option(\"dbtable\", f\"(SELECT * FROM orders WHERE created_at::date = '{date_partition}') AS t\") \\\n        .option(\"user\", \"etl_reader\") \\\n        .option(\"password\", get_secret(\"orders-db-password\")) \\\n        .option(\"fetchsize\", \"10000\") \\\n        .option(\"numPartitions\", \"8\") \\\n        .option(\"partitionColumn\", \"order_id\") \\\n        .option(\"lowerBound\", \"1\") \\\n        .option(\"upperBound\", \"10000000\") \\\n        .load()\n\ndef transform_orders(orders_df):\n    \"\"\"Apply business transformations and data quality rules.\"\"\"\n    return orders_df \\\n        .withColumn(\"order_date\", col(\"created_at\").cast(\"date\")) \\\n        .withColumn(\"year\", year(\"created_at\")) \\\n        .withColumn(\"month\", month(\"created_at\")) \\\n        .withColumn(\"day\", dayofmonth(\"created_at\")) \\\n        .withColumn(\"amount_usd\", \n            when(col(\"currency\") == \"EUR\", col(\"amount\") * 1.08)\n            .when(col(\"currency\") == \"GBP\", col(\"amount\") * 1.26)\n            .otherwise(col(\"amount\"))) \\\n        .withColumn(\"customer_segment\",\n            when(col(\"total_lifetime_value\") > 10000, \"enterprise\")\n            .when(col(\"total_lifetime_value\") > 1000, \"mid-market\")\n            .otherwise(\"smb\")) \\\n        .withColumn(\"surrogate_key\", sha2(concat_ws(\"||\", \n            col(\"order_id\"), col(\"created_at\")), 256)) \\\n        .withColumn(\"etl_loaded_at\", current_timestamp()) \\\n        .filter(col(\"amount\") > 0) \\\n        .filter(col(\"status\").isin(\"completed\", \"refunded\", \"partially_refunded\")) \\\n        .dropDuplicates([\"order_id\"])\n\ndef load_to_delta(transformed_df, target_path):\n    \"\"\"Upsert into Delta Lake table with merge semantics.\"\"\"\n    if DeltaTable.isDeltaTable(spark, target_path):\n        delta_table = DeltaTable.forPath(spark, target_path)\n        \n        delta_table.alias(\"target\").merge(\n            transformed_df.alias(\"source\"),\n            \"target.order_id = source.order_id\"\n        ).whenMatchedUpdate(\n            condition=\"source.updated_at > target.updated_at\",\n            set={\n                \"status\": \"source.status\",\n                \"amount\": \"source.amount\",\n                \"amount_usd\": \"source.amount_usd\",\n                \"updated_at\": \"source.updated_at\",\n                \"etl_loaded_at\": \"source.etl_loaded_at\"\n            }\n        ).whenNotMatchedInsertAll() \\\n        .execute()\n    else:\n        transformed_df.write \\\n            .format(\"delta\") \\\n            .partitionBy(\"year\", \"month\") \\\n            .mode(\"overwrite\") \\\n            .save(target_path)\n\ndef run_data_quality_checks(spark, target_path):\n    \"\"\"Post-load data quality validation.\"\"\"\n    df = spark.read.format(\"delta\").load(target_path)\n    \n    checks = {\n        \"null_order_ids\": df.filter(col(\"order_id\").isNull()).count(),\n        \"negative_amounts\": df.filter(col(\"amount\") < 0).count(),\n        \"future_dates\": df.filter(col(\"created_at\") > current_timestamp()).count(),\n        \"duplicate_orders\": df.count() - df.dropDuplicates([\"order_id\"]).count(),\n    }\n    \n    failures = {k: v for k, v in checks.items() if v > 0}\n    if failures:\n        raise DataQualityException(f\"Quality checks failed: {failures}\")\n    \n    return checks\n\n# Main execution\nif __name__ == \"__main__\":\n    spark = create_spark_session()\n    date_partition = sys.argv[1]  # e.g., \"2024-01-15\"\n    \n    orders = extract_orders(spark, date_partition)\n    transformed = transform_orders(orders)\n    load_to_delta(transformed, \"s3://data-lake/warehouse/orders\")\n    run_data_quality_checks(spark, \"s3://data-lake/warehouse/orders\")",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Reactive Streams backpressure with Project Reactor\n@Service\npublic class EventProcessingPipeline {\n\n    private final Sinks.Many<RawEvent> eventSink;\n    private final EventProcessor processor;\n    private final MetricsRegistry metrics;\n\n    public EventProcessingPipeline(EventProcessor processor, MetricsRegistry metrics) {\n        this.processor = processor;\n        this.metrics = metrics;\n        \n        // Bounded buffer with overflow strategy\n        this.eventSink = Sinks.many().multicast()\n            .onBackpressureBuffer(10_000, false);\n\n        // Processing pipeline with backpressure-aware operators\n        eventSink.asFlux()\n            .onBackpressureBuffer(\n                5000,\n                event -> metrics.increment(\"events.dropped\"),\n                BufferOverflowStrategy.DROP_OLDEST\n            )\n            .flatMap(event -> processWithRetry(event), \n                     64)  // Concurrency limit\n            .buffer(Duration.ofSeconds(1), 100)  // Micro-batch for efficiency\n            .flatMap(batch -> writeBatch(batch))\n            .doOnError(e -> metrics.increment(\"pipeline.errors\"))\n            .retry(3)\n            .subscribe();\n    }\n\n    public void ingest(RawEvent event) {\n        Sinks.EmitResult result = eventSink.tryEmitNext(event);\n        if (result.isFailure()) {\n            metrics.increment(\"events.rejected\");\n            // Apply backpressure to upstream (return HTTP 429 or Kafka pause)\n            throw new BackpressureException(\"Pipeline at capacity\");\n        }\n    }\n\n    private Mono<ProcessedEvent> processWithRetry(RawEvent event) {\n        return Mono.fromCallable(() -> processor.process(event))\n            .timeout(Duration.ofSeconds(5))\n            .retryWhen(Retry.backoff(3, Duration.ofMillis(100))\n                .maxBackoff(Duration.ofSeconds(2))\n                .filter(e -> e instanceof TransientException));\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design/data-pipeline-design.md",
+    "wordCount": 2673,
+    "sectionCount": 15
+  }
+}

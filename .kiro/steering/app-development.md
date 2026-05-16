@@ -126,6 +126,12 @@ Categories are visually grouped in the sidebar:
 - ✅ Quality: Testing, Security, Software Engineering
 - 📚 Career: Interview Prep, Git
 
+## Content Stats (as of last build)
+
+- 13 categories, 39 topics, 182 subtopic files
+- 2508 total sections
+- All topics are multi-page (no single-file topics)
+
 ## Key Features
 
 - **View modes**: Full, Cheat Sheet (500-word budget), ELI5 (simplified)

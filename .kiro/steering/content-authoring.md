@@ -14,6 +14,7 @@ All markdown content lives exclusively in `cs-reference-guide/content/` organize
 cs-reference-guide/content/
 ├── backend/
 │   ├── api-design/         (REST, GraphQL, gRPC)
+│   ├── build-tools/        (Maven, Gradle)
 │   ├── java/               (Core Language, Collections, Concurrency, Streams, JVM, Java 8+)
 │   ├── messaging/          (Kafka, RabbitMQ, Patterns)
 │   └── spring-framework/   (Core, Boot, MVC, REST, Data, Security, Batch, Microservices)
@@ -22,18 +23,19 @@ cs-reference-guide/content/
 │   ├── react/              (Hooks, Components, State, Performance, Testing)
 │   ├── typescript/         (Type System, Generics, Advanced Types, Declarations, Patterns)
 │   ├── html-css/           (Fundamentals, Modern CSS)
-│   ├── angular/            (Angular framework)
+│   ├── angular/            (Overview, Components, Services/DI, Routing, RxJS)
 │   ├── nextjs/             (Overview, Fundamentals)
+│   ├── state-management/   (Redux, Redux Patterns, Zustand, Modern Alternatives)
 │   └── web-performance/    (Performance, Accessibility)
 ├── databases/
 │   ├── sql-foundations/    (SQL Fundamentals, Performance Tuning, Design Patterns, Transactions)
-│   ├── postgresql/         (PostgreSQL deep dive)
-│   ├── oracle/             (Oracle Database)
-│   ├── mongodb/            (Document databases)
-│   └── redis/              (In-memory data store)
+│   ├── postgresql/         (Core, Replication/HA, Performance Tuning, Advanced Features, Indexing)
+│   ├── oracle/             (Core, Performance Diagnostics, High Availability, RAC/Data Guard)
+│   ├── mongodb/            (Core, Schema Design, Schema Patterns, Operations/Scaling, Replication)
+│   └── redis/              (Core, Data Structures Deep Dive, Clustering/HA)
 ├── infrastructure/
 │   ├── aws/                (Core Services, IAM, VPC, S3, Compute, Serverless, Architecture)
-│   ├── ci-cd/              (Fundamentals, Pipelines, Infrastructure as Code)
+│   ├── ci-cd/              (Fundamentals, Pipelines, Infrastructure as Code, Terraform)
 │   ├── docker/             (Fundamentals, Compose, Dockerfile, Networking, Security)
 │   ├── kubernetes/         (Core, Workloads, Networking, Config, EKS)
 │   ├── linux/              (Essentials, Administration)
@@ -45,7 +47,7 @@ cs-reference-guide/content/
 │   ├── sorting-and-searching/        (Comparison, Non-comparison, Binary Search, Specialized)
 │   └── dynamic-programming/          (Fundamentals, Knapsack, Grid, Sequence, Advanced)
 ├── system-design/
-│   └── system-design/     (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding, Rate Limiting, API Design, Event-Driven, Interview Problems, Design Patterns)
+│   └── system-design/     (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding, Rate Limiting, API Design, Event-Driven, Interview Problems, Design Patterns, Microservices, Data Pipelines)
 ├── networking/
 │   └── networking/         (TCP/IP, DNS, HTTP, WebSockets, Load Balancing, TLS/mTLS)
 ├── operating-systems/
@@ -54,7 +56,7 @@ cs-reference-guide/content/
 │   └── security/           (Crypto, Auth, Web Security, Network Security, Container Security, Backend Security)
 ├── testing/
 │   ├── unit-testing/       (Unit Testing, Mocking Strategies)
-│   ├── integration-testing/ (Integration Testing)
+│   ├── integration-testing/ (Integration Testing, API/Contract Testing, Database Testing, E2E)
 │   └── test-strategy/      (Test Architecture, Property-Based Testing)
 ├── software-engineering/
 │   └── software-engineering/ (SOLID, Clean Architecture, Refactoring, Code Review, Tech Debt)
