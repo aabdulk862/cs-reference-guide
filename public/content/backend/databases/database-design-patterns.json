@@ -1,0 +1,261 @@
+{
+  "id": "databases-database-design-patterns",
+  "slug": "database-design-patterns",
+  "title": "Database Design Patterns",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Normalization eliminates data redundancy through decomposition into related tables (1NF → 2NF → 3NF → BCNF)",
+            "Denormalization intentionally introduces redundancy to optimize read performance at the cost of write complexity",
+            "The CQRS pattern separates read models (optimized for queries) from write models (optimized for consistency)",
+            "Event sourcing stores state changes as an immutable sequence of events rather than mutable current state",
+            "Surrogate keys (auto-increment, UUID) vs. natural keys (email, SSN) — surrogate keys are preferred for most use cases",
+            "Soft deletes (deleted_at timestamp) preserve data for audit while hiding from application queries",
+            "Polymorphic associations handle inheritance: single table, class table, or concrete table inheritance patterns",
+            "Multi-tenancy patterns: shared database with tenant column, schema-per-tenant, or database-per-tenant"
+          ]
+        }
+      ],
+      "wordCount": 115,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database design patterns are essential whenever you are designing a new system's data layer, refactoring an existing schema to address performance or maintainability issues, or migrating between database technologies. Apply normalization patterns when data integrity and consistency are paramount (financial systems, healthcare records, regulatory compliance). Apply denormalization patterns when read performance dominates your requirements and you can tolerate eventual consistency or increased write complexity (analytics dashboards, product catalogs, social media feeds). CQRS and event sourcing patterns are appropriate for systems with complex domain logic, audit requirements, or vastly different read and write workloads. Multi-tenancy patterns are critical for SaaS applications serving multiple customers on shared infrastructure. The choice of pattern depends on your specific access patterns, consistency requirements, scaling needs, and operational complexity budget — there is no universally correct schema design, only designs that are correct for specific workloads."
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "normalization-and-schema-design",
+          "heading": "Normalization and Schema Design",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Third Normal Form (3NF) schema for an e-commerce system\n-- Each table has a single responsibility, no transitive dependencies\n\nCREATE TABLE customers (\n    customer_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    email VARCHAR(255) UNIQUE NOT NULL,\n    full_name VARCHAR(200) NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\nCREATE TABLE addresses (\n    address_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    customer_id UUID NOT NULL REFERENCES customers(customer_id),\n    address_type VARCHAR(20) NOT NULL CHECK (address_type IN ('billing', 'shipping')),\n    street_line1 VARCHAR(200) NOT NULL,\n    street_line2 VARCHAR(200),\n    city VARCHAR(100) NOT NULL,\n    state VARCHAR(50) NOT NULL,\n    postal_code VARCHAR(20) NOT NULL,\n    country_code CHAR(2) NOT NULL,\n    is_default BOOLEAN DEFAULT FALSE,\n    UNIQUE (customer_id, address_type, is_default) -- Only one default per type\n);\n\nCREATE TABLE products (\n    product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    sku VARCHAR(50) UNIQUE NOT NULL,\n    name VARCHAR(200) NOT NULL,\n    description TEXT,\n    category_id UUID REFERENCES categories(category_id),\n    base_price DECIMAL(10,2) NOT NULL CHECK (base_price >= 0),\n    currency CHAR(3) NOT NULL DEFAULT 'USD',\n    weight_grams INTEGER,\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\nCREATE TABLE orders (\n    order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    customer_id UUID NOT NULL REFERENCES customers(customer_id),\n    shipping_address_id UUID NOT NULL REFERENCES addresses(address_id),\n    billing_address_id UUID NOT NULL REFERENCES addresses(address_id),\n    status VARCHAR(30) NOT NULL DEFAULT 'pending'\n        CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')),\n    subtotal DECIMAL(12,2) NOT NULL,\n    tax_amount DECIMAL(10,2) NOT NULL DEFAULT 0,\n    shipping_amount DECIMAL(10,2) NOT NULL DEFAULT 0,\n    total_amount DECIMAL(12,2) GENERATED ALWAYS AS (subtotal + tax_amount + shipping_amount) STORED,\n    ordered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    shipped_at TIMESTAMP WITH TIME ZONE,\n    delivered_at TIMESTAMP WITH TIME ZONE\n);\n\nCREATE TABLE order_items (\n    order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,\n    product_id UUID NOT NULL REFERENCES products(product_id),\n    quantity INTEGER NOT NULL CHECK (quantity > 0),\n    unit_price DECIMAL(10,2) NOT NULL, -- Snapshot at time of order\n    line_total DECIMAL(12,2) GENERATED ALWAYS AS (quantity * unit_price) STORED\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "denormalization-for-read-performance",
+          "heading": "Denormalization for Read Performance",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Denormalized read model for product listing page\n-- Avoids JOINs for the most common query pattern\nCREATE TABLE product_listings (\n    product_id UUID PRIMARY KEY,\n    sku VARCHAR(50) NOT NULL,\n    name VARCHAR(200) NOT NULL,\n    description_preview VARCHAR(500),\n    category_name VARCHAR(100) NOT NULL,  -- Denormalized from categories table\n    category_path TEXT NOT NULL,           -- \"Electronics > Laptops > Gaming\"\n    base_price DECIMAL(10,2) NOT NULL,\n    sale_price DECIMAL(10,2),\n    currency CHAR(3) NOT NULL,\n    primary_image_url TEXT,\n    avg_rating DECIMAL(3,2),              -- Denormalized from reviews\n    review_count INTEGER DEFAULT 0,        -- Denormalized from reviews\n    stock_status VARCHAR(20) NOT NULL,     -- Denormalized from inventory\n    brand_name VARCHAR(100),               -- Denormalized from brands\n    tags TEXT[],                           -- Array for filtering\n    search_vector TSVECTOR,               -- Pre-computed for full-text search\n    last_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Trigger to maintain denormalized data\nCREATE OR REPLACE FUNCTION sync_product_listing()\nRETURNS TRIGGER AS $$\nBEGIN\n    UPDATE product_listings\n    SET avg_rating = (\n            SELECT AVG(rating) FROM reviews WHERE product_id = NEW.product_id\n        ),\n        review_count = (\n            SELECT COUNT(*) FROM reviews WHERE product_id = NEW.product_id\n        ),\n        last_synced_at = NOW()\n    WHERE product_id = NEW.product_id;\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER trg_review_sync\nAFTER INSERT OR UPDATE OR DELETE ON reviews\nFOR EACH ROW EXECUTE FUNCTION sync_product_listing();\n\n-- Materialized view as an alternative denormalization strategy\nCREATE MATERIALIZED VIEW customer_order_summary AS\nSELECT\n    c.customer_id,\n    c.email,\n    c.full_name,\n    COUNT(o.order_id) AS total_orders,\n    SUM(o.total_amount) AS lifetime_value,\n    MAX(o.ordered_at) AS last_order_date,\n    AVG(o.total_amount) AS avg_order_value\nFROM customers c\nLEFT JOIN orders o ON c.customer_id = o.customer_id\n    AND o.status NOT IN ('cancelled')\nGROUP BY c.customer_id, c.email, c.full_name;\n\nCREATE UNIQUE INDEX idx_customer_summary_id ON customer_order_summary (customer_id);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "event-sourcing-pattern",
+          "heading": "Event Sourcing Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Event store schema\nCREATE TABLE events (\n    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    aggregate_type VARCHAR(100) NOT NULL,\n    aggregate_id UUID NOT NULL,\n    event_type VARCHAR(100) NOT NULL,\n    event_data JSONB NOT NULL,\n    metadata JSONB DEFAULT '{}',\n    version INTEGER NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    UNIQUE (aggregate_id, version)  -- Optimistic concurrency control\n);\n\nCREATE INDEX idx_events_aggregate ON events (aggregate_id, version);\nCREATE INDEX idx_events_type_time ON events (event_type, created_at);\n\n-- Snapshot table for performance (avoid replaying all events)\nCREATE TABLE snapshots (\n    aggregate_id UUID PRIMARY KEY,\n    aggregate_type VARCHAR(100) NOT NULL,\n    version INTEGER NOT NULL,\n    state JSONB NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Example: Order aggregate events\nINSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, version) VALUES\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'OrderCreated',\n '{\"customerId\": \"cust-123\", \"items\": [{\"sku\": \"SKU-001\", \"qty\": 2, \"price\": 29.99}]}', 1),\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'PaymentReceived',\n '{\"paymentId\": \"pay-456\", \"amount\": 59.98, \"method\": \"credit_card\"}', 2),\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'OrderShipped',\n '{\"trackingNumber\": \"1Z999AA10123456784\", \"carrier\": \"UPS\"}', 3);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "multi-tenancy-patterns",
+          "heading": "Multi-Tenancy Patterns",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Pattern 1: Shared table with tenant discriminator (highest density)\nCREATE TABLE documents (\n    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    tenant_id UUID NOT NULL,\n    title VARCHAR(500) NOT NULL,\n    content TEXT,\n    created_by UUID NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Row-level security for automatic tenant isolation\nALTER TABLE documents ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY tenant_isolation ON documents\n    USING (tenant_id = current_setting('app.current_tenant')::UUID);\n\n-- Set tenant context at connection level\nSET app.current_tenant = '550e8400-e29b-41d4-a716-446655440000';\n\n-- Pattern 2: Schema-per-tenant (moderate isolation)\nCREATE SCHEMA tenant_acme;\nCREATE TABLE tenant_acme.documents (\n    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    title VARCHAR(500) NOT NULL,\n    content TEXT,\n    created_by UUID NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Dynamic schema selection in application\n-- SET search_path TO tenant_acme, public;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Premature denormalization: Denormalizing before understanding actual query patterns leads to complex write logic maintaining redundant data that may never be queried. Start normalized, measure performance, and denormalize only the specific paths that are proven bottlenecks. Premature optimization in schema design is particularly costly because schema changes require data migrations.",
+            "UUID primary keys without consideration for index performance: Random UUIDs (v4) cause B-tree index fragmentation because inserts are scattered across the index. Use UUIDv7 (time-ordered) or ULID for better insert performance and natural time-ordering. Alternatively, use BIGSERIAL for internal keys and expose UUIDs only at the API boundary.",
+            "Missing foreign key indexes: PostgreSQL does not automatically create indexes on foreign key columns. Without an index on orders.customer_id, any JOIN or DELETE cascade involving the parent table requires a sequential scan of the child table. Always create indexes on foreign key columns in the referencing table.",
+            "Soft delete without query discipline: Adding deleted_at IS NULL to every query is error-prone and easily forgotten. Use database views or row-level security policies to automatically filter soft-deleted records, ensuring application code cannot accidentally expose deleted data. Consider whether soft delete is actually needed — often an audit log or event store serves the same purpose with less complexity.",
+            "Storing computed values without refresh strategy: Denormalized computed columns (totals, counts, averages) become stale without a reliable update mechanism. Every denormalization must have a corresponding synchronization strategy: triggers (immediate but adds write latency), materialized views (periodic refresh), or application-level events (eventual consistency with explicit lag).",
+            "Over-normalizing reference data: Normalizing rarely-changing reference data (countries, currencies, status codes) into separate tables adds JOIN overhead for every query without meaningful storage savings. Small, stable lookup data can be stored as enum types, check constraints, or denormalized directly into the referencing table."
+          ]
+        }
+      ],
+      "wordCount": 291,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Financial ledger with event sourcing: A fintech company implements double-entry bookkeeping using event sourcing where every balance change is recorded as an immutable event (credit/debit). The current balance is derived by replaying events, with periodic snapshots for performance. This provides a complete audit trail, enables point-in-time balance queries, and makes regulatory compliance straightforward since no data is ever mutated or deleted.",
+            "Multi-tenant SaaS with tenant-specific schemas: A project management SaaS uses schema-per-tenant for enterprise customers (data isolation, independent backup/restore, custom indexes) and shared tables with row-level security for small-team customers (cost efficiency, simpler operations). The application dynamically sets the search path based on the authenticated tenant, providing transparent isolation without code changes.",
+            "E-commerce with CQRS: An online marketplace separates the write model (normalized order processing with ACID transactions) from the read model (denormalized product listings with pre-computed ratings and inventory status). Write events trigger asynchronous projections that update the read model. This allows the product search page to serve millions of requests per second from a denormalized store while order processing maintains strict consistency.",
+            "Healthcare records with temporal modeling: A hospital system uses bitemporal tables tracking both valid time (when the fact was true in the real world) and transaction time (when the fact was recorded in the database). This enables queries like \"what did we know about this patient's medications on March 15?\" for legal and clinical purposes, while supporting corrections that do not destroy historical records."
+          ]
+        }
+      ],
+      "wordCount": 238,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When would you denormalize a database schema?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Denormalize when read performance is critical and the read-to-write ratio is high, when specific query patterns require data from multiple tables that are always accessed together, when the cost of maintaining redundant data (write complexity, storage) is justified by the read performance gain, or when you need to eliminate expensive JOINs for latency-sensitive queries. Always measure first — denormalize based on profiled bottlenecks, not assumptions. Common denormalization techniques include pre-computed aggregates, materialized views, and embedding frequently-accessed related data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the trade-offs between surrogate keys and natural keys."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Surrogate keys (auto-increment, UUID) are stable (never change), compact (fixed size), and independent of business logic. Natural keys (email, SSN) eliminate a JOIN when the key itself is meaningful but can change (email updates), may be large (composite natural keys), and couple the schema to business rules. Surrogate keys are preferred for most tables because they simplify foreign key relationships and are immune to business rule changes. Natural keys are appropriate for junction tables and lookup tables where the natural identifier is truly immutable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a schema for a multi-tenant application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three main approaches with different trade-offs. Shared tables with tenant_id column: highest density, lowest cost, but requires discipline to include tenant filters everywhere (row-level security helps). Schema-per-tenant: moderate isolation, independent indexes and migrations per tenant, but more operational complexity. Database-per-tenant: strongest isolation, independent backup/restore, but highest cost and operational overhead. Choose based on isolation requirements, compliance needs, tenant count, and operational capacity. Most SaaS applications start with shared tables and migrate large enterprise tenants to dedicated schemas."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is event sourcing and when would you use it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Event sourcing stores all state changes as an immutable sequence of events rather than overwriting current state. The current state is derived by replaying events from the beginning (or from a snapshot). Use it when you need a complete audit trail, when you need to reconstruct state at any point in time, when your domain has complex state transitions, or when you want to decouple the write model from multiple read models (CQRS). Trade-offs include increased storage, complexity in querying current state, and the need for snapshots to avoid replaying millions of events."
+        }
+      ],
+      "wordCount": 376,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Schema migration strategy: Use versioned migration tools (Flyway, Liquibase) with forward-only migrations. Never modify existing migration files after they have been applied. For zero-downtime deployments, split breaking changes into multiple releases: add new column → backfill data → update application → drop old column. Test migrations against production-sized datasets to estimate execution time and lock duration.",
+            "Temporal tables for audit compliance: Use PostgreSQL's temporal tables extension or implement system-versioned tables manually with valid_from/valid_to columns. This provides automatic history tracking without application code changes, satisfying audit requirements for financial and healthcare systems. Partition history tables by time to manage growth.",
+            "Connection-level tenant context: For multi-tenant systems using row-level security, set the tenant context at the connection pool level using SET commands or connection initialization hooks. This ensures every query is automatically filtered without relying on application code to include tenant predicates. Verify isolation with integration tests that attempt cross-tenant access.",
+            "Monitor schema bloat and dead tuples: PostgreSQL's MVCC creates dead tuples on every UPDATE and DELETE. Monitor n_dead_tup in pg_stat_user_tables and ensure autovacuum is keeping up. For high-update tables, tune autovacuum_vacuum_scale_factor to trigger more frequently. Table bloat increases scan times and wastes storage — use pg_repack for online table reorganization without exclusive locks."
+          ]
+        }
+      ],
+      "wordCount": 202,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SQL Performance Tuning — Query optimization techniques that complement good schema design",
+            "MongoDB and Document Databases — Document modeling patterns as an alternative to relational schema design",
+            "Transactions and Consistency — How schema design decisions affect transaction behavior and consistency guarantees"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- Third Normal Form (3NF) schema for an e-commerce system\n-- Each table has a single responsibility, no transitive dependencies\n\nCREATE TABLE customers (\n    customer_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    email VARCHAR(255) UNIQUE NOT NULL,\n    full_name VARCHAR(200) NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\nCREATE TABLE addresses (\n    address_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    customer_id UUID NOT NULL REFERENCES customers(customer_id),\n    address_type VARCHAR(20) NOT NULL CHECK (address_type IN ('billing', 'shipping')),\n    street_line1 VARCHAR(200) NOT NULL,\n    street_line2 VARCHAR(200),\n    city VARCHAR(100) NOT NULL,\n    state VARCHAR(50) NOT NULL,\n    postal_code VARCHAR(20) NOT NULL,\n    country_code CHAR(2) NOT NULL,\n    is_default BOOLEAN DEFAULT FALSE,\n    UNIQUE (customer_id, address_type, is_default) -- Only one default per type\n);\n\nCREATE TABLE products (\n    product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    sku VARCHAR(50) UNIQUE NOT NULL,\n    name VARCHAR(200) NOT NULL,\n    description TEXT,\n    category_id UUID REFERENCES categories(category_id),\n    base_price DECIMAL(10,2) NOT NULL CHECK (base_price >= 0),\n    currency CHAR(3) NOT NULL DEFAULT 'USD',\n    weight_grams INTEGER,\n    is_active BOOLEAN DEFAULT TRUE,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\nCREATE TABLE orders (\n    order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    customer_id UUID NOT NULL REFERENCES customers(customer_id),\n    shipping_address_id UUID NOT NULL REFERENCES addresses(address_id),\n    billing_address_id UUID NOT NULL REFERENCES addresses(address_id),\n    status VARCHAR(30) NOT NULL DEFAULT 'pending'\n        CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')),\n    subtotal DECIMAL(12,2) NOT NULL,\n    tax_amount DECIMAL(10,2) NOT NULL DEFAULT 0,\n    shipping_amount DECIMAL(10,2) NOT NULL DEFAULT 0,\n    total_amount DECIMAL(12,2) GENERATED ALWAYS AS (subtotal + tax_amount + shipping_amount) STORED,\n    ordered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    shipped_at TIMESTAMP WITH TIME ZONE,\n    delivered_at TIMESTAMP WITH TIME ZONE\n);\n\nCREATE TABLE order_items (\n    order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,\n    product_id UUID NOT NULL REFERENCES products(product_id),\n    quantity INTEGER NOT NULL CHECK (quantity > 0),\n    unit_price DECIMAL(10,2) NOT NULL, -- Snapshot at time of order\n    line_total DECIMAL(12,2) GENERATED ALWAYS AS (quantity * unit_price) STORED\n);",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Denormalized read model for product listing page\n-- Avoids JOINs for the most common query pattern\nCREATE TABLE product_listings (\n    product_id UUID PRIMARY KEY,\n    sku VARCHAR(50) NOT NULL,\n    name VARCHAR(200) NOT NULL,\n    description_preview VARCHAR(500),\n    category_name VARCHAR(100) NOT NULL,  -- Denormalized from categories table\n    category_path TEXT NOT NULL,           -- \"Electronics > Laptops > Gaming\"\n    base_price DECIMAL(10,2) NOT NULL,\n    sale_price DECIMAL(10,2),\n    currency CHAR(3) NOT NULL,\n    primary_image_url TEXT,\n    avg_rating DECIMAL(3,2),              -- Denormalized from reviews\n    review_count INTEGER DEFAULT 0,        -- Denormalized from reviews\n    stock_status VARCHAR(20) NOT NULL,     -- Denormalized from inventory\n    brand_name VARCHAR(100),               -- Denormalized from brands\n    tags TEXT[],                           -- Array for filtering\n    search_vector TSVECTOR,               -- Pre-computed for full-text search\n    last_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Trigger to maintain denormalized data\nCREATE OR REPLACE FUNCTION sync_product_listing()\nRETURNS TRIGGER AS $$\nBEGIN\n    UPDATE product_listings\n    SET avg_rating = (\n            SELECT AVG(rating) FROM reviews WHERE product_id = NEW.product_id\n        ),\n        review_count = (\n            SELECT COUNT(*) FROM reviews WHERE product_id = NEW.product_id\n        ),\n        last_synced_at = NOW()\n    WHERE product_id = NEW.product_id;\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER trg_review_sync\nAFTER INSERT OR UPDATE OR DELETE ON reviews\nFOR EACH ROW EXECUTE FUNCTION sync_product_listing();\n\n-- Materialized view as an alternative denormalization strategy\nCREATE MATERIALIZED VIEW customer_order_summary AS\nSELECT\n    c.customer_id,\n    c.email,\n    c.full_name,\n    COUNT(o.order_id) AS total_orders,\n    SUM(o.total_amount) AS lifetime_value,\n    MAX(o.ordered_at) AS last_order_date,\n    AVG(o.total_amount) AS avg_order_value\nFROM customers c\nLEFT JOIN orders o ON c.customer_id = o.customer_id\n    AND o.status NOT IN ('cancelled')\nGROUP BY c.customer_id, c.email, c.full_name;\n\nCREATE UNIQUE INDEX idx_customer_summary_id ON customer_order_summary (customer_id);",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Event store schema\nCREATE TABLE events (\n    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    aggregate_type VARCHAR(100) NOT NULL,\n    aggregate_id UUID NOT NULL,\n    event_type VARCHAR(100) NOT NULL,\n    event_data JSONB NOT NULL,\n    metadata JSONB DEFAULT '{}',\n    version INTEGER NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    UNIQUE (aggregate_id, version)  -- Optimistic concurrency control\n);\n\nCREATE INDEX idx_events_aggregate ON events (aggregate_id, version);\nCREATE INDEX idx_events_type_time ON events (event_type, created_at);\n\n-- Snapshot table for performance (avoid replaying all events)\nCREATE TABLE snapshots (\n    aggregate_id UUID PRIMARY KEY,\n    aggregate_type VARCHAR(100) NOT NULL,\n    version INTEGER NOT NULL,\n    state JSONB NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Example: Order aggregate events\nINSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, version) VALUES\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'OrderCreated',\n '{\"customerId\": \"cust-123\", \"items\": [{\"sku\": \"SKU-001\", \"qty\": 2, \"price\": 29.99}]}', 1),\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'PaymentReceived',\n '{\"paymentId\": \"pay-456\", \"amount\": 59.98, \"method\": \"credit_card\"}', 2),\n('Order', '550e8400-e29b-41d4-a716-446655440000', 'OrderShipped',\n '{\"trackingNumber\": \"1Z999AA10123456784\", \"carrier\": \"UPS\"}', 3);",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Pattern 1: Shared table with tenant discriminator (highest density)\nCREATE TABLE documents (\n    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    tenant_id UUID NOT NULL,\n    title VARCHAR(500) NOT NULL,\n    content TEXT,\n    created_by UUID NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Row-level security for automatic tenant isolation\nALTER TABLE documents ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY tenant_isolation ON documents\n    USING (tenant_id = current_setting('app.current_tenant')::UUID);\n\n-- Set tenant context at connection level\nSET app.current_tenant = '550e8400-e29b-41d4-a716-446655440000';\n\n-- Pattern 2: Schema-per-tenant (moderate isolation)\nCREATE SCHEMA tenant_acme;\nCREATE TABLE tenant_acme.documents (\n    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    title VARCHAR(500) NOT NULL,\n    content TEXT,\n    created_by UUID NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\n);\n\n-- Dynamic schema selection in application\n-- SET search_path TO tenant_acme, public;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/databases/database-design-patterns.md",
+    "wordCount": 1403,
+    "sectionCount": 12
+  }
+}

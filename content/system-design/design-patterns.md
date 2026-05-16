@@ -415,6 +415,5 @@ Event Sourcing systems require a snapshotting strategy to prevent event replay f
 ## Related Topics
 
 - [Spring Framework](../backend/spring-framework.md) — implements many GoF patterns through its IoC container, AOP proxies, and template classes
-- [Resilience4j](../backend/resilience4j.md) — production implementation of Circuit Breaker, Retry, Rate Limiter, and Bulkhead patterns
 - [Apache Kafka](../backend/apache-kafka.md) — messaging backbone for implementing Enterprise Integration Patterns and Event Sourcing
 - [System Design](./system-design.md) — broader distributed systems concepts including CAP theorem, consistency models, and scaling strategies

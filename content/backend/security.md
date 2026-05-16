@@ -270,4 +270,3 @@ Implement security headers on all HTTP responses: `Strict-Transport-Security` (H
 ## Related Topics
 
 - [Spring Framework](./spring-framework.md) - Foundation framework for Spring Security configuration and dependency injection patterns
-- [Incident Response](./incident-response.md) - Processes for responding to security incidents including CVE exploitation and breach containment

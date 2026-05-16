@@ -1,0 +1,222 @@
+{
+  "id": "javascript-closures-and-scope",
+  "slug": "closures-and-scope",
+  "title": "Closures and Scope",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A closure is formed when a function retains access to variables from its lexical scope even after the outer function has returned",
+            "Lexical scoping means variable lookup follows the static structure of the code (where functions are defined), not where they are called",
+            "Closures capture variables by reference, not by value — if the closed-over variable changes, the closure sees the updated value",
+            "The scope chain is the ordered list of scopes searched during variable resolution: local → enclosing functions → global",
+            "Block scope (let/const) creates new bindings per iteration in loops, solving the classic closure-in-loop bug",
+            "IIFEs (Immediately Invoked Function Expressions) create isolated scopes, historically used for module patterns before ES Modules",
+            "Closures keep their entire scope chain alive, preventing garbage collection of captured variables until the closure is unreachable",
+            "JavaScript has function scope (var), block scope (let/const), module scope (ES Modules), and global scope"
+          ]
+        }
+      ],
+      "wordCount": 146,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Closures are not an optional feature you choose to use — they are a fundamental consequence of lexical scoping combined with first-class functions, and they occur in virtually every JavaScript program. You leverage closures intentionally when creating data privacy (encapsulating state that should not be directly accessible), implementing partial application and currying (pre-filling function arguments for reuse), building factory functions (generating configured instances), creating memoization caches (storing computed results between calls), and implementing the module pattern (exposing public APIs while hiding internals). In React, every hook is a closure over component state, every event handler closes over the current render's props and state, and every useEffect cleanup function closes over the values from its render cycle. Understanding closures deeply is essential for debugging stale closure bugs, preventing memory leaks in long-lived applications, and writing correct asynchronous code."
+        }
+      ],
+      "wordCount": 137,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Closure for data privacy and encapsulation\nfunction createBankAccount(initialBalance, owner) {\n  let balance = initialBalance;\n  const transactions = [];\n\n  function recordTransaction(type, amount) {\n    transactions.push({\n      type,\n      amount,\n      balance,\n      timestamp: Date.now(),\n      id: crypto.randomUUID(),\n    });\n  }\n\n  return {\n    getBalance() {\n      return balance;\n    },\n\n    getOwner() {\n      return owner;\n    },\n\n    deposit(amount) {\n      if (amount <= 0) throw new Error('Deposit must be positive');\n      balance += amount;\n      recordTransaction('deposit', amount);\n      return balance;\n    },\n\n    withdraw(amount) {\n      if (amount <= 0) throw new Error('Withdrawal must be positive');\n      if (amount > balance) throw new Error('Insufficient funds');\n      balance -= amount;\n      recordTransaction('withdrawal', amount);\n      return balance;\n    },\n\n    getStatement() {\n      // Returns a copy to prevent external mutation\n      return [...transactions];\n    },\n  };\n}\n\nconst account = createBankAccount(1000, 'Alice');\naccount.deposit(500);   // 1500\naccount.withdraw(200);  // 1300\naccount.getBalance();   // 1300\n// account.balance       // undefined — truly private\n// account.transactions  // undefined — truly private\n\n\n// Closure for partial application and function factories\nfunction createLogger(prefix, options = {}) {\n  const { timestamp = true, level = 'info', output = console } = options;\n\n  // The returned functions close over prefix, timestamp, level, and output\n  return {\n    info(message, ...args) {\n      if (['info', 'debug'].includes(level)) {\n        const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n        output.log(`${ts} [${prefix}] INFO:`, message, ...args);\n      }\n    },\n\n    warn(message, ...args) {\n      const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n      output.warn(`${ts} [${prefix}] WARN:`, message, ...args);\n    },\n\n    error(message, ...args) {\n      const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n      output.error(`${ts} [${prefix}] ERROR:`, message, ...args);\n    },\n\n    child(childPrefix) {\n      // Creates a new closure with extended prefix\n      return createLogger(`${prefix}:${childPrefix}`, options);\n    },\n  };\n}\n\nconst logger = createLogger('App', { level: 'debug' });\nconst dbLogger = logger.child('Database');\nconst authLogger = logger.child('Auth');\n\ndbLogger.info('Connection established');  // [timestamp] [App:Database] INFO: Connection established\nauthLogger.warn('Token expiring soon');   // [timestamp] [App:Auth] WARN: Token expiring soon",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Memoization using closures for caching expensive computations\nfunction memoize(fn, options = {}) {\n  const { maxSize = 100, ttl = null, keyFn = JSON.stringify } = options;\n  const cache = new Map();\n  const accessOrder = []; // LRU tracking\n\n  function memoized(...args) {\n    const key = keyFn(args);\n\n    if (cache.has(key)) {\n      const entry = cache.get(key);\n\n      // Check TTL expiration\n      if (ttl && Date.now() - entry.timestamp > ttl) {\n        cache.delete(key);\n      } else {\n        // Move to end of access order (most recently used)\n        const idx = accessOrder.indexOf(key);\n        if (idx > -1) accessOrder.splice(idx, 1);\n        accessOrder.push(key);\n        return entry.value;\n      }\n    }\n\n    // Compute and cache\n    const value = fn.apply(this, args);\n\n    cache.set(key, { value, timestamp: Date.now() });\n    accessOrder.push(key);\n\n    // Evict least recently used if over capacity\n    while (cache.size > maxSize) {\n      const evictKey = accessOrder.shift();\n      cache.delete(evictKey);\n    }\n\n    return value;\n  }\n\n  // Expose cache management via closure\n  memoized.cache = {\n    size: () => cache.size,\n    clear: () => { cache.clear(); accessOrder.length = 0; },\n    has: (args) => cache.has(keyFn(args)),\n    delete: (args) => {\n      const key = keyFn(args);\n      cache.delete(key);\n      const idx = accessOrder.indexOf(key);\n      if (idx > -1) accessOrder.splice(idx, 1);\n    },\n  };\n\n  return memoized;\n}\n\n// Usage\nconst expensiveCalculation = memoize(\n  (n) => {\n    // Simulate expensive work\n    let result = 0;\n    for (let i = 0; i < n * 1000000; i++) result += Math.random();\n    return result;\n  },\n  { maxSize: 50, ttl: 60000 } // Cache up to 50 results for 60 seconds\n);\n\n\n// Closure-based middleware pipeline (Express-like pattern)\nfunction createMiddlewarePipeline() {\n  const middlewares = [];\n\n  function use(middleware) {\n    middlewares.push(middleware);\n    return pipeline; // Enable chaining\n  }\n\n  function execute(context) {\n    let index = 0;\n\n    function next() {\n      if (index >= middlewares.length) return;\n      const middleware = middlewares[index++];\n      // Each middleware closes over its own `next` reference\n      return middleware(context, next);\n    }\n\n    return next();\n  }\n\n  const pipeline = { use, execute };\n  return pipeline;\n}\n\nconst pipeline = createMiddlewarePipeline();\n\npipeline\n  .use((ctx, next) => {\n    ctx.startTime = Date.now();\n    next();\n    ctx.duration = Date.now() - ctx.startTime;\n  })\n  .use((ctx, next) => {\n    console.log(`Request: ${ctx.method} ${ctx.path}`);\n    next();\n  })\n  .use((ctx, next) => {\n    ctx.response = { status: 200, body: 'OK' };\n    // Not calling next() stops the chain\n  });\n\nconst ctx = { method: 'GET', path: '/api/users' };\npipeline.execute(ctx);\n// ctx now has startTime, duration, and response properties",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// The classic closure-in-loop problem and solutions\n// PROBLEM: var is function-scoped, all closures share the same `i`\nfunction brokenTimers() {\n  for (var i = 0; i < 5; i++) {\n    setTimeout(() => console.log(i), i * 100);\n  }\n  // Prints: 5, 5, 5, 5, 5 (all reference the same `i` which is 5 after loop)\n}\n\n// SOLUTION 1: let creates a new binding per iteration\nfunction fixedWithLet() {\n  for (let i = 0; i < 5; i++) {\n    setTimeout(() => console.log(i), i * 100);\n  }\n  // Prints: 0, 1, 2, 3, 4\n}\n\n// SOLUTION 2: IIFE creates a new scope per iteration (pre-ES6 pattern)\nfunction fixedWithIIFE() {\n  for (var i = 0; i < 5; i++) {\n    (function(captured) {\n      setTimeout(() => console.log(captured), captured * 100);\n    })(i);\n  }\n  // Prints: 0, 1, 2, 3, 4\n}\n\n\n// Closure memory implications and cleanup patterns\nfunction createEventManager(element) {\n  const handlers = new Map();\n  let isDestroyed = false;\n\n  function on(event, handler) {\n    if (isDestroyed) throw new Error('EventManager is destroyed');\n\n    const wrappedHandler = (e) => {\n      // Closure over handler and any captured state\n      handler(e);\n    };\n\n    element.addEventListener(event, wrappedHandler);\n    if (!handlers.has(event)) handlers.set(event, []);\n    handlers.get(event).push({ original: handler, wrapped: wrappedHandler });\n\n    // Return cleanup function (closure over event and wrappedHandler)\n    return () => {\n      element.removeEventListener(event, wrappedHandler);\n      const eventHandlers = handlers.get(event);\n      if (eventHandlers) {\n        const idx = eventHandlers.findIndex(h => h.wrapped === wrappedHandler);\n        if (idx > -1) eventHandlers.splice(idx, 1);\n      }\n    };\n  }\n\n  function destroy() {\n    // Remove all listeners to prevent memory leaks\n    for (const [event, eventHandlers] of handlers) {\n      for (const { wrapped } of eventHandlers) {\n        element.removeEventListener(event, wrapped);\n      }\n    }\n    handlers.clear();\n    isDestroyed = true;\n    // After destroy, closures no longer hold references to DOM element\n  }\n\n  return { on, destroy };\n}\n\n// Usage: cleanup prevents memory leaks\nconst manager = createEventManager(document.body);\nconst removeClick = manager.on('click', (e) => console.log('clicked', e.target));\n// Later: removeClick() removes just that handler\n// Or: manager.destroy() removes all handlers and allows GC",
+          "runnable": true
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Stale closures in React useEffect and event handlers: In React, each render creates new closures over the current props and state. If a useEffect callback or event handler captures a value from a previous render and does not re-run when that value changes (missing dependency), it operates on stale data. This is the most common source of bugs in React hooks. Always include all referenced values in dependency arrays, or use useRef for values that should not trigger re-runs.",
+            "Memory leaks from closures in long-lived callbacks: A closure keeps its entire scope chain alive as long as the closure is reachable. Event listeners, setInterval callbacks, and Promise chains that are never cleaned up prevent garbage collection of everything in their scope — including large objects, DOM references, and other closures. Always remove event listeners on cleanup, clear intervals, and cancel pending operations when they are no longer needed.",
+            "Accidentally capturing mutable variables: Closures capture variables by reference. If a closure captures a variable that is later mutated (a counter incremented in a loop, an object property changed), the closure sees the mutated value, not the value at the time the closure was created. This is intentional behavior but often unexpected. Use let in loops, create copies of values you want to freeze, or use function parameters to capture values by passing them.",
+            "Over-relying on closures for state when classes or modules are clearer: While closures can implement private state, complex objects with many private fields and methods become harder to read and debug as closure-based factories compared to classes with private fields (#field). Closures are ideal for simple encapsulation (counters, caches, factories) but classes provide better tooling support (IDE navigation, inheritance, instanceof checks) for complex objects.",
+            "Creating closures in hot paths without realizing the allocation cost: Every function expression creates a new closure object. In tight loops or frequently-called functions, creating closures (especially in array methods like .map() and .filter()) allocates memory that must be garbage collected. For performance-critical code, consider reusing function references or moving function definitions outside the hot path.",
+            "Confusing lexical scope with dynamic scope: JavaScript uses lexical (static) scoping — a function's scope is determined by where it is written in the source code, not where it is called. The this keyword is the exception: it is dynamically bound based on how the function is invoked (unless it is an arrow function). This dual behavior confuses developers who expect this to follow the same rules as other variables."
+          ]
+        }
+      ],
+      "wordCount": 412,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "React hooks as closures: Every React hook (useState, useEffect, useCallback, useMemo) relies on closures to maintain state between renders. The state value returned by useState is captured in the closure of the component function for that render. useEffect cleanup functions close over the values from their render cycle, enabling correct cleanup of subscriptions and timers even when values have changed by the time cleanup runs.",
+            "Express/Fastify middleware chains: Each middleware function closes over its configuration (rate limits, CORS origins, authentication secrets) while receiving the request context at call time. The next() function is a closure that knows which middleware comes next in the chain. This pattern enables composable, configurable middleware without global state.",
+            "Event-driven architectures with closures for per-connection state: WebSocket servers maintain per-connection state using closures. When a connection is established, a closure captures the connection-specific data (user ID, session, subscriptions). Message handlers close over this state, enabling stateful processing without global lookup tables or class instances for each connection.",
+            "Functional programming patterns: Currying (const add = a => b => a + b), partial application, function composition, and pipeline operators all rely on closures to capture intermediate values. Libraries like Ramda and lodash/fp use closures extensively to create reusable, composable function transformations.",
+            "Module pattern in legacy codebases: Before ES Modules, the revealing module pattern used IIFEs and closures to create modules with private state and public APIs. Understanding this pattern is essential for maintaining legacy code and for understanding how bundlers transform ES Modules into closure-based module systems for older environments."
+          ]
+        }
+      ],
+      "wordCount": 253,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is a closure and how does it relate to lexical scoping?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A closure is the combination of a function and the lexical environment (scope) in which it was defined. When a function is created, it captures a reference to all variables in its enclosing scopes. Even after the outer function returns and its execution context is popped from the call stack, the inner function retains access to those variables because the closure keeps the scope alive. Lexical scoping means the scope is determined by the physical location of the function in the source code — a function defined inside another function has access to the outer function's variables regardless of where or when the inner function is eventually called."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between capturing by reference and capturing by value in closures."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: JavaScript closures always capture variables by reference, not by value. This means the closure does not store a snapshot of the variable's value at creation time — it stores a reference to the variable itself. If the variable is later modified, the closure sees the updated value. This is why the classic loop-with-var bug occurs: all closures in the loop reference the same i variable, which holds its final value after the loop. To simulate capture-by-value, you must create a new scope (using let in a loop, an IIFE, or a function parameter) that holds a copy of the value at that point in time."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How can closures cause memory leaks, and how do you prevent them?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Closures prevent garbage collection of all variables in their scope chain as long as the closure itself is reachable. Memory leaks occur when closures are attached to long-lived objects (global event listeners, intervals, cached callbacks) and capture references to large objects (DOM nodes, data arrays, other closures) that are no longer needed. Prevention strategies include: removing event listeners when components unmount, clearing intervals and timeouts, using WeakRef for caches that should not prevent GC, nullifying references to large objects after use within the closure, and using AbortController to cancel pending operations that hold closure references."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do closures work differently with var versus let in loops?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: With var, there is a single variable binding for the entire function scope. All closures created inside the loop share this one binding, so they all see the final value after the loop completes. With let, JavaScript creates a new binding for each iteration of the loop — conceptually, each iteration has its own i variable. Closures created in each iteration capture their own independent binding, preserving the value of i at the time that specific closure was created. This is why let solves the closure-in-loop problem without needing IIFEs or other workarounds."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the module pattern and how does it use closures?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The module pattern uses an IIFE (Immediately Invoked Function Expression) to create a private scope, then returns an object containing only the public API. Variables declared inside the IIFE are private — they exist only in the closure and cannot be accessed from outside. The returned methods are closures that have access to these private variables, providing controlled access to internal state. This pattern was the standard way to create modules in JavaScript before ES Modules, and it is still used by bundlers (Webpack, Rollup) when generating output for environments that do not support native modules."
+        }
+      ],
+      "wordCount": 566,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use WeakRef and FinalizationRegistry for closure-based caches: When closures hold references to cached objects that should be garbage-collectible, use WeakRef to hold the reference and FinalizationRegistry to clean up cache entries when objects are collected. This prevents memory leaks in long-running applications where cached data accumulates over time without bound.",
+            "Profile closure allocation in performance-critical paths: In hot loops and frequently-called functions, closure creation (function expressions, arrow functions) allocates memory. Use the Chrome DevTools Memory panel to identify closure-related memory growth. Consider hoisting function definitions outside loops, reusing function references via useCallback in React, or using class methods instead of closures for objects with many methods.",
+            "Prefer explicit cleanup over relying on garbage collection: Do not assume closures will be garbage collected promptly. In production, explicitly remove event listeners, cancel subscriptions, clear caches, and null out large references when they are no longer needed. This is especially important in single-page applications where components mount and unmount frequently but the page never reloads."
+          ]
+        }
+      ],
+      "wordCount": 162,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Language and ES6+ — Block scoping with let/const directly affects closure behavior in loops and conditionals",
+            "Asynchronous JavaScript — Async callbacks, Promise chains, and event handlers all create closures over their surrounding scope",
+            "Prototypes and Classes — Classes with private fields offer an alternative to closure-based data privacy"
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// Closure for data privacy and encapsulation\nfunction createBankAccount(initialBalance, owner) {\n  let balance = initialBalance;\n  const transactions = [];\n\n  function recordTransaction(type, amount) {\n    transactions.push({\n      type,\n      amount,\n      balance,\n      timestamp: Date.now(),\n      id: crypto.randomUUID(),\n    });\n  }\n\n  return {\n    getBalance() {\n      return balance;\n    },\n\n    getOwner() {\n      return owner;\n    },\n\n    deposit(amount) {\n      if (amount <= 0) throw new Error('Deposit must be positive');\n      balance += amount;\n      recordTransaction('deposit', amount);\n      return balance;\n    },\n\n    withdraw(amount) {\n      if (amount <= 0) throw new Error('Withdrawal must be positive');\n      if (amount > balance) throw new Error('Insufficient funds');\n      balance -= amount;\n      recordTransaction('withdrawal', amount);\n      return balance;\n    },\n\n    getStatement() {\n      // Returns a copy to prevent external mutation\n      return [...transactions];\n    },\n  };\n}\n\nconst account = createBankAccount(1000, 'Alice');\naccount.deposit(500);   // 1500\naccount.withdraw(200);  // 1300\naccount.getBalance();   // 1300\n// account.balance       // undefined — truly private\n// account.transactions  // undefined — truly private\n\n\n// Closure for partial application and function factories\nfunction createLogger(prefix, options = {}) {\n  const { timestamp = true, level = 'info', output = console } = options;\n\n  // The returned functions close over prefix, timestamp, level, and output\n  return {\n    info(message, ...args) {\n      if (['info', 'debug'].includes(level)) {\n        const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n        output.log(`${ts} [${prefix}] INFO:`, message, ...args);\n      }\n    },\n\n    warn(message, ...args) {\n      const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n      output.warn(`${ts} [${prefix}] WARN:`, message, ...args);\n    },\n\n    error(message, ...args) {\n      const ts = timestamp ? `[${new Date().toISOString()}]` : '';\n      output.error(`${ts} [${prefix}] ERROR:`, message, ...args);\n    },\n\n    child(childPrefix) {\n      // Creates a new closure with extended prefix\n      return createLogger(`${prefix}:${childPrefix}`, options);\n    },\n  };\n}\n\nconst logger = createLogger('App', { level: 'debug' });\nconst dbLogger = logger.child('Database');\nconst authLogger = logger.child('Auth');\n\ndbLogger.info('Connection established');  // [timestamp] [App:Database] INFO: Connection established\nauthLogger.warn('Token expiring soon');   // [timestamp] [App:Auth] WARN: Token expiring soon",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Memoization using closures for caching expensive computations\nfunction memoize(fn, options = {}) {\n  const { maxSize = 100, ttl = null, keyFn = JSON.stringify } = options;\n  const cache = new Map();\n  const accessOrder = []; // LRU tracking\n\n  function memoized(...args) {\n    const key = keyFn(args);\n\n    if (cache.has(key)) {\n      const entry = cache.get(key);\n\n      // Check TTL expiration\n      if (ttl && Date.now() - entry.timestamp > ttl) {\n        cache.delete(key);\n      } else {\n        // Move to end of access order (most recently used)\n        const idx = accessOrder.indexOf(key);\n        if (idx > -1) accessOrder.splice(idx, 1);\n        accessOrder.push(key);\n        return entry.value;\n      }\n    }\n\n    // Compute and cache\n    const value = fn.apply(this, args);\n\n    cache.set(key, { value, timestamp: Date.now() });\n    accessOrder.push(key);\n\n    // Evict least recently used if over capacity\n    while (cache.size > maxSize) {\n      const evictKey = accessOrder.shift();\n      cache.delete(evictKey);\n    }\n\n    return value;\n  }\n\n  // Expose cache management via closure\n  memoized.cache = {\n    size: () => cache.size,\n    clear: () => { cache.clear(); accessOrder.length = 0; },\n    has: (args) => cache.has(keyFn(args)),\n    delete: (args) => {\n      const key = keyFn(args);\n      cache.delete(key);\n      const idx = accessOrder.indexOf(key);\n      if (idx > -1) accessOrder.splice(idx, 1);\n    },\n  };\n\n  return memoized;\n}\n\n// Usage\nconst expensiveCalculation = memoize(\n  (n) => {\n    // Simulate expensive work\n    let result = 0;\n    for (let i = 0; i < n * 1000000; i++) result += Math.random();\n    return result;\n  },\n  { maxSize: 50, ttl: 60000 } // Cache up to 50 results for 60 seconds\n);\n\n\n// Closure-based middleware pipeline (Express-like pattern)\nfunction createMiddlewarePipeline() {\n  const middlewares = [];\n\n  function use(middleware) {\n    middlewares.push(middleware);\n    return pipeline; // Enable chaining\n  }\n\n  function execute(context) {\n    let index = 0;\n\n    function next() {\n      if (index >= middlewares.length) return;\n      const middleware = middlewares[index++];\n      // Each middleware closes over its own `next` reference\n      return middleware(context, next);\n    }\n\n    return next();\n  }\n\n  const pipeline = { use, execute };\n  return pipeline;\n}\n\nconst pipeline = createMiddlewarePipeline();\n\npipeline\n  .use((ctx, next) => {\n    ctx.startTime = Date.now();\n    next();\n    ctx.duration = Date.now() - ctx.startTime;\n  })\n  .use((ctx, next) => {\n    console.log(`Request: ${ctx.method} ${ctx.path}`);\n    next();\n  })\n  .use((ctx, next) => {\n    ctx.response = { status: 200, body: 'OK' };\n    // Not calling next() stops the chain\n  });\n\nconst ctx = { method: 'GET', path: '/api/users' };\npipeline.execute(ctx);\n// ctx now has startTime, duration, and response properties",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// The classic closure-in-loop problem and solutions\n// PROBLEM: var is function-scoped, all closures share the same `i`\nfunction brokenTimers() {\n  for (var i = 0; i < 5; i++) {\n    setTimeout(() => console.log(i), i * 100);\n  }\n  // Prints: 5, 5, 5, 5, 5 (all reference the same `i` which is 5 after loop)\n}\n\n// SOLUTION 1: let creates a new binding per iteration\nfunction fixedWithLet() {\n  for (let i = 0; i < 5; i++) {\n    setTimeout(() => console.log(i), i * 100);\n  }\n  // Prints: 0, 1, 2, 3, 4\n}\n\n// SOLUTION 2: IIFE creates a new scope per iteration (pre-ES6 pattern)\nfunction fixedWithIIFE() {\n  for (var i = 0; i < 5; i++) {\n    (function(captured) {\n      setTimeout(() => console.log(captured), captured * 100);\n    })(i);\n  }\n  // Prints: 0, 1, 2, 3, 4\n}\n\n\n// Closure memory implications and cleanup patterns\nfunction createEventManager(element) {\n  const handlers = new Map();\n  let isDestroyed = false;\n\n  function on(event, handler) {\n    if (isDestroyed) throw new Error('EventManager is destroyed');\n\n    const wrappedHandler = (e) => {\n      // Closure over handler and any captured state\n      handler(e);\n    };\n\n    element.addEventListener(event, wrappedHandler);\n    if (!handlers.has(event)) handlers.set(event, []);\n    handlers.get(event).push({ original: handler, wrapped: wrappedHandler });\n\n    // Return cleanup function (closure over event and wrappedHandler)\n    return () => {\n      element.removeEventListener(event, wrappedHandler);\n      const eventHandlers = handlers.get(event);\n      if (eventHandlers) {\n        const idx = eventHandlers.findIndex(h => h.wrapped === wrappedHandler);\n        if (idx > -1) eventHandlers.splice(idx, 1);\n      }\n    };\n  }\n\n  function destroy() {\n    // Remove all listeners to prevent memory leaks\n    for (const [event, eventHandlers] of handlers) {\n      for (const { wrapped } of eventHandlers) {\n        element.removeEventListener(event, wrapped);\n      }\n    }\n    handlers.clear();\n    isDestroyed = true;\n    // After destroy, closures no longer hold references to DOM element\n  }\n\n  return { on, destroy };\n}\n\n// Usage: cleanup prevents memory leaks\nconst manager = createEventManager(document.body);\nconst removeClick = manager.on('click', (e) => console.log('clicked', e.target));\n// Later: removeClick() removes just that handler\n// Or: manager.destroy() removes all handlers and allows GC",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/javascript/closures-and-scope.md",
+    "wordCount": 1725,
+    "sectionCount": 8
+  }
+}

@@ -1,0 +1,267 @@
+{
+  "id": "trees-and-graphs-balanced-trees-and-self-balancing",
+  "slug": "balanced-trees-and-self-balancing",
+  "title": "Balanced Trees and Self-Balancing",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AVL tree operations: O(log n) guaranteed — height difference at most 1 at every node",
+            "Red-Black tree operations: O(log n) guaranteed — no path more than 2x the shortest",
+            "B-Tree operations: O(log n) with branching factor b — O(log_b n) disk I/O",
+            "B+ Tree: All data in leaves, internal nodes are index-only — optimized for range scans",
+            "AVL rotations per insert: at most 2 (single or double rotation)",
+            "Red-Black rotations per insert: at most 2 rotations + recoloring",
+            "AVL max height for n nodes: 1.44 * log₂(n) — tighter than Red-Black",
+            "Red-Black max height for n nodes: 2 * log₂(n+1) — looser but fewer rotations",
+            "B-Tree node capacity: typically 100-1000 keys per node for disk-based systems",
+            "Splay tree amortized: O(log n) — recently accessed elements move to root"
+          ]
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Self-balancing trees guarantee O(log n) worst-case performance regardless of insertion order, solving the fundamental weakness of plain BSTs that degenerate to O(n) on sorted input. Choose the specific variant based on your access pattern and storage medium."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use AVL trees when read operations dominate and you need the tightest possible height bound. AVL trees are at most 1.44 * log₂(n) tall, making lookups slightly faster than Red-Black trees. They are ideal for in-memory dictionaries with infrequent modifications, lookup tables that are built once and queried many times, and applications where worst-case lookup latency matters more than insertion throughput."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Red-Black trees when modifications are frequent and you want to minimize rotation overhead. Red-Black trees perform at most 2 rotations per insertion (compared to potentially O(log n) for AVL), making them better for write-heavy workloads. Java's TreeMap, C++ std::map, and Linux kernel's process scheduler all use Red-Black trees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use B-Trees and B+ Trees when data resides on disk and you need to minimize I/O operations. The high branching factor (hundreds of keys per node) keeps the tree extremely shallow (3-4 levels for billions of records), and each node fits in one disk page. Every major database engine uses B-Tree variants for indexing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use splay trees when access patterns exhibit temporal locality (recently accessed elements are likely to be accessed again). Splay trees move accessed elements to the root, providing O(1) amortized access for frequently used elements. They are used in caches, garbage collectors, and network routers."
+        }
+      ],
+      "wordCount": 245,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "avl-tree-with-rotations",
+          "heading": "AVL Tree with Rotations",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A complete AVL tree implementation showing how rotations maintain the balance invariant (height difference at most 1) after insertions."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class AVLTree {\n    static class Node {\n        int val, height;\n        Node left, right;\n        Node(int val) { this.val = val; this.height = 1; }\n    }\n\n    private Node root;\n\n    private int height(Node node) {\n        return node == null ? 0 : node.height;\n    }\n\n    private int balanceFactor(Node node) {\n        return node == null ? 0 : height(node.left) - height(node.right);\n    }\n\n    private void updateHeight(Node node) {\n        node.height = 1 + Math.max(height(node.left), height(node.right));\n    }\n\n    /**\n     * Right rotation: fixes left-heavy imbalance.\n     *       y            x\n     *      / \\          / \\\n     *     x   C  →    A   y\n     *    / \\              / \\\n     *   A   B            B   C\n     */\n    private Node rotateRight(Node y) {\n        Node x = y.left;\n        Node B = x.right;\n        x.right = y;\n        y.left = B;\n        updateHeight(y);\n        updateHeight(x);\n        return x;\n    }\n\n    /**\n     * Left rotation: fixes right-heavy imbalance.\n     *     x              y\n     *    / \\            / \\\n     *   A   y    →    x   C\n     *      / \\       / \\\n     *     B   C     A   B\n     */\n    private Node rotateLeft(Node x) {\n        Node y = x.right;\n        Node B = y.left;\n        y.left = x;\n        x.right = B;\n        updateHeight(x);\n        updateHeight(y);\n        return y;\n    }\n\n    /**\n     * Insert with automatic rebalancing.\n     * After insertion, check balance factor and apply rotations.\n     */\n    public void insert(int val) {\n        root = insertRec(root, val);\n    }\n\n    private Node insertRec(Node node, int val) {\n        if (node == null) return new Node(val);\n\n        if (val < node.val) node.left = insertRec(node.left, val);\n        else if (val > node.val) node.right = insertRec(node.right, val);\n        else return node;  // Duplicate\n\n        updateHeight(node);\n        int balance = balanceFactor(node);\n\n        // Left-Left case: single right rotation\n        if (balance > 1 && val < node.left.val) {\n            return rotateRight(node);\n        }\n        // Right-Right case: single left rotation\n        if (balance < -1 && val > node.right.val) {\n            return rotateLeft(node);\n        }\n        // Left-Right case: left rotation on left child, then right rotation\n        if (balance > 1 && val > node.left.val) {\n            node.left = rotateLeft(node.left);\n            return rotateRight(node);\n        }\n        // Right-Left case: right rotation on right child, then left rotation\n        if (balance < -1 && val < node.right.val) {\n            node.right = rotateRight(node.right);\n            return rotateLeft(node);\n        }\n\n        return node;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "class AVLNode {\n  val: number;\n  height: number = 1;\n  left: AVLNode | null = null;\n  right: AVLNode | null = null;\n\n  constructor(val: number) {\n    this.val = val;\n  }\n}\n\nclass AVLTree {\n  private root: AVLNode | null = null;\n\n  private height(node: AVLNode | null): number {\n    return node ? node.height : 0;\n  }\n\n  private balanceFactor(node: AVLNode): number {\n    return this.height(node.left) - this.height(node.right);\n  }\n\n  private updateHeight(node: AVLNode): void {\n    node.height = 1 + Math.max(this.height(node.left), this.height(node.right));\n  }\n\n  private rotateRight(y: AVLNode): AVLNode {\n    const x = y.left!;\n    y.left = x.right;\n    x.right = y;\n    this.updateHeight(y);\n    this.updateHeight(x);\n    return x;\n  }\n\n  private rotateLeft(x: AVLNode): AVLNode {\n    const y = x.right!;\n    x.right = y.left;\n    y.left = x;\n    this.updateHeight(x);\n    this.updateHeight(y);\n    return y;\n  }\n\n  insert(val: number): void {\n    this.root = this.insertRec(this.root, val);\n  }\n\n  private insertRec(node: AVLNode | null, val: number): AVLNode {\n    if (!node) return new AVLNode(val);\n\n    if (val < node.val) node.left = this.insertRec(node.left, val);\n    else if (val > node.val) node.right = this.insertRec(node.right, val);\n    else return node;\n\n    this.updateHeight(node);\n    const balance = this.balanceFactor(node);\n\n    if (balance > 1 && node.left && val < node.left.val) return this.rotateRight(node);\n    if (balance < -1 && node.right && val > node.right.val) return this.rotateLeft(node);\n    if (balance > 1 && node.left && val > node.left.val) {\n      node.left = this.rotateLeft(node.left);\n      return this.rotateRight(node);\n    }\n    if (balance < -1 && node.right && val < node.right.val) {\n      node.right = this.rotateRight(node.right);\n      return this.rotateLeft(node);\n    }\n\n    return node;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "red-black-tree-properties-and-insertion",
+          "heading": "Red-Black Tree Properties and Insertion",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Red-Black trees maintain balance through coloring rules rather than strict height constraints. The implementation shows the rebalancing cases after insertion."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class RedBlackTree {\n    private static final boolean RED = true;\n    private static final boolean BLACK = false;\n\n    static class Node {\n        int val;\n        boolean color;\n        Node left, right, parent;\n\n        Node(int val) {\n            this.val = val;\n            this.color = RED;  // New nodes are always red\n        }\n    }\n\n    private Node root;\n\n    /**\n     * Red-Black Tree properties:\n     * 1. Every node is red or black\n     * 2. Root is always black\n     * 3. All null leaves are black\n     * 4. Red node cannot have red children (no two consecutive reds)\n     * 5. Every path from root to null leaf has same number of black nodes\n     */\n    public void insert(int val) {\n        Node newNode = new Node(val);\n        root = bstInsert(root, newNode);\n        fixInsert(newNode);\n    }\n\n    private Node bstInsert(Node root, Node newNode) {\n        if (root == null) return newNode;\n\n        if (newNode.val < root.val) {\n            root.left = bstInsert(root.left, newNode);\n            root.left.parent = root;\n        } else if (newNode.val > root.val) {\n            root.right = bstInsert(root.right, newNode);\n            root.right.parent = root;\n        }\n        return root;\n    }\n\n    /**\n     * Fix Red-Black violations after insertion.\n     * Cases depend on uncle's color:\n     * - Red uncle: recolor parent, uncle, grandparent\n     * - Black uncle: rotate and recolor\n     */\n    private void fixInsert(Node node) {\n        while (node != root && node.parent.color == RED) {\n            Node parent = node.parent;\n            Node grandparent = parent.parent;\n\n            if (parent == grandparent.left) {\n                Node uncle = grandparent.right;\n                if (uncle != null && uncle.color == RED) {\n                    // Case 1: Red uncle — recolor\n                    parent.color = BLACK;\n                    uncle.color = BLACK;\n                    grandparent.color = RED;\n                    node = grandparent;\n                } else {\n                    if (node == parent.right) {\n                        // Case 2: Black uncle, node is right child — left rotate parent\n                        node = parent;\n                        rotateLeft(node);\n                    }\n                    // Case 3: Black uncle, node is left child — right rotate grandparent\n                    node.parent.color = BLACK;\n                    grandparent.color = RED;\n                    rotateRight(grandparent);\n                }\n            } else {\n                // Mirror cases for parent == grandparent.right\n                Node uncle = grandparent.left;\n                if (uncle != null && uncle.color == RED) {\n                    parent.color = BLACK;\n                    uncle.color = BLACK;\n                    grandparent.color = RED;\n                    node = grandparent;\n                } else {\n                    if (node == parent.left) {\n                        node = parent;\n                        rotateRight(node);\n                    }\n                    node.parent.color = BLACK;\n                    grandparent.color = RED;\n                    rotateLeft(grandparent);\n                }\n            }\n        }\n        root.color = BLACK;\n    }\n\n    private void rotateLeft(Node x) {\n        Node y = x.right;\n        x.right = y.left;\n        if (y.left != null) y.left.parent = x;\n        y.parent = x.parent;\n        if (x.parent == null) root = y;\n        else if (x == x.parent.left) x.parent.left = y;\n        else x.parent.right = y;\n        y.left = x;\n        x.parent = y;\n    }\n\n    private void rotateRight(Node y) {\n        Node x = y.left;\n        y.left = x.right;\n        if (x.right != null) x.right.parent = y;\n        x.parent = y.parent;\n        if (y.parent == null) root = x;\n        else if (y == y.parent.left) y.parent.left = x;\n        else y.parent.right = x;\n        x.right = y;\n        y.parent = x;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 20,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Forgetting to update heights after rotations: In AVL trees, both the rotated node and its new parent must have their heights recalculated after a rotation. Updating only one node leaves stale height values that cause incorrect balance factor calculations on subsequent insertions, leading to an unbalanced tree that violates the AVL invariant silently.",
+            "Applying the wrong rotation case: AVL rebalancing has four cases (LL, RR, LR, RL) determined by where the imbalance occurs and where the heavy subtree is. Applying a single rotation when a double rotation is needed (LR or RL case) does not fix the imbalance and may make it worse. Always check both the balance factor of the unbalanced node and the balance factor of its heavy child to determine the correct case.",
+            "Violating Red-Black properties during deletion: Red-Black tree deletion is significantly more complex than insertion, with multiple cases depending on the deleted node's color, its replacement's color, and the sibling's color and children. Implementing deletion incorrectly can violate the black-height property (property 5), causing subsequent operations to produce wrong results. Most production implementations use the \"double-black\" concept to track the deficit.",
+            "Using self-balancing trees when simpler structures suffice: If your data is inserted once and queried many times with no ordering requirement, a hash map provides O(1) lookup versus O(log n) for trees. If the dataset is small (under 1000 elements), the constant factors of tree operations (pointer chasing, cache misses) may make linear scan on a sorted array faster due to cache locality.",
+            "Ignoring the constant factors of tree operations: While trees provide O(log n) guarantees, each operation involves pointer dereferencing (cache misses), comparisons, and potential rotations. For datasets that fit in L1/L2 cache, a sorted array with binary search outperforms trees due to cache-friendly sequential access. B-Trees address this by packing many keys per node, improving cache utilization."
+          ]
+        }
+      ],
+      "wordCount": 305,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database indexes universally use B-Tree and B+ Tree variants. PostgreSQL's default index type is a B-Tree that stores keys in sorted order across pages (typically 8KB each). Each internal page holds hundreds of keys, keeping the tree 3-4 levels deep for tables with billions of rows. B+ Trees store all actual data in leaf nodes connected by sibling pointers, enabling efficient range scans by following leaf-level links without traversing back up the tree."
+        },
+        {
+          "type": "paragraph",
+          "text": "Java's TreeMap and ConcurrentSkipListMap provide sorted map implementations for application code. TreeMap uses a Red-Black tree for O(log n) operations with methods like subMap(), floorKey(), and ceilingKey() that exploit the sorted structure. ConcurrentSkipListMap provides similar functionality with lock-free concurrent access using a probabilistic skip list structure that provides expected O(log n) operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Linux kernel's Completely Fair Scheduler uses a Red-Black tree to manage runnable processes. Each process is a node keyed by its virtual runtime (how much CPU time it has consumed). The scheduler always picks the leftmost node (smallest virtual runtime) as the next process to run, ensuring fairness. The Red-Black tree provides O(log n) insertion and O(1) minimum extraction (cached leftmost pointer)."
+        },
+        {
+          "type": "paragraph",
+          "text": "File system metadata in modern operating systems uses B-Tree variants. NTFS uses B+ Trees for directory entries and the Master File Table. Apple's APFS uses copy-on-write B-Trees that enable instant snapshots by sharing unchanged nodes between the current state and snapshot. ext4 uses extent trees (a B-Tree variant) to map logical file blocks to physical disk blocks."
+        },
+        {
+          "type": "paragraph",
+          "text": "In-memory databases like Redis use skip lists (probabilistic balanced structures) for sorted sets, providing O(log n) insertion, deletion, and range queries. The skip list's simpler implementation and better cache behavior compared to Red-Black trees make it preferable for this use case. MemSQL and VoltDB use lock-free concurrent skip lists for their indexes."
+        }
+      ],
+      "wordCount": 296,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare AVL trees and Red-Black trees. When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: AVL trees maintain stricter balance (height difference at most 1), resulting in shorter trees and faster lookups. Red-Black trees allow looser balance (longest path at most 2x shortest), requiring fewer rotations on modifications. Choose AVL for read-heavy workloads where lookup speed is critical (lookup tables, dictionaries). Choose Red-Black for write-heavy workloads where insertion and deletion frequency is high (in-memory databases, schedulers). In practice, the difference is small — both provide O(log n) — and the choice often comes down to implementation availability."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Why do databases use B-Trees instead of binary trees?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: B-Trees minimize disk I/O by maximizing the branching factor. A binary tree with 1 billion nodes has height 30, requiring 30 disk reads per lookup. A B-Tree with 500 keys per node has height 3-4, requiring only 3-4 disk reads. Each B-Tree node is sized to fit one disk page (4-16KB), so each level requires exactly one I/O operation. Additionally, B-Trees keep keys sorted within nodes, enabling efficient range scans by reading sequential pages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the Red-Black tree insertion algorithm and its time complexity."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: After standard BST insertion (new node colored red), fix potential violations of the \"no two consecutive reds\" rule. Walk up the tree checking the uncle's color: if the uncle is red, recolor parent, uncle, and grandparent, then move up. If the uncle is black, perform 1-2 rotations and recolor to fix the violation locally. The fix-up traverses at most O(log n) ancestors (recoloring) but performs at most 2 rotations total, making insertion O(log n) with very low constant factors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is a splay tree and what are its advantages?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A splay tree moves every accessed node to the root through a sequence of rotations (splaying). This provides O(log n) amortized time for all operations and O(1) amortized time for recently accessed elements. Advantages include no extra storage for balance information (unlike AVL height or Red-Black color), automatic adaptation to access patterns (frequently accessed elements stay near the root), and the working set property (if you access k distinct elements, operations cost O(log k) amortized). Disadvantages include O(n) worst-case per operation and poor cache behavior due to constant restructuring."
+        }
+      ],
+      "wordCount": 375,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use B+ Trees with write-ahead logging for crash-safe storage: Production databases combine B+ Trees with WAL (Write-Ahead Logging) to ensure durability. Before modifying a B+ Tree page, write the change to a sequential log file. On crash recovery, replay the log to restore the tree to a consistent state. This pattern (used by PostgreSQL, SQLite, InnoDB) provides both the performance of B+ Tree indexing and the safety of transactional guarantees.",
+            "Consider LSM Trees for write-heavy workloads: Log-Structured Merge Trees (used by RocksDB, LevelDB, Cassandra) buffer writes in memory (memtable, typically a Red-Black tree or skip list) and periodically flush to sorted disk files (SSTables). This converts random writes into sequential writes, achieving 10-100x better write throughput than B-Trees at the cost of slower reads (must check multiple levels). Choose LSM Trees for write-heavy workloads like time-series data, event logging, and message queues.",
+            "Profile tree depth and rotation frequency in production: Monitor your tree's actual height and rotation count to detect pathological access patterns. If your Red-Black tree consistently hits maximum height, your key distribution may benefit from a different structure. Tools like Java Flight Recorder can profile TreeMap operations to identify hot paths and contention points in concurrent access patterns."
+          ]
+        }
+      ],
+      "wordCount": 200,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Binary Trees and BSTs — Foundation that balanced trees build upon",
+            "Graph Representations and Traversal — Trees as special cases of graphs",
+            "Sorting and Searching — Tree-based sorting and search operations",
+            "Heap — Alternative tree structure for priority queue operations"
+          ]
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class AVLTree {\n    static class Node {\n        int val, height;\n        Node left, right;\n        Node(int val) { this.val = val; this.height = 1; }\n    }\n\n    private Node root;\n\n    private int height(Node node) {\n        return node == null ? 0 : node.height;\n    }\n\n    private int balanceFactor(Node node) {\n        return node == null ? 0 : height(node.left) - height(node.right);\n    }\n\n    private void updateHeight(Node node) {\n        node.height = 1 + Math.max(height(node.left), height(node.right));\n    }\n\n    /**\n     * Right rotation: fixes left-heavy imbalance.\n     *       y            x\n     *      / \\          / \\\n     *     x   C  →    A   y\n     *    / \\              / \\\n     *   A   B            B   C\n     */\n    private Node rotateRight(Node y) {\n        Node x = y.left;\n        Node B = x.right;\n        x.right = y;\n        y.left = B;\n        updateHeight(y);\n        updateHeight(x);\n        return x;\n    }\n\n    /**\n     * Left rotation: fixes right-heavy imbalance.\n     *     x              y\n     *    / \\            / \\\n     *   A   y    →    x   C\n     *      / \\       / \\\n     *     B   C     A   B\n     */\n    private Node rotateLeft(Node x) {\n        Node y = x.right;\n        Node B = y.left;\n        y.left = x;\n        x.right = B;\n        updateHeight(x);\n        updateHeight(y);\n        return y;\n    }\n\n    /**\n     * Insert with automatic rebalancing.\n     * After insertion, check balance factor and apply rotations.\n     */\n    public void insert(int val) {\n        root = insertRec(root, val);\n    }\n\n    private Node insertRec(Node node, int val) {\n        if (node == null) return new Node(val);\n\n        if (val < node.val) node.left = insertRec(node.left, val);\n        else if (val > node.val) node.right = insertRec(node.right, val);\n        else return node;  // Duplicate\n\n        updateHeight(node);\n        int balance = balanceFactor(node);\n\n        // Left-Left case: single right rotation\n        if (balance > 1 && val < node.left.val) {\n            return rotateRight(node);\n        }\n        // Right-Right case: single left rotation\n        if (balance < -1 && val > node.right.val) {\n            return rotateLeft(node);\n        }\n        // Left-Right case: left rotation on left child, then right rotation\n        if (balance > 1 && val > node.left.val) {\n            node.left = rotateLeft(node.left);\n            return rotateRight(node);\n        }\n        // Right-Left case: right rotation on right child, then left rotation\n        if (balance < -1 && val < node.right.val) {\n            node.right = rotateRight(node.right);\n            return rotateLeft(node);\n        }\n\n        return node;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "class AVLNode {\n  val: number;\n  height: number = 1;\n  left: AVLNode | null = null;\n  right: AVLNode | null = null;\n\n  constructor(val: number) {\n    this.val = val;\n  }\n}\n\nclass AVLTree {\n  private root: AVLNode | null = null;\n\n  private height(node: AVLNode | null): number {\n    return node ? node.height : 0;\n  }\n\n  private balanceFactor(node: AVLNode): number {\n    return this.height(node.left) - this.height(node.right);\n  }\n\n  private updateHeight(node: AVLNode): void {\n    node.height = 1 + Math.max(this.height(node.left), this.height(node.right));\n  }\n\n  private rotateRight(y: AVLNode): AVLNode {\n    const x = y.left!;\n    y.left = x.right;\n    x.right = y;\n    this.updateHeight(y);\n    this.updateHeight(x);\n    return x;\n  }\n\n  private rotateLeft(x: AVLNode): AVLNode {\n    const y = x.right!;\n    x.right = y.left;\n    y.left = x;\n    this.updateHeight(x);\n    this.updateHeight(y);\n    return y;\n  }\n\n  insert(val: number): void {\n    this.root = this.insertRec(this.root, val);\n  }\n\n  private insertRec(node: AVLNode | null, val: number): AVLNode {\n    if (!node) return new AVLNode(val);\n\n    if (val < node.val) node.left = this.insertRec(node.left, val);\n    else if (val > node.val) node.right = this.insertRec(node.right, val);\n    else return node;\n\n    this.updateHeight(node);\n    const balance = this.balanceFactor(node);\n\n    if (balance > 1 && node.left && val < node.left.val) return this.rotateRight(node);\n    if (balance < -1 && node.right && val > node.right.val) return this.rotateLeft(node);\n    if (balance > 1 && node.left && val > node.left.val) {\n      node.left = this.rotateLeft(node.left);\n      return this.rotateRight(node);\n    }\n    if (balance < -1 && node.right && val < node.right.val) {\n      node.right = this.rotateRight(node.right);\n      return this.rotateLeft(node);\n    }\n\n    return node;\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class RedBlackTree {\n    private static final boolean RED = true;\n    private static final boolean BLACK = false;\n\n    static class Node {\n        int val;\n        boolean color;\n        Node left, right, parent;\n\n        Node(int val) {\n            this.val = val;\n            this.color = RED;  // New nodes are always red\n        }\n    }\n\n    private Node root;\n\n    /**\n     * Red-Black Tree properties:\n     * 1. Every node is red or black\n     * 2. Root is always black\n     * 3. All null leaves are black\n     * 4. Red node cannot have red children (no two consecutive reds)\n     * 5. Every path from root to null leaf has same number of black nodes\n     */\n    public void insert(int val) {\n        Node newNode = new Node(val);\n        root = bstInsert(root, newNode);\n        fixInsert(newNode);\n    }\n\n    private Node bstInsert(Node root, Node newNode) {\n        if (root == null) return newNode;\n\n        if (newNode.val < root.val) {\n            root.left = bstInsert(root.left, newNode);\n            root.left.parent = root;\n        } else if (newNode.val > root.val) {\n            root.right = bstInsert(root.right, newNode);\n            root.right.parent = root;\n        }\n        return root;\n    }\n\n    /**\n     * Fix Red-Black violations after insertion.\n     * Cases depend on uncle's color:\n     * - Red uncle: recolor parent, uncle, grandparent\n     * - Black uncle: rotate and recolor\n     */\n    private void fixInsert(Node node) {\n        while (node != root && node.parent.color == RED) {\n            Node parent = node.parent;\n            Node grandparent = parent.parent;\n\n            if (parent == grandparent.left) {\n                Node uncle = grandparent.right;\n                if (uncle != null && uncle.color == RED) {\n                    // Case 1: Red uncle — recolor\n                    parent.color = BLACK;\n                    uncle.color = BLACK;\n                    grandparent.color = RED;\n                    node = grandparent;\n                } else {\n                    if (node == parent.right) {\n                        // Case 2: Black uncle, node is right child — left rotate parent\n                        node = parent;\n                        rotateLeft(node);\n                    }\n                    // Case 3: Black uncle, node is left child — right rotate grandparent\n                    node.parent.color = BLACK;\n                    grandparent.color = RED;\n                    rotateRight(grandparent);\n                }\n            } else {\n                // Mirror cases for parent == grandparent.right\n                Node uncle = grandparent.left;\n                if (uncle != null && uncle.color == RED) {\n                    parent.color = BLACK;\n                    uncle.color = BLACK;\n                    grandparent.color = RED;\n                    node = grandparent;\n                } else {\n                    if (node == parent.left) {\n                        node = parent;\n                        rotateRight(node);\n                    }\n                    node.parent.color = BLACK;\n                    grandparent.color = RED;\n                    rotateLeft(grandparent);\n                }\n            }\n        }\n        root.color = BLACK;\n    }\n\n    private void rotateLeft(Node x) {\n        Node y = x.right;\n        x.right = y.left;\n        if (y.left != null) y.left.parent = x;\n        y.parent = x.parent;\n        if (x.parent == null) root = y;\n        else if (x == x.parent.left) x.parent.left = y;\n        else x.parent.right = y;\n        y.left = x;\n        x.parent = y;\n    }\n\n    private void rotateRight(Node y) {\n        Node x = y.left;\n        y.left = x.right;\n        if (x.right != null) x.right.parent = y;\n        x.parent = y.parent;\n        if (y.parent == null) root = x;\n        else if (y == y.parent.left) y.parent.left = x;\n        else y.parent.right = x;\n        x.right = y;\n        y.parent = x;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/trees-and-graphs/balanced-trees-and-self-balancing.md",
+    "wordCount": 1628,
+    "sectionCount": 10
+  }
+}

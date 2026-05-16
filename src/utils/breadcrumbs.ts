@@ -13,14 +13,22 @@ export interface BreadcrumbItem {
 /**
  * Generates a breadcrumb array from path segments and a display name mapping.
  *
- * For a path like ["topic", "backend", "java"], this produces:
+ * For a 3-segment path like ["topic", "backend", "java"], this produces:
  * [
  *   { label: "Backend", path: "/category/backend", isLast: false },
  *   { label: "Java", path: "/topic/backend/java", isLast: true }
  * ]
  *
+ * For a 4-segment path like ["topic", "backend", "java", "concurrency"], this produces:
+ * [
+ *   { label: "Backend", path: "/category/backend", isLast: false },
+ *   { label: "Java", path: "/topic/backend/java", isLast: false },
+ *   { label: "Concurrency & Multithreading", path: "/topic/backend/java/concurrency", isLast: true }
+ * ]
+ *
  * The "topic" prefix segment is skipped from display. The category segment
  * links to /category/:slug. The topic segment links to the full topic path.
+ * The subtopic segment (if present) is the final non-clickable item.
  *
  * The last breadcrumb always has isLast=true and should not be rendered as a link.
  *
@@ -36,7 +44,7 @@ export function generateBreadcrumbs(
     return [];
   }
 
-  // Handle /topic/:categorySlug/:topicSlug pattern
+  // Handle /topic/:categorySlug/:topicSlug/:subtopicSlug? pattern
   if (segments[0] === 'topic' && segments.length >= 2) {
     const items: BreadcrumbItem[] = [];
     const categorySlug = segments[1];
@@ -56,6 +64,17 @@ export function generateBreadcrumbs(
       items.push({
         label: topicLabel,
         path: `/topic/${categorySlug}/${topicSlug}`,
+        isLast: segments.length === 3,
+      });
+    }
+
+    // Subtopic breadcrumb (if present)
+    if (segments.length >= 4) {
+      const subtopicSlug = segments[3];
+      const subtopicLabel = displayNames[subtopicSlug] ?? toTitleCase(subtopicSlug);
+      items.push({
+        label: subtopicLabel,
+        path: `/topic/${categorySlug}/${segments[2]}/${subtopicSlug}`,
         isLast: true,
       });
     }

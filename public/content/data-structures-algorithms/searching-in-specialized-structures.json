@@ -1,0 +1,302 @@
+{
+  "id": "sorting-and-searching-searching-in-specialized-structures",
+  "slug": "searching-in-specialized-structures",
+  "title": "Searching in Specialized Structures",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Search in sorted matrix (row+col sorted): O(m + n) — staircase search from corner",
+            "Search in row-sorted matrix: O(m * log n) — binary search each row",
+            "Search in fully sorted matrix: O(log(m*n)) — treat as flattened sorted array",
+            "Search in infinite sorted array: O(log k) where k is target position — exponential expansion",
+            "Kth smallest in sorted matrix: O(n * log(max-min)) — binary search on value",
+            "Median of two sorted arrays: O(log(min(m,n))) — binary search on partition",
+            "Search with unknown comparator: O(log n) — determine order then search",
+            "Exponential search: O(log k) — find range then binary search within",
+            "Ternary search: O(log n) — find peak/valley in unimodal function",
+            "Key insight: exploit structural properties to reduce search space efficiently"
+          ]
+        }
+      ],
+      "wordCount": 120,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Searching in specialized structures extends binary search principles to non-standard data organizations. The key insight remains the same — exploit structural properties to eliminate large portions of the search space — but the specific technique varies with the structure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use staircase search (O(m+n)) when the matrix is sorted both row-wise and column-wise (each row sorted left-to-right, each column sorted top-to-bottom). Start from the top-right or bottom-left corner and eliminate one row or column at each step."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use binary search on value when finding the kth element in a structure where you can efficiently count elements less than a given value (kth smallest in sorted matrix, kth smallest pair sum). Binary search on the answer value, using the count as the feasibility predicate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use exponential search when the array is unbounded or the target position is unknown. Double the search range until you overshoot, then binary search within the last range. This achieves O(log k) where k is the target position, which is optimal when k is much smaller than n."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use the median of two sorted arrays technique when you need to find a partition point that divides two arrays into equal halves with all left elements smaller than all right elements. This is one of the most elegant binary search applications."
+        }
+      ],
+      "wordCount": 212,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "search-in-sorted-matrix",
+          "heading": "Search in Sorted Matrix",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Three variants depending on the matrix's sorting properties: fully sorted (flattened), row-and-column sorted (staircase), and row-sorted (per-row binary search)."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class MatrixSearch {\n    /**\n     * Search in matrix where rows and columns are individually sorted.\n     * Start from top-right corner:\n     * - If target < current: move left (eliminate column)\n     * - If target > current: move down (eliminate row)\n     * Time: O(m + n), Space: O(1)\n     */\n    public static boolean searchMatrix(int[][] matrix, int target) {\n        if (matrix.length == 0) return false;\n        int row = 0, col = matrix[0].length - 1;\n\n        while (row < matrix.length && col >= 0) {\n            if (matrix[row][col] == target) return true;\n            if (matrix[row][col] > target) col--;  // Too large, go left\n            else row++;  // Too small, go down\n        }\n        return false;\n    }\n\n    /**\n     * Search in matrix where each row is sorted AND first element of each row\n     * is greater than last element of previous row (fully sorted when flattened).\n     * Treat as 1D sorted array of m*n elements.\n     * Time: O(log(m*n))\n     */\n    public static boolean searchFullySorted(int[][] matrix, int target) {\n        int m = matrix.length, n = matrix[0].length;\n        int left = 0, right = m * n - 1;\n\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            int val = matrix[mid / n][mid % n];  // Convert 1D index to 2D\n            if (val == target) return true;\n            if (val < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return false;\n    }\n\n    /**\n     * Kth smallest element in a sorted matrix (rows and columns sorted).\n     * Binary search on the value: find smallest value with at least k elements <= it.\n     * Time: O(n * log(max - min)), Space: O(1)\n     */\n    public static int kthSmallest(int[][] matrix, int k) {\n        int n = matrix.length;\n        int left = matrix[0][0], right = matrix[n - 1][n - 1];\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            int count = countLessOrEqual(matrix, mid);\n            if (count < k) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    private static int countLessOrEqual(int[][] matrix, int target) {\n        int n = matrix.length;\n        int count = 0, col = n - 1;\n\n        for (int row = 0; row < n; row++) {\n            while (col >= 0 && matrix[row][col] > target) col--;\n            count += col + 1;\n        }\n        return count;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "function searchSortedMatrix(matrix: number[][], target: number): boolean {\n  if (matrix.length === 0) return false;\n  let row = 0;\n  let col = matrix[0].length - 1;\n\n  while (row < matrix.length && col >= 0) {\n    if (matrix[row][col] === target) return true;\n    if (matrix[row][col] > target) col--;\n    else row++;\n  }\n  return false;\n}\n\nfunction kthSmallest(matrix: number[][], k: number): number {\n  const n = matrix.length;\n  let left = matrix[0][0];\n  let right = matrix[n - 1][n - 1];\n\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    let count = 0;\n    let col = n - 1;\n    for (let row = 0; row < n; row++) {\n      while (col >= 0 && matrix[row][col] > mid) col--;\n      count += col + 1;\n    }\n    if (count < k) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "median-of-two-sorted-arrays",
+          "heading": "Median of Two Sorted Arrays",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "One of the most elegant binary search applications: finding the median by binary searching on the partition point of the shorter array."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class MedianSortedArrays {\n    /**\n     * Find median of two sorted arrays in O(log(min(m,n))) time.\n     * Binary search on partition of shorter array.\n     * Partition divides both arrays into left and right halves\n     * such that all left elements <= all right elements.\n     */\n    public static double findMedianSortedArrays(int[] nums1, int[] nums2) {\n        // Ensure nums1 is the shorter array\n        if (nums1.length > nums2.length) {\n            return findMedianSortedArrays(nums2, nums1);\n        }\n\n        int m = nums1.length, n = nums2.length;\n        int left = 0, right = m;\n\n        while (left <= right) {\n            int partition1 = left + (right - left) / 2;\n            int partition2 = (m + n + 1) / 2 - partition1;\n\n            int maxLeft1 = partition1 == 0 ? Integer.MIN_VALUE : nums1[partition1 - 1];\n            int minRight1 = partition1 == m ? Integer.MAX_VALUE : nums1[partition1];\n            int maxLeft2 = partition2 == 0 ? Integer.MIN_VALUE : nums2[partition2 - 1];\n            int minRight2 = partition2 == n ? Integer.MAX_VALUE : nums2[partition2];\n\n            if (maxLeft1 <= minRight2 && maxLeft2 <= minRight1) {\n                // Found correct partition\n                if ((m + n) % 2 == 0) {\n                    return (Math.max(maxLeft1, maxLeft2) +\n                            Math.min(minRight1, minRight2)) / 2.0;\n                } else {\n                    return Math.max(maxLeft1, maxLeft2);\n                }\n            } else if (maxLeft1 > minRight2) {\n                right = partition1 - 1;  // Move partition1 left\n            } else {\n                left = partition1 + 1;   // Move partition1 right\n            }\n        }\n        throw new IllegalArgumentException(\"Input arrays are not sorted\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        },
+        {
+          "id": "exponential-search-and-infinite-array-search",
+          "heading": "Exponential Search and Infinite Array Search",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Searching in unbounded or very large arrays where the target position is unknown, using exponential range expansion followed by binary search."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class ExponentialSearch {\n    /**\n     * Exponential search: find target in sorted array.\n     * First find range [i/2, i] containing target by doubling i.\n     * Then binary search within that range.\n     * Time: O(log k) where k is target's position.\n     * Better than binary search when target is near the beginning.\n     */\n    public static int exponentialSearch(int[] arr, int target) {\n        if (arr[0] == target) return 0;\n\n        int i = 1;\n        while (i < arr.length && arr[i] <= target) {\n            i *= 2;\n        }\n\n        // Binary search in range [i/2, min(i, n-1)]\n        int left = i / 2, right = Math.min(i, arr.length - 1);\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] == target) return mid;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    /**\n     * Search in an \"infinite\" sorted array (ArrayReader interface).\n     * Cannot use .length; out-of-bounds returns Integer.MAX_VALUE.\n     * Use exponential search to find bounds, then binary search.\n     */\n    public static int searchInfinite(InfiniteArray reader, int target) {\n        // Find range containing target\n        int left = 0, right = 1;\n        while (reader.get(right) < target) {\n            left = right;\n            right *= 2;\n        }\n\n        // Binary search within range\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            int val = reader.get(mid);\n            if (val == target) return mid;\n            if (val < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    interface InfiniteArray {\n        int get(int index);  // Returns MAX_VALUE for out-of-bounds\n    }\n\n    /**\n     * Ternary search: find maximum of unimodal function.\n     * Divides range into thirds, eliminates one third each step.\n     * Time: O(log n) with base 3/2\n     */\n    public static double ternarySearchMax(DoubleUnaryOperator f, double left, double right) {\n        for (int i = 0; i < 200; i++) {  // Sufficient iterations for precision\n            double m1 = left + (right - left) / 3;\n            double m2 = right - (right - left) / 3;\n            if (f.applyAsDouble(m1) < f.applyAsDouble(m2)) {\n                left = m1;\n            } else {\n                right = m2;\n            }\n        }\n        return (left + right) / 2;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "def exponential_search(arr: list[int], target: int) -> int:\n    \"\"\"Search using exponential expansion + binary search. O(log k) time.\"\"\"\n    if arr[0] == target:\n        return 0\n\n    i = 1\n    while i < len(arr) and arr[i] <= target:\n        i *= 2\n\n    # Binary search in [i//2, min(i, n-1)]\n    left, right = i // 2, min(i, len(arr) - 1)\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        if arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n\n    return -1\n\ndef find_median_sorted_arrays(nums1: list[int], nums2: list[int]) -> float:\n    \"\"\"Median of two sorted arrays. O(log(min(m,n))) time.\"\"\"\n    if len(nums1) > len(nums2):\n        nums1, nums2 = nums2, nums1\n\n    m, n = len(nums1), len(nums2)\n    left, right = 0, m\n\n    while left <= right:\n        p1 = (left + right) // 2\n        p2 = (m + n + 1) // 2 - p1\n\n        max_left1 = float('-inf') if p1 == 0 else nums1[p1 - 1]\n        min_right1 = float('inf') if p1 == m else nums1[p1]\n        max_left2 = float('-inf') if p2 == 0 else nums2[p2 - 1]\n        min_right2 = float('inf') if p2 == n else nums2[p2]\n\n        if max_left1 <= min_right2 and max_left2 <= min_right1:\n            if (m + n) % 2 == 0:\n                return (max(max_left1, max_left2) + min(min_right1, min_right2)) / 2\n            return max(max_left1, max_left2)\n        elif max_left1 > min_right2:\n            right = p1 - 1\n        else:\n            left = p1 + 1\n\n    raise ValueError(\"Arrays not sorted\")",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using the wrong corner for staircase search: The staircase search on a row-and-column sorted matrix must start from the top-right or bottom-left corner. Starting from top-left or bottom-right does not work because both directions (right and down from top-left) increase values, providing no way to eliminate a row or column. The correct corners have one increasing and one decreasing direction.",
+            "Incorrect partition calculation in median of two sorted arrays: The partition of the second array must be calculated as (m + n + 1) / 2 - partition1 to ensure the left half has the correct number of elements. Using (m + n) / 2 instead of (m + n + 1) / 2 produces wrong results for odd total lengths. The +1 ensures the left half gets the extra element when the total is odd.",
+            "Not handling edge cases in matrix search: Empty matrices, single-element matrices, and matrices where the target is outside the value range all need explicit handling. The staircase search naturally handles these (the while loop condition fails immediately), but the fully-sorted binary search needs bounds checking on the flattened index conversion.",
+            "Exponential search overshooting into invalid memory: When doubling the search range, the index can exceed array bounds. Always cap the right boundary at min(i, arr.length - 1) before performing binary search. For the infinite array variant, the interface must handle out-of-bounds gracefully (returning MAX_VALUE or throwing).",
+            "Confusing row-and-column sorted with fully sorted matrices: A matrix where each row is sorted and each column is sorted is NOT the same as a matrix that is fully sorted when flattened. In a row-and-column sorted matrix, the first element of row i+1 may be less than the last element of row i. Using the flattened binary search on a row-and-column sorted matrix produces incorrect results."
+          ]
+        }
+      ],
+      "wordCount": 298,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database multi-dimensional indexing uses matrix-like search patterns for range queries on multiple columns. A query like \"find records where age BETWEEN 25 AND 35 AND salary BETWEEN 50000 AND 80000\" searches a 2D space. R-Trees and KD-Trees generalize the staircase search concept to arbitrary dimensions, enabling efficient multi-dimensional range queries in spatial databases (PostGIS, MongoDB geospatial)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Distributed systems coordination uses binary search on sorted partitions for data lookup. Apache Kafka consumers use binary search on offset indexes to find messages by timestamp. Cassandra's SSTables use binary search on partition keys within sorted string tables. The \"search in infinite array\" pattern applies to append-only logs where the total size is unknown and growing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Image processing and computer vision uses matrix search patterns for template matching and feature detection. Integral images (2D prefix sums) combined with binary search enable efficient threshold-based feature detection. The staircase search pattern appears in algorithms that process sorted distance matrices for nearest-neighbor queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Merge operations in distributed computing use the median-of-two-sorted-arrays technique when combining sorted results from multiple nodes. MapReduce shuffle phases, distributed sort-merge joins, and parallel merge sort all need to find partition boundaries that divide data evenly across workers. The binary search on partition technique enables O(log n) boundary finding instead of O(n) linear merge."
+        },
+        {
+          "type": "paragraph",
+          "text": "Time-series databases use exponential search for temporal queries. When searching for events at a specific timestamp in a time-ordered log, exponential search finds the approximate position quickly (O(log k) where k is the distance from the start), which is faster than binary search (O(log n)) when recent events are queried more frequently than old ones. InfluxDB and TimescaleDB use similar techniques for time-range queries."
+        }
+      ],
+      "wordCount": 274,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you search for a target in a matrix where each row and column is sorted?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use the staircase search starting from the top-right corner. If the current element equals the target, return true. If it is greater than the target, move left (eliminate the current column since all elements below are larger). If it is less than the target, move down (eliminate the current row since all elements to the left are smaller). Each step eliminates one row or column, giving O(m + n) time. This works because the top-right corner is simultaneously the maximum of its row and minimum of its column."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how to find the median of two sorted arrays in O(log(min(m,n))) time."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Binary search on the partition point of the shorter array. A valid partition divides both arrays into left and right halves where: (1) left half has exactly (m+n+1)/2 elements total, and (2) max(left elements) <= min(right elements). Binary search on partition1 (0 to m), compute partition2 = (m+n+1)/2 - partition1. Check if maxLeft1 <= minRight2 AND maxLeft2 <= minRight1. If maxLeft1 is too large, move partition1 left. If maxLeft2 is too large, move partition1 right. The median is max(maxLeft1, maxLeft2) for odd total, or average of max-left and min-right for even total."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you use exponential search instead of binary search?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use exponential search when the target is likely near the beginning of a large or unbounded array. Exponential search finds the range containing the target in O(log k) time where k is the target's position, then binary searches within that range in O(log k) time. Total is O(log k), which is better than binary search's O(log n) when k is much smaller than n. Applications include searching in infinite/streaming data, searching in arrays where most queries target recent elements, and as a building block for self-adjusting data structures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you find the kth smallest element in a sorted matrix?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Binary search on the value. The search range is [matrix[0][0], matrix[n-1][n-1]]. For each candidate value mid, count how many elements are <= mid using the staircase technique (O(n) per count). If count < k, the answer is larger (left = mid + 1). If count >= k, the answer might be mid or smaller (right = mid). This converges to the kth smallest value in O(n * log(max - min)) time. The key insight is that even though mid might not exist in the matrix, the binary search converges to an actual matrix value because the count function has discrete jumps at matrix values."
+        }
+      ],
+      "wordCount": 432,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use SIMD-accelerated search for large sorted arrays: Modern CPUs can compare 16-32 elements simultaneously using SIMD instructions (AVX2, AVX-512). For large sorted arrays with frequent lookups, SIMD binary search or SIMD linear search within cache lines provides 2-4x speedup over scalar binary search. Libraries like Boost.SIMD and compiler auto-vectorization can generate these instructions automatically for simple comparison loops.",
+            "Consider cache-oblivious layouts for frequently searched matrices: Standard row-major matrix layout causes cache misses during column traversal in staircase search. For matrices that are searched frequently, consider storing in a cache-oblivious layout (Z-order curve, Hilbert curve) that keeps spatially close elements close in memory. This improves cache hit rates for 2D range queries by 2-5x on large matrices.",
+            "Implement adaptive search based on access patterns: If your application searches the same sorted structure with varying query distributions, track query positions and adapt the search strategy. For queries clustered near the beginning, use exponential search. For uniform queries, use standard binary search. For queries with temporal locality, use interpolation search with a cached last-position hint."
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Binary Search Patterns — Foundational binary search techniques this topic extends",
+            "Comparison-Based Sorting — Sorting that produces the structures searched here",
+            "Arrays and Strings — Array fundamentals underlying matrix representations",
+            "Trees and Graphs — Tree-based search structures (BST, B-Tree) as alternatives"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class MatrixSearch {\n    /**\n     * Search in matrix where rows and columns are individually sorted.\n     * Start from top-right corner:\n     * - If target < current: move left (eliminate column)\n     * - If target > current: move down (eliminate row)\n     * Time: O(m + n), Space: O(1)\n     */\n    public static boolean searchMatrix(int[][] matrix, int target) {\n        if (matrix.length == 0) return false;\n        int row = 0, col = matrix[0].length - 1;\n\n        while (row < matrix.length && col >= 0) {\n            if (matrix[row][col] == target) return true;\n            if (matrix[row][col] > target) col--;  // Too large, go left\n            else row++;  // Too small, go down\n        }\n        return false;\n    }\n\n    /**\n     * Search in matrix where each row is sorted AND first element of each row\n     * is greater than last element of previous row (fully sorted when flattened).\n     * Treat as 1D sorted array of m*n elements.\n     * Time: O(log(m*n))\n     */\n    public static boolean searchFullySorted(int[][] matrix, int target) {\n        int m = matrix.length, n = matrix[0].length;\n        int left = 0, right = m * n - 1;\n\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            int val = matrix[mid / n][mid % n];  // Convert 1D index to 2D\n            if (val == target) return true;\n            if (val < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return false;\n    }\n\n    /**\n     * Kth smallest element in a sorted matrix (rows and columns sorted).\n     * Binary search on the value: find smallest value with at least k elements <= it.\n     * Time: O(n * log(max - min)), Space: O(1)\n     */\n    public static int kthSmallest(int[][] matrix, int k) {\n        int n = matrix.length;\n        int left = matrix[0][0], right = matrix[n - 1][n - 1];\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            int count = countLessOrEqual(matrix, mid);\n            if (count < k) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    private static int countLessOrEqual(int[][] matrix, int target) {\n        int n = matrix.length;\n        int count = 0, col = n - 1;\n\n        for (int row = 0; row < n; row++) {\n            while (col >= 0 && matrix[row][col] > target) col--;\n            count += col + 1;\n        }\n        return count;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "function searchSortedMatrix(matrix: number[][], target: number): boolean {\n  if (matrix.length === 0) return false;\n  let row = 0;\n  let col = matrix[0].length - 1;\n\n  while (row < matrix.length && col >= 0) {\n    if (matrix[row][col] === target) return true;\n    if (matrix[row][col] > target) col--;\n    else row++;\n  }\n  return false;\n}\n\nfunction kthSmallest(matrix: number[][], k: number): number {\n  const n = matrix.length;\n  let left = matrix[0][0];\n  let right = matrix[n - 1][n - 1];\n\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    let count = 0;\n    let col = n - 1;\n    for (let row = 0; row < n; row++) {\n      while (col >= 0 && matrix[row][col] > mid) col--;\n      count += col + 1;\n    }\n    if (count < k) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class MedianSortedArrays {\n    /**\n     * Find median of two sorted arrays in O(log(min(m,n))) time.\n     * Binary search on partition of shorter array.\n     * Partition divides both arrays into left and right halves\n     * such that all left elements <= all right elements.\n     */\n    public static double findMedianSortedArrays(int[] nums1, int[] nums2) {\n        // Ensure nums1 is the shorter array\n        if (nums1.length > nums2.length) {\n            return findMedianSortedArrays(nums2, nums1);\n        }\n\n        int m = nums1.length, n = nums2.length;\n        int left = 0, right = m;\n\n        while (left <= right) {\n            int partition1 = left + (right - left) / 2;\n            int partition2 = (m + n + 1) / 2 - partition1;\n\n            int maxLeft1 = partition1 == 0 ? Integer.MIN_VALUE : nums1[partition1 - 1];\n            int minRight1 = partition1 == m ? Integer.MAX_VALUE : nums1[partition1];\n            int maxLeft2 = partition2 == 0 ? Integer.MIN_VALUE : nums2[partition2 - 1];\n            int minRight2 = partition2 == n ? Integer.MAX_VALUE : nums2[partition2];\n\n            if (maxLeft1 <= minRight2 && maxLeft2 <= minRight1) {\n                // Found correct partition\n                if ((m + n) % 2 == 0) {\n                    return (Math.max(maxLeft1, maxLeft2) +\n                            Math.min(minRight1, minRight2)) / 2.0;\n                } else {\n                    return Math.max(maxLeft1, maxLeft2);\n                }\n            } else if (maxLeft1 > minRight2) {\n                right = partition1 - 1;  // Move partition1 left\n            } else {\n                left = partition1 + 1;   // Move partition1 right\n            }\n        }\n        throw new IllegalArgumentException(\"Input arrays are not sorted\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class ExponentialSearch {\n    /**\n     * Exponential search: find target in sorted array.\n     * First find range [i/2, i] containing target by doubling i.\n     * Then binary search within that range.\n     * Time: O(log k) where k is target's position.\n     * Better than binary search when target is near the beginning.\n     */\n    public static int exponentialSearch(int[] arr, int target) {\n        if (arr[0] == target) return 0;\n\n        int i = 1;\n        while (i < arr.length && arr[i] <= target) {\n            i *= 2;\n        }\n\n        // Binary search in range [i/2, min(i, n-1)]\n        int left = i / 2, right = Math.min(i, arr.length - 1);\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] == target) return mid;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    /**\n     * Search in an \"infinite\" sorted array (ArrayReader interface).\n     * Cannot use .length; out-of-bounds returns Integer.MAX_VALUE.\n     * Use exponential search to find bounds, then binary search.\n     */\n    public static int searchInfinite(InfiniteArray reader, int target) {\n        // Find range containing target\n        int left = 0, right = 1;\n        while (reader.get(right) < target) {\n            left = right;\n            right *= 2;\n        }\n\n        // Binary search within range\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            int val = reader.get(mid);\n            if (val == target) return mid;\n            if (val < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    interface InfiniteArray {\n        int get(int index);  // Returns MAX_VALUE for out-of-bounds\n    }\n\n    /**\n     * Ternary search: find maximum of unimodal function.\n     * Divides range into thirds, eliminates one third each step.\n     * Time: O(log n) with base 3/2\n     */\n    public static double ternarySearchMax(DoubleUnaryOperator f, double left, double right) {\n        for (int i = 0; i < 200; i++) {  // Sufficient iterations for precision\n            double m1 = left + (right - left) / 3;\n            double m2 = right - (right - left) / 3;\n            if (f.applyAsDouble(m1) < f.applyAsDouble(m2)) {\n                left = m1;\n            } else {\n                right = m2;\n            }\n        }\n        return (left + right) / 2;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "def exponential_search(arr: list[int], target: int) -> int:\n    \"\"\"Search using exponential expansion + binary search. O(log k) time.\"\"\"\n    if arr[0] == target:\n        return 0\n\n    i = 1\n    while i < len(arr) and arr[i] <= target:\n        i *= 2\n\n    # Binary search in [i//2, min(i, n-1)]\n    left, right = i // 2, min(i, len(arr) - 1)\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        if arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n\n    return -1\n\ndef find_median_sorted_arrays(nums1: list[int], nums2: list[int]) -> float:\n    \"\"\"Median of two sorted arrays. O(log(min(m,n))) time.\"\"\"\n    if len(nums1) > len(nums2):\n        nums1, nums2 = nums2, nums1\n\n    m, n = len(nums1), len(nums2)\n    left, right = 0, m\n\n    while left <= right:\n        p1 = (left + right) // 2\n        p2 = (m + n + 1) // 2 - p1\n\n        max_left1 = float('-inf') if p1 == 0 else nums1[p1 - 1]\n        min_right1 = float('inf') if p1 == m else nums1[p1]\n        max_left2 = float('-inf') if p2 == 0 else nums2[p2 - 1]\n        min_right2 = float('inf') if p2 == n else nums2[p2]\n\n        if max_left1 <= min_right2 and max_left2 <= min_right1:\n            if (m + n) % 2 == 0:\n                return (max(max_left1, max_left2) + min(min_right1, min_right2)) / 2\n            return max(max_left1, max_left2)\n        elif max_left1 > min_right2:\n            right = p1 - 1\n        else:\n            left = p1 + 1\n\n    raise ValueError(\"Arrays not sorted\")",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/sorting-and-searching/searching-in-specialized-structures.md",
+    "wordCount": 1611,
+    "sectionCount": 11
+  }
+}

@@ -1,0 +1,211 @@
+{
+  "id": "typescript-type-system-fundamentals",
+  "slug": "type-system-fundamentals",
+  "title": "Type System Fundamentals",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "TypeScript uses structural typing (duck typing): two types are compatible if they have the same shape, regardless of name or declaration location",
+            "Core primitives: string, number, boolean, null, undefined, symbol, bigint, void, never, unknown, any",
+            "unknown is the type-safe top type (accepts any value but requires narrowing before use); any disables all type checking",
+            "never is the bottom type representing values that never occur (exhaustive checks, functions that always throw)",
+            "Type narrowing refines broad types to specific ones through control flow analysis, typeof checks, instanceof, and discriminated unions",
+            "Union types (A | B) represent values that can be one of several types; intersection types (A & B) combine multiple types",
+            "Literal types (\"hello\", 42, true) represent exact values rather than broad categories",
+            "as const creates deeply readonly literal types from object and array expressions"
+          ]
+        }
+      ],
+      "wordCount": 134,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding type system fundamentals is essential for every TypeScript developer because these concepts underpin all other TypeScript features. Structural typing determines how the compiler checks compatibility between types, which affects function parameter passing, interface implementation, and generic constraints. Type narrowing is used constantly in everyday code when handling nullable values, processing API responses with unknown shapes, and implementing exhaustive pattern matching on discriminated unions. Union and intersection types model real-world data that can take multiple forms (API responses that are either success or error, configuration objects that combine base settings with overrides). Literal types and const assertions enable type-safe enumerations, configuration objects, and action creators without runtime overhead. The type hierarchy (unknown at the top, never at the bottom) provides the mental model for understanding how types relate to each other and why certain assignments are allowed or rejected by the compiler."
+        }
+      ],
+      "wordCount": 142,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Structural typing: compatibility determined by shape, not name\ninterface Serializable {\n  serialize(): string;\n}\n\nclass UserDTO {\n  constructor(public name: string, public email: string) {}\n  serialize(): string {\n    return JSON.stringify({ name: this.name, email: this.email });\n  }\n}\n\nclass ConfigEntry {\n  constructor(public key: string, public value: unknown) {}\n  serialize(): string {\n    return `${this.key}=${String(this.value)}`;\n  }\n}\n\n// Both work because they satisfy the Serializable shape\nfunction persist(item: Serializable): void {\n  const data = item.serialize();\n  localStorage.setItem('data', data);\n}\n\npersist(new UserDTO('Alice', 'alice@example.com')); // OK\npersist(new ConfigEntry('theme', 'dark'));           // OK\npersist({ serialize: () => '{}' });                  // OK - object literal with matching shape\n\n// Excess property checking only applies to object literals\n// persist({ serialize: () => '{}', extra: true }); // Error: excess property 'extra'\nconst obj = { serialize: () => '{}', extra: true };\npersist(obj); // OK - no excess property check on variables\n\n\n// Discriminated unions with exhaustive pattern matching\ntype Result<T, E = Error> =\n  | { status: 'success'; data: T; timestamp: number }\n  | { status: 'error'; error: E; retryable: boolean }\n  | { status: 'loading' }\n  | { status: 'idle' };\n\nfunction handleResult<T>(result: Result<T>): string {\n  switch (result.status) {\n    case 'success':\n      // TypeScript narrows to { status: 'success'; data: T; timestamp: number }\n      return `Data received at ${new Date(result.timestamp).toISOString()}`;\n    case 'error':\n      // TypeScript narrows to { status: 'error'; error: Error; retryable: boolean }\n      return result.retryable\n        ? `Retryable error: ${result.error.message}`\n        : `Fatal error: ${result.error.message}`;\n    case 'loading':\n      return 'Loading...';\n    case 'idle':\n      return 'Ready';\n    default:\n      // Exhaustiveness check: if a new status is added, this becomes a compile error\n      const _exhaustive: never = result;\n      return _exhaustive;\n  }\n}\n\n\n// Type narrowing with custom type guards\ninterface ApiSuccess<T> {\n  ok: true;\n  data: T;\n  headers: Record<string, string>;\n}\n\ninterface ApiError {\n  ok: false;\n  status: number;\n  message: string;\n}\n\ntype ApiResponse<T> = ApiSuccess<T> | ApiError;\n\n// Type predicate function\nfunction isSuccess<T>(response: ApiResponse<T>): response is ApiSuccess<T> {\n  return response.ok === true;\n}\n\n// Assertion function (throws if condition fails)\nfunction assertDefined<T>(value: T | null | undefined, name: string): asserts value is T {\n  if (value === null || value === undefined) {\n    throw new Error(`Expected ${name} to be defined, got ${value}`);\n  }\n}\n\nasync function fetchUser(id: string): Promise<ApiResponse<{ name: string; email: string }>> {\n  const response = await fetch(`/api/users/${id}`);\n  if (!response.ok) {\n    return { ok: false, status: response.status, message: response.statusText };\n  }\n  const data = await response.json();\n  return { ok: true, data, headers: Object.fromEntries(response.headers) };\n}\n\nasync function displayUser(id: string): Promise<void> {\n  const result = await fetchUser(id);\n\n  if (isSuccess(result)) {\n    // TypeScript knows result is ApiSuccess here\n    console.log(result.data.name, result.data.email);\n    console.log('ETag:', result.headers['etag']);\n  } else {\n    // TypeScript knows result is ApiError here\n    console.error(`Error ${result.status}: ${result.message}`);\n  }\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// The unknown type: safe handling of external data\nfunction parseJSON(input: string): unknown {\n  return JSON.parse(input);\n}\n\n// Type guard for runtime validation of unknown data\ninterface UserProfile {\n  id: string;\n  name: string;\n  age: number;\n  preferences: {\n    theme: 'light' | 'dark';\n    notifications: boolean;\n  };\n}\n\nfunction isUserProfile(value: unknown): value is UserProfile {\n  if (typeof value !== 'object' || value === null) return false;\n  const obj = value as Record<string, unknown>;\n\n  if (typeof obj.id !== 'string') return false;\n  if (typeof obj.name !== 'string') return false;\n  if (typeof obj.age !== 'number') return false;\n  if (typeof obj.preferences !== 'object' || obj.preferences === null) return false;\n\n  const prefs = obj.preferences as Record<string, unknown>;\n  if (prefs.theme !== 'light' && prefs.theme !== 'dark') return false;\n  if (typeof prefs.notifications !== 'boolean') return false;\n\n  return true;\n}\n\n// Usage: safely processing external data\nfunction loadUserFromStorage(): UserProfile | null {\n  const raw = localStorage.getItem('user');\n  if (!raw) return null;\n\n  const parsed = parseJSON(raw);\n  if (isUserProfile(parsed)) {\n    return parsed; // TypeScript knows this is UserProfile\n  }\n\n  console.warn('Invalid user data in storage, clearing');\n  localStorage.removeItem('user');\n  return null;\n}\n\n\n// Literal types and const assertions\nconst DIRECTIONS = ['north', 'south', 'east', 'west'] as const;\ntype Direction = typeof DIRECTIONS[number]; // 'north' | 'south' | 'east' | 'west'\n\nconst HTTP_METHODS = {\n  GET: 'GET',\n  POST: 'POST',\n  PUT: 'PUT',\n  DELETE: 'DELETE',\n} as const;\ntype HttpMethod = typeof HTTP_METHODS[keyof typeof HTTP_METHODS];\n// 'GET' | 'POST' | 'PUT' | 'DELETE'\n\n// Without as const, this would be typed as { method: string; url: string }\nconst request = {\n  method: 'GET',\n  url: '/api/users',\n} as const;\n// Type: { readonly method: \"GET\"; readonly url: \"/api/users\" }\n\n// Intersection types for composing object shapes\ninterface Timestamped {\n  createdAt: Date;\n  updatedAt: Date;\n}\n\ninterface SoftDeletable {\n  deletedAt: Date | null;\n  isDeleted: boolean;\n}\n\ninterface Auditable {\n  createdBy: string;\n  updatedBy: string;\n}\n\n// Compose multiple concerns into a single type\ntype AuditedEntity = Timestamped & SoftDeletable & Auditable;\n\ninterface Order {\n  id: string;\n  items: Array<{ productId: string; quantity: number }>;\n  total: number;\n}\n\n// Full order entity with all audit fields\ntype AuditedOrder = Order & AuditedEntity;",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Using any to silence type errors instead of fixing them: When TypeScript reports a type error, casting to any makes the error disappear but removes all type safety for that value and everything derived from it. The any type is contagious — once introduced, it silently disables checking for all downstream operations. Use unknown with type guards for external data, fix the underlying type mismatch for internal code, or use more specific type assertions (as SpecificType) when you genuinely know more than the compiler.",
+            "Confusing structural compatibility with identity: Because TypeScript uses structural typing, two independently defined types with the same shape are fully interchangeable. This means a UserId typed as string is assignable to a PostId also typed as string, which can cause logic bugs when IDs are accidentally swapped. When distinct identity matters, use branded types (type UserId = string & { __brand: 'UserId' }) to create nominally distinct types that are structurally incompatible.",
+            "Incomplete type narrowing in conditional branches: TypeScript narrows types based on control flow, but only for checks it can analyze statically. Storing a type guard result in a variable and using it later may not narrow correctly if the variable could have changed. Similarly, narrowing inside a callback does not persist outside it because the callback might execute asynchronously. Always narrow immediately before use, or use assertion functions for complex narrowing logic.",
+            "Misunderstanding excess property checking: TypeScript only checks for excess properties on object literals assigned directly to a typed location. If you assign the literal to a variable first, excess properties are allowed because the variable might be used elsewhere where those properties are valid. This inconsistency confuses developers who expect strict shape checking everywhere. Use satisfies operator (TypeScript 4.9+) for strict checking without widening.",
+            "Forgetting that type assertions are unchecked: The as keyword tells the compiler to trust your judgment without verification. If you write value as string but value is actually a number at runtime, TypeScript cannot catch this — you get a runtime error. Type assertions should be rare and accompanied by comments explaining why the assertion is safe. Prefer type guards that perform runtime checks and narrow types safely.",
+            "Not leveraging discriminated unions for state modeling: Representing component state as a flat object with optional fields ({ data?: T; error?: Error; loading?: boolean }) allows impossible states (data and error both present, loading true with data present). Discriminated unions ({ status: 'success'; data: T } | { status: 'error'; error: Error } | { status: 'loading' }) make impossible states unrepresentable and enable exhaustive pattern matching."
+          ]
+        }
+      ],
+      "wordCount": 427,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "API response validation at application boundaries: Every application receives data from external sources (REST APIs, WebSocket messages, localStorage, URL parameters) that cannot be trusted at compile time. Type guards and validation libraries like Zod parse unknown data into typed values at the boundary, ensuring that all internal code operates on validated, correctly-typed data. This pattern catches schema mismatches between frontend and backend immediately rather than causing cryptic runtime errors deep in the application.",
+            "State machine modeling for complex UI flows: Multi-step wizards, authentication flows, and payment processing involve states with different available data and allowed transitions. Discriminated unions model each state as a distinct type with only the fields relevant to that state, making it impossible to access data that does not exist in the current state. The compiler enforces that all states are handled in rendering logic and that transitions only occur between valid state pairs.",
+            "Domain-driven design with branded types: Financial applications use branded types to distinguish between different currency amounts (type USD = number & { __brand: 'USD' }, type EUR = number & { __brand: 'EUR' }) preventing accidental arithmetic between incompatible currencies. Similarly, database IDs, timestamps, and measurement units can be branded to prevent mixing values that are structurally identical but semantically different.",
+            "Plugin and middleware type safety: Express middleware, Redux middleware, and plugin systems use type narrowing and intersection types to progressively add properties to request objects or state as data flows through the pipeline. Each middleware declares what it adds to the context, and downstream handlers can safely access those additions because the type system tracks the accumulated shape.",
+            "Configuration validation and environment typing: Applications with complex configuration (feature flags, environment variables, service endpoints) use TypeScript to ensure all required configuration is present and correctly typed at startup. The satisfies operator validates configuration objects against a schema while preserving literal types for autocomplete, catching missing or mistyped configuration keys at compile time rather than runtime."
+          ]
+        }
+      ],
+      "wordCount": 322,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain structural typing and how it differs from nominal typing. What are the implications for TypeScript code?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Structural typing determines type compatibility by comparing the shape (properties and their types) of two types rather than their declared names or inheritance relationships. If type A has all the properties required by type B, A is assignable to B regardless of whether A explicitly implements or extends B. This differs from nominal typing (Java, C#) where a class must explicitly declare that it implements an interface. The implication is that TypeScript types are open and composable — you can pass any object with the right shape without ceremony — but it also means two semantically different types with the same structure are interchangeable, which can cause logic bugs when distinct identity matters."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between unknown and any, and when should you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Both are top types that accept any value assignment, but they differ in what you can do with the value afterward. any disables all type checking: you can access any property, call it as a function, or assign it to any other type without error. unknown requires you to narrow the type before using it — you must perform a typeof check, instanceof check, or use a type guard before accessing properties or calling methods. Use unknown for values from external sources (API responses, user input, deserialized data) where you need to validate the shape before proceeding. Use any only as a temporary escape hatch during migration from JavaScript, and eliminate it as soon as possible."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does TypeScript's control flow narrowing work, and what are its limitations?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Control flow narrowing tracks the type of a variable through conditional branches, assignments, and type guard calls. After an if (typeof x === 'string') check, TypeScript knows x is a string within that branch. After a null check, nullable types are narrowed to non-null. Discriminated union checks narrow to the specific variant. Limitations include: narrowing does not persist across function boundaries (a callback might execute later when the variable has changed), narrowing on object properties can be invalidated by aliasing, and custom narrowing logic requires explicit type predicate functions (value is Type) because the compiler cannot infer arbitrary narrowing from function implementations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the never type and its practical uses."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: never is the bottom type — it represents values that can never occur. A function returning never either always throws an error or contains an infinite loop. In exhaustive switch statements, the default case assigns the discriminant to never, which produces a compile error if a new union member is added without a corresponding case. never also appears as the result of impossible intersections (string & number is never) and as the inferred type of empty arrays before any elements are added. Practically, never is used for exhaustiveness checking, for marking function parameters that should never be called, and for conditional type filtering (Exclude<T, U> resolves to never for excluded members)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the satisfies operator and how does it differ from type annotations and assertions?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The satisfies operator (TypeScript 4.9+) validates that an expression matches a type without widening the inferred type. A type annotation (const x: Type = value) widens the value to the annotated type, losing literal information. A type assertion (value as Type) tells the compiler to trust you without checking excess properties. satisfies checks the value against the type (including excess property checks) while preserving the narrowest inferred type. This is ideal for configuration objects where you want compile-time validation that all required fields are present while retaining literal types for autocomplete and type-safe property access."
+        }
+      ],
+      "wordCount": 613,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enable strict mode from day one on new projects: The \"strict\": true compiler option enables all strict checks simultaneously (strictNullChecks, noImplicitAny, strictFunctionTypes, etc.). Adding strict mode to an existing codebase produces hundreds of errors that are expensive to fix incrementally. Starting strict means every line of code is type-safe from the beginning, preventing the accumulation of type debt that becomes increasingly expensive to address as the codebase grows.",
+            "Use the satisfies operator for configuration and constant objects: Rather than annotating constants with a type (which widens literals) or leaving them untyped (which misses validation), use satisfies to get both validation and narrow inference. This is particularly valuable for route definitions, theme tokens, feature flag defaults, and any constant object that should conform to a schema while preserving exact literal types for downstream consumers.",
+            "Prefer discriminated unions over optional fields for state modeling: Instead of { data?: T; error?: Error; loading: boolean } which allows impossible combinations, model state as { status: 'idle' } | { status: 'loading' } | { status: 'success'; data: T } | { status: 'error'; error: Error }. This makes impossible states unrepresentable, enables exhaustive pattern matching, and provides better autocomplete because TypeScript knows exactly which fields are available in each state."
+          ]
+        }
+      ],
+      "wordCount": 206,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Generics and Constraints — Generics build on the type system fundamentals to create reusable, type-safe abstractions",
+            "Advanced Types — Conditional and mapped types use narrowing and structural typing concepts for type-level programming",
+            "JavaScript — TypeScript compiles to JavaScript; understanding JavaScript semantics is essential for effective TypeScript usage"
+          ]
+        }
+      ],
+      "wordCount": 47,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Structural typing: compatibility determined by shape, not name\ninterface Serializable {\n  serialize(): string;\n}\n\nclass UserDTO {\n  constructor(public name: string, public email: string) {}\n  serialize(): string {\n    return JSON.stringify({ name: this.name, email: this.email });\n  }\n}\n\nclass ConfigEntry {\n  constructor(public key: string, public value: unknown) {}\n  serialize(): string {\n    return `${this.key}=${String(this.value)}`;\n  }\n}\n\n// Both work because they satisfy the Serializable shape\nfunction persist(item: Serializable): void {\n  const data = item.serialize();\n  localStorage.setItem('data', data);\n}\n\npersist(new UserDTO('Alice', 'alice@example.com')); // OK\npersist(new ConfigEntry('theme', 'dark'));           // OK\npersist({ serialize: () => '{}' });                  // OK - object literal with matching shape\n\n// Excess property checking only applies to object literals\n// persist({ serialize: () => '{}', extra: true }); // Error: excess property 'extra'\nconst obj = { serialize: () => '{}', extra: true };\npersist(obj); // OK - no excess property check on variables\n\n\n// Discriminated unions with exhaustive pattern matching\ntype Result<T, E = Error> =\n  | { status: 'success'; data: T; timestamp: number }\n  | { status: 'error'; error: E; retryable: boolean }\n  | { status: 'loading' }\n  | { status: 'idle' };\n\nfunction handleResult<T>(result: Result<T>): string {\n  switch (result.status) {\n    case 'success':\n      // TypeScript narrows to { status: 'success'; data: T; timestamp: number }\n      return `Data received at ${new Date(result.timestamp).toISOString()}`;\n    case 'error':\n      // TypeScript narrows to { status: 'error'; error: Error; retryable: boolean }\n      return result.retryable\n        ? `Retryable error: ${result.error.message}`\n        : `Fatal error: ${result.error.message}`;\n    case 'loading':\n      return 'Loading...';\n    case 'idle':\n      return 'Ready';\n    default:\n      // Exhaustiveness check: if a new status is added, this becomes a compile error\n      const _exhaustive: never = result;\n      return _exhaustive;\n  }\n}\n\n\n// Type narrowing with custom type guards\ninterface ApiSuccess<T> {\n  ok: true;\n  data: T;\n  headers: Record<string, string>;\n}\n\ninterface ApiError {\n  ok: false;\n  status: number;\n  message: string;\n}\n\ntype ApiResponse<T> = ApiSuccess<T> | ApiError;\n\n// Type predicate function\nfunction isSuccess<T>(response: ApiResponse<T>): response is ApiSuccess<T> {\n  return response.ok === true;\n}\n\n// Assertion function (throws if condition fails)\nfunction assertDefined<T>(value: T | null | undefined, name: string): asserts value is T {\n  if (value === null || value === undefined) {\n    throw new Error(`Expected ${name} to be defined, got ${value}`);\n  }\n}\n\nasync function fetchUser(id: string): Promise<ApiResponse<{ name: string; email: string }>> {\n  const response = await fetch(`/api/users/${id}`);\n  if (!response.ok) {\n    return { ok: false, status: response.status, message: response.statusText };\n  }\n  const data = await response.json();\n  return { ok: true, data, headers: Object.fromEntries(response.headers) };\n}\n\nasync function displayUser(id: string): Promise<void> {\n  const result = await fetchUser(id);\n\n  if (isSuccess(result)) {\n    // TypeScript knows result is ApiSuccess here\n    console.log(result.data.name, result.data.email);\n    console.log('ETag:', result.headers['etag']);\n  } else {\n    // TypeScript knows result is ApiError here\n    console.error(`Error ${result.status}: ${result.message}`);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// The unknown type: safe handling of external data\nfunction parseJSON(input: string): unknown {\n  return JSON.parse(input);\n}\n\n// Type guard for runtime validation of unknown data\ninterface UserProfile {\n  id: string;\n  name: string;\n  age: number;\n  preferences: {\n    theme: 'light' | 'dark';\n    notifications: boolean;\n  };\n}\n\nfunction isUserProfile(value: unknown): value is UserProfile {\n  if (typeof value !== 'object' || value === null) return false;\n  const obj = value as Record<string, unknown>;\n\n  if (typeof obj.id !== 'string') return false;\n  if (typeof obj.name !== 'string') return false;\n  if (typeof obj.age !== 'number') return false;\n  if (typeof obj.preferences !== 'object' || obj.preferences === null) return false;\n\n  const prefs = obj.preferences as Record<string, unknown>;\n  if (prefs.theme !== 'light' && prefs.theme !== 'dark') return false;\n  if (typeof prefs.notifications !== 'boolean') return false;\n\n  return true;\n}\n\n// Usage: safely processing external data\nfunction loadUserFromStorage(): UserProfile | null {\n  const raw = localStorage.getItem('user');\n  if (!raw) return null;\n\n  const parsed = parseJSON(raw);\n  if (isUserProfile(parsed)) {\n    return parsed; // TypeScript knows this is UserProfile\n  }\n\n  console.warn('Invalid user data in storage, clearing');\n  localStorage.removeItem('user');\n  return null;\n}\n\n\n// Literal types and const assertions\nconst DIRECTIONS = ['north', 'south', 'east', 'west'] as const;\ntype Direction = typeof DIRECTIONS[number]; // 'north' | 'south' | 'east' | 'west'\n\nconst HTTP_METHODS = {\n  GET: 'GET',\n  POST: 'POST',\n  PUT: 'PUT',\n  DELETE: 'DELETE',\n} as const;\ntype HttpMethod = typeof HTTP_METHODS[keyof typeof HTTP_METHODS];\n// 'GET' | 'POST' | 'PUT' | 'DELETE'\n\n// Without as const, this would be typed as { method: string; url: string }\nconst request = {\n  method: 'GET',\n  url: '/api/users',\n} as const;\n// Type: { readonly method: \"GET\"; readonly url: \"/api/users\" }\n\n// Intersection types for composing object shapes\ninterface Timestamped {\n  createdAt: Date;\n  updatedAt: Date;\n}\n\ninterface SoftDeletable {\n  deletedAt: Date | null;\n  isDeleted: boolean;\n}\n\ninterface Auditable {\n  createdBy: string;\n  updatedBy: string;\n}\n\n// Compose multiple concerns into a single type\ntype AuditedEntity = Timestamped & SoftDeletable & Auditable;\n\ninterface Order {\n  id: string;\n  items: Array<{ productId: string; quantity: number }>;\n  total: number;\n}\n\n// Full order entity with all audit fields\ntype AuditedOrder = Order & AuditedEntity;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/typescript/type-system-fundamentals.md",
+    "wordCount": 1891,
+    "sectionCount": 8
+  }
+}

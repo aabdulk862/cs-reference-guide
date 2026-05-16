@@ -1,0 +1,249 @@
+{
+  "id": "system-design-distributed-systems",
+  "slug": "distributed-systems",
+  "title": "Distributed Systems",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A distributed system is a collection of independent computers that appears to users as a single coherent system, communicating over an unreliable network",
+            "Partial failures are the defining challenge: some components fail while others continue operating, making correctness reasoning fundamentally harder than single-machine programs",
+            "The Eight Fallacies of Distributed Computing (network is reliable, latency is zero, bandwidth is infinite, etc.) describe assumptions that cause production failures",
+            "Key building blocks: RPCs, message queues, consensus protocols, gossip protocols, service discovery, circuit breakers, and idempotency mechanisms",
+            "FLP impossibility theorem proves that no deterministic consensus algorithm can guarantee termination in an asynchronous system with even one faulty process",
+            "Byzantine fault tolerance handles nodes that behave arbitrarily (including maliciously), while crash-fault tolerance only handles nodes that stop responding",
+            "Exactly-once semantics are impossible in distributed systems; at-most-once and at-least-once with idempotency are the practical alternatives"
+          ]
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Distributed systems knowledge applies whenever your application outgrows a single server's capacity, requires fault tolerance beyond what one machine provides, or needs geographic distribution to reduce latency for global users. You need distributed systems fundamentals when designing microservice architectures where services communicate over the network, when implementing event-driven systems with message brokers, when building data pipelines that process information across multiple nodes, or when architecting systems that must maintain availability during hardware failures, network partitions, or datacenter outages. Understanding these concepts is essential for system design interviews at senior levels, where candidates must reason about failure modes, coordination challenges, and the inherent tradeoffs of distributing computation and data across multiple machines."
+        }
+      ],
+      "wordCount": 111,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "implementing-idempotent-operations-with-idempotency-keys",
+          "heading": "Implementing Idempotent Operations with Idempotency Keys",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\npublic class PaymentService {\n    private final PaymentRepository paymentRepository;\n    private final IdempotencyKeyStore idempotencyStore;\n    private final PaymentGateway gateway;\n\n    public PaymentService(PaymentRepository paymentRepository,\n                          IdempotencyKeyStore idempotencyStore,\n                          PaymentGateway gateway) {\n        this.paymentRepository = paymentRepository;\n        this.idempotencyStore = idempotencyStore;\n        this.gateway = gateway;\n    }\n\n    /**\n     * Process payment with idempotency guarantee.\n     * If the same idempotencyKey is submitted multiple times,\n     * only the first request is processed; subsequent requests\n     * return the cached result.\n     */\n    public PaymentResult processPayment(String idempotencyKey, PaymentRequest request) {\n        // Check if this request was already processed\n        Optional<PaymentResult> cached = idempotencyStore.get(idempotencyKey);\n        if (cached.isPresent()) {\n            return cached.get(); // Return cached result for duplicate request\n        }\n\n        // Acquire a lock on the idempotency key to prevent concurrent processing\n        boolean acquired = idempotencyStore.tryLock(idempotencyKey, Duration.ofSeconds(30));\n        if (!acquired) {\n            throw new ConcurrentRequestException(\n                \"Request with key \" + idempotencyKey + \" is already being processed\"\n            );\n        }\n\n        try {\n            // Double-check after acquiring lock\n            cached = idempotencyStore.get(idempotencyKey);\n            if (cached.isPresent()) {\n                return cached.get();\n            }\n\n            // Process the payment\n            PaymentResult result = gateway.charge(request);\n            Payment payment = new Payment(\n                UUID.randomUUID().toString(),\n                request.getAmount(),\n                request.getCurrency(),\n                result.getStatus(),\n                Instant.now()\n            );\n            paymentRepository.save(payment);\n\n            // Store result for future duplicate detection\n            idempotencyStore.put(idempotencyKey, result, Duration.ofHours(24));\n            return result;\n        } finally {\n            idempotencyStore.releaseLock(idempotencyKey);\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "circuit-breaker-pattern-implementation",
+          "heading": "Circuit Breaker Pattern Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "enum CircuitState {\n  CLOSED = 'CLOSED',     // Normal operation, requests pass through\n  OPEN = 'OPEN',         // Failing, requests are rejected immediately\n  HALF_OPEN = 'HALF_OPEN' // Testing if service recovered\n}\n\ninterface CircuitBreakerConfig {\n  failureThreshold: number;    // Number of failures before opening\n  recoveryTimeout: number;     // Milliseconds before trying half-open\n  successThreshold: number;    // Successes in half-open before closing\n  timeout: number;             // Request timeout in milliseconds\n}\n\nclass CircuitBreaker {\n  private state: CircuitState = CircuitState.CLOSED;\n  private failureCount = 0;\n  private successCount = 0;\n  private lastFailureTime = 0;\n  private readonly config: CircuitBreakerConfig;\n\n  constructor(config: CircuitBreakerConfig) {\n    this.config = config;\n  }\n\n  async execute<T>(operation: () => Promise<T>): Promise<T> {\n    if (this.state === CircuitState.OPEN) {\n      if (Date.now() - this.lastFailureTime >= this.config.recoveryTimeout) {\n        this.state = CircuitState.HALF_OPEN;\n        this.successCount = 0;\n      } else {\n        throw new CircuitOpenError(\n          `Circuit is open. Retry after ${this.config.recoveryTimeout}ms`\n        );\n      }\n    }\n\n    try {\n      const result = await this.withTimeout(operation, this.config.timeout);\n      this.onSuccess();\n      return result;\n    } catch (error) {\n      this.onFailure();\n      throw error;\n    }\n  }\n\n  private onSuccess(): void {\n    this.failureCount = 0;\n    if (this.state === CircuitState.HALF_OPEN) {\n      this.successCount++;\n      if (this.successCount >= this.config.successThreshold) {\n        this.state = CircuitState.CLOSED;\n      }\n    }\n  }\n\n  private onFailure(): void {\n    this.failureCount++;\n    this.lastFailureTime = Date.now();\n    if (this.failureCount >= this.config.failureThreshold) {\n      this.state = CircuitState.OPEN;\n    }\n  }\n\n  private withTimeout<T>(operation: () => Promise<T>, ms: number): Promise<T> {\n    return Promise.race([\n      operation(),\n      new Promise<never>((_, reject) =>\n        setTimeout(() => reject(new TimeoutError(`Operation timed out after ${ms}ms`)), ms)\n      )\n    ]);\n  }\n\n  getState(): CircuitState {\n    return this.state;\n  }\n}\n\n// Usage\nconst breaker = new CircuitBreaker({\n  failureThreshold: 5,\n  recoveryTimeout: 30000,\n  successThreshold: 3,\n  timeout: 5000\n});\n\nasync function callExternalService(userId: string): Promise<UserData> {\n  return breaker.execute(async () => {\n    const response = await fetch(`https://api.example.com/users/${userId}`);\n    if (!response.ok) throw new Error(`HTTP ${response.status}`);\n    return response.json();\n  });\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "gossip-protocol-for-failure-detection",
+          "heading": "Gossip Protocol for Failure Detection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class GossipFailureDetector {\n    private final Map<String, NodeState> membershipList = new ConcurrentHashMap<>();\n    private final String selfId;\n    private final int gossipInterval;  // milliseconds\n    private final int suspicionTimeout; // milliseconds\n    private final Random random = new Random();\n\n    public GossipFailureDetector(String selfId, int gossipInterval, int suspicionTimeout) {\n        this.selfId = selfId;\n        this.gossipInterval = gossipInterval;\n        this.suspicionTimeout = suspicionTimeout;\n        membershipList.put(selfId, new NodeState(selfId, 0, NodeStatus.ALIVE, Instant.now()));\n    }\n\n    /**\n     * Periodically called to gossip with a random peer.\n     * Sends our membership list and merges the response.\n     */\n    public void gossipRound() {\n        // Increment own heartbeat\n        NodeState self = membershipList.get(selfId);\n        self.incrementHeartbeat();\n\n        // Select random peer to gossip with\n        List<String> peers = membershipList.keySet().stream()\n            .filter(id -> !id.equals(selfId))\n            .filter(id -> membershipList.get(id).getStatus() != NodeStatus.DEAD)\n            .collect(Collectors.toList());\n\n        if (peers.isEmpty()) return;\n\n        String target = peers.get(random.nextInt(peers.size()));\n        NodeState targetState = membershipList.get(target);\n\n        // Send gossip message (in production, this would be a network call)\n        GossipMessage message = new GossipMessage(selfId, new HashMap<>(membershipList));\n        GossipMessage response = sendGossip(targetState.getAddress(), message);\n\n        // Merge received membership list\n        if (response != null) {\n            mergeMembershipList(response.getMembershipList());\n        }\n\n        // Check for suspected/dead nodes\n        detectFailures();\n    }\n\n    private void mergeMembershipList(Map<String, NodeState> received) {\n        for (Map.Entry<String, NodeState> entry : received.entrySet()) {\n            String nodeId = entry.getKey();\n            NodeState remoteState = entry.getValue();\n            NodeState localState = membershipList.get(nodeId);\n\n            if (localState == null) {\n                // New node discovered\n                membershipList.put(nodeId, remoteState);\n            } else if (remoteState.getHeartbeat() > localState.getHeartbeat()) {\n                // Remote has newer information\n                localState.updateFrom(remoteState);\n            }\n        }\n    }\n\n    private void detectFailures() {\n        Instant now = Instant.now();\n        for (Map.Entry<String, NodeState> entry : membershipList.entrySet()) {\n            if (entry.getKey().equals(selfId)) continue;\n\n            NodeState state = entry.getValue();\n            Duration sinceLastUpdate = Duration.between(state.getLastUpdated(), now);\n\n            if (sinceLastUpdate.toMillis() > suspicionTimeout * 2) {\n                state.setStatus(NodeStatus.DEAD);\n            } else if (sinceLastUpdate.toMillis() > suspicionTimeout) {\n                state.setStatus(NodeStatus.SUSPECTED);\n            }\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Treating network calls like local function calls: network calls can fail silently, return stale data, arrive out of order, or take arbitrarily long. Every remote call needs timeout handling, retry logic, and failure semantics that local calls do not require.",
+            "Assuming clocks are synchronized: physical clocks on different machines drift apart. Using wall-clock timestamps for ordering events across nodes leads to subtle bugs. Use logical clocks (Lamport timestamps, vector clocks) or hybrid logical clocks for causal ordering.",
+            "Not implementing idempotency: when a client retries a request because it did not receive a response (the request may have succeeded but the response was lost), non-idempotent operations execute twice. Every mutating operation in a distributed system should be idempotent or use idempotency keys.",
+            "Ignoring partial failures in error handling: catching a generic exception and retrying the entire operation can cause duplicate side effects. Distinguish between transient failures (retry is safe), permanent failures (retry is pointless), and ambiguous failures (need idempotency check before retry).",
+            "Synchronous chains of service calls: when Service A calls B which calls C which calls D, the overall availability is the product of individual availabilities (0.99^4 = 0.96). Use asynchronous messaging, event-driven architectures, or choreography to break synchronous chains.",
+            "Not planning for split-brain scenarios: when network partitions occur, different parts of the system may independently elect leaders or accept writes. Without proper fencing tokens or consensus protocols, split-brain leads to data corruption that is extremely difficult to repair.",
+            "Underestimating the blast radius of shared dependencies: a single overloaded database, a misconfigured DNS server, or a certificate expiration can take down dozens of services simultaneously. Map your dependency graph and identify single points of failure."
+          ]
+        }
+      ],
+      "wordCount": 275,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Netflix Microservices Architecture: Netflix operates over 1000 microservices communicating via RPCs and asynchronous events. Their Hystrix library (now replaced by Resilience4j) pioneered the circuit breaker pattern at scale. When a downstream service becomes slow, circuit breakers prevent thread pool exhaustion in upstream services, allowing graceful degradation where some features become unavailable while the core streaming experience continues. Their Eureka service discovery system uses gossip-based replication so that service registry data is eventually consistent across all nodes, prioritizing availability over consistency for service lookup."
+        },
+        {
+          "type": "paragraph",
+          "text": "Google Spanner: Google's globally distributed database achieves external consistency (the strongest form of consistency) across datacenters using TrueTime, a clock synchronization system that provides bounded uncertainty intervals. Spanner waits out the uncertainty interval before committing transactions, guaranteeing that if transaction T1 commits before T2 starts, T1's commit timestamp is less than T2's. This demonstrates how solving the clock synchronization problem enables stronger consistency guarantees than what typical distributed systems achieve."
+        },
+        {
+          "type": "paragraph",
+          "text": "Amazon DynamoDB: DynamoDB uses consistent hashing for data partitioning, with each partition replicated across three availability zones using a quorum-based protocol. Write operations require acknowledgment from two of three replicas before returning success. During network partitions, DynamoDB prioritizes availability by allowing conflicting writes that are later resolved using vector clocks and application-defined conflict resolution. The system demonstrates the AP side of CAP theorem with mechanisms for eventual convergence."
+        },
+        {
+          "type": "paragraph",
+          "text": "Uber's Ringpop: Uber built Ringpop, a library implementing SWIM (Scalable Weakly-consistent Infection-style Membership) protocol for failure detection and consistent hashing for request routing. Each service instance maintains a membership list updated via gossip, enabling decentralized load balancing without a central coordinator. When a node fails, the gossip protocol detects the failure within seconds and redistributes its hash ring responsibilities to surviving nodes."
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a distributed rate limiter that works across multiple application servers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a sliding window counter stored in a distributed cache (Redis) with atomic increment operations. Each request increments a counter keyed by {user_id}:{window_start}. The window slides by maintaining counters for the current and previous time windows, computing the weighted count. For high throughput, use local token buckets that periodically sync with the central store, accepting slight over-limit tolerance for reduced coordination. The tradeoff is between accuracy (checking Redis on every request adds latency) and performance (local counters may allow brief bursts above the limit)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between at-most-once, at-least-once, and exactly-once delivery semantics."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: At-most-once means messages may be lost but never duplicated (fire-and-forget with no retries). At-least-once means messages are never lost but may be duplicated (sender retries until acknowledged). Exactly-once is technically impossible in distributed systems due to the Two Generals Problem, but can be approximated by combining at-least-once delivery with idempotent processing (deduplication on the consumer side using unique message IDs). Kafka achieves \"effectively exactly-once\" within its ecosystem by combining idempotent producers, transactional writes, and consumer offset management in a single atomic operation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the split-brain problem and how do you prevent it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Split-brain occurs when a network partition divides a cluster into two or more groups, each believing it is the sole active group. Both sides may elect leaders and accept writes, causing divergent state that is difficult to reconcile. Prevention strategies include: quorum-based decisions (only the partition with majority of nodes can operate), fencing tokens (monotonically increasing tokens that storage systems use to reject stale leaders), and STONITH (Shoot The Other Node In The Head) where a node that cannot confirm it holds leadership powers off the other node via out-of-band mechanism."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does service discovery work in a microservices architecture, and what are the tradeoffs between client-side and server-side discovery?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Client-side discovery (Eureka, Consul with client library) has each client query the service registry and load-balance across instances directly. This eliminates a network hop but couples clients to the discovery mechanism. Server-side discovery (AWS ALB, Kubernetes Services) places a load balancer between client and service instances; the client sends requests to a single endpoint and the infrastructure handles routing. This is simpler for clients but adds latency and a potential single point of failure. Hybrid approaches use DNS-based discovery with short TTLs for the initial lookup and client-side caching for subsequent requests."
+        }
+      ],
+      "wordCount": 411,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement structured logging with correlation IDs that propagate across service boundaries. When a request flows through five services, a single correlation ID lets you trace the entire path in your log aggregation system. Use OpenTelemetry for standardized distributed tracing.",
+            "Design all inter-service communication with explicit timeouts, retries with exponential backoff and jitter, and circuit breakers. A reasonable starting configuration: 5-second timeout, 3 retries with base delay of 100ms and full jitter, circuit opens after 50% failure rate over 10-second window.",
+            "Use health check endpoints that distinguish between liveness (process is running) and readiness (process can serve traffic). A service that is alive but not ready (warming caches, loading configuration) should not receive traffic from the load balancer but should not be restarted by the orchestrator.",
+            "Implement graceful shutdown: when receiving SIGTERM, stop accepting new requests, finish in-flight requests (with a deadline), close database connections, and flush metrics. Kubernetes sends SIGTERM 30 seconds before SIGKILL by default; ensure your shutdown completes within this window.",
+            "Monitor the four golden signals for every service: latency (response time distribution), traffic (requests per second), errors (error rate), and saturation (resource utilization). Alert on symptoms (elevated error rate) rather than causes (high CPU), and use dashboards to investigate causes after alerts fire."
+          ]
+        }
+      ],
+      "wordCount": 206,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Consistency Models — Deep dive into CAP theorem and consistency guarantees that govern distributed data stores",
+            "Scalability — Patterns for growing distributed systems horizontally while maintaining performance",
+            "Design Patterns — Microservice patterns (saga, CQRS, event sourcing) that build on distributed systems fundamentals",
+            "Networking — TCP/IP, DNS, and network protocols that form the transport layer for distributed communication"
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Service\npublic class PaymentService {\n    private final PaymentRepository paymentRepository;\n    private final IdempotencyKeyStore idempotencyStore;\n    private final PaymentGateway gateway;\n\n    public PaymentService(PaymentRepository paymentRepository,\n                          IdempotencyKeyStore idempotencyStore,\n                          PaymentGateway gateway) {\n        this.paymentRepository = paymentRepository;\n        this.idempotencyStore = idempotencyStore;\n        this.gateway = gateway;\n    }\n\n    /**\n     * Process payment with idempotency guarantee.\n     * If the same idempotencyKey is submitted multiple times,\n     * only the first request is processed; subsequent requests\n     * return the cached result.\n     */\n    public PaymentResult processPayment(String idempotencyKey, PaymentRequest request) {\n        // Check if this request was already processed\n        Optional<PaymentResult> cached = idempotencyStore.get(idempotencyKey);\n        if (cached.isPresent()) {\n            return cached.get(); // Return cached result for duplicate request\n        }\n\n        // Acquire a lock on the idempotency key to prevent concurrent processing\n        boolean acquired = idempotencyStore.tryLock(idempotencyKey, Duration.ofSeconds(30));\n        if (!acquired) {\n            throw new ConcurrentRequestException(\n                \"Request with key \" + idempotencyKey + \" is already being processed\"\n            );\n        }\n\n        try {\n            // Double-check after acquiring lock\n            cached = idempotencyStore.get(idempotencyKey);\n            if (cached.isPresent()) {\n                return cached.get();\n            }\n\n            // Process the payment\n            PaymentResult result = gateway.charge(request);\n            Payment payment = new Payment(\n                UUID.randomUUID().toString(),\n                request.getAmount(),\n                request.getCurrency(),\n                result.getStatus(),\n                Instant.now()\n            );\n            paymentRepository.save(payment);\n\n            // Store result for future duplicate detection\n            idempotencyStore.put(idempotencyKey, result, Duration.ofHours(24));\n            return result;\n        } finally {\n            idempotencyStore.releaseLock(idempotencyKey);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "enum CircuitState {\n  CLOSED = 'CLOSED',     // Normal operation, requests pass through\n  OPEN = 'OPEN',         // Failing, requests are rejected immediately\n  HALF_OPEN = 'HALF_OPEN' // Testing if service recovered\n}\n\ninterface CircuitBreakerConfig {\n  failureThreshold: number;    // Number of failures before opening\n  recoveryTimeout: number;     // Milliseconds before trying half-open\n  successThreshold: number;    // Successes in half-open before closing\n  timeout: number;             // Request timeout in milliseconds\n}\n\nclass CircuitBreaker {\n  private state: CircuitState = CircuitState.CLOSED;\n  private failureCount = 0;\n  private successCount = 0;\n  private lastFailureTime = 0;\n  private readonly config: CircuitBreakerConfig;\n\n  constructor(config: CircuitBreakerConfig) {\n    this.config = config;\n  }\n\n  async execute<T>(operation: () => Promise<T>): Promise<T> {\n    if (this.state === CircuitState.OPEN) {\n      if (Date.now() - this.lastFailureTime >= this.config.recoveryTimeout) {\n        this.state = CircuitState.HALF_OPEN;\n        this.successCount = 0;\n      } else {\n        throw new CircuitOpenError(\n          `Circuit is open. Retry after ${this.config.recoveryTimeout}ms`\n        );\n      }\n    }\n\n    try {\n      const result = await this.withTimeout(operation, this.config.timeout);\n      this.onSuccess();\n      return result;\n    } catch (error) {\n      this.onFailure();\n      throw error;\n    }\n  }\n\n  private onSuccess(): void {\n    this.failureCount = 0;\n    if (this.state === CircuitState.HALF_OPEN) {\n      this.successCount++;\n      if (this.successCount >= this.config.successThreshold) {\n        this.state = CircuitState.CLOSED;\n      }\n    }\n  }\n\n  private onFailure(): void {\n    this.failureCount++;\n    this.lastFailureTime = Date.now();\n    if (this.failureCount >= this.config.failureThreshold) {\n      this.state = CircuitState.OPEN;\n    }\n  }\n\n  private withTimeout<T>(operation: () => Promise<T>, ms: number): Promise<T> {\n    return Promise.race([\n      operation(),\n      new Promise<never>((_, reject) =>\n        setTimeout(() => reject(new TimeoutError(`Operation timed out after ${ms}ms`)), ms)\n      )\n    ]);\n  }\n\n  getState(): CircuitState {\n    return this.state;\n  }\n}\n\n// Usage\nconst breaker = new CircuitBreaker({\n  failureThreshold: 5,\n  recoveryTimeout: 30000,\n  successThreshold: 3,\n  timeout: 5000\n});\n\nasync function callExternalService(userId: string): Promise<UserData> {\n  return breaker.execute(async () => {\n    const response = await fetch(`https://api.example.com/users/${userId}`);\n    if (!response.ok) throw new Error(`HTTP ${response.status}`);\n    return response.json();\n  });\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class GossipFailureDetector {\n    private final Map<String, NodeState> membershipList = new ConcurrentHashMap<>();\n    private final String selfId;\n    private final int gossipInterval;  // milliseconds\n    private final int suspicionTimeout; // milliseconds\n    private final Random random = new Random();\n\n    public GossipFailureDetector(String selfId, int gossipInterval, int suspicionTimeout) {\n        this.selfId = selfId;\n        this.gossipInterval = gossipInterval;\n        this.suspicionTimeout = suspicionTimeout;\n        membershipList.put(selfId, new NodeState(selfId, 0, NodeStatus.ALIVE, Instant.now()));\n    }\n\n    /**\n     * Periodically called to gossip with a random peer.\n     * Sends our membership list and merges the response.\n     */\n    public void gossipRound() {\n        // Increment own heartbeat\n        NodeState self = membershipList.get(selfId);\n        self.incrementHeartbeat();\n\n        // Select random peer to gossip with\n        List<String> peers = membershipList.keySet().stream()\n            .filter(id -> !id.equals(selfId))\n            .filter(id -> membershipList.get(id).getStatus() != NodeStatus.DEAD)\n            .collect(Collectors.toList());\n\n        if (peers.isEmpty()) return;\n\n        String target = peers.get(random.nextInt(peers.size()));\n        NodeState targetState = membershipList.get(target);\n\n        // Send gossip message (in production, this would be a network call)\n        GossipMessage message = new GossipMessage(selfId, new HashMap<>(membershipList));\n        GossipMessage response = sendGossip(targetState.getAddress(), message);\n\n        // Merge received membership list\n        if (response != null) {\n            mergeMembershipList(response.getMembershipList());\n        }\n\n        // Check for suspected/dead nodes\n        detectFailures();\n    }\n\n    private void mergeMembershipList(Map<String, NodeState> received) {\n        for (Map.Entry<String, NodeState> entry : received.entrySet()) {\n            String nodeId = entry.getKey();\n            NodeState remoteState = entry.getValue();\n            NodeState localState = membershipList.get(nodeId);\n\n            if (localState == null) {\n                // New node discovered\n                membershipList.put(nodeId, remoteState);\n            } else if (remoteState.getHeartbeat() > localState.getHeartbeat()) {\n                // Remote has newer information\n                localState.updateFrom(remoteState);\n            }\n        }\n    }\n\n    private void detectFailures() {\n        Instant now = Instant.now();\n        for (Map.Entry<String, NodeState> entry : membershipList.entrySet()) {\n            if (entry.getKey().equals(selfId)) continue;\n\n            NodeState state = entry.getValue();\n            Duration sinceLastUpdate = Duration.between(state.getLastUpdated(), now);\n\n            if (sinceLastUpdate.toMillis() > suspicionTimeout * 2) {\n                state.setStatus(NodeStatus.DEAD);\n            } else if (sinceLastUpdate.toMillis() > suspicionTimeout) {\n                state.setStatus(NodeStatus.SUSPECTED);\n            }\n        }\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design/distributed-systems.md",
+    "wordCount": 1482,
+    "sectionCount": 11
+  }
+}

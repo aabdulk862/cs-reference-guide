@@ -5,403 +5,55 @@
   "category": "System Design",
   "sections": [
     {
-      "id": "quick-reference",
-      "heading": "Quick Reference",
+      "id": "content",
+      "heading": "System Design",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "System design is the discipline of defining the architecture, components, modules, interfaces, and data flows of a system to satisfy specified requirements at scale. It bridges the gap between abstract requirements and concrete implementation by addressing how software systems handle millions of users, terabytes of data, and continuous availability demands. The field encompasses distributed computing fundamentals, data storage and retrieval patterns, network communication protocols, and the operational concerns that emerge when systems grow beyond a single machine."
+        },
+        {
+          "type": "paragraph",
+          "text": "For senior engineers and interview candidates, system design requires reasoning about tradeoffs rather than memorizing solutions. Every architectural decision involves balancing consistency against availability, latency against throughput, simplicity against flexibility, and cost against performance. The ability to articulate these tradeoffs clearly, justify decisions with quantitative reasoning, and adapt designs to changing requirements distinguishes senior engineers from those who simply implement prescribed architectures."
+        },
+        {
+          "type": "paragraph",
+          "text": "This guide covers the foundational concepts that underpin all large-scale system design, organized as a progressive learning path from fundamentals through specialized topics."
+        }
+      ],
+      "wordCount": 162,
+      "subsections": []
+    },
+    {
+      "id": "learning-path",
+      "heading": "Learning Path",
       "level": 2,
       "content": [
         {
           "type": "list",
-          "ordered": false,
+          "ordered": true,
           "items": [
-            "CAP theorem: a distributed system can guarantee at most two of Consistency, Availability, and Partition tolerance simultaneously",
-            "Horizontal scaling adds more machines; vertical scaling adds more resources to existing machines",
-            "Consistency models range from strong (linearizability) to weak (eventual consistency) with tradeoffs in latency and availability",
-            "Database sharding partitions data across multiple nodes using a shard key; poor key selection causes hot spots",
-            "Caching layers (L1 CPU → application cache → distributed cache → CDN) reduce latency by orders of magnitude",
-            "Replication strategies: single-leader, multi-leader, leaderless (quorum-based)",
-            "Consensus algorithms (Raft, Paxos) solve leader election and state machine replication in the presence of failures",
-            "Back-of-the-envelope estimation: know latency numbers (L1 cache 0.5ns, RAM 100ns, SSD 150μs, network round-trip 500μs, disk seek 10ms)",
-            "Design interviews evaluate tradeoff reasoning, not memorized architectures"
+            "Distributed Systems — Fundamentals of distributed computing, failure modes, and coordination primitives",
+            "Consistency Models — CAP theorem, consistency guarantees, and choosing the right model",
+            "Scalability — Horizontal and vertical scaling patterns, stateless design, and capacity planning",
+            "Load Balancing — Traffic distribution algorithms, health checking, and high availability",
+            "Caching — Cache hierarchies, invalidation strategies, and distributed cache patterns",
+            "Database Sharding — Data partitioning strategies, shard key selection, and operational concerns"
           ]
         }
       ],
-      "wordCount": 129,
-      "subsections": []
-    },
-    {
-      "id": "when-to-use",
-      "heading": "When to Use",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "System design knowledge is essential when architecting applications that must serve millions of users, handle terabytes of data, or maintain availability during partial failures. Apply distributed systems fundamentals when your application outgrows a single server, when you need fault tolerance beyond what a single machine provides, or when geographic distribution requires data to be closer to users. Understanding CAP theorem tradeoffs is critical when choosing between databases, designing replication strategies, or deciding how your system behaves during network partitions. Horizontal scaling patterns apply when traffic is unpredictable or growing beyond vertical limits. Database sharding becomes necessary when a single database instance cannot handle the write throughput or storage requirements. Caching strategies are relevant for any system where read-heavy workloads dominate and acceptable staleness windows exist. These concepts form the foundation of system design interviews at senior engineering levels, where candidates must articulate tradeoffs between consistency, availability, latency, throughput, and operational complexity."
-        }
-      ],
-      "wordCount": 151,
-      "subsections": []
-    },
-    {
-      "id": "distributed-systems-fundamentals",
-      "heading": "Distributed Systems Fundamentals",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "A distributed system is a collection of independent computers that appears to its users as a single coherent system. The fundamental challenge is that these machines communicate over an unreliable network where messages can be lost, delayed, duplicated, or delivered out of order. Unlike single-machine programs where failures are total (the machine either works or it does not), distributed systems experience partial failures where some components fail while others continue operating. This makes reasoning about correctness significantly harder because you cannot determine whether a remote node has crashed or is simply slow to respond."
-        },
-        {
-          "type": "paragraph",
-          "text": "The Eight Fallacies of Distributed Computing describe assumptions that developers incorrectly make: the network is reliable, latency is zero, bandwidth is infinite, the network is secure, topology does not change, there is one administrator, transport cost is zero, and the network is homogeneous. Violating these assumptions leads to systems that work in development but fail catastrophically in production. Real distributed systems must handle network partitions, clock skew between nodes, split-brain scenarios, and cascading failures where one component's failure triggers failures in dependent components."
-        },
-        {
-          "type": "paragraph",
-          "text": "Key building blocks include remote procedure calls (RPCs) for inter-service communication, message queues for asynchronous decoupling, distributed consensus for coordination, and gossip protocols for membership and failure detection. Service discovery mechanisms (DNS, Consul, etcd) allow services to find each other without hardcoded addresses. Circuit breakers prevent cascading failures by failing fast when downstream services are unhealthy. Idempotency ensures that retried operations produce the same result, which is essential when network failures make it impossible to know whether a request was processed."
-        }
-      ],
-      "wordCount": 258,
-      "subsections": []
-    },
-    {
-      "id": "cap-theorem",
-      "heading": "CAP Theorem",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "The CAP theorem, proven by Eric Brewer and formalized by Gilbert and Lynch, states that a distributed data store cannot simultaneously provide more than two of three guarantees: Consistency (every read receives the most recent write or an error), Availability (every request receives a non-error response without guarantee of the most recent write), and Partition tolerance (the system continues to operate despite network partitions between nodes). Since network partitions are inevitable in any distributed system, the practical choice is between CP (consistency over availability during partitions) and AP (availability over consistency during partitions)."
-        },
-        {
-          "type": "paragraph",
-          "text": "CP systems like ZooKeeper, etcd, and HBase prioritize consistency by refusing to serve requests when they cannot guarantee the data is up-to-date. During a network partition, nodes that cannot communicate with the majority will reject reads and writes rather than risk serving stale data. This is appropriate for coordination services, distributed locks, and financial systems where incorrect data is worse than unavailability."
-        },
-        {
-          "type": "paragraph",
-          "text": "AP systems like Cassandra, DynamoDB, and CouchDB prioritize availability by serving requests even when nodes cannot communicate. During partitions, different nodes may serve different versions of the data, leading to temporary inconsistency that is resolved after the partition heals through conflict resolution mechanisms (last-write-wins, vector clocks, CRDTs). This is appropriate for shopping carts, social media feeds, and DNS where temporary staleness is acceptable but downtime is not."
-        },
-        {
-          "type": "paragraph",
-          "text": "It is important to understand that CAP is not a binary choice made once for an entire system. Different components within the same system can make different tradeoffs. A user profile service might choose AP (eventual consistency is fine for display names) while a payment service chooses CP (double-charging is unacceptable). The PACELC theorem extends CAP by noting that even when there is no partition, there is a tradeoff between latency and consistency."
-        }
-      ],
-      "wordCount": 295,
-      "subsections": []
-    },
-    {
-      "id": "consistency-models",
-      "heading": "Consistency Models",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Consistency models define the contract between a distributed data store and its clients regarding the order and visibility of operations. Strong consistency (linearizability) guarantees that all operations appear to execute atomically in some sequential order consistent with real-time ordering. This means a read always returns the value of the most recent completed write, regardless of which replica serves the request. Linearizability is expensive because it requires coordination between replicas on every operation, typically through consensus protocols."
-        },
-        {
-          "type": "paragraph",
-          "text": "Sequential consistency relaxes linearizability by requiring that operations appear in some sequential order consistent with the program order of each individual client, but not necessarily consistent with real-time ordering. Causal consistency preserves the ordering of causally related operations (if operation A could have influenced operation B, then all nodes see A before B) while allowing concurrent operations to be observed in different orders by different nodes. This is implemented using vector clocks or Lamport timestamps."
-        },
-        {
-          "type": "paragraph",
-          "text": "Eventual consistency is the weakest useful guarantee: if no new updates are made, all replicas will eventually converge to the same value. The convergence window depends on replication lag, network conditions, and conflict resolution strategy. Read-your-writes consistency ensures that a client always sees its own writes, even if other clients may see stale data. Monotonic reads guarantee that a client never sees time go backward (once you read a value, subsequent reads return that value or a newer one). Session consistency combines read-your-writes and monotonic reads within a single client session."
-        },
-        {
-          "type": "paragraph",
-          "text": "Choosing a consistency model involves understanding your application's tolerance for stale reads, the cost of coordination, and the failure modes that are acceptable. Stronger consistency requires more network round-trips and higher tail latency. Weaker consistency allows better performance and availability but pushes complexity to the application layer, which must handle conflicts, retries, and reconciliation."
-        }
-      ],
-      "wordCount": 296,
-      "subsections": []
-    },
-    {
-      "id": "horizontal-scaling",
-      "heading": "Horizontal Scaling",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Horizontal scaling (scaling out) adds more machines to a system to handle increased load, as opposed to vertical scaling (scaling up) which adds more CPU, memory, or storage to a single machine. Horizontal scaling is preferred for distributed systems because it offers near-linear throughput increases, eliminates single points of failure, and avoids the hard ceiling of the largest available machine. However, it introduces complexity in data distribution, coordination, and consistency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Stateless services are the easiest to scale horizontally because any instance can handle any request. Load balancers distribute traffic across instances using algorithms like round-robin, least connections, weighted distribution, or consistent hashing. Auto-scaling policies add or remove instances based on metrics like CPU utilization, request queue depth, or custom application metrics. The scaling decision involves choosing between scaling based on leading indicators (queue depth growing) versus lagging indicators (CPU already saturated)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Stateful services are harder to scale because each instance holds data that may be needed by requests routed to other instances. Strategies include sticky sessions (routing all requests from a client to the same instance), shared state stores (Redis, Memcached), and data partitioning (sharding). Database scaling typically combines read replicas for read-heavy workloads with sharding for write-heavy workloads. Connection pooling (PgBouncer, ProxySQL) prevents database connection exhaustion as application instances scale."
-        },
-        {
-          "type": "paragraph",
-          "text": "The scaling architecture must account for thundering herd problems (all instances simultaneously retrying after a failure), cold start latency (new instances need time to warm caches and JIT-compile), and graceful degradation (shedding load intentionally rather than failing completely). Capacity planning uses load testing to determine the relationship between instance count, traffic volume, and response latency, establishing scaling thresholds before production traffic arrives."
-        }
-      ],
-      "wordCount": 273,
-      "subsections": []
-    },
-    {
-      "id": "database-sharding",
-      "heading": "Database Sharding",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Database sharding horizontally partitions data across multiple database instances (shards), where each shard holds a subset of the total data. Sharding becomes necessary when a single database instance cannot handle the write throughput, storage volume, or query load required by the application. Each shard operates independently, allowing the system to scale write capacity linearly with the number of shards."
-        },
-        {
-          "type": "paragraph",
-          "text": "The shard key determines how data is distributed across shards. A good shard key distributes data evenly (avoiding hot spots), aligns with query patterns (most queries hit a single shard), and grows monotonically with the data (new data spreads across shards). Common strategies include hash-based sharding (consistent hashing of the key distributes data uniformly), range-based sharding (contiguous key ranges map to shards, enabling range queries), and directory-based sharding (a lookup table maps keys to shards, offering flexibility at the cost of an additional lookup)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Cross-shard queries are expensive because they require scatter-gather across multiple shards and merging results. Cross-shard transactions are even harder, requiring two-phase commit or saga patterns that sacrifice performance and simplicity. Schema changes must be coordinated across all shards. Resharding (adding or removing shards) requires data migration, which must happen online without downtime using techniques like dual-writes, shadow traffic, or virtual sharding where logical shards outnumber physical shards."
-        },
-        {
-          "type": "paragraph",
-          "text": "Common pitfalls include choosing a shard key that creates hot spots (e.g., sharding by date causes all current writes to hit one shard), underestimating the operational complexity of managing many database instances, and not planning for resharding from the start. Alternatives to application-level sharding include database-native partitioning (PostgreSQL declarative partitioning, MySQL partition tables), NewSQL databases (CockroachDB, TiDB) that handle sharding transparently, and read replicas for read-heavy workloads that do not actually need write scaling."
-        }
-      ],
-      "wordCount": 284,
-      "subsections": []
-    },
-    {
-      "id": "caching-strategies",
-      "heading": "Caching Strategies",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Caching stores frequently accessed data in a faster storage layer to reduce latency and backend load. The cache hierarchy spans multiple levels: CPU caches (L1/L2/L3), application-level in-memory caches, distributed caches (Redis, Memcached), CDN edge caches, and browser caches. Each level trades capacity for speed, and effective caching strategies leverage multiple levels simultaneously."
-        },
-        {
-          "type": "paragraph",
-          "text": "Cache-aside (lazy loading) is the most common pattern: the application checks the cache first, and on a miss, reads from the database, stores the result in cache, and returns it. Write-through caching writes to both the cache and database simultaneously, ensuring the cache is always consistent but adding write latency. Write-behind (write-back) caching writes to the cache immediately and asynchronously flushes to the database, offering low write latency at the risk of data loss if the cache fails before flushing. Read-through caching places the cache in front of the database, making the cache responsible for loading data on misses."
-        },
-        {
-          "type": "paragraph",
-          "text": "Cache invalidation is famously one of the two hard problems in computer science. Time-based expiration (TTL) is simple but allows stale reads within the TTL window. Event-driven invalidation publishes cache-bust messages when data changes, offering fresher data at the cost of infrastructure complexity. Versioned keys append a version number to cache keys, allowing atomic cache updates without race conditions. The thundering herd problem occurs when a popular cache key expires and many concurrent requests simultaneously miss the cache and hit the database; solutions include request coalescing (only one request fetches while others wait), probabilistic early expiration, and lock-based single-flight patterns."
-        },
-        {
-          "type": "paragraph",
-          "text": "Cache sizing and eviction policies determine what stays in cache when capacity is reached. LRU (Least Recently Used) evicts the oldest-accessed item, LFU (Least Frequently Used) evicts the least-accessed item, and random eviction is surprisingly effective for uniform access patterns. Redis supports additional policies like volatile-lru (evict only keys with TTL set) and allkeys-lfu. Monitoring cache hit rates, eviction rates, and memory utilization is essential for tuning cache effectiveness. A hit rate below 80% suggests the cache is too small or the access pattern is not cache-friendly."
-        }
-      ],
-      "wordCount": 338,
-      "subsections": []
-    },
-    {
-      "id": "code-examples",
-      "heading": "Code Examples",
-      "level": 2,
-      "content": [],
-      "wordCount": 0,
-      "subsections": [
-        {
-          "id": "consistent-hashing-implementation-for-distributed-cache",
-          "heading": "Consistent Hashing Implementation for Distributed Cache",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "import java.util.SortedMap;\nimport java.util.TreeMap;\nimport java.security.MessageDigest;\nimport java.security.NoSuchAlgorithmException;\n\npublic class ConsistentHashRing<T> {\n    private final SortedMap<Long, T> ring = new TreeMap<>();\n    private final int virtualNodes;\n    private final MessageDigest md;\n\n    public ConsistentHashRing(int virtualNodes) {\n        this.virtualNodes = virtualNodes;\n        try {\n            this.md = MessageDigest.getInstance(\"MD5\");\n        } catch (NoSuchAlgorithmException e) {\n            throw new RuntimeException(e);\n        }\n    }\n\n    public void addNode(T node) {\n        for (int i = 0; i < virtualNodes; i++) {\n            long hash = hash(node.toString() + \"-\" + i);\n            ring.put(hash, node);\n        }\n    }\n\n    public void removeNode(T node) {\n        for (int i = 0; i < virtualNodes; i++) {\n            long hash = hash(node.toString() + \"-\" + i);\n            ring.remove(hash);\n        }\n    }\n\n    public T getNode(String key) {\n        if (ring.isEmpty()) return null;\n        long hash = hash(key);\n        SortedMap<Long, T> tailMap = ring.tailMap(hash);\n        long nodeHash = tailMap.isEmpty() ? ring.firstKey() : tailMap.firstKey();\n        return ring.get(nodeHash);\n    }\n\n    private long hash(String key) {\n        md.reset();\n        byte[] digest = md.digest(key.getBytes());\n        return ((long)(digest[3] & 0xFF) << 24)\n             | ((long)(digest[2] & 0xFF) << 16)\n             | ((long)(digest[1] & 0xFF) << 8)\n             | ((long)(digest[0] & 0xFF));\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "cache-aside-pattern-with-redis-in-spring-boot",
-          "heading": "Cache-Aside Pattern with Redis in Spring Boot",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Service\npublic class UserService {\n    private final UserRepository userRepository;\n    private final RedisTemplate<String, User> redisTemplate;\n    private static final Duration CACHE_TTL = Duration.ofMinutes(15);\n    private static final String CACHE_PREFIX = \"user:\";\n\n    public UserService(UserRepository userRepository,\n                       RedisTemplate<String, User> redisTemplate) {\n        this.userRepository = userRepository;\n        this.redisTemplate = redisTemplate;\n    }\n\n    public User getUserById(Long id) {\n        String cacheKey = CACHE_PREFIX + id;\n\n        // Check cache first\n        User cached = redisTemplate.opsForValue().get(cacheKey);\n        if (cached != null) {\n            return cached;\n        }\n\n        // Cache miss: load from database\n        User user = userRepository.findById(id)\n            .orElseThrow(() -> new UserNotFoundException(id));\n\n        // Store in cache with TTL\n        redisTemplate.opsForValue().set(cacheKey, user, CACHE_TTL);\n        return user;\n    }\n\n    public User updateUser(Long id, UserUpdateRequest request) {\n        User user = userRepository.findById(id)\n            .orElseThrow(() -> new UserNotFoundException(id));\n\n        user.setName(request.getName());\n        user.setEmail(request.getEmail());\n        User saved = userRepository.save(user);\n\n        // Invalidate cache on write\n        String cacheKey = CACHE_PREFIX + id;\n        redisTemplate.delete(cacheKey);\n\n        return saved;\n    }\n\n    public void evictUserCache(Long id) {\n        redisTemplate.delete(CACHE_PREFIX + id);\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "database-sharding-router",
-          "heading": "Database Sharding Router",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "public class ShardRouter {\n    private final int shardCount;\n    private final Map<Integer, DataSource> shardDataSources;\n\n    public ShardRouter(int shardCount, Map<Integer, DataSource> shardDataSources) {\n        this.shardCount = shardCount;\n        this.shardDataSources = shardDataSources;\n    }\n\n    public int getShardId(String shardKey) {\n        int hash = Math.abs(shardKey.hashCode());\n        return hash % shardCount;\n    }\n\n    public DataSource getDataSource(String shardKey) {\n        int shardId = getShardId(shardKey);\n        DataSource ds = shardDataSources.get(shardId);\n        if (ds == null) {\n            throw new ShardNotFoundException(\"No datasource for shard \" + shardId);\n        }\n        return ds;\n    }\n\n    public <T> List<T> scatterGather(String query, Function<DataSource, List<T>> executor) {\n        return shardDataSources.values().parallelStream()\n            .flatMap(ds -> executor.apply(ds).stream())\n            .collect(Collectors.toList());\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        }
-      ]
-    },
-    {
-      "id": "architecture-and-diagrams",
-      "heading": "Architecture and Diagrams",
-      "level": 2,
-      "content": [
-        {
-          "type": "mermaid",
-          "source": "graph TB\n    subgraph \"Client Layer\"\n        C1[Client 1]\n        C2[Client 2]\n        C3[Client N]\n    end\n\n    subgraph \"Load Balancing\"\n        LB[Load Balancer]\n        C1 --> LB\n        C2 --> LB\n        C3 --> LB\n    end\n\n    subgraph \"Application Tier - Stateless\"\n        LB --> APP1[App Server 1]\n        LB --> APP2[App Server 2]\n        LB --> APP3[App Server N]\n    end\n\n    subgraph \"Caching Layer\"\n        APP1 --> CACHE[Redis Cluster]\n        APP2 --> CACHE\n        APP3 --> CACHE\n    end\n\n    subgraph \"Data Tier - Sharded\"\n        APP1 --> ROUTER[Shard Router]\n        APP2 --> ROUTER\n        APP3 --> ROUTER\n        ROUTER --> S1[Shard 1<br/>Users A-H]\n        ROUTER --> S2[Shard 2<br/>Users I-P]\n        ROUTER --> S3[Shard 3<br/>Users Q-Z]\n        S1 --> R1[Read Replica]\n        S2 --> R2[Read Replica]\n        S3 --> R3[Read Replica]\n    end\n\n    subgraph \"Async Processing\"\n        APP1 --> MQ[Message Queue]\n        APP2 --> MQ\n        APP3 --> MQ\n        MQ --> W1[Worker 1]\n        MQ --> W2[Worker 2]\n    end"
-        },
-        {
-          "type": "mermaid",
-          "source": "graph LR\n    subgraph \"CAP Theorem Tradeoffs\"\n        direction TB\n        CP[CP Systems<br/>ZooKeeper, etcd, HBase]\n        AP[AP Systems<br/>Cassandra, DynamoDB, CouchDB]\n        CA[CA Systems<br/>Single-node RDBMS<br/>Not distributed]\n    end\n\n    subgraph \"Consistency Spectrum\"\n        direction LR\n        STRONG[Linearizable] --> SEQ[Sequential] --> CAUSAL[Causal] --> EVENTUAL[Eventual]\n    end"
-        }
-      ],
-      "wordCount": 0,
-      "subsections": []
-    },
-    {
-      "id": "common-pitfalls",
-      "heading": "Common Pitfalls",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Premature optimization: sharding or adding caching before measuring actual bottlenecks leads to unnecessary complexity and operational burden without measurable benefit",
-            "Choosing the wrong shard key: sharding by a monotonically increasing ID (like timestamp) sends all writes to a single shard, creating a hot spot that defeats the purpose of sharding",
-            "Ignoring cache stampede: when a popular cache key expires, hundreds of concurrent requests hit the database simultaneously, potentially causing cascading failures",
-            "Treating distributed systems like single-machine programs: assuming network calls always succeed, ignoring partial failures, and not implementing idempotency leads to data corruption and inconsistency",
-            "Over-caching: caching everything without considering invalidation complexity creates stale data bugs that are extremely difficult to reproduce and debug",
-            "Not planning for resharding: starting with a fixed number of shards without virtual sharding or a migration strategy means painful downtime when capacity limits are reached",
-            "Ignoring tail latency: P99 latency in distributed systems is dominated by the slowest component; a single slow shard or cache miss can make the entire request slow",
-            "Conflating availability with durability: a system can be available (accepting writes) while losing data if writes are not replicated before acknowledgment"
-          ]
-        }
-      ],
-      "wordCount": 188,
-      "subsections": []
-    },
-    {
-      "id": "real-world-use-cases",
-      "heading": "Real-World Use Cases",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Social Media Feed (Twitter/X): Fan-out on write pushes new tweets to follower timelines stored in Redis. Celebrity accounts with millions of followers use fan-out on read instead to avoid write amplification. The hybrid approach demonstrates how different consistency and caching strategies apply to different user segments within the same system."
-        },
-        {
-          "type": "paragraph",
-          "text": "E-Commerce Inventory (Amazon): Inventory counts use eventual consistency for display (showing approximate stock) but strong consistency for the actual purchase transaction (decrement-and-check is linearizable). This prevents overselling while keeping browse latency low. Caching product catalog data aggressively with short TTLs balances freshness against database load."
-        },
-        {
-          "type": "paragraph",
-          "text": "Ride-Sharing Matching (Uber): Geospatial sharding partitions the world into cells, with each cell handled by a specific shard. Driver location updates are high-frequency writes that benefit from eventual consistency. Matching algorithms run against the local shard for the rider's cell plus adjacent cells, demonstrating range-based sharding with geographic locality."
-        },
-        {
-          "type": "paragraph",
-          "text": "Payment Processing (Stripe): Exactly-once semantics through idempotency keys prevent double-charging. The system uses CP consistency for ledger entries, saga patterns for multi-step transactions, and event sourcing for audit trails. Sharding by merchant ID distributes write load while keeping per-merchant queries efficient."
-        }
-      ],
-      "wordCount": 185,
-      "subsections": []
-    },
-    {
-      "id": "interview-questions",
-      "heading": "Interview Questions",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design a URL shortener that handles 100M URLs and 10B redirects per month?\nA: Use a hash-based approach (Base62 encoding of an auto-increment ID or hash) for URL generation, cache popular URLs in Redis with LRU eviction, shard the URL database by hash prefix for write scaling, and use read replicas plus CDN for redirect latency. The read-to-write ratio (100:1) means caching is highly effective."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the tradeoffs between strong and eventual consistency with a real example.\nA: A banking system uses strong consistency for account balances (transferring money requires linearizable reads and writes to prevent double-spending). A social media like counter uses eventual consistency (showing 1,003 likes instead of 1,005 momentarily is acceptable, and the reduced coordination allows much higher throughput and lower latency)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: When would you choose database sharding over read replicas?\nA: Read replicas solve read scaling but not write scaling. Choose sharding when write throughput exceeds what a single primary can handle, when the dataset exceeds single-node storage capacity, or when write latency is unacceptable due to replication lag. Choose read replicas first when the workload is read-heavy (90%+ reads) and a single primary can handle all writes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle cache invalidation in a microservices architecture?\nA: Publish domain events (e.g., UserUpdated) to a message broker. Each service subscribes to events relevant to its cached data and invalidates or updates accordingly. This decouples services while ensuring caches stay reasonably fresh. Combine with TTL as a safety net for missed events."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What happens during a network partition in a Cassandra cluster?\nA: Cassandra is an AP system. During a partition, nodes on both sides continue accepting reads and writes. When the partition heals, Cassandra uses last-write-wins (timestamp-based) or application-defined conflict resolution to reconcile divergent data. Read repair and anti-entropy repair processes ensure eventual convergence."
-        }
-      ],
-      "wordCount": 307,
-      "subsections": []
-    },
-    {
-      "id": "production-tips",
-      "heading": "Production Tips",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Set cache TTLs based on data change frequency and acceptable staleness, not arbitrary round numbers. Monitor cache hit rates and adjust TTLs when hit rates drop below 80%.",
-            "Implement circuit breakers on all cross-service calls with sensible timeout, failure threshold, and recovery settings. A 5-second timeout with 50% failure threshold opening the circuit prevents cascading failures.",
-            "Use consistent hashing with virtual nodes (150-200 per physical node) for cache distribution to minimize key redistribution when nodes are added or removed.",
-            "Monitor replication lag on read replicas and route time-sensitive reads to the primary. Alert when lag exceeds your consistency SLA (typically 1-5 seconds for most applications).",
-            "Implement request coalescing (singleflight pattern) for cache misses on hot keys to prevent thundering herd. Only one goroutine/thread fetches while others wait for the result.",
-            "Design shard keys to support your most common query patterns. If 80% of queries filter by tenant_id, shard by tenant_id even if it creates some size imbalance.",
-            "Use exponential backoff with jitter for retries to prevent synchronized retry storms across instances. Full jitter (random between 0 and exponential cap) distributes retries most evenly.",
-            "Capacity test at 2x expected peak load to identify breaking points before they occur in production. Know your system's degradation curve: does it degrade gracefully or fall off a cliff?"
-          ]
-        }
-      ],
-      "wordCount": 213,
-      "subsections": []
-    },
-    {
-      "id": "related-topics",
-      "heading": "Related Topics",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Docker & Containerization — container orchestration is the deployment substrate for distributed systems",
-            "Kubernetes & EKS — orchestrates horizontal scaling, service discovery, and load balancing",
-            "Apache Kafka — distributed event streaming for async communication between services",
-            "Design Patterns — microservice patterns (saga, CQRS, event sourcing) build on distributed systems fundamentals",
-            "Networking — TCP/IP, DNS, and load balancing are the transport layer for distributed systems"
-          ]
-        }
-      ],
-      "wordCount": 64,
+      "wordCount": 69,
       "subsections": []
     }
   ],
   "images": [],
-  "codeBlocks": [
-    {
-      "language": "java",
-      "code": "import java.util.SortedMap;\nimport java.util.TreeMap;\nimport java.security.MessageDigest;\nimport java.security.NoSuchAlgorithmException;\n\npublic class ConsistentHashRing<T> {\n    private final SortedMap<Long, T> ring = new TreeMap<>();\n    private final int virtualNodes;\n    private final MessageDigest md;\n\n    public ConsistentHashRing(int virtualNodes) {\n        this.virtualNodes = virtualNodes;\n        try {\n            this.md = MessageDigest.getInstance(\"MD5\");\n        } catch (NoSuchAlgorithmException e) {\n            throw new RuntimeException(e);\n        }\n    }\n\n    public void addNode(T node) {\n        for (int i = 0; i < virtualNodes; i++) {\n            long hash = hash(node.toString() + \"-\" + i);\n            ring.put(hash, node);\n        }\n    }\n\n    public void removeNode(T node) {\n        for (int i = 0; i < virtualNodes; i++) {\n            long hash = hash(node.toString() + \"-\" + i);\n            ring.remove(hash);\n        }\n    }\n\n    public T getNode(String key) {\n        if (ring.isEmpty()) return null;\n        long hash = hash(key);\n        SortedMap<Long, T> tailMap = ring.tailMap(hash);\n        long nodeHash = tailMap.isEmpty() ? ring.firstKey() : tailMap.firstKey();\n        return ring.get(nodeHash);\n    }\n\n    private long hash(String key) {\n        md.reset();\n        byte[] digest = md.digest(key.getBytes());\n        return ((long)(digest[3] & 0xFF) << 24)\n             | ((long)(digest[2] & 0xFF) << 16)\n             | ((long)(digest[1] & 0xFF) << 8)\n             | ((long)(digest[0] & 0xFF));\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "@Service\npublic class UserService {\n    private final UserRepository userRepository;\n    private final RedisTemplate<String, User> redisTemplate;\n    private static final Duration CACHE_TTL = Duration.ofMinutes(15);\n    private static final String CACHE_PREFIX = \"user:\";\n\n    public UserService(UserRepository userRepository,\n                       RedisTemplate<String, User> redisTemplate) {\n        this.userRepository = userRepository;\n        this.redisTemplate = redisTemplate;\n    }\n\n    public User getUserById(Long id) {\n        String cacheKey = CACHE_PREFIX + id;\n\n        // Check cache first\n        User cached = redisTemplate.opsForValue().get(cacheKey);\n        if (cached != null) {\n            return cached;\n        }\n\n        // Cache miss: load from database\n        User user = userRepository.findById(id)\n            .orElseThrow(() -> new UserNotFoundException(id));\n\n        // Store in cache with TTL\n        redisTemplate.opsForValue().set(cacheKey, user, CACHE_TTL);\n        return user;\n    }\n\n    public User updateUser(Long id, UserUpdateRequest request) {\n        User user = userRepository.findById(id)\n            .orElseThrow(() -> new UserNotFoundException(id));\n\n        user.setName(request.getName());\n        user.setEmail(request.getEmail());\n        User saved = userRepository.save(user);\n\n        // Invalidate cache on write\n        String cacheKey = CACHE_PREFIX + id;\n        redisTemplate.delete(cacheKey);\n\n        return saved;\n    }\n\n    public void evictUserCache(Long id) {\n        redisTemplate.delete(CACHE_PREFIX + id);\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "public class ShardRouter {\n    private final int shardCount;\n    private final Map<Integer, DataSource> shardDataSources;\n\n    public ShardRouter(int shardCount, Map<Integer, DataSource> shardDataSources) {\n        this.shardCount = shardCount;\n        this.shardDataSources = shardDataSources;\n    }\n\n    public int getShardId(String shardKey) {\n        int hash = Math.abs(shardKey.hashCode());\n        return hash % shardCount;\n    }\n\n    public DataSource getDataSource(String shardKey) {\n        int shardId = getShardId(shardKey);\n        DataSource ds = shardDataSources.get(shardId);\n        if (ds == null) {\n            throw new ShardNotFoundException(\"No datasource for shard \" + shardId);\n        }\n        return ds;\n    }\n\n    public <T> List<T> scatterGather(String query, Function<DataSource, List<T>> executor) {\n        return shardDataSources.values().parallelStream()\n            .flatMap(ds -> executor.apply(ds).stream())\n            .collect(Collectors.toList());\n    }\n}",
-      "runnable": false
-    }
-  ],
+  "codeBlocks": [],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
-    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design.md",
-    "wordCount": 2981,
-    "sectionCount": 18
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design/index.md",
+    "wordCount": 231,
+    "sectionCount": 2
   }
 }

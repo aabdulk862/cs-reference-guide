@@ -1,0 +1,251 @@
+{
+  "id": "system-design-consistency-models",
+  "slug": "consistency-models",
+  "title": "Consistency Models",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CAP theorem: a distributed data store cannot simultaneously provide Consistency, Availability, and Partition tolerance; since partitions are inevitable, the practical choice is CP or AP",
+            "Linearizability (strong consistency) guarantees every read returns the most recent write, requiring coordination on every operation",
+            "Eventual consistency guarantees convergence if no new updates are made, but allows stale reads during the convergence window",
+            "PACELC theorem extends CAP: even without Partitions, there is a tradeoff between Latency and Consistency",
+            "Causal consistency preserves ordering of causally related operations using vector clocks or Lamport timestamps",
+            "Quorum reads and writes (W + R > N) provide tunable consistency without full consensus overhead",
+            "CRDTs (Conflict-free Replicated Data Types) achieve strong eventual consistency without coordination by ensuring all concurrent operations commute"
+          ]
+        }
+      ],
+      "wordCount": 121,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Consistency model selection applies whenever data is replicated across multiple nodes, whether for fault tolerance, read scaling, or geographic distribution. You need to reason about consistency models when choosing between databases (PostgreSQL with synchronous replication vs. Cassandra with tunable consistency), when designing replication strategies for microservices that own their data, when implementing distributed caches that must balance freshness against latency, and when building event-driven systems where consumers may process events out of order. Understanding these models is critical for system design interviews where candidates must articulate why a banking system needs linearizability for account balances while a social media like counter can tolerate eventual consistency. The choice directly impacts user experience, system availability, operational complexity, and infrastructure cost."
+        }
+      ],
+      "wordCount": 118,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "implementing-quorum-based-reads-and-writes",
+          "heading": "Implementing Quorum-Based Reads and Writes",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class QuorumReplicator<T> {\n    private final List<ReplicaClient<T>> replicas;\n    private final int writeQuorum;  // W\n    private final int readQuorum;   // R\n    // Invariant: W + R > N (total replicas) ensures overlap\n\n    public QuorumReplicator(List<ReplicaClient<T>> replicas, int writeQuorum, int readQuorum) {\n        this.replicas = replicas;\n        this.writeQuorum = writeQuorum;\n        this.readQuorum = readQuorum;\n\n        int n = replicas.size();\n        if (writeQuorum + readQuorum <= n) {\n            throw new IllegalArgumentException(\n                \"W + R must be > N for consistency. W=\" + writeQuorum +\n                \", R=\" + readQuorum + \", N=\" + n\n            );\n        }\n    }\n\n    /**\n     * Write to W replicas. Returns success only when W acknowledgments received.\n     * Each write carries a version (timestamp or logical clock) for conflict resolution.\n     */\n    public WriteResult write(String key, T value) {\n        long version = System.nanoTime(); // In production, use hybrid logical clock\n        VersionedValue<T> versioned = new VersionedValue<>(value, version);\n\n        List<CompletableFuture<Boolean>> futures = replicas.stream()\n            .map(replica -> CompletableFuture.supplyAsync(() ->\n                replica.write(key, versioned)))\n            .collect(Collectors.toList());\n\n        // Wait for W successful acknowledgments\n        int acks = 0;\n        int failures = 0;\n        for (CompletableFuture<Boolean> future : futures) {\n            try {\n                if (future.get(5, TimeUnit.SECONDS)) {\n                    acks++;\n                    if (acks >= writeQuorum) {\n                        return WriteResult.success(version);\n                    }\n                } else {\n                    failures++;\n                }\n            } catch (Exception e) {\n                failures++;\n            }\n            // Early termination: if we can't reach quorum even with remaining futures\n            if (failures > replicas.size() - writeQuorum) {\n                return WriteResult.failure(\"Cannot reach write quorum\");\n            }\n        }\n        return WriteResult.failure(\"Insufficient acknowledgments: \" + acks);\n    }\n\n    /**\n     * Read from R replicas and return the value with the highest version.\n     * The quorum overlap guarantees at least one replica has the latest write.\n     */\n    public ReadResult<T> read(String key) {\n        List<CompletableFuture<VersionedValue<T>>> futures = replicas.stream()\n            .map(replica -> CompletableFuture.supplyAsync(() -> replica.read(key)))\n            .collect(Collectors.toList());\n\n        List<VersionedValue<T>> responses = new ArrayList<>();\n        int failures = 0;\n\n        for (CompletableFuture<VersionedValue<T>> future : futures) {\n            try {\n                VersionedValue<T> result = future.get(5, TimeUnit.SECONDS);\n                if (result != null) {\n                    responses.add(result);\n                    if (responses.size() >= readQuorum) {\n                        break;\n                    }\n                } else {\n                    failures++;\n                }\n            } catch (Exception e) {\n                failures++;\n            }\n            if (failures > replicas.size() - readQuorum) {\n                return ReadResult.failure(\"Cannot reach read quorum\");\n            }\n        }\n\n        // Return the value with the highest version (last-write-wins)\n        VersionedValue<T> latest = responses.stream()\n            .max(Comparator.comparingLong(VersionedValue::getVersion))\n            .orElse(null);\n\n        // Trigger read repair: update stale replicas asynchronously\n        if (latest != null) {\n            triggerReadRepair(key, latest, responses);\n        }\n\n        return latest != null\n            ? ReadResult.success(latest.getValue(), latest.getVersion())\n            : ReadResult.notFound();\n    }\n\n    private void triggerReadRepair(String key, VersionedValue<T> latest,\n                                    List<VersionedValue<T>> responses) {\n        CompletableFuture.runAsync(() -> {\n            for (ReplicaClient<T> replica : replicas) {\n                // Send latest value to replicas that returned stale data\n                replica.repair(key, latest);\n            }\n        });\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "vector-clock-implementation-for-causal-ordering",
+          "heading": "Vector Clock Implementation for Causal Ordering",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "/**\n * Vector clock implementation for tracking causal relationships\n * between events in a distributed system.\n */\nclass VectorClock {\n  private clock: Map<string, number>;\n\n  constructor(nodeId?: string) {\n    this.clock = new Map();\n    if (nodeId) {\n      this.clock.set(nodeId, 0);\n    }\n  }\n\n  /**\n   * Increment this node's counter (local event occurred)\n   */\n  increment(nodeId: string): VectorClock {\n    const newClock = new VectorClock();\n    newClock.clock = new Map(this.clock);\n    newClock.clock.set(nodeId, (newClock.clock.get(nodeId) || 0) + 1);\n    return newClock;\n  }\n\n  /**\n   * Merge with another vector clock (message received).\n   * Take element-wise maximum, then increment local counter.\n   */\n  merge(other: VectorClock, localNodeId: string): VectorClock {\n    const merged = new VectorClock();\n\n    // Combine all known nodes\n    const allNodes = new Set([...this.clock.keys(), ...other.clock.keys()]);\n\n    for (const node of allNodes) {\n      const localVal = this.clock.get(node) || 0;\n      const remoteVal = other.clock.get(node) || 0;\n      merged.clock.set(node, Math.max(localVal, remoteVal));\n    }\n\n    // Increment local counter for the receive event\n    merged.clock.set(localNodeId, (merged.clock.get(localNodeId) || 0) + 1);\n    return merged;\n  }\n\n  /**\n   * Determine causal relationship between two vector clocks.\n   * Returns: 'before', 'after', 'concurrent', or 'equal'\n   */\n  compare(other: VectorClock): 'before' | 'after' | 'concurrent' | 'equal' {\n    let thisBeforeOther = false;\n    let otherBeforeThis = false;\n\n    const allNodes = new Set([...this.clock.keys(), ...other.clock.keys()]);\n\n    for (const node of allNodes) {\n      const thisVal = this.clock.get(node) || 0;\n      const otherVal = other.clock.get(node) || 0;\n\n      if (thisVal < otherVal) thisBeforeOther = true;\n      if (thisVal > otherVal) otherBeforeThis = true;\n    }\n\n    if (!thisBeforeOther && !otherBeforeThis) return 'equal';\n    if (thisBeforeOther && !otherBeforeThis) return 'before';\n    if (!thisBeforeOther && otherBeforeThis) return 'after';\n    return 'concurrent'; // Both have elements greater than the other\n  }\n\n  toString(): string {\n    const entries = [...this.clock.entries()]\n      .sort(([a], [b]) => a.localeCompare(b))\n      .map(([node, count]) => `${node}:${count}`);\n    return `[${entries.join(', ')}]`;\n  }\n}\n\n// Usage: Detecting conflicts in a distributed key-value store\nclass CausalKVStore {\n  private store: Map<string, { value: unknown; clock: VectorClock }[]> = new Map();\n  private nodeId: string;\n  private localClock: VectorClock;\n\n  constructor(nodeId: string) {\n    this.nodeId = nodeId;\n    this.localClock = new VectorClock(nodeId);\n  }\n\n  put(key: string, value: unknown): VectorClock {\n    this.localClock = this.localClock.increment(this.nodeId);\n    const existing = this.store.get(key) || [];\n\n    // Remove entries that are causally before the new write\n    const concurrent = existing.filter(\n      entry => entry.clock.compare(this.localClock) === 'concurrent'\n    );\n\n    // Store new value alongside any concurrent versions (siblings)\n    concurrent.push({ value, clock: this.localClock });\n    this.store.set(key, concurrent);\n\n    return this.localClock;\n  }\n\n  get(key: string): { value: unknown; clock: VectorClock }[] {\n    return this.store.get(key) || [];\n    // Multiple entries = conflict (concurrent writes)\n    // Application must resolve conflicts\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "crdt-g-counter-grow-only-counter",
+          "heading": "CRDT: G-Counter (Grow-Only Counter)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "/**\n * G-Counter: a CRDT that supports increment operations.\n * Each node maintains its own counter. The global value is the sum of all node counters.\n * Merge takes the element-wise maximum, guaranteeing convergence without coordination.\n */\npublic class GCounter {\n    private final String nodeId;\n    private final Map<String, Long> counters;\n\n    public GCounter(String nodeId) {\n        this.nodeId = nodeId;\n        this.counters = new ConcurrentHashMap<>();\n        this.counters.put(nodeId, 0L);\n    }\n\n    private GCounter(String nodeId, Map<String, Long> counters) {\n        this.nodeId = nodeId;\n        this.counters = new ConcurrentHashMap<>(counters);\n    }\n\n    /** Increment this node's counter */\n    public void increment() {\n        counters.merge(nodeId, 1L, Long::sum);\n    }\n\n    /** Get the global counter value (sum of all nodes) */\n    public long value() {\n        return counters.values().stream().mapToLong(Long::longValue).sum();\n    }\n\n    /**\n     * Merge with another G-Counter replica.\n     * Takes element-wise maximum — this is commutative, associative, and idempotent,\n     * guaranteeing convergence regardless of message ordering or duplication.\n     */\n    public GCounter merge(GCounter other) {\n        Map<String, Long> merged = new HashMap<>(this.counters);\n        for (Map.Entry<String, Long> entry : other.counters.entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        return new GCounter(this.nodeId, merged);\n    }\n\n    /**\n     * Compare for convergence: this counter dominates other if all entries >= other's entries\n     */\n    public boolean dominates(GCounter other) {\n        for (Map.Entry<String, Long> entry : other.counters.entrySet()) {\n            long thisVal = this.counters.getOrDefault(entry.getKey(), 0L);\n            if (thisVal < entry.getValue()) return false;\n        }\n        return true;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Assuming eventual consistency means \"consistent soon\": the convergence window can be seconds, minutes, or even hours depending on replication lag, network conditions, and conflict resolution strategy. Design your application to handle arbitrarily stale reads or explicitly bound the staleness window with monitoring and alerts.",
+            "Using wall-clock timestamps for conflict resolution without understanding clock skew: last-write-wins (LWW) based on physical timestamps can silently discard writes when clocks are skewed. A write at 10:00:01 on a slow clock loses to a write at 10:00:02 on a fast clock, even if the first write happened later in real time. Use hybrid logical clocks or vector clocks for correct ordering.",
+            "Choosing strong consistency everywhere \"to be safe\": linearizability requires coordination on every operation, adding latency proportional to network round-trip time between replicas. For a globally distributed system, this can mean 100-300ms added to every read and write. Most data does not require linearizability; identify which data truly needs it and use weaker models elsewhere.",
+            "Ignoring read-your-writes consistency in user-facing applications: a user updates their profile and immediately sees the old version because the read hit a stale replica. This is technically correct under eventual consistency but creates a terrible user experience. Implement session consistency by routing reads to the same replica that accepted the write, or by reading from the primary after writes.",
+            "Conflating consistency models with durability guarantees: a system can be strongly consistent (all replicas agree) while being non-durable (data only in memory). Conversely, a system can be eventually consistent while being highly durable (data persisted to disk on multiple nodes). These are orthogonal concerns that must be addressed independently.",
+            "Not testing failure modes: consistency guarantees only matter during failures (partitions, node crashes, high latency). Testing only the happy path means you have no confidence in your consistency guarantees when they matter most. Use chaos engineering tools (Jepsen, Chaos Monkey) to verify behavior under failure."
+          ]
+        }
+      ],
+      "wordCount": 313,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Banking and Financial Systems (CP): Account balance operations require linearizability to prevent double-spending. When a user transfers money, the debit and credit must be atomic and immediately visible to all subsequent reads. Systems like Google Spanner achieve this globally using TrueTime for clock synchronization, accepting higher latency (typically 10-15ms for cross-region transactions) in exchange for correctness guarantees. During network partitions, the system becomes unavailable rather than risk inconsistent balances."
+        },
+        {
+          "type": "paragraph",
+          "text": "Social Media Counters (AP with Eventual Consistency): Like counts, view counts, and follower counts use eventual consistency because temporary inaccuracy is acceptable. Facebook's TAO system replicates social graph data across datacenters with eventual consistency, accepting that a like count might show 1,003 on one datacenter and 1,005 on another for a few seconds. The convergence window is typically under 1 second, and the user experience is unaffected by small discrepancies."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shopping Cart (AP with Conflict Resolution): Amazon's Dynamo paper describes using vector clocks for shopping cart conflict resolution. If a user adds items from two devices simultaneously during a partition, both additions are preserved (union merge) rather than one overwriting the other. This \"always accept writes\" approach prioritizes availability and uses application-level conflict resolution that favors not losing items over strict consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "DNS (Eventual Consistency with TTL): The Domain Name System is one of the largest eventually consistent systems. DNS records propagate through caching resolvers with TTL-based expiration. A DNS change may take minutes to hours to propagate globally, but the system is highly available and partition-tolerant. Applications that need faster propagation use shorter TTLs at the cost of increased query load on authoritative servers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Collaborative Editing (CRDTs): Google Docs and Figma use operation-based CRDTs or operational transformation to allow multiple users to edit simultaneously without coordination. Each user's operations are applied locally and broadcast to others. CRDTs guarantee that all replicas converge to the same state regardless of the order operations are received, enabling real-time collaboration across unreliable networks."
+        }
+      ],
+      "wordCount": 319,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: A user updates their profile picture but sees the old one when they refresh. What consistency model is in play and how would you fix it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: This is eventual consistency where the read hit a replica that has not yet received the write. Fixes include: (1) read-your-writes consistency by routing the user's subsequent reads to the same replica or primary that accepted the write, (2) sticky sessions that pin a user to a specific replica, (3) including a version token in the write response and passing it on subsequent reads so the system can wait for the replica to catch up, or (4) reading from the primary for a short window after writes (with fallback to replicas after the replication lag window passes)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose Cassandra over PostgreSQL, and what consistency tradeoffs are you making?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose Cassandra when you need high write throughput across multiple datacenters, can tolerate eventual consistency for most operations, and your access patterns are known upfront (Cassandra requires query-driven data modeling). You are trading linearizable reads and ACID transactions for availability during partitions, horizontal write scaling, and multi-datacenter replication. PostgreSQL with synchronous replication gives you strong consistency and SQL flexibility but limits write scaling to a single primary and becomes unavailable during partitions if the primary is on the minority side."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how quorum reads and writes provide tunable consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: With N replicas, write quorum W, and read quorum R, setting W + R > N guarantees that any read quorum overlaps with any write quorum by at least one node, ensuring the read sees the latest write. Tuning W and R trades consistency against availability and latency: W=N, R=1 gives fast reads but writes fail if any replica is down; W=1, R=N gives fast writes but reads are slow and fail if any replica is down; W=⌈(N+1)/2⌉, R=⌈(N+1)/2⌉ (majority quorum) balances both. Lower quorums improve availability (tolerate more failures) at the cost of potentially stale reads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are CRDTs and when would you use them instead of consensus-based replication?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CRDTs are data structures designed so that concurrent updates always converge without coordination. They achieve strong eventual consistency: once all updates are delivered (in any order), all replicas have identical state. Use CRDTs when you need low-latency writes across multiple datacenters without coordination overhead, when your data model fits CRDT semantics (counters, sets, registers, maps), and when you can tolerate the space overhead of metadata (vector clocks, tombstones). Use consensus-based replication when you need linearizability, complex transactions, or data models that do not map naturally to CRDT types."
+        }
+      ],
+      "wordCount": 432,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement monotonic reads at the application layer by tracking the last-seen version and rejecting responses with older versions. This prevents the confusing user experience of \"time travel\" where refreshing a page shows older data than the previous load.",
+            "Monitor replication lag as a first-class metric with alerting thresholds tied to your consistency SLA. If your application assumes reads are fresh within 5 seconds, alert when replication lag exceeds 3 seconds to give time for investigation before users are affected.",
+            "Use read-after-write consistency for user-facing mutations by including a causal token (timestamp or version) in the write response and passing it on subsequent reads. The read handler waits for the local replica to reach that version before responding, bounding the staleness window to replication lag rather than leaving it unbounded.",
+            "When using eventual consistency, design your UI to be honest about data freshness. Show \"updated 2 seconds ago\" timestamps, use optimistic UI updates that show the user's own writes immediately (client-side), and gracefully handle conflicts when they surface rather than silently dropping data."
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Distributed Systems — Foundational concepts of distributed computing that consistency models build upon",
+            "Database Sharding — Partitioning strategies that interact with consistency guarantees across shards",
+            "Caching — Cache consistency and invalidation strategies that depend on the underlying consistency model",
+            "Design Patterns — Patterns like CQRS and event sourcing that enable different consistency models for reads and writes"
+          ]
+        }
+      ],
+      "wordCount": 57,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class QuorumReplicator<T> {\n    private final List<ReplicaClient<T>> replicas;\n    private final int writeQuorum;  // W\n    private final int readQuorum;   // R\n    // Invariant: W + R > N (total replicas) ensures overlap\n\n    public QuorumReplicator(List<ReplicaClient<T>> replicas, int writeQuorum, int readQuorum) {\n        this.replicas = replicas;\n        this.writeQuorum = writeQuorum;\n        this.readQuorum = readQuorum;\n\n        int n = replicas.size();\n        if (writeQuorum + readQuorum <= n) {\n            throw new IllegalArgumentException(\n                \"W + R must be > N for consistency. W=\" + writeQuorum +\n                \", R=\" + readQuorum + \", N=\" + n\n            );\n        }\n    }\n\n    /**\n     * Write to W replicas. Returns success only when W acknowledgments received.\n     * Each write carries a version (timestamp or logical clock) for conflict resolution.\n     */\n    public WriteResult write(String key, T value) {\n        long version = System.nanoTime(); // In production, use hybrid logical clock\n        VersionedValue<T> versioned = new VersionedValue<>(value, version);\n\n        List<CompletableFuture<Boolean>> futures = replicas.stream()\n            .map(replica -> CompletableFuture.supplyAsync(() ->\n                replica.write(key, versioned)))\n            .collect(Collectors.toList());\n\n        // Wait for W successful acknowledgments\n        int acks = 0;\n        int failures = 0;\n        for (CompletableFuture<Boolean> future : futures) {\n            try {\n                if (future.get(5, TimeUnit.SECONDS)) {\n                    acks++;\n                    if (acks >= writeQuorum) {\n                        return WriteResult.success(version);\n                    }\n                } else {\n                    failures++;\n                }\n            } catch (Exception e) {\n                failures++;\n            }\n            // Early termination: if we can't reach quorum even with remaining futures\n            if (failures > replicas.size() - writeQuorum) {\n                return WriteResult.failure(\"Cannot reach write quorum\");\n            }\n        }\n        return WriteResult.failure(\"Insufficient acknowledgments: \" + acks);\n    }\n\n    /**\n     * Read from R replicas and return the value with the highest version.\n     * The quorum overlap guarantees at least one replica has the latest write.\n     */\n    public ReadResult<T> read(String key) {\n        List<CompletableFuture<VersionedValue<T>>> futures = replicas.stream()\n            .map(replica -> CompletableFuture.supplyAsync(() -> replica.read(key)))\n            .collect(Collectors.toList());\n\n        List<VersionedValue<T>> responses = new ArrayList<>();\n        int failures = 0;\n\n        for (CompletableFuture<VersionedValue<T>> future : futures) {\n            try {\n                VersionedValue<T> result = future.get(5, TimeUnit.SECONDS);\n                if (result != null) {\n                    responses.add(result);\n                    if (responses.size() >= readQuorum) {\n                        break;\n                    }\n                } else {\n                    failures++;\n                }\n            } catch (Exception e) {\n                failures++;\n            }\n            if (failures > replicas.size() - readQuorum) {\n                return ReadResult.failure(\"Cannot reach read quorum\");\n            }\n        }\n\n        // Return the value with the highest version (last-write-wins)\n        VersionedValue<T> latest = responses.stream()\n            .max(Comparator.comparingLong(VersionedValue::getVersion))\n            .orElse(null);\n\n        // Trigger read repair: update stale replicas asynchronously\n        if (latest != null) {\n            triggerReadRepair(key, latest, responses);\n        }\n\n        return latest != null\n            ? ReadResult.success(latest.getValue(), latest.getVersion())\n            : ReadResult.notFound();\n    }\n\n    private void triggerReadRepair(String key, VersionedValue<T> latest,\n                                    List<VersionedValue<T>> responses) {\n        CompletableFuture.runAsync(() -> {\n            for (ReplicaClient<T> replica : replicas) {\n                // Send latest value to replicas that returned stale data\n                replica.repair(key, latest);\n            }\n        });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "/**\n * Vector clock implementation for tracking causal relationships\n * between events in a distributed system.\n */\nclass VectorClock {\n  private clock: Map<string, number>;\n\n  constructor(nodeId?: string) {\n    this.clock = new Map();\n    if (nodeId) {\n      this.clock.set(nodeId, 0);\n    }\n  }\n\n  /**\n   * Increment this node's counter (local event occurred)\n   */\n  increment(nodeId: string): VectorClock {\n    const newClock = new VectorClock();\n    newClock.clock = new Map(this.clock);\n    newClock.clock.set(nodeId, (newClock.clock.get(nodeId) || 0) + 1);\n    return newClock;\n  }\n\n  /**\n   * Merge with another vector clock (message received).\n   * Take element-wise maximum, then increment local counter.\n   */\n  merge(other: VectorClock, localNodeId: string): VectorClock {\n    const merged = new VectorClock();\n\n    // Combine all known nodes\n    const allNodes = new Set([...this.clock.keys(), ...other.clock.keys()]);\n\n    for (const node of allNodes) {\n      const localVal = this.clock.get(node) || 0;\n      const remoteVal = other.clock.get(node) || 0;\n      merged.clock.set(node, Math.max(localVal, remoteVal));\n    }\n\n    // Increment local counter for the receive event\n    merged.clock.set(localNodeId, (merged.clock.get(localNodeId) || 0) + 1);\n    return merged;\n  }\n\n  /**\n   * Determine causal relationship between two vector clocks.\n   * Returns: 'before', 'after', 'concurrent', or 'equal'\n   */\n  compare(other: VectorClock): 'before' | 'after' | 'concurrent' | 'equal' {\n    let thisBeforeOther = false;\n    let otherBeforeThis = false;\n\n    const allNodes = new Set([...this.clock.keys(), ...other.clock.keys()]);\n\n    for (const node of allNodes) {\n      const thisVal = this.clock.get(node) || 0;\n      const otherVal = other.clock.get(node) || 0;\n\n      if (thisVal < otherVal) thisBeforeOther = true;\n      if (thisVal > otherVal) otherBeforeThis = true;\n    }\n\n    if (!thisBeforeOther && !otherBeforeThis) return 'equal';\n    if (thisBeforeOther && !otherBeforeThis) return 'before';\n    if (!thisBeforeOther && otherBeforeThis) return 'after';\n    return 'concurrent'; // Both have elements greater than the other\n  }\n\n  toString(): string {\n    const entries = [...this.clock.entries()]\n      .sort(([a], [b]) => a.localeCompare(b))\n      .map(([node, count]) => `${node}:${count}`);\n    return `[${entries.join(', ')}]`;\n  }\n}\n\n// Usage: Detecting conflicts in a distributed key-value store\nclass CausalKVStore {\n  private store: Map<string, { value: unknown; clock: VectorClock }[]> = new Map();\n  private nodeId: string;\n  private localClock: VectorClock;\n\n  constructor(nodeId: string) {\n    this.nodeId = nodeId;\n    this.localClock = new VectorClock(nodeId);\n  }\n\n  put(key: string, value: unknown): VectorClock {\n    this.localClock = this.localClock.increment(this.nodeId);\n    const existing = this.store.get(key) || [];\n\n    // Remove entries that are causally before the new write\n    const concurrent = existing.filter(\n      entry => entry.clock.compare(this.localClock) === 'concurrent'\n    );\n\n    // Store new value alongside any concurrent versions (siblings)\n    concurrent.push({ value, clock: this.localClock });\n    this.store.set(key, concurrent);\n\n    return this.localClock;\n  }\n\n  get(key: string): { value: unknown; clock: VectorClock }[] {\n    return this.store.get(key) || [];\n    // Multiple entries = conflict (concurrent writes)\n    // Application must resolve conflicts\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "/**\n * G-Counter: a CRDT that supports increment operations.\n * Each node maintains its own counter. The global value is the sum of all node counters.\n * Merge takes the element-wise maximum, guaranteeing convergence without coordination.\n */\npublic class GCounter {\n    private final String nodeId;\n    private final Map<String, Long> counters;\n\n    public GCounter(String nodeId) {\n        this.nodeId = nodeId;\n        this.counters = new ConcurrentHashMap<>();\n        this.counters.put(nodeId, 0L);\n    }\n\n    private GCounter(String nodeId, Map<String, Long> counters) {\n        this.nodeId = nodeId;\n        this.counters = new ConcurrentHashMap<>(counters);\n    }\n\n    /** Increment this node's counter */\n    public void increment() {\n        counters.merge(nodeId, 1L, Long::sum);\n    }\n\n    /** Get the global counter value (sum of all nodes) */\n    public long value() {\n        return counters.values().stream().mapToLong(Long::longValue).sum();\n    }\n\n    /**\n     * Merge with another G-Counter replica.\n     * Takes element-wise maximum — this is commutative, associative, and idempotent,\n     * guaranteeing convergence regardless of message ordering or duplication.\n     */\n    public GCounter merge(GCounter other) {\n        Map<String, Long> merged = new HashMap<>(this.counters);\n        for (Map.Entry<String, Long> entry : other.counters.entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        return new GCounter(this.nodeId, merged);\n    }\n\n    /**\n     * Compare for convergence: this counter dominates other if all entries >= other's entries\n     */\n    public boolean dominates(GCounter other) {\n        for (Map.Entry<String, Long> entry : other.counters.entrySet()) {\n            long thisVal = this.counters.getOrDefault(entry.getKey(), 0L);\n            if (thisVal < entry.getValue()) return false;\n        }\n        return true;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design/consistency-models.md",
+    "wordCount": 1532,
+    "sectionCount": 11
+  }
+}

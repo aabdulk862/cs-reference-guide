@@ -1,0 +1,220 @@
+{
+  "id": "react-react-hooks",
+  "slug": "react-hooks",
+  "title": "React Hooks",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Hooks are functions that let you use React state and lifecycle features in function components without writing classes",
+            "Two rules: only call hooks at the top level (never inside loops, conditions, or nested functions) and only call hooks from React function components or custom hooks",
+            "useState returns a tuple of current value and setter; the setter accepts a value or an updater function receiving previous state",
+            "useEffect synchronizes components with external systems; the dependency array controls when the effect re-runs",
+            "useContext consumes context values without prop drilling; any consumer re-renders when the context value changes",
+            "useReducer manages complex state with a reducer function, similar to Redux patterns; dispatch is stable across renders",
+            "useMemo caches computed values between renders; useCallback caches function references to prevent child re-renders",
+            "useRef holds mutable values that persist across renders without triggering re-renders when changed",
+            "Custom hooks extract reusable stateful logic into composable functions prefixed with use"
+          ]
+        }
+      ],
+      "wordCount": 151,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use hooks whenever you need stateful logic in function components. useState handles simple local state like form inputs, toggle flags, and counters. Reach for useReducer when state transitions are complex, when multiple sub-values change together, or when the next state depends on the previous state and an action type. useEffect is necessary for synchronizing with external systems: fetching data, subscribing to events, manipulating the DOM directly, or setting up timers. useContext eliminates prop drilling for values that many components need at different nesting levels, such as theme preferences, authentication state, or locale settings. useMemo and useCallback become relevant when profiling reveals unnecessary re-renders or expensive recalculations. useRef is the right choice for storing DOM references, tracking previous values, holding interval IDs, or any mutable value that should not trigger re-renders. Custom hooks are appropriate whenever you find yourself duplicating stateful logic across multiple components or when a component's hook logic becomes complex enough to warrant extraction for testability and readability."
+        }
+      ],
+      "wordCount": 160,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// useState with updater function for batched updates\nimport { useState, useCallback } from 'react';\n\ninterface TodoItem {\n  id: string;\n  text: string;\n  completed: boolean;\n}\n\nfunction useTodoList(initialTodos: TodoItem[] = []) {\n  const [todos, setTodos] = useState<TodoItem[]>(initialTodos);\n\n  const addTodo = useCallback((text: string) => {\n    setTodos(prev => [...prev, {\n      id: crypto.randomUUID(),\n      text,\n      completed: false,\n    }]);\n  }, []);\n\n  const toggleTodo = useCallback((id: string) => {\n    setTodos(prev => prev.map(todo =>\n      todo.id === id ? { ...todo, completed: !todo.completed } : todo\n    ));\n  }, []);\n\n  const removeTodo = useCallback((id: string) => {\n    setTodos(prev => prev.filter(todo => todo.id !== id));\n  }, []);\n\n  const completedCount = todos.filter(t => t.completed).length;\n\n  return { todos, addTodo, toggleTodo, removeTodo, completedCount };\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Custom hook combining useEffect, useRef, and useState for data fetching\nimport { useState, useEffect, useRef, useCallback } from 'react';\n\ninterface FetchState<T> {\n  data: T | null;\n  loading: boolean;\n  error: Error | null;\n}\n\nfunction useFetch<T>(url: string, options?: RequestInit): FetchState<T> & { refetch: () => void } {\n  const [state, setState] = useState<FetchState<T>>({\n    data: null,\n    loading: true,\n    error: null,\n  });\n  const abortControllerRef = useRef<AbortController | null>(null);\n  const cacheRef = useRef<Map<string, T>>(new Map());\n\n  const fetchData = useCallback(async () => {\n    if (cacheRef.current.has(url)) {\n      setState({ data: cacheRef.current.get(url)!, loading: false, error: null });\n      return;\n    }\n\n    abortControllerRef.current?.abort();\n    abortControllerRef.current = new AbortController();\n\n    setState(prev => ({ ...prev, loading: true, error: null }));\n\n    try {\n      const response = await fetch(url, {\n        ...options,\n        signal: abortControllerRef.current.signal,\n      });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const data: T = await response.json();\n      cacheRef.current.set(url, data);\n      setState({ data, loading: false, error: null });\n    } catch (error) {\n      if (error instanceof Error && error.name !== 'AbortError') {\n        setState({ data: null, loading: false, error });\n      }\n    }\n  }, [url, options]);\n\n  useEffect(() => {\n    fetchData();\n    return () => abortControllerRef.current?.abort();\n  }, [fetchData]);\n\n  return { ...state, refetch: fetchData };\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// useReducer for complex form state management\nimport { useReducer } from 'react';\n\ninterface FormState {\n  values: Record<string, string>;\n  errors: Record<string, string>;\n  touched: Record<string, boolean>;\n  isSubmitting: boolean;\n}\n\ntype FormAction =\n  | { type: 'SET_FIELD'; field: string; value: string }\n  | { type: 'SET_ERROR'; field: string; error: string }\n  | { type: 'TOUCH_FIELD'; field: string }\n  | { type: 'SUBMIT_START' }\n  | { type: 'SUBMIT_SUCCESS' }\n  | { type: 'SUBMIT_FAILURE'; errors: Record<string, string> }\n  | { type: 'RESET'; initialValues: Record<string, string> };\n\nfunction formReducer(state: FormState, action: FormAction): FormState {\n  switch (action.type) {\n    case 'SET_FIELD':\n      return {\n        ...state,\n        values: { ...state.values, [action.field]: action.value },\n        errors: { ...state.errors, [action.field]: '' },\n      };\n    case 'SET_ERROR':\n      return {\n        ...state,\n        errors: { ...state.errors, [action.field]: action.error },\n      };\n    case 'TOUCH_FIELD':\n      return {\n        ...state,\n        touched: { ...state.touched, [action.field]: true },\n      };\n    case 'SUBMIT_START':\n      return { ...state, isSubmitting: true };\n    case 'SUBMIT_SUCCESS':\n      return { ...state, isSubmitting: false, errors: {} };\n    case 'SUBMIT_FAILURE':\n      return { ...state, isSubmitting: false, errors: action.errors };\n    case 'RESET':\n      return {\n        values: action.initialValues,\n        errors: {},\n        touched: {},\n        isSubmitting: false,\n      };\n    default:\n      return state;\n  }\n}\n\nfunction useForm(initialValues: Record<string, string>) {\n  const [state, dispatch] = useReducer(formReducer, {\n    values: initialValues,\n    errors: {},\n    touched: {},\n    isSubmitting: false,\n  });\n\n  return { state, dispatch };\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Stale closures in useEffect: When the dependency array is incomplete, the effect captures stale values from a previous render. The ESLint exhaustive-deps rule catches most cases, but developers often suppress it instead of restructuring the effect. Always include all referenced variables in the dependency array or use useRef for values that should not trigger re-runs. A common manifestation is a timer callback that reads state but the state value never updates because the callback was created with the initial value captured in its closure.",
+            "Overusing useEffect for derived state: Computing values that can be calculated directly from props or state during render does not need useEffect. Using useEffect to sync derived state causes an extra render cycle and introduces bugs where the derived value is temporarily out of sync. For example, filtering a list based on a search term should be computed inline or with useMemo, not stored in separate state updated via useEffect. The rule of thumb is: if you can calculate it from existing props and state, do it during rendering.",
+            "Creating new references on every render: Passing inline objects like style={{ color: 'red' }} or inline callbacks like onClick={() => handleClick(id)} creates new references every render, defeating React.memo on child components. Extract stable references with useMemo for objects and useCallback for functions. However, only optimize this when profiling shows it matters, as premature memoization adds complexity without measurable benefit in most cases.",
+            "Ignoring cleanup in useEffect: Effects that set up subscriptions, timers, or event listeners must return a cleanup function to prevent memory leaks and stale callbacks. Forgetting cleanup leads to components that continue receiving events after unmounting, causing \"setState on unmounted component\" warnings and potential memory leaks. Every addEventListener needs a corresponding removeEventListener in the cleanup.",
+            "Violating the rules of hooks: Calling hooks conditionally or inside loops breaks React's ability to track hook state between renders. React relies on the order of hook calls being consistent across renders. Wrapping a hook call in an if statement means the hook might not be called on some renders, shifting all subsequent hook indices and corrupting state. The ESLint plugin eslint-plugin-react-hooks enforces this rule statically.",
+            "Using useState when useRef suffices: Not every mutable value needs to trigger a re-render. Storing interval IDs, previous values for comparison, or DOM element references in useState causes unnecessary re-renders. useRef is the correct choice for values that need to persist across renders but should not cause the component to update when they change."
+          ]
+        }
+      ],
+      "wordCount": 410,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "React hooks power the state management and side effect handling in virtually every modern React application. At Meta, hooks replaced thousands of class component lifecycle methods with composable, testable logic units. The useFetch pattern shown above is the foundation of data-fetching hooks in libraries like SWR and TanStack Query, which add caching, background refetching, and optimistic updates on top of the basic fetch-state-error pattern."
+        },
+        {
+          "type": "paragraph",
+          "text": "In e-commerce applications, useReducer manages complex checkout flows where multiple form steps, validation states, and payment processing states interact. The reducer pattern makes state transitions explicit and testable in isolation from the UI. Companies like Shopify use custom hooks to encapsulate cart logic, inventory checks, and pricing calculations that are shared across web and mobile (React Native) platforms."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-time collaboration tools like Figma and Notion use useEffect with WebSocket connections, where the cleanup function properly closes connections and the dependency array ensures reconnection when authentication tokens change. Custom hooks like useWebSocket encapsulate the connection lifecycle, message buffering, and reconnection logic, providing a clean API to consuming components."
+        },
+        {
+          "type": "paragraph",
+          "text": "Form-heavy enterprise applications use custom hooks that combine useReducer for form state, useEffect for async validation, and useCallback for stable submit handlers. Libraries like React Hook Form and Formik are built entirely on hooks, demonstrating how complex stateful logic can be packaged into reusable abstractions without affecting the component tree structure."
+        }
+      ],
+      "wordCount": 222,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What are the rules of hooks and why do they exist?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The two rules are: only call hooks at the top level (never inside loops, conditions, or nested functions) and only call hooks from React function components or custom hooks. These rules exist because React tracks hook state by the order in which hooks are called during each render. If a hook is called conditionally, the order changes between renders, causing React to associate the wrong state with the wrong hook. The rules ensure a stable, predictable mapping between hook calls and their stored state."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between useState and useReducer. When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: useState is simpler and works well for independent state values with straightforward updates. useReducer is preferable when state logic is complex: when the next state depends on the previous state and an action type, when multiple sub-values change together in response to a single event, or when you want to centralize state transition logic for testability. useReducer also provides a stable dispatch function that never changes reference, making it safe to pass to deeply nested children without causing re-renders. In practice, if you find yourself writing multiple related useState calls that always update together, that is a signal to consolidate into useReducer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the useEffect dependency array work, and what happens when you get it wrong?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The dependency array tells React when to re-run the effect. An empty array means run once on mount and clean up on unmount. Specific values mean re-run when those values change (compared by Object.is). Omitting the array entirely means run after every render. When the array is incomplete (missing a dependency), the effect captures stale values from a previous render, leading to bugs where the effect operates on outdated data. When the array includes unstable references (objects or functions recreated every render), the effect runs too often, potentially causing infinite loops or performance issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the purpose of useCallback and useMemo, and when should you avoid using them?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: useCallback memoizes a function reference so it remains stable across renders, preventing child components wrapped in React.memo from re-rendering due to a new function prop. useMemo memoizes a computed value, preventing expensive recalculations when dependencies have not changed. Avoid using them when the computation is cheap (the memoization overhead exceeds the saved work), when the component does not pass the value to memoized children, or when the dependencies change on every render anyway (making memoization useless). Profile first, then optimize."
+        }
+      ],
+      "wordCount": 424,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Always use the exhaustive-deps ESLint rule without suppression: The react-hooks/exhaustive-deps rule catches stale closure bugs that are extremely difficult to debug in production. When the rule flags a dependency, restructure the effect rather than adding an eslint-disable comment. Common restructuring patterns include moving the function inside the effect, using useRef for values that should not trigger re-runs, or splitting the effect into multiple focused effects with different dependency sets.",
+            "Implement error boundaries around hook-heavy components: Hooks that perform async operations (data fetching, WebSocket connections) can throw errors that crash the entire component tree if uncaught. Wrap major UI sections in error boundaries that log to your monitoring service and display fallback UI. This is especially important for custom hooks used across many components, where a single bug in the hook logic could cascade across the application.",
+            "Use React DevTools Profiler to validate memoization: Before adding useMemo or useCallback, use the Profiler to confirm that unnecessary re-renders are actually occurring and causing measurable performance impact. The Profiler shows why each component rendered (props changed, hooks changed, parent rendered), making it clear whether memoization will help. Many performance issues are better solved by state colocation (moving state closer to where it is used) than by memoization."
+          ]
+        }
+      ],
+      "wordCount": 204,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "State Management — Hooks are the foundation for all state management patterns in React",
+            "Component Patterns — Custom hooks enable the primary mechanism for logic reuse in modern React",
+            "TypeScript Generics — Generic hooks provide type-safe reusable stateful logic"
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// useState with updater function for batched updates\nimport { useState, useCallback } from 'react';\n\ninterface TodoItem {\n  id: string;\n  text: string;\n  completed: boolean;\n}\n\nfunction useTodoList(initialTodos: TodoItem[] = []) {\n  const [todos, setTodos] = useState<TodoItem[]>(initialTodos);\n\n  const addTodo = useCallback((text: string) => {\n    setTodos(prev => [...prev, {\n      id: crypto.randomUUID(),\n      text,\n      completed: false,\n    }]);\n  }, []);\n\n  const toggleTodo = useCallback((id: string) => {\n    setTodos(prev => prev.map(todo =>\n      todo.id === id ? { ...todo, completed: !todo.completed } : todo\n    ));\n  }, []);\n\n  const removeTodo = useCallback((id: string) => {\n    setTodos(prev => prev.filter(todo => todo.id !== id));\n  }, []);\n\n  const completedCount = todos.filter(t => t.completed).length;\n\n  return { todos, addTodo, toggleTodo, removeTodo, completedCount };\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Custom hook combining useEffect, useRef, and useState for data fetching\nimport { useState, useEffect, useRef, useCallback } from 'react';\n\ninterface FetchState<T> {\n  data: T | null;\n  loading: boolean;\n  error: Error | null;\n}\n\nfunction useFetch<T>(url: string, options?: RequestInit): FetchState<T> & { refetch: () => void } {\n  const [state, setState] = useState<FetchState<T>>({\n    data: null,\n    loading: true,\n    error: null,\n  });\n  const abortControllerRef = useRef<AbortController | null>(null);\n  const cacheRef = useRef<Map<string, T>>(new Map());\n\n  const fetchData = useCallback(async () => {\n    if (cacheRef.current.has(url)) {\n      setState({ data: cacheRef.current.get(url)!, loading: false, error: null });\n      return;\n    }\n\n    abortControllerRef.current?.abort();\n    abortControllerRef.current = new AbortController();\n\n    setState(prev => ({ ...prev, loading: true, error: null }));\n\n    try {\n      const response = await fetch(url, {\n        ...options,\n        signal: abortControllerRef.current.signal,\n      });\n      if (!response.ok) throw new Error(`HTTP ${response.status}`);\n      const data: T = await response.json();\n      cacheRef.current.set(url, data);\n      setState({ data, loading: false, error: null });\n    } catch (error) {\n      if (error instanceof Error && error.name !== 'AbortError') {\n        setState({ data: null, loading: false, error });\n      }\n    }\n  }, [url, options]);\n\n  useEffect(() => {\n    fetchData();\n    return () => abortControllerRef.current?.abort();\n  }, [fetchData]);\n\n  return { ...state, refetch: fetchData };\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// useReducer for complex form state management\nimport { useReducer } from 'react';\n\ninterface FormState {\n  values: Record<string, string>;\n  errors: Record<string, string>;\n  touched: Record<string, boolean>;\n  isSubmitting: boolean;\n}\n\ntype FormAction =\n  | { type: 'SET_FIELD'; field: string; value: string }\n  | { type: 'SET_ERROR'; field: string; error: string }\n  | { type: 'TOUCH_FIELD'; field: string }\n  | { type: 'SUBMIT_START' }\n  | { type: 'SUBMIT_SUCCESS' }\n  | { type: 'SUBMIT_FAILURE'; errors: Record<string, string> }\n  | { type: 'RESET'; initialValues: Record<string, string> };\n\nfunction formReducer(state: FormState, action: FormAction): FormState {\n  switch (action.type) {\n    case 'SET_FIELD':\n      return {\n        ...state,\n        values: { ...state.values, [action.field]: action.value },\n        errors: { ...state.errors, [action.field]: '' },\n      };\n    case 'SET_ERROR':\n      return {\n        ...state,\n        errors: { ...state.errors, [action.field]: action.error },\n      };\n    case 'TOUCH_FIELD':\n      return {\n        ...state,\n        touched: { ...state.touched, [action.field]: true },\n      };\n    case 'SUBMIT_START':\n      return { ...state, isSubmitting: true };\n    case 'SUBMIT_SUCCESS':\n      return { ...state, isSubmitting: false, errors: {} };\n    case 'SUBMIT_FAILURE':\n      return { ...state, isSubmitting: false, errors: action.errors };\n    case 'RESET':\n      return {\n        values: action.initialValues,\n        errors: {},\n        touched: {},\n        isSubmitting: false,\n      };\n    default:\n      return state;\n  }\n}\n\nfunction useForm(initialValues: Record<string, string>) {\n  const [state, dispatch] = useReducer(formReducer, {\n    values: initialValues,\n    errors: {},\n    touched: {},\n    isSubmitting: false,\n  });\n\n  return { state, dispatch };\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/react/hooks.md",
+    "wordCount": 1610,
+    "sectionCount": 8
+  }
+}

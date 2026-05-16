@@ -38,6 +38,11 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   { pattern: 'system-design', category: 'System Design' },
   { pattern: 'interview-prep', category: 'Interview Prep' },
   { pattern: 'git', category: 'Git' },
+  { pattern: 'security', category: 'Security' },
+  { pattern: 'nextjs', category: 'Next.js' },
+  { pattern: 'html-css', category: 'HTML & CSS' },
+  { pattern: 'ci-cd', category: 'CI/CD' },
+  { pattern: 'linux', category: 'Linux' },
 ];
 
 /**
@@ -71,6 +76,121 @@ function slugify(text: string): string {
 }
 
 /**
+ * Represents a multi-page topic detected in the content directory.
+ * A multi-page topic is a directory containing an `index.md` file
+ * and one or more subtopic `.md` files.
+ */
+export interface MultiPageTopic {
+  /** Absolute path to the topic directory */
+  dirPath: string;
+  /** Absolute path to the index.md file */
+  indexFile: string;
+  /** Alphabetically sorted list of absolute paths to subtopic .md files */
+  subtopicFiles: string[];
+  /** The category this topic belongs to */
+  category: string;
+  /** URL-friendly slug derived from the directory name */
+  topicSlug: string;
+}
+
+/**
+ * Detects multi-page topics within a category directory.
+ *
+ * For each immediate child entry of the category directory:
+ * - If it's a directory containing `index.md`, classify as MultiPageTopic
+ * - If it's a directory without `index.md`, log a warning and skip
+ * - If it's a `.md` file, leave it for existing single-file processing
+ *
+ * Requirements: 1.1, 1.2, 1.4, 1.5, 1.6
+ */
+export async function detectMultiPageTopics(
+  contentRoot: string,
+  categoryMappings: CategoryMapping[] = CATEGORY_MAPPINGS
+): Promise<MultiPageTopic[]> {
+  const multiPageTopics: MultiPageTopic[] = [];
+
+  for (const mapping of categoryMappings) {
+    const categoryDir = path.join(contentRoot, mapping.pattern);
+
+    // Check if the category directory exists
+    let categoryEntries: fs.Dirent[];
+    try {
+      categoryEntries = await fsp.readdir(categoryDir, { withFileTypes: true });
+    } catch {
+      // Category directory doesn't exist yet — skip
+      continue;
+    }
+
+    for (const entry of categoryEntries) {
+      if (!entry.isDirectory()) {
+        // Single .md files → existing single-file behavior (unchanged)
+        continue;
+      }
+
+      const dirPath = path.join(categoryDir, entry.name);
+      const indexFilePath = path.join(dirPath, 'index.md');
+
+      // Check if the directory contains an index.md
+      let hasIndex = false;
+      try {
+        await fsp.access(indexFilePath, fs.constants.F_OK);
+        hasIndex = true;
+      } catch {
+        // index.md does not exist
+      }
+
+      if (!hasIndex) {
+        console.warn(
+          `[content-plugin] Warning: Directory "${dirPath}" does not contain an index.md file — skipping`
+        );
+        continue;
+      }
+
+      // Collect subtopic files: .md files directly in this directory, excluding index.md
+      // and excluding files in nested subdirectories
+      const topicEntries = await fsp.readdir(dirPath, { withFileTypes: true });
+      const subtopicFiles: string[] = [];
+
+      for (const topicEntry of topicEntries) {
+        if (
+          topicEntry.isFile() &&
+          topicEntry.name.endsWith('.md') &&
+          topicEntry.name !== 'index.md'
+        ) {
+          subtopicFiles.push(path.join(dirPath, topicEntry.name));
+        }
+      }
+
+      // Sort subtopic files alphabetically
+      subtopicFiles.sort((a, b) => {
+        const nameA = path.basename(a);
+        const nameB = path.basename(b);
+        return nameA.localeCompare(nameB);
+      });
+
+      // Log warning if subtopic count exceeds 50
+      if (subtopicFiles.length > 50) {
+        console.warn(
+          `[content-plugin] Warning: Multi-page topic "${entry.name}" in category "${mapping.category}" has ${subtopicFiles.length} subtopics, which exceeds the recommended maximum of 50`
+        );
+      }
+
+      const topicSlug = slugify(entry.name);
+
+      multiPageTopics.push({
+        dirPath,
+        indexFile: indexFilePath,
+        subtopicFiles,
+        category: mapping.category,
+        topicSlug,
+      });
+    }
+  }
+
+  return multiPageTopics;
+}
+
+/**
  * Recursively scans a directory for .md files.
  */
 async function scanMarkdownFiles(dir: string): Promise<string[]> {
@@ -100,8 +220,16 @@ async function scanMarkdownFiles(dir: string): Promise<string[]> {
   return results;
 }
 
+/** Subtopic entry within a multi-page topic manifest entry */
+export interface ManifestSubtopic {
+  id: string;
+  slug: string;
+  title: string;
+  wordCount: number;
+}
+
 /** Topic entry in the content manifest */
-interface ManifestTopic {
+export interface ManifestTopic {
   id: string;
   slug: string;
   title: string;
@@ -109,17 +237,18 @@ interface ManifestTopic {
   sectionCount: number;
   wordCount: number;
   contentPath: string;
+  subtopics?: ManifestSubtopic[];
 }
 
 /** Category entry in the content manifest */
-interface ManifestCategory {
+export interface ManifestCategory {
   id: string;
   name: string;
   topics: ManifestTopic[];
 }
 
 /** The full content manifest structure */
-interface ContentManifest {
+export interface ContentManifest {
   categories: ManifestCategory[];
   totalTopics: number;
   totalSections: number;
@@ -129,17 +258,36 @@ interface ContentManifest {
 /**
  * Processes all markdown files and generates content JSON and manifest.
  */
-async function processContent(contentRoot: string, outputDir: string): Promise<void> {
+export async function processContent(contentRoot: string, outputDir: string): Promise<void> {
   // Ensure output directory exists
   await fsp.mkdir(outputDir, { recursive: true });
+
+  // Step 1: Detect multi-page topics (directories with index.md)
+  const multiPageTopics = await detectMultiPageTopics(contentRoot);
+
+  // Build a set of file paths that belong to multi-page topics
+  // so they can be excluded from single-file processing
+  const multiPageFilePaths = new Set<string>();
+  for (const topic of multiPageTopics) {
+    multiPageFilePaths.add(topic.indexFile);
+    for (const subtopicFile of topic.subtopicFiles) {
+      multiPageFilePaths.add(subtopicFile);
+    }
+  }
 
   // Scan for all markdown files
   const allFiles = await scanMarkdownFiles(contentRoot);
 
-  // Filter out excluded files and files without a category mapping
+  // Filter out excluded files, files without a category mapping,
+  // and files that belong to multi-page topics (handled separately)
   const validFiles: Array<{ filePath: string; relativePath: string; category: string }> = [];
 
   for (const filePath of allFiles) {
+    // Skip files that are part of multi-page topics
+    if (multiPageFilePaths.has(filePath)) {
+      continue;
+    }
+
     const relativePath = path.relative(contentRoot, filePath);
 
     // Apply exclusion filter
@@ -197,6 +345,114 @@ async function processContent(contentRoot: string, outputDir: string): Promise<v
     categoryMap.get(category)!.push(parsed);
   }
 
+  // Process multi-page topics
+  for (const multiPageTopic of multiPageTopics) {
+    const { indexFile, subtopicFiles, category, topicSlug } = multiPageTopic;
+    const categorySlug = slugify(category);
+
+    // Parse index.md
+    let indexRawContent: string;
+    try {
+      indexRawContent = await fsp.readFile(indexFile, 'utf-8');
+    } catch {
+      console.warn(`[content-plugin] Could not read index file: ${indexFile}`);
+      continue;
+    }
+
+    if (indexRawContent.trim().length === 0) {
+      console.warn(`[content-plugin] Skipping empty index file: ${indexFile}`);
+      continue;
+    }
+
+    const indexParsed = parseMarkdown(indexRawContent, indexFile, category);
+
+    // Resolve image paths in index content
+    for (const image of indexParsed.images) {
+      if (image.originalPath && !image.originalPath.startsWith('http')) {
+        const resolved = resolveImagePath(image.originalPath, indexFile);
+        image.src = resolved;
+      }
+    }
+    resolveImagesInSections(indexParsed.sections, indexFile);
+
+    // Parse subtopic files and deduplicate slugs
+    const subtopicParsedList: ParsedContent[] = [];
+    const slugCounts = new Map<string, number>();
+
+    for (const subtopicFile of subtopicFiles) {
+      let subtopicRawContent: string;
+      try {
+        subtopicRawContent = await fsp.readFile(subtopicFile, 'utf-8');
+      } catch {
+        console.warn(`[content-plugin] Could not read subtopic file: ${subtopicFile}`);
+        continue;
+      }
+
+      if (subtopicRawContent.trim().length === 0) {
+        console.warn(`[content-plugin] Skipping empty subtopic file: ${subtopicFile}`);
+        continue;
+      }
+
+      const subtopicParsed = parseMarkdown(subtopicRawContent, subtopicFile, category);
+
+      // Derive subtopic slug from filename (without .md extension)
+      const filename = path.basename(subtopicFile, '.md');
+      let subtopicSlug = slugify(filename);
+
+      // Slug deduplication: first occurrence unchanged, subsequent get -2, -3, etc.
+      const currentCount = slugCounts.get(subtopicSlug) || 0;
+      slugCounts.set(subtopicSlug, currentCount + 1);
+      if (currentCount > 0) {
+        const suffix = currentCount + 1;
+        console.warn(
+          `[content-plugin] Warning: Duplicate subtopic slug "${subtopicSlug}" in topic "${topicSlug}" — renaming to "${subtopicSlug}-${suffix}"`
+        );
+        subtopicSlug = `${subtopicSlug}-${suffix}`;
+      }
+
+      // Override the slug with the deduplicated filename-based slug
+      subtopicParsed.slug = subtopicSlug;
+
+      // Resolve image paths in subtopic content
+      for (const image of subtopicParsed.images) {
+        if (image.originalPath && !image.originalPath.startsWith('http')) {
+          const resolved = resolveImagePath(image.originalPath, subtopicFile);
+          image.src = resolved;
+        }
+      }
+      resolveImagesInSections(subtopicParsed.sections, subtopicFile);
+
+      subtopicParsedList.push(subtopicParsed);
+    }
+
+    // Write index JSON: {categorySlug}/{topicSlug}.json
+    const categoryOutputDir = path.join(outputDir, categorySlug);
+    await fsp.mkdir(categoryOutputDir, { recursive: true });
+    const indexOutputPath = path.join(categoryOutputDir, `${topicSlug}.json`);
+    await fsp.writeFile(indexOutputPath, JSON.stringify(indexParsed, null, 2), 'utf-8');
+
+    // Write subtopic JSON files: {categorySlug}/{topicSlug}/{subtopicSlug}.json
+    const topicOutputDir = path.join(categoryOutputDir, topicSlug);
+    await fsp.mkdir(topicOutputDir, { recursive: true });
+
+    for (const subtopicParsed of subtopicParsedList) {
+      const subtopicOutputPath = path.join(topicOutputDir, `${subtopicParsed.slug}.json`);
+      await fsp.writeFile(subtopicOutputPath, JSON.stringify(subtopicParsed, null, 2), 'utf-8');
+    }
+
+    // Add to category map for manifest generation and search indexing
+    if (!categoryMap.has(category)) {
+      categoryMap.set(category, []);
+    }
+    // Store index parsed content tagged with multi-page metadata for manifest generation
+    // We attach subtopic data to the index entry for later manifest building
+    (indexParsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage = {
+      topicSlug,
+      subtopics: subtopicParsedList,
+    };
+    categoryMap.get(category)!.push(indexParsed);
+  }
+
   // Generate output files
   const manifestCategories: ManifestCategory[] = [];
   let totalTopics = 0;
@@ -210,24 +466,60 @@ async function processContent(contentRoot: string, outputDir: string): Promise<v
     const topics: ManifestTopic[] = [];
 
     for (const parsed of contents) {
-      const topicSlug = parsed.slug;
-      const topicFilePath = path.join(categoryDir, `${topicSlug}.json`);
+      const multiPageData = (parsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage;
 
-      // Write individual topic JSON
-      await fsp.writeFile(topicFilePath, JSON.stringify(parsed, null, 2), 'utf-8');
+      if (multiPageData) {
+        // Multi-page topic: JSON already written above, just build manifest entry
+        const { topicSlug: mpTopicSlug, subtopics } = multiPageData;
 
-      topics.push({
-        id: parsed.id,
-        slug: `${categorySlug}/${topicSlug}`,
-        title: parsed.title,
-        source: 'parsed',
-        sectionCount: parsed.metadata.sectionCount,
-        wordCount: parsed.metadata.wordCount,
-        contentPath: `/content/${categorySlug}/${topicSlug}.json`,
-      });
+        // Build subtopics array ordered alphabetically by title
+        const manifestSubtopics: ManifestSubtopic[] = subtopics
+          .map((s) => ({
+            id: `${mpTopicSlug}-${s.slug}`,
+            slug: s.slug,
+            title: s.title,
+            wordCount: s.metadata.wordCount,
+          }))
+          .sort((a, b) => a.title.localeCompare(b.title));
 
-      totalTopics++;
-      totalSections += parsed.metadata.sectionCount;
+        // Aggregate counts: topic-level = index + all subtopics
+        const aggregatedSectionCount = parsed.metadata.sectionCount + subtopics.reduce((sum, s) => sum + s.metadata.sectionCount, 0);
+        const aggregatedWordCount = parsed.metadata.wordCount + subtopics.reduce((sum, s) => sum + s.metadata.wordCount, 0);
+
+        topics.push({
+          id: parsed.id,
+          slug: `${categorySlug}/${mpTopicSlug}`,
+          title: parsed.title,
+          source: 'parsed',
+          sectionCount: aggregatedSectionCount,
+          wordCount: aggregatedWordCount,
+          contentPath: `/content/${categorySlug}/${mpTopicSlug}.json`,
+          subtopics: manifestSubtopics,
+        });
+
+        totalTopics++;
+        totalSections += aggregatedSectionCount;
+      } else {
+        // Single-file topic
+        const topicSlug = parsed.slug;
+        const topicFilePath = path.join(categoryDir, `${topicSlug}.json`);
+
+        // Write individual topic JSON
+        await fsp.writeFile(topicFilePath, JSON.stringify(parsed, null, 2), 'utf-8');
+
+        topics.push({
+          id: parsed.id,
+          slug: `${categorySlug}/${topicSlug}`,
+          title: parsed.title,
+          source: 'parsed',
+          sectionCount: parsed.metadata.sectionCount,
+          wordCount: parsed.metadata.wordCount,
+          contentPath: `/content/${categorySlug}/${topicSlug}.json`,
+        });
+
+        totalTopics++;
+        totalSections += parsed.metadata.sectionCount;
+      }
     }
 
     // Detect and disambiguate duplicate topic IDs within this category
@@ -271,10 +563,17 @@ async function processContent(contentRoot: string, outputDir: string): Promise<v
   const manifestPath = path.join(outputDir, '..', 'content-manifest.json');
   await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
 
-  // Build and write search index from all parsed content
+  // Build and write search index from all parsed content (including subtopics)
   const allParsedContents: ParsedContent[] = [];
   for (const contents of categoryMap.values()) {
-    allParsedContents.push(...contents);
+    for (const content of contents) {
+      allParsedContents.push(content);
+      // Include subtopic content in search index for multi-page topics
+      const multiPageData = (content as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage;
+      if (multiPageData) {
+        allParsedContents.push(...multiPageData.subtopics);
+      }
+    }
   }
   const searchDocuments = buildSearchDocuments(allParsedContents);
   const searchIndexPath = path.join(outputDir, '..', 'search-index.json');

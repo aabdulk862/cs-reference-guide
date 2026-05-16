@@ -18,6 +18,7 @@ function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Dashboard />} />
+          <Route path="/topic/:categorySlug/:topicSlug/:subtopicSlug" element={<TopicPage />} />
           <Route path="/topic/:categorySlug/:topicSlug" element={<TopicPage />} />
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/search" element={<SearchPage />} />

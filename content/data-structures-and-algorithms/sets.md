@@ -336,7 +336,7 @@ Use two pointers advancing through both arrays simultaneously. If elements are e
 
 ## Related Topics
 
-- [Map](./map.md) — HashSet is internally backed by a HashMap with dummy values
+- [Hash Tables](./hash-tables.md) — HashSet is internally backed by a HashMap with dummy values
 - [Tree](./tree.md) — TreeSet uses a red-black tree for sorted element storage
 - [Array](./array.md) — Sets can be used to deduplicate array elements efficiently
 - [Graph](./graph.md) — Sets track visited nodes in graph traversal algorithms

@@ -395,7 +395,7 @@ Draw the recursion tree. Count total nodes (each represents one function call). 
 - [Heap](./heap.md) — Heap operations demonstrate O(log n) behavior in priority queue implementations
 - [Graph](./graph.md) — Graph algorithms showcase O(V + E) traversal complexity
 - [Tree](./tree.md) — Balanced trees achieve O(log n) search through height-bounded structures
-- [Map](./map.md) — Hash maps demonstrate amortized O(1) vs. TreeMap O(log n) tradeoffs
+- [Hash Tables](./hash-tables.md) — Hash tables demonstrate amortized O(1) vs. TreeMap O(log n) tradeoffs
 
 ---
 

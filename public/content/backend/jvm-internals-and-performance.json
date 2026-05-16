@@ -1,0 +1,270 @@
+{
+  "id": "java-jvm-internals-and-performance",
+  "slug": "jvm-internals-and-performance",
+  "title": "JVM Internals and Performance",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The JVM executes bytecode through a combination of interpretation and Just-In-Time (JIT) compilation",
+            "Memory is divided into Heap (objects), Stack (frames/primitives), Metaspace (class metadata), and native memory",
+            "Garbage collectors: Serial, Parallel, G1 (default since Java 9), ZGC (low-latency), Shenandoah (concurrent)",
+            "JIT compilation uses tiered compilation: C1 (fast compile, moderate optimization) → C2 (slow compile, aggressive optimization)",
+            "Class loading follows delegation model: Bootstrap → Platform → Application class loaders",
+            "JVM flags: -Xms (initial heap), -Xmx (max heap), -XX:+UseG1GC, -XX:MaxGCPauseMillis",
+            "Java Flight Recorder (JFR) provides low-overhead production profiling with event-based data collection",
+            "Escape analysis enables scalar replacement and lock elision for objects that do not escape method scope"
+          ]
+        }
+      ],
+      "wordCount": 106,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding JVM internals is essential when diagnosing production performance issues, tuning garbage collection for latency-sensitive applications, or optimizing memory usage in resource-constrained environments. These concepts become critical when your application experiences unexpected GC pauses affecting response time SLAs, when memory leaks cause gradual heap growth leading to OutOfMemoryError, or when startup time matters for serverless and containerized deployments. Senior engineers need JVM knowledge to make informed decisions about garbage collector selection, heap sizing, and thread pool configuration. This knowledge is also fundamental for understanding why certain code patterns perform better than others, how the JIT compiler optimizes hot paths, and how to interpret profiling data from tools like JFR, async-profiler, and VisualVM. In interview settings, JVM internals questions assess whether a candidate can reason about system behavior under load and troubleshoot production issues methodically rather than relying on trial-and-error tuning."
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "gc-tuning-and-jvm-configuration",
+          "heading": "GC Tuning and JVM Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# G1GC configuration for a typical microservice (4GB heap)\njava -Xms4g -Xmx4g \\\n  -XX:+UseG1GC \\\n  -XX:MaxGCPauseMillis=200 \\\n  -XX:G1HeapRegionSize=16m \\\n  -XX:InitiatingHeapOccupancyPercent=45 \\\n  -XX:G1ReservePercent=15 \\\n  -XX:+ParallelRefProcEnabled \\\n  -Xlog:gc*:file=/var/log/app/gc.log:time,uptime,level,tags:filecount=10,filesize=50m \\\n  -jar application.jar\n\n# ZGC for ultra-low-latency requirements (sub-millisecond pauses)\njava -Xms8g -Xmx8g \\\n  -XX:+UseZGC \\\n  -XX:+ZGenerational \\\n  -XX:SoftMaxHeapSize=6g \\\n  -Xlog:gc*:file=/var/log/app/gc.log:time,uptime,level,tags \\\n  -jar trading-engine.jar\n\n# Container-aware JVM settings\njava -XX:+UseContainerSupport \\\n  -XX:MaxRAMPercentage=75.0 \\\n  -XX:InitialRAMPercentage=75.0 \\\n  -XX:+UseG1GC \\\n  -XX:+ExitOnOutOfMemoryError \\\n  -jar application.jar",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "java-flight-recorder-profiling",
+          "heading": "Java Flight Recorder Profiling",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Programmatic JFR event recording\nimport jdk.jfr.*;\n\n@Category(\"Application\")\n@Label(\"Order Processing\")\n@Description(\"Records order processing duration and outcome\")\npublic class OrderProcessingEvent extends Event {\n    @Label(\"Order ID\")\n    String orderId;\n\n    @Label(\"Processing Duration (ms)\")\n    @Timespan(Timespan.MILLISECONDS)\n    long duration;\n\n    @Label(\"Success\")\n    boolean success;\n\n    @Label(\"Item Count\")\n    int itemCount;\n}\n\n// Usage in application code\npublic OrderResult processOrder(Order order) {\n    OrderProcessingEvent event = new OrderProcessingEvent();\n    event.begin();\n    try {\n        OrderResult result = doProcessing(order);\n        event.orderId = order.getId();\n        event.success = true;\n        event.itemCount = order.getItems().size();\n        return result;\n    } catch (Exception e) {\n        event.success = false;\n        throw e;\n    } finally {\n        event.duration = event.getDuration().toMillis();\n        event.commit();\n    }\n}\n\n// Starting JFR recording programmatically\nConfiguration config = Configuration.getConfiguration(\"profile\");\nRecording recording = new Recording(config);\nrecording.setDestination(Path.of(\"/tmp/app-recording.jfr\"));\nrecording.setMaxSize(100 * 1024 * 1024); // 100MB max\nrecording.setMaxAge(Duration.ofMinutes(30));\nrecording.start();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "memory-analysis-and-leak-detection",
+          "heading": "Memory Analysis and Leak Detection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Weak references for cache implementations that respect GC pressure\nimport java.lang.ref.*;\n\npublic class WeakCache<K, V> {\n    private final Map<K, WeakReference<V>> cache = new ConcurrentHashMap<>();\n    private final ReferenceQueue<V> refQueue = new ReferenceQueue<>();\n\n    public void put(K key, V value) {\n        cleanStaleEntries();\n        cache.put(key, new KeyedWeakReference<>(key, value, refQueue));\n    }\n\n    public Optional<V> get(K key) {\n        WeakReference<V> ref = cache.get(key);\n        if (ref == null) return Optional.empty();\n        V value = ref.get();\n        if (value == null) {\n            cache.remove(key);\n            return Optional.empty();\n        }\n        return Optional.of(value);\n    }\n\n    private void cleanStaleEntries() {\n        Reference<? extends V> ref;\n        while ((ref = refQueue.poll()) != null) {\n            if (ref instanceof KeyedWeakReference) {\n                cache.remove(((KeyedWeakReference<K, V>) ref).key);\n            }\n        }\n    }\n\n    private static class KeyedWeakReference<K, V> extends WeakReference<V> {\n        final K key;\n        KeyedWeakReference(K key, V value, ReferenceQueue<V> queue) {\n            super(value, queue);\n            this.key = key;\n        }\n    }\n}\n\n// Detecting memory leaks with heap dump analysis triggers\npublic class MemoryMonitor {\n    private static final long HEAP_THRESHOLD = (long) (Runtime.getRuntime().maxMemory() * 0.85);\n\n    public void checkMemoryPressure() {\n        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();\n        if (usedMemory > HEAP_THRESHOLD) {\n            // Trigger heap dump for analysis\n            triggerHeapDump(\"/tmp/heapdump-\" + System.currentTimeMillis() + \".hprof\");\n            log.warn(\"Memory pressure detected: {}MB used of {}MB max\",\n                usedMemory / (1024 * 1024),\n                Runtime.getRuntime().maxMemory() / (1024 * 1024));\n        }\n    }\n\n    private void triggerHeapDump(String path) {\n        try {\n            MBeanServer server = ManagementFactory.getPlatformMBeanServer();\n            HotSpotDiagnosticMXBean bean = ManagementFactory.newPlatformMXBeanProxy(\n                server, \"com.sun.management:type=HotSpotDiagnostic\",\n                HotSpotDiagnosticMXBean.class);\n            bean.dumpHeap(path, true);\n        } catch (Exception e) {\n            log.error(\"Failed to trigger heap dump\", e);\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "class-loading-and-module-system",
+          "heading": "Class Loading and Module System",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom class loader for plugin architecture\npublic class PluginClassLoader extends URLClassLoader {\n    private final ClassLoader parentLoader;\n    private final Set<String> parentDelegationPackages;\n\n    public PluginClassLoader(URL[] urls, ClassLoader parent, Set<String> delegatePackages) {\n        super(urls, null); // null parent breaks delegation for isolation\n        this.parentLoader = parent;\n        this.parentDelegationPackages = delegatePackages;\n    }\n\n    @Override\n    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {\n        synchronized (getClassLoadingLock(name)) {\n            Class<?> loaded = findLoadedClass(name);\n            if (loaded != null) return loaded;\n\n            // Delegate java.* and shared API packages to parent\n            if (name.startsWith(\"java.\") || shouldDelegateToParent(name)) {\n                return parentLoader.loadClass(name);\n            }\n\n            // Try loading from plugin JARs first (child-first)\n            try {\n                Class<?> clazz = findClass(name);\n                if (resolve) resolveClass(clazz);\n                return clazz;\n            } catch (ClassNotFoundException e) {\n                return parentLoader.loadClass(name);\n            }\n        }\n    }\n\n    private boolean shouldDelegateToParent(String className) {\n        return parentDelegationPackages.stream()\n            .anyMatch(className::startsWith);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Setting -Xms different from -Xmx in production: When initial heap size differs from maximum, the JVM must resize the heap during operation, causing GC pauses and memory fragmentation. In production, always set -Xms equal to -Xmx to pre-allocate the full heap at startup, eliminating resize overhead and ensuring predictable memory behavior. This also prevents the operating system from reclaiming unused heap pages that the JVM will need later.",
+            "Ignoring Metaspace in container memory limits: Metaspace (class metadata) lives outside the Java heap and is not bounded by -Xmx. In containerized environments, Metaspace growth can push total process memory beyond container limits, triggering OOM kills. Set -XX:MaxMetaspaceSize explicitly and account for native memory, thread stacks, and direct buffers when calculating container memory limits. A safe formula is: container limit = Xmx + MaxMetaspaceSize + (thread count × Xss) + 256MB buffer for native allocations.",
+            "Premature GC tuning without profiling data: Adjusting GC parameters without first collecting GC logs and profiling data often makes performance worse. The default G1GC configuration works well for most workloads. Always collect baseline metrics with -Xlog:gc* before making changes, and tune one parameter at a time while measuring the impact on both throughput and latency percentiles.",
+            "Thread stack overflow from deep recursion: Each thread allocates a fixed stack size (default 512KB-1MB depending on platform). Deep recursion or large stack frames exhaust this space, throwing StackOverflowError. Convert recursive algorithms to iterative ones using explicit stacks for production code, or increase -Xss if recursion depth is bounded and predictable. Note that increasing stack size multiplied by thread count significantly increases total memory consumption.",
+            "Direct ByteBuffer leaks: Direct buffers allocated via ByteBuffer.allocateDirect() live in native memory outside the heap. They are only reclaimed when their associated Java object is garbage collected, but GC may not run frequently enough if heap pressure is low. This creates a paradox where native memory grows while heap usage remains comfortable. Use -XX:MaxDirectMemorySize to bound direct buffer allocation and explicitly clean buffers using sun.misc.Unsafe or the cleaner API when immediate deallocation is needed.",
+            "Class loader leaks in application servers: When redeploying applications in containers like Tomcat, the old class loader and all classes it loaded should be garbage collected. However, if any reference chain from a GC root reaches the old class loader (through ThreadLocal values, JDBC driver registrations, or shutdown hooks), the entire class hierarchy remains in memory. Each redeployment leaks an entire copy of the application's classes into Metaspace until the server runs out of memory."
+          ]
+        }
+      ],
+      "wordCount": 413,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Low-latency trading systems: Financial trading platforms use ZGC or Shenandoah to achieve sub-millisecond GC pauses on heaps of 32GB or more. The JIT compiler's escape analysis eliminates object allocations on hot paths, while careful avoidance of boxing and object creation in the critical trading loop keeps allocation rates near zero. These systems typically pre-warm the JIT by replaying market data during startup to ensure all hot methods are compiled before live trading begins, avoiding the latency spikes that occur during initial compilation.",
+            "Containerized microservices with CDS: Cloud-native Java applications use Class Data Sharing (CDS) archives to reduce startup time from 5-10 seconds to under 2 seconds. The CDS archive pre-processes class loading and verification work, sharing it across multiple JVM instances on the same host. Combined with Application CDS (AppCDS) that includes application classes, and GraalVM native images for the most startup-sensitive services, organizations achieve the fast scaling required for Kubernetes horizontal pod autoscaling to respond to traffic spikes within seconds.",
+            "Big data processing with off-heap memory: Apache Spark and Apache Flink use direct ByteBuffers and memory-mapped files to manage data outside the Java heap, avoiding GC pressure when processing terabytes of data. The JVM's native memory tracking (-XX:NativeMemoryTracking=summary) helps operators understand total memory consumption including off-heap allocations, thread stacks, and JIT code cache, ensuring container memory limits are set correctly to prevent OOM kills.",
+            "Plugin architectures with isolated class loaders: IDEs like IntelliJ IDEA and application servers like Tomcat use custom class loader hierarchies to isolate plugins from each other and from the host application. Each plugin gets its own class loader that can load different versions of the same library without conflicts. Understanding class loader delegation, visibility rules, and the common pitfalls of class loader leaks is essential for building and maintaining these architectures.",
+            "GraalVM native image compilation: Organizations building serverless functions and CLI tools use GraalVM's ahead-of-time compilation to produce native executables with instant startup (under 50ms) and minimal memory footprint (30-50MB vs 200-500MB for JVM). The trade-off is longer build times, restricted reflection usage (requiring explicit configuration), and reduced peak throughput compared to JIT-compiled code that benefits from runtime profiling and speculative optimizations."
+          ]
+        }
+      ],
+      "wordCount": 357,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between G1GC and ZGC. When would you choose each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: G1GC divides the heap into regions and performs incremental collection with a target pause time (default 200ms). It balances throughput and latency for general workloads. ZGC performs almost all GC work concurrently with application threads, achieving sub-millisecond pauses regardless of heap size (tested up to 16TB). Choose G1GC for typical microservices where 50-200ms pauses are acceptable and maximum throughput matters. Choose ZGC when your SLA requires sub-10ms tail latency (P99.9), when heap sizes exceed 8GB where G1 pauses become noticeable, or for applications where consistent response times matter more than raw throughput. ZGC uses colored pointers and load barriers, trading approximately 5-15% throughput for dramatically better latency characteristics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the Java Memory Model and why does it matter for concurrent programming?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The Java Memory Model (JMM) defines how threads interact through memory and what behaviors are guaranteed in concurrent programs. Without the JMM, compiler reordering, CPU instruction reordering, and CPU cache hierarchies could make concurrent programs behave unpredictably. The JMM establishes happens-before relationships that guarantee visibility: if action A happens-before action B, then B sees all memory effects of A. Key happens-before edges include volatile write → volatile read, monitor unlock → monitor lock, thread start → first action in started thread, and final field write in constructor → reading that field after construction. Understanding the JMM is essential for writing correct lock-free algorithms and understanding why volatile and synchronized are necessary even on single-processor systems where cache coherence is not an issue."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does JIT compilation work and what is tiered compilation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The JVM starts by interpreting bytecode, then identifies frequently executed methods (hot spots) for compilation to native machine code. Tiered compilation uses multiple compilation levels: Level 0 (interpreter), Level 1-3 (C1 compiler with increasing profiling), and Level 4 (C2 compiler with aggressive optimizations). C1 compiles quickly with basic optimizations for fast warmup. C2 uses profiling data collected during interpretation and C1 execution to apply speculative optimizations like inlining, escape analysis, loop unrolling, and dead code elimination. If a speculative optimization proves wrong (e.g., a devirtualized call encounters a new subclass), the JVM deoptimizes back to interpreted code and recompiles with updated assumptions. This adaptive approach achieves near-native performance for long-running applications while maintaining the flexibility of dynamic dispatch."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain escape analysis and its impact on performance."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Escape analysis determines whether an object allocated inside a method can be accessed outside that method's scope. If an object does not escape (is not stored in a field, returned, or passed to another method that might store it), the JIT compiler can apply three optimizations: scalar replacement (decomposing the object into its fields stored in registers or on the stack, eliminating heap allocation entirely), lock elision (removing synchronization on objects that are thread-local), and stack allocation (allocating the object on the stack frame instead of the heap). These optimizations dramatically reduce GC pressure for short-lived objects. For example, an iterator created in a for-each loop that does not escape the loop body can be scalar-replaced, eliminating the allocation entirely. This is why microbenchmarks must use JMH with blackhole consumption to prevent escape analysis from eliminating the measured allocations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you diagnose and fix a memory leak in a production Java application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: First, confirm the leak by monitoring heap usage over time with metrics (Micrometer/Prometheus) looking for a sawtooth pattern where the baseline after each GC cycle gradually increases. Enable GC logging to observe Old Generation growth. Take a heap dump during high memory usage with jmap -dump:live,format=b,file=heap.hprof <pid> or trigger automatically with -XX:+HeapDumpOnOutOfMemoryError. Analyze the dump with Eclipse MAT or VisualVM, focusing on the Dominator Tree to find objects retaining the most memory, and the Leak Suspects report. Common causes include unbounded caches (use WeakHashMap or size-limited caches), unclosed resources (streams, connections), static collections that grow without eviction, and class loader leaks from ThreadLocal values surviving redeployment. Fix by adding proper resource cleanup (try-with-resources), bounding collection sizes, using weak references for caches, and ensuring ThreadLocal values are removed in finally blocks."
+        }
+      ],
+      "wordCount": 685,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Heap dump on OOM: Always configure -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/var/log/app/ in production. When an OutOfMemoryError occurs, you get a snapshot of memory state at the exact moment of failure. Without this, diagnosing memory issues requires reproducing the problem, which may take days or weeks in production-like conditions. Combine with -XX:+ExitOnOutOfMemoryError to restart the process immediately after dumping, preventing the application from running in a degraded state with unpredictable behavior.",
+            "GC log analysis for capacity planning: Collect GC logs continuously in production using -Xlog:gc*:file=gc.log:time,uptime,level,tags:filecount=10,filesize=50m. Analyze with GCViewer or GCEasy to understand allocation rates, promotion rates, and pause time distributions. Use this data for capacity planning: if allocation rate is 500MB/s and young generation is 2GB, you will have minor GCs every 4 seconds. If promotion rate is high, the old generation fills faster, triggering more expensive mixed or full GCs. Adjust young generation size and G1 region size based on observed allocation patterns rather than arbitrary percentages.",
+            "Native memory tracking for containers: Enable -XX:NativeMemoryTracking=summary and periodically check with jcmd <pid> VM.native_memory summary. This reveals memory consumed by thread stacks, code cache (JIT compiled code), GC overhead, internal JVM structures, and direct buffers that are invisible to heap monitoring. In containers, total RSS (Resident Set Size) must stay within the container memory limit. A common formula: container_limit = heap_max + metaspace_max + (thread_count × stack_size) + code_cache + direct_buffers + 200MB_overhead. Monitor RSS with ps or container metrics to validate your calculations match reality.",
+            "Warm-up strategies for latency-sensitive services: JIT compilation during the first minutes of application life causes latency spikes as methods transition from interpreted to compiled code. For latency-sensitive services, implement warm-up by replaying representative traffic during startup before the service is added to the load balancer. Alternatively, use CDS/AppCDS to reduce class loading time, or AOT compilation (jaotc or GraalVM) to pre-compile critical paths. Monitor the jit_compilation_time metric and delay health check readiness until compilation activity stabilizes."
+          ]
+        }
+      ],
+      "wordCount": 316,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Language Fundamentals — Understanding language semantics that the JVM must implement and optimize",
+            "Concurrency and Multithreading — Thread management relies on JVM thread scheduling and memory model guarantees",
+            "Spring Framework — Spring Boot applications require JVM tuning for production deployment"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "bash",
+      "code": "# G1GC configuration for a typical microservice (4GB heap)\njava -Xms4g -Xmx4g \\\n  -XX:+UseG1GC \\\n  -XX:MaxGCPauseMillis=200 \\\n  -XX:G1HeapRegionSize=16m \\\n  -XX:InitiatingHeapOccupancyPercent=45 \\\n  -XX:G1ReservePercent=15 \\\n  -XX:+ParallelRefProcEnabled \\\n  -Xlog:gc*:file=/var/log/app/gc.log:time,uptime,level,tags:filecount=10,filesize=50m \\\n  -jar application.jar\n\n# ZGC for ultra-low-latency requirements (sub-millisecond pauses)\njava -Xms8g -Xmx8g \\\n  -XX:+UseZGC \\\n  -XX:+ZGenerational \\\n  -XX:SoftMaxHeapSize=6g \\\n  -Xlog:gc*:file=/var/log/app/gc.log:time,uptime,level,tags \\\n  -jar trading-engine.jar\n\n# Container-aware JVM settings\njava -XX:+UseContainerSupport \\\n  -XX:MaxRAMPercentage=75.0 \\\n  -XX:InitialRAMPercentage=75.0 \\\n  -XX:+UseG1GC \\\n  -XX:+ExitOnOutOfMemoryError \\\n  -jar application.jar",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Programmatic JFR event recording\nimport jdk.jfr.*;\n\n@Category(\"Application\")\n@Label(\"Order Processing\")\n@Description(\"Records order processing duration and outcome\")\npublic class OrderProcessingEvent extends Event {\n    @Label(\"Order ID\")\n    String orderId;\n\n    @Label(\"Processing Duration (ms)\")\n    @Timespan(Timespan.MILLISECONDS)\n    long duration;\n\n    @Label(\"Success\")\n    boolean success;\n\n    @Label(\"Item Count\")\n    int itemCount;\n}\n\n// Usage in application code\npublic OrderResult processOrder(Order order) {\n    OrderProcessingEvent event = new OrderProcessingEvent();\n    event.begin();\n    try {\n        OrderResult result = doProcessing(order);\n        event.orderId = order.getId();\n        event.success = true;\n        event.itemCount = order.getItems().size();\n        return result;\n    } catch (Exception e) {\n        event.success = false;\n        throw e;\n    } finally {\n        event.duration = event.getDuration().toMillis();\n        event.commit();\n    }\n}\n\n// Starting JFR recording programmatically\nConfiguration config = Configuration.getConfiguration(\"profile\");\nRecording recording = new Recording(config);\nrecording.setDestination(Path.of(\"/tmp/app-recording.jfr\"));\nrecording.setMaxSize(100 * 1024 * 1024); // 100MB max\nrecording.setMaxAge(Duration.ofMinutes(30));\nrecording.start();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Weak references for cache implementations that respect GC pressure\nimport java.lang.ref.*;\n\npublic class WeakCache<K, V> {\n    private final Map<K, WeakReference<V>> cache = new ConcurrentHashMap<>();\n    private final ReferenceQueue<V> refQueue = new ReferenceQueue<>();\n\n    public void put(K key, V value) {\n        cleanStaleEntries();\n        cache.put(key, new KeyedWeakReference<>(key, value, refQueue));\n    }\n\n    public Optional<V> get(K key) {\n        WeakReference<V> ref = cache.get(key);\n        if (ref == null) return Optional.empty();\n        V value = ref.get();\n        if (value == null) {\n            cache.remove(key);\n            return Optional.empty();\n        }\n        return Optional.of(value);\n    }\n\n    private void cleanStaleEntries() {\n        Reference<? extends V> ref;\n        while ((ref = refQueue.poll()) != null) {\n            if (ref instanceof KeyedWeakReference) {\n                cache.remove(((KeyedWeakReference<K, V>) ref).key);\n            }\n        }\n    }\n\n    private static class KeyedWeakReference<K, V> extends WeakReference<V> {\n        final K key;\n        KeyedWeakReference(K key, V value, ReferenceQueue<V> queue) {\n            super(value, queue);\n            this.key = key;\n        }\n    }\n}\n\n// Detecting memory leaks with heap dump analysis triggers\npublic class MemoryMonitor {\n    private static final long HEAP_THRESHOLD = (long) (Runtime.getRuntime().maxMemory() * 0.85);\n\n    public void checkMemoryPressure() {\n        long usedMemory = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();\n        if (usedMemory > HEAP_THRESHOLD) {\n            // Trigger heap dump for analysis\n            triggerHeapDump(\"/tmp/heapdump-\" + System.currentTimeMillis() + \".hprof\");\n            log.warn(\"Memory pressure detected: {}MB used of {}MB max\",\n                usedMemory / (1024 * 1024),\n                Runtime.getRuntime().maxMemory() / (1024 * 1024));\n        }\n    }\n\n    private void triggerHeapDump(String path) {\n        try {\n            MBeanServer server = ManagementFactory.getPlatformMBeanServer();\n            HotSpotDiagnosticMXBean bean = ManagementFactory.newPlatformMXBeanProxy(\n                server, \"com.sun.management:type=HotSpotDiagnostic\",\n                HotSpotDiagnosticMXBean.class);\n            bean.dumpHeap(path, true);\n        } catch (Exception e) {\n            log.error(\"Failed to trigger heap dump\", e);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Custom class loader for plugin architecture\npublic class PluginClassLoader extends URLClassLoader {\n    private final ClassLoader parentLoader;\n    private final Set<String> parentDelegationPackages;\n\n    public PluginClassLoader(URL[] urls, ClassLoader parent, Set<String> delegatePackages) {\n        super(urls, null); // null parent breaks delegation for isolation\n        this.parentLoader = parent;\n        this.parentDelegationPackages = delegatePackages;\n    }\n\n    @Override\n    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {\n        synchronized (getClassLoadingLock(name)) {\n            Class<?> loaded = findLoadedClass(name);\n            if (loaded != null) return loaded;\n\n            // Delegate java.* and shared API packages to parent\n            if (name.startsWith(\"java.\") || shouldDelegateToParent(name)) {\n                return parentLoader.loadClass(name);\n            }\n\n            // Try loading from plugin JARs first (child-first)\n            try {\n                Class<?> clazz = findClass(name);\n                if (resolve) resolveClass(clazz);\n                return clazz;\n            } catch (ClassNotFoundException e) {\n                return parentLoader.loadClass(name);\n            }\n        }\n    }\n\n    private boolean shouldDelegateToParent(String className) {\n        return parentDelegationPackages.stream()\n            .anyMatch(className::startsWith);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/java/jvm-internals.md",
+    "wordCount": 2058,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,266 @@
+{
+  "id": "docker-security-and-production",
+  "slug": "security-and-production",
+  "title": "Security and Production",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Run containers as non-root users by default using USER directive in Dockerfiles; never run production containers as root",
+            "Use read-only root filesystems (--read-only) combined with tmpfs mounts for directories that need write access",
+            "Scan images for CVEs using Trivy, Snyk, or Docker Scout before deploying to production registries",
+            "Set explicit resource limits (memory, CPU) on every production container to prevent noisy-neighbor effects and OOM cascading",
+            "Use distroless or scratch base images to minimize attack surface; fewer packages mean fewer vulnerabilities",
+            "Enable Docker Content Trust (DOCKER_CONTENT_TRUST=1) to verify image signatures before pulling",
+            "Implement seccomp profiles and AppArmor/SELinux policies to restrict system calls available to containers",
+            "Drop all Linux capabilities and add back only what the application requires (--cap-drop=ALL --cap-add=NET_BIND_SERVICE)"
+          ]
+        }
+      ],
+      "wordCount": 118,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Container security practices apply to every production deployment regardless of orchestration platform. You need these patterns when building images that will run in shared infrastructure where a compromised container could affect neighboring workloads, when operating in regulated environments requiring compliance with SOC 2, PCI-DSS, or HIPAA controls, when running internet-facing services where container escape vulnerabilities pose direct risk, and when implementing defense-in-depth strategies that assume any single layer may be compromised."
+        },
+        {
+          "type": "paragraph",
+          "text": "Production container patterns become critical when you need predictable resource consumption for capacity planning, when containers must survive host failures gracefully, when you need structured logging that integrates with centralized observability platforms, when implementing graceful shutdown sequences that drain connections before termination, and when managing secrets that must never appear in image layers or environment variable listings."
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "hardened-dockerfile-with-security-best-practices",
+          "heading": "Hardened Dockerfile with Security Best Practices",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "dockerfile",
+              "code": "# Multi-stage build: build stage with full toolchain\nFROM eclipse-temurin:21-jdk-alpine AS builder\nWORKDIR /build\n\n# Copy dependency manifests first for layer caching\nCOPY pom.xml mvnw ./\nCOPY .mvn .mvn\nRUN ./mvnw dependency:go-offline -B\n\n# Copy source and build\nCOPY src ./src\nRUN ./mvnw package -DskipTests -B && \\\n    java -Djarmode=layertools -jar target/*.jar extract --destination /extracted\n\n# Production stage: minimal runtime image\nFROM eclipse-temurin:21-jre-alpine AS production\n\n# Security: create non-root user\nRUN addgroup -g 1001 appgroup && \\\n    adduser -u 1001 -G appgroup -D -s /bin/false appuser\n\n# Security: remove unnecessary packages and shells\nRUN apk --no-cache add curl && \\\n    rm -rf /var/cache/apk/* /tmp/* /usr/bin/wget\n\nWORKDIR /app\n\n# Copy application layers (ordered by change frequency)\nCOPY --from=builder --chown=appuser:appgroup /extracted/dependencies/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/spring-boot-loader/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/snapshot-dependencies/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/application/ ./\n\n# Security: switch to non-root user\nUSER appuser:appgroup\n\n# Security: expose only necessary port\nEXPOSE 8080\n\n# Health check for orchestrator integration\nHEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \\\n    CMD curl -f http://localhost:8080/actuator/health/liveness || exit 1\n\n# JVM tuning for containers\nENV JAVA_OPTS=\"-XX:+UseContainerSupport \\\n    -XX:MaxRAMPercentage=75.0 \\\n    -XX:+UseG1GC \\\n    -XX:+ExitOnOutOfMemoryError \\\n    -Djava.security.egd=file:/dev/./urandom\"\n\nENTRYPOINT [\"sh\", \"-c\", \"java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher\"]",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "runtime-security-configuration",
+          "heading": "Runtime Security Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "# Run container with comprehensive security options\ndocker run -d \\\n  --name payment-service \\\n  --user 1001:1001 \\\n  --read-only \\\n  --tmpfs /tmp:rw,noexec,nosuid,size=100m \\\n  --tmpfs /app/logs:rw,noexec,nosuid,size=200m \\\n  --memory=1g \\\n  --memory-swap=1g \\\n  --cpus=2.0 \\\n  --pids-limit=256 \\\n  --cap-drop=ALL \\\n  --cap-add=NET_BIND_SERVICE \\\n  --security-opt=no-new-privileges:true \\\n  --security-opt=seccomp=./seccomp-profile.json \\\n  --network=app-network \\\n  --restart=on-failure:5 \\\n  -e SPRING_PROFILES_ACTIVE=production \\\n  -p 8443:8443 \\\n  payment-service:2.1.0\n\n# Verify container is running with restricted capabilities\ndocker inspect payment-service --format='{{.HostConfig.CapDrop}}'\ndocker inspect payment-service --format='{{.HostConfig.ReadonlyRootfs}}'\n\n# Check for secrets accidentally baked into image layers\ndocker history payment-service:2.1.0 --no-trunc | grep -i \"password\\|secret\\|key\\|token\"\n\n# Scan running container for runtime vulnerabilities\ndocker exec payment-service cat /etc/os-release\ntrivy image --severity CRITICAL payment-service:2.1.0",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "structured-logging-and-graceful-shutdown",
+          "heading": "Structured Logging and Graceful Shutdown",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.context.event.ContextClosedEvent;\nimport org.springframework.context.event.EventListener;\nimport org.springframework.stereotype.Component;\n\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.atomic.AtomicBoolean;\n\n@Component\npublic class GracefulShutdownHandler {\n    private static final Logger log = LoggerFactory.getLogger(GracefulShutdownHandler.class);\n    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);\n\n    @EventListener(ContextClosedEvent.class)\n    public void onShutdown(ContextClosedEvent event) {\n        log.info(\"Shutdown signal received, beginning graceful termination\");\n        shuttingDown.set(true);\n\n        // Phase 1: Stop accepting new requests (health check fails)\n        log.info(\"Phase 1: Marked unhealthy, draining in-flight requests\");\n\n        // Phase 2: Wait for in-flight requests to complete\n        try {\n            TimeUnit.SECONDS.sleep(15); // Match k8s terminationGracePeriodSeconds\n            log.info(\"Phase 2: Drain period complete, closing connections\");\n        } catch (InterruptedException e) {\n            Thread.currentThread().interrupt();\n            log.warn(\"Drain period interrupted, forcing shutdown\");\n        }\n\n        // Phase 3: Close database connections and flush buffers\n        log.info(\"Phase 3: Releasing resources and flushing buffers\");\n    }\n\n    public boolean isShuttingDown() {\n        return shuttingDown.get();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "docker-secrets-management",
+          "heading": "Docker Secrets Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# docker-compose.yml with external secrets\nversion: '3.8'\n\nservices:\n  api-gateway:\n    image: api-gateway:3.0.0\n    deploy:\n      resources:\n        limits:\n          memory: 512M\n          cpus: '1.0'\n        reservations:\n          memory: 256M\n          cpus: '0.5'\n    secrets:\n      - db_password\n      - jwt_signing_key\n      - tls_cert\n    environment:\n      - DB_PASSWORD_FILE=/run/secrets/db_password\n      - JWT_KEY_FILE=/run/secrets/jwt_signing_key\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8080/health\"]\n      interval: 30s\n      timeout: 5s\n      retries: 3\n      start_period: 45s\n    logging:\n      driver: json-file\n      options:\n        max-size: \"50m\"\n        max-file: \"5\"\n        labels: \"service,environment\"\n        tag: \"{{.Name}}/{{.ID}}\"\n\nsecrets:\n  db_password:\n    external: true\n  jwt_signing_key:\n    external: true\n  tls_cert:\n    file: ./certs/server.crt",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Running containers as root in production: The default Docker behavior runs processes as root inside the container. If an attacker exploits a vulnerability in your application, they gain root access within the container and potentially escape to the host through kernel vulnerabilities. Always specify a non-root USER in your Dockerfile and verify with docker exec <container> whoami. Many base images now ship with non-root users, but you must explicitly switch to them.",
+            "Storing secrets in image layers or environment variables: Secrets passed via docker build --build-arg or ENV directives are permanently stored in image layers and visible to anyone who can pull the image. Even if you delete the secret in a later layer, it remains in the layer history. Use Docker secrets, mount secrets as files at runtime, or use external secret managers like HashiCorp Vault or AWS Secrets Manager. Never use docker inspect output as proof that secrets are hidden.",
+            "Ignoring resource limits and allowing unbounded consumption: Containers without memory limits can consume all available host memory, triggering the OOM killer on other containers or the host itself. Without CPU limits, a single container can starve others of CPU time. Always set both --memory and --cpus limits in production. Set memory swap equal to memory limit to prevent swap usage, which causes unpredictable latency spikes.",
+            "Using latest tag in production deployments: The latest tag is mutable and can point to different image content at different times. A deployment that worked yesterday may pull a different image today. Always use immutable references: specific version tags (myapp:2.1.0) or digests (myapp@sha256:abc123). Pin base image versions in Dockerfiles and update them deliberately through tested CI pipelines.",
+            "Neglecting image scanning and base image updates: Images built months ago accumulate known vulnerabilities as new CVEs are discovered in their OS packages and dependencies. Without regular scanning and rebuilding, production containers run with exploitable vulnerabilities. Integrate image scanning into CI pipelines (fail builds on critical CVEs), schedule weekly base image rebuilds, and monitor vulnerability databases for newly disclosed issues affecting your stack.",
+            "Improper signal handling causing data loss on shutdown: When Docker stops a container, it sends SIGTERM followed by SIGKILL after a grace period (default 10 seconds). If your application does not handle SIGTERM properly, in-flight requests are dropped, database transactions are left incomplete, and message acknowledgments are lost. Implement graceful shutdown handlers that stop accepting new work, drain in-flight operations, flush buffers, and close connections before exiting."
+          ]
+        }
+      ],
+      "wordCount": 404,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Zero-downtime deployment with health checks: A payment processing service uses Docker health checks integrated with a load balancer. During deployment, new containers must pass health checks for 60 seconds before receiving traffic. Old containers are drained (stop receiving new requests, complete in-flight ones) before removal. The health check endpoint verifies database connectivity, cache availability, and downstream service reachability, ensuring traffic only routes to fully operational instances.",
+            "Multi-tenant isolation with resource constraints: A SaaS platform runs customer workloads in isolated containers with strict resource limits. Each tenant container gets a maximum of 2 CPU cores and 4GB memory, with PID limits preventing fork bombs. Read-only filesystems prevent persistent modifications, and network policies restrict inter-tenant communication. Resource usage metrics feed into billing calculations and capacity planning dashboards.",
+            "Compliance-driven image pipeline: A healthcare application requires HIPAA compliance for all container images. The CI pipeline builds images from approved base images only, scans with Trivy and Snyk (failing on any HIGH or CRITICAL CVE), signs images with Docker Content Trust, and stores them in a private registry with access logging. Production clusters only pull signed images, and weekly automated rebuilds ensure base image patches are applied within the 30-day compliance window.",
+            "Incident response with container forensics: When a security incident is detected, the operations team captures the container state before termination: docker export preserves the filesystem, docker logs captures recent output, and docker inspect records the runtime configuration. The container is then stopped and replaced with a known-good image while the forensic artifacts are analyzed in an isolated environment to determine the attack vector and blast radius."
+          ]
+        }
+      ],
+      "wordCount": 263,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you secure a Docker container for production deployment?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with a minimal base image (distroless or alpine) to reduce attack surface. Run as a non-root user with USER directive. Drop all Linux capabilities and add back only required ones. Use read-only root filesystem with tmpfs for write-needed directories. Set explicit memory and CPU limits. Scan images for CVEs in CI and fail builds on critical findings. Never store secrets in image layers — use runtime secret injection. Enable seccomp profiles to restrict available system calls. Use Docker Content Trust to verify image signatures. Implement network policies to restrict container-to-container communication to only necessary paths."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between ENTRYPOINT and CMD, and when you would use each."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: ENTRYPOINT defines the executable that always runs when the container starts — it cannot be overridden by command-line arguments (unless using --entrypoint). CMD provides default arguments to ENTRYPOINT or acts as the default command if no ENTRYPOINT is set. In production, use ENTRYPOINT for the main application binary (ensuring the container always runs your app) and CMD for default flags that operators might want to override. For example, ENTRYPOINT [\"java\", \"-jar\", \"app.jar\"] with CMD [\"--spring.profiles.active=production\"] lets operators override the profile without changing the base command. The exec form ([\"binary\", \"arg\"]) is preferred over shell form (binary arg) because it runs the process directly as PID 1, receiving signals correctly for graceful shutdown."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle secrets in Docker containers without exposing them in image layers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Never use build arguments or ENV directives for secrets — they persist in layer history. Instead, use Docker secrets (Swarm mode) which mount secrets as files at /run/secrets/. In Kubernetes, use Secrets mounted as volumes or injected via CSI drivers from external stores. For development, use .env files excluded from version control. For CI/CD, inject secrets at runtime through the orchestrator's secret management. Applications should read secrets from files (not environment variables, which appear in docker inspect and /proc/*/environ). Use multi-stage builds where secrets needed during build (like private registry credentials) exist only in discarded builder stages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens when Docker sends SIGTERM to a container, and how do you ensure graceful shutdown?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Docker sends SIGTERM to PID 1 in the container when docker stop is called. If PID 1 does not exit within the grace period (default 10 seconds, configurable with --stop-timeout), Docker sends SIGKILL which cannot be caught. For graceful shutdown: ensure your application is PID 1 (use exec form ENTRYPOINT, not shell form which wraps in /bin/sh), implement a SIGTERM handler that stops accepting new connections, drains in-flight requests with a timeout, flushes write buffers, closes database connections, and exits with code 0. In Kubernetes, set terminationGracePeriodSeconds to match your drain time. Use preStop hooks for additional cleanup before SIGTERM is sent."
+        }
+      ],
+      "wordCount": 468,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement multi-layer health checks that distinguish liveness from readiness: Liveness checks should verify the process is not deadlocked (simple endpoint that returns 200 if the event loop or main thread is responsive). Readiness checks should verify the application can serve traffic (database connection pool has available connections, required caches are warm, downstream dependencies are reachable). Separating these prevents unnecessary container restarts when a dependency is temporarily unavailable — the container stays alive but stops receiving traffic until it recovers.",
+            "Use JSON logging format with consistent field names across all services: Configure your application to emit logs as single-line JSON objects with standardized fields: timestamp, level, service, traceId, spanId, message, error. This enables efficient parsing by log aggregators (Splunk, ELK, CloudWatch Logs) without custom regex extraction rules. Include the container ID and pod name as fields for correlation. Set log rotation on the Docker daemon (max-size: 50m, max-file: 5) to prevent disk exhaustion from verbose logging.",
+            "Pin base image versions and automate weekly rebuilds: Use specific version tags for base images (eclipse-temurin:21.0.2-jre-alpine) rather than floating tags (eclipse-temurin:21-jre-alpine). Schedule weekly CI jobs that rebuild all production images with the latest base image patches, run the full test suite, scan for vulnerabilities, and promote to staging. This ensures security patches are applied within days of release without requiring manual intervention or emergency rebuilds.",
+            "Set memory-swap equal to memory limit to prevent swap usage: Container swap causes unpredictable latency spikes that are extremely difficult to diagnose. When --memory-swap equals --memory, the container is killed immediately when it exceeds its memory limit rather than silently degrading performance through swap. This makes memory issues visible and actionable through OOM events rather than hidden behind mysterious latency increases that only appear under load."
+          ]
+        }
+      ],
+      "wordCount": 286,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Container Fundamentals — Core image and container concepts that security practices build upon",
+            "Dockerfile Best Practices — Build-time optimizations and multi-stage patterns for secure images",
+            "Kubernetes & EKS — Orchestration-level security policies, pod security standards, and network policies",
+            "Observability — Container logging, metrics collection, and runtime monitoring"
+          ]
+        }
+      ],
+      "wordCount": 47,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "dockerfile",
+      "code": "# Multi-stage build: build stage with full toolchain\nFROM eclipse-temurin:21-jdk-alpine AS builder\nWORKDIR /build\n\n# Copy dependency manifests first for layer caching\nCOPY pom.xml mvnw ./\nCOPY .mvn .mvn\nRUN ./mvnw dependency:go-offline -B\n\n# Copy source and build\nCOPY src ./src\nRUN ./mvnw package -DskipTests -B && \\\n    java -Djarmode=layertools -jar target/*.jar extract --destination /extracted\n\n# Production stage: minimal runtime image\nFROM eclipse-temurin:21-jre-alpine AS production\n\n# Security: create non-root user\nRUN addgroup -g 1001 appgroup && \\\n    adduser -u 1001 -G appgroup -D -s /bin/false appuser\n\n# Security: remove unnecessary packages and shells\nRUN apk --no-cache add curl && \\\n    rm -rf /var/cache/apk/* /tmp/* /usr/bin/wget\n\nWORKDIR /app\n\n# Copy application layers (ordered by change frequency)\nCOPY --from=builder --chown=appuser:appgroup /extracted/dependencies/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/spring-boot-loader/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/snapshot-dependencies/ ./\nCOPY --from=builder --chown=appuser:appgroup /extracted/application/ ./\n\n# Security: switch to non-root user\nUSER appuser:appgroup\n\n# Security: expose only necessary port\nEXPOSE 8080\n\n# Health check for orchestrator integration\nHEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \\\n    CMD curl -f http://localhost:8080/actuator/health/liveness || exit 1\n\n# JVM tuning for containers\nENV JAVA_OPTS=\"-XX:+UseContainerSupport \\\n    -XX:MaxRAMPercentage=75.0 \\\n    -XX:+UseG1GC \\\n    -XX:+ExitOnOutOfMemoryError \\\n    -Djava.security.egd=file:/dev/./urandom\"\n\nENTRYPOINT [\"sh\", \"-c\", \"java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher\"]",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "# Run container with comprehensive security options\ndocker run -d \\\n  --name payment-service \\\n  --user 1001:1001 \\\n  --read-only \\\n  --tmpfs /tmp:rw,noexec,nosuid,size=100m \\\n  --tmpfs /app/logs:rw,noexec,nosuid,size=200m \\\n  --memory=1g \\\n  --memory-swap=1g \\\n  --cpus=2.0 \\\n  --pids-limit=256 \\\n  --cap-drop=ALL \\\n  --cap-add=NET_BIND_SERVICE \\\n  --security-opt=no-new-privileges:true \\\n  --security-opt=seccomp=./seccomp-profile.json \\\n  --network=app-network \\\n  --restart=on-failure:5 \\\n  -e SPRING_PROFILES_ACTIVE=production \\\n  -p 8443:8443 \\\n  payment-service:2.1.0\n\n# Verify container is running with restricted capabilities\ndocker inspect payment-service --format='{{.HostConfig.CapDrop}}'\ndocker inspect payment-service --format='{{.HostConfig.ReadonlyRootfs}}'\n\n# Check for secrets accidentally baked into image layers\ndocker history payment-service:2.1.0 --no-trunc | grep -i \"password\\|secret\\|key\\|token\"\n\n# Scan running container for runtime vulnerabilities\ndocker exec payment-service cat /etc/os-release\ntrivy image --severity CRITICAL payment-service:2.1.0",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import org.slf4j.Logger;\nimport org.slf4j.LoggerFactory;\nimport org.springframework.context.event.ContextClosedEvent;\nimport org.springframework.context.event.EventListener;\nimport org.springframework.stereotype.Component;\n\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.atomic.AtomicBoolean;\n\n@Component\npublic class GracefulShutdownHandler {\n    private static final Logger log = LoggerFactory.getLogger(GracefulShutdownHandler.class);\n    private final AtomicBoolean shuttingDown = new AtomicBoolean(false);\n\n    @EventListener(ContextClosedEvent.class)\n    public void onShutdown(ContextClosedEvent event) {\n        log.info(\"Shutdown signal received, beginning graceful termination\");\n        shuttingDown.set(true);\n\n        // Phase 1: Stop accepting new requests (health check fails)\n        log.info(\"Phase 1: Marked unhealthy, draining in-flight requests\");\n\n        // Phase 2: Wait for in-flight requests to complete\n        try {\n            TimeUnit.SECONDS.sleep(15); // Match k8s terminationGracePeriodSeconds\n            log.info(\"Phase 2: Drain period complete, closing connections\");\n        } catch (InterruptedException e) {\n            Thread.currentThread().interrupt();\n            log.warn(\"Drain period interrupted, forcing shutdown\");\n        }\n\n        // Phase 3: Close database connections and flush buffers\n        log.info(\"Phase 3: Releasing resources and flushing buffers\");\n    }\n\n    public boolean isShuttingDown() {\n        return shuttingDown.get();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# docker-compose.yml with external secrets\nversion: '3.8'\n\nservices:\n  api-gateway:\n    image: api-gateway:3.0.0\n    deploy:\n      resources:\n        limits:\n          memory: 512M\n          cpus: '1.0'\n        reservations:\n          memory: 256M\n          cpus: '0.5'\n    secrets:\n      - db_password\n      - jwt_signing_key\n      - tls_cert\n    environment:\n      - DB_PASSWORD_FILE=/run/secrets/db_password\n      - JWT_KEY_FILE=/run/secrets/jwt_signing_key\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8080/health\"]\n      interval: 30s\n      timeout: 5s\n      retries: 3\n      start_period: 45s\n    logging:\n      driver: json-file\n      options:\n        max-size: \"50m\"\n        max-file: \"5\"\n        labels: \"service,environment\"\n        tag: \"{{.Name}}/{{.ID}}\"\n\nsecrets:\n  db_password:\n    external: true\n  jwt_signing_key:\n    external: true\n  tls_cert:\n    file: ./certs/server.crt",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/docker/security-and-production.md",
+    "wordCount": 1714,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,261 @@
+{
+  "id": "messaging-messaging-patterns-and-architecture",
+  "slug": "messaging-patterns",
+  "title": "Messaging Patterns and Architecture",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Event-driven architecture (EDA) uses events as the primary communication mechanism between services",
+            "Command vs. Event: commands request an action (imperative); events notify that something happened (past tense)",
+            "Pub/Sub pattern: producers publish events without knowing consumers; consumers subscribe to event types independently",
+            "Point-to-point: each message is consumed by exactly one consumer (work queue / competing consumers pattern)",
+            "Request-reply: synchronous-style communication over async messaging using correlation IDs and reply queues",
+            "Event sourcing: store state changes as immutable events; derive current state by replaying the event log",
+            "CQRS (Command Query Responsibility Segregation): separate write model (commands) from read model (queries)",
+            "Saga pattern: coordinate distributed transactions through a sequence of local transactions with compensating actions"
+          ]
+        }
+      ],
+      "wordCount": 111,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Messaging patterns are essential when building distributed systems that need to decouple services in time (asynchronous processing), space (services do not need to know each other's locations), and implementation (services can use different technologies). Apply event-driven architecture when you need loose coupling between services that evolve independently, when you need to scale producers and consumers independently, or when you need temporal decoupling where producers can continue operating even when consumers are temporarily unavailable. Use CQRS when read and write workloads have vastly different scaling requirements or when the read model needs a different structure than the write model. Use event sourcing when you need a complete audit trail, temporal queries, or the ability to rebuild state from scratch. Use the saga pattern when a business process spans multiple services and traditional ACID transactions are not feasible. The choice between Kafka and RabbitMQ depends on whether you need log-based persistence with replay (Kafka) or sophisticated routing with message deletion after consumption (RabbitMQ)."
+        }
+      ],
+      "wordCount": 161,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "event-driven-architecture-with-domain-events",
+          "heading": "Event-Driven Architecture with Domain Events",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Domain event definition\npublic sealed interface OrderEvent {\n    UUID orderId();\n    Instant occurredAt();\n\n    record OrderCreated(UUID orderId, UUID customerId, List<OrderItem> items,\n                        BigDecimal totalAmount, Instant occurredAt) implements OrderEvent {}\n\n    record OrderPaymentReceived(UUID orderId, UUID paymentId,\n                                BigDecimal amount, Instant occurredAt) implements OrderEvent {}\n\n    record OrderShipped(UUID orderId, String trackingNumber,\n                        String carrier, Instant occurredAt) implements OrderEvent {}\n\n    record OrderCancelled(UUID orderId, String reason,\n                          UUID cancelledBy, Instant occurredAt) implements OrderEvent {}\n}\n\n// Event publisher abstraction\npublic interface EventPublisher {\n    <T> void publish(String topic, String key, T event);\n    <T> void publish(String topic, String key, T event, Map<String, String> headers);\n}\n\n// Kafka implementation\n@Component\n@RequiredArgsConstructor\npublic class KafkaEventPublisher implements EventPublisher {\n\n    private final KafkaTemplate<String, Object> kafkaTemplate;\n    private final ObjectMapper objectMapper;\n\n    @Override\n    public <T> void publish(String topic, String key, T event, Map<String, String> headers) {\n        ProducerRecord<String, Object> record = new ProducerRecord<>(topic, key, event);\n        headers.forEach((k, v) -> record.headers().add(k, v.getBytes(StandardCharsets.UTF_8)));\n        record.headers().add(\"event-type\", event.getClass().getSimpleName().getBytes());\n        record.headers().add(\"published-at\", Instant.now().toString().getBytes());\n\n        kafkaTemplate.send(record).whenComplete((result, ex) -> {\n            if (ex != null) {\n                log.error(\"Failed to publish event: topic={}, key={}, type={}\",\n                    topic, key, event.getClass().getSimpleName(), ex);\n            }\n        });\n    }\n}\n\n// Event consumer with routing by event type\n@Component\n@RequiredArgsConstructor\npublic class OrderEventRouter {\n\n    private final InventoryService inventoryService;\n    private final NotificationService notificationService;\n    private final AnalyticsService analyticsService;\n\n    @KafkaListener(topics = \"order-events\", groupId = \"order-event-router\")\n    public void routeEvent(ConsumerRecord<String, OrderEvent> record) {\n        OrderEvent event = record.value();\n        String eventType = new String(record.headers().lastHeader(\"event-type\").value());\n\n        switch (event) {\n            case OrderEvent.OrderCreated created -> {\n                inventoryService.reserveStock(created.items());\n                notificationService.sendOrderConfirmation(created.customerId(), created.orderId());\n                analyticsService.trackOrderCreated(created);\n            }\n            case OrderEvent.OrderCancelled cancelled -> {\n                inventoryService.releaseStock(cancelled.orderId());\n                notificationService.sendCancellationNotice(cancelled.orderId());\n            }\n            default -> log.debug(\"Unhandled event type: {}\", eventType);\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cqrs-implementation",
+          "heading": "CQRS Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Command side: handles writes with full validation and business rules\n@Service\n@RequiredArgsConstructor\npublic class OrderCommandService {\n\n    private final OrderRepository orderRepository;\n    private final EventPublisher eventPublisher;\n\n    @Transactional\n    public UUID createOrder(CreateOrderCommand command) {\n        // Validate business rules\n        if (command.items().isEmpty()) {\n            throw new InvalidOrderException(\"Order must have at least one item\");\n        }\n\n        // Create aggregate and apply domain logic\n        Order order = Order.create(command.customerId(), command.items());\n        order.calculateTotals();\n        order.validateInventoryAvailability();\n\n        // Persist to write store (normalized, ACID)\n        orderRepository.save(order);\n\n        // Publish event for read model projection\n        eventPublisher.publish(\"order-events\", order.getId().toString(),\n            new OrderEvent.OrderCreated(order.getId(), command.customerId(),\n                command.items(), order.getTotalAmount(), Instant.now()));\n\n        return order.getId();\n    }\n}\n\n// Query side: optimized read model with denormalized data\n@Service\n@RequiredArgsConstructor\npublic class OrderQueryService {\n\n    private final OrderReadRepository readRepository; // Elasticsearch or denormalized DB\n\n    public Page<OrderSummaryView> searchOrders(OrderSearchCriteria criteria) {\n        return readRepository.search(criteria);\n    }\n\n    public OrderDetailView getOrderDetail(UUID orderId) {\n        return readRepository.findById(orderId)\n            .orElseThrow(() -> new OrderNotFoundException(orderId));\n    }\n}\n\n// Projection: builds read model from events\n@Component\n@RequiredArgsConstructor\npublic class OrderProjection {\n\n    private final OrderReadRepository readRepository;\n\n    @KafkaListener(topics = \"order-events\", groupId = \"order-read-projection\")\n    public void project(OrderEvent event) {\n        switch (event) {\n            case OrderEvent.OrderCreated created -> {\n                OrderSummaryView view = OrderSummaryView.builder()\n                    .orderId(created.orderId())\n                    .customerId(created.customerId())\n                    .totalAmount(created.totalAmount())\n                    .status(\"CREATED\")\n                    .itemCount(created.items().size())\n                    .createdAt(created.occurredAt())\n                    .build();\n                readRepository.save(view);\n            }\n            case OrderEvent.OrderShipped shipped -> {\n                readRepository.updateStatus(shipped.orderId(), \"SHIPPED\");\n                readRepository.setTrackingNumber(shipped.orderId(), shipped.trackingNumber());\n            }\n            case OrderEvent.OrderCancelled cancelled -> {\n                readRepository.updateStatus(cancelled.orderId(), \"CANCELLED\");\n            }\n            default -> {}\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "saga-pattern-with-orchestration",
+          "heading": "Saga Pattern with Orchestration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Saga definition with steps and compensations\npublic class OrderSaga {\n\n    private final List<SagaStep> steps = new ArrayList<>();\n    private final List<SagaStep> completedSteps = new ArrayList<>();\n    private SagaStatus status = SagaStatus.STARTED;\n\n    public void addStep(String name, Runnable action, Runnable compensation) {\n        steps.add(new SagaStep(name, action, compensation));\n    }\n\n    public SagaResult execute() {\n        for (SagaStep step : steps) {\n            try {\n                step.action().run();\n                completedSteps.add(step);\n            } catch (Exception e) {\n                status = SagaStatus.COMPENSATING;\n                compensate();\n                status = SagaStatus.FAILED;\n                return SagaResult.failure(step.name(), e);\n            }\n        }\n        status = SagaStatus.COMPLETED;\n        return SagaResult.success();\n    }\n\n    private void compensate() {\n        // Execute compensations in reverse order\n        ListIterator<SagaStep> iterator = completedSteps.listIterator(completedSteps.size());\n        while (iterator.hasPrevious()) {\n            SagaStep step = iterator.previous();\n            try {\n                step.compensation().run();\n            } catch (Exception e) {\n                log.error(\"Compensation failed for step: {}\", step.name(), e);\n                // Alert for manual intervention\n                alertService.critical(\"Saga compensation failure\", step.name(), e);\n            }\n        }\n    }\n}\n\n// Choreography-based saga with event handlers\n@Component\npublic class PaymentSagaParticipant {\n\n    @KafkaListener(topics = \"saga-commands\", groupId = \"payment-saga\")\n    public void handleCommand(SagaCommand command) {\n        if (command instanceof ProcessPaymentCommand cmd) {\n            try {\n                PaymentResult result = paymentGateway.charge(cmd.amount(), cmd.paymentMethod());\n                eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                    new PaymentProcessedEvent(cmd.sagaId(), result.transactionId()));\n            } catch (PaymentDeclinedException e) {\n                eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                    new PaymentFailedEvent(cmd.sagaId(), e.getReason()));\n            }\n        } else if (command instanceof RefundPaymentCommand cmd) {\n            paymentGateway.refund(cmd.transactionId());\n            eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                new PaymentRefundedEvent(cmd.sagaId(), cmd.transactionId()));\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "choosing-between-kafka-and-rabbitmq",
+          "heading": "Choosing Between Kafka and RabbitMQ",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Decision framework implementation\npublic class MessagingPlatformSelector {\n\n    public MessagingPlatform recommend(WorkloadCharacteristics workload) {\n        // Kafka strengths\n        if (workload.requiresEventReplay()) return KAFKA;\n        if (workload.throughputPerSecond() > 100_000) return KAFKA;\n        if (workload.requiresEventSourcing()) return KAFKA;\n        if (workload.hasMultipleIndependentConsumers()) return KAFKA;\n        if (workload.requiresStreamProcessing()) return KAFKA;\n\n        // RabbitMQ strengths\n        if (workload.requiresComplexRouting()) return RABBITMQ;\n        if (workload.requiresPriorityQueues()) return RABBITMQ;\n        if (workload.requiresRequestReply()) return RABBITMQ;\n        if (workload.requiresPerMessageTTL()) return RABBITMQ;\n        if (workload.requiresMessageDeletionAfterConsumption()) return RABBITMQ;\n        if (workload.throughputPerSecond() < 10_000) return RABBITMQ;\n\n        // Default: Kafka for event-driven, RabbitMQ for task-driven\n        return workload.isEventDriven() ? KAFKA : RABBITMQ;\n    }\n}\n\n/*\n * Summary comparison:\n *\n * | Aspect              | Kafka                        | RabbitMQ                    |\n * |---------------------|------------------------------|-----------------------------|\n * | Model               | Distributed log              | Message broker              |\n * | Persistence         | Retained after consumption   | Deleted after ack           |\n * | Ordering            | Per-partition                | Per-queue (FIFO)            |\n * | Replay              | Yes (seek to any offset)     | No (consumed = gone)        |\n * | Routing             | Topic-based only             | Exchange types + bindings   |\n * | Throughput          | Millions/sec                 | Tens of thousands/sec       |\n * | Consumer model      | Pull (consumer polls)        | Push (broker delivers)      |\n * | Scaling             | Add partitions + consumers   | Add queues + consumers      |\n * | Use case            | Event streaming, CDC, logs   | Task queues, routing, RPC   |\n */",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Treating events as commands: Events describe what happened (past tense, immutable); commands request an action (imperative, can be rejected). Publishing commands as events creates tight coupling because the publisher assumes a specific consumer will act. Events should be self-contained facts that any number of consumers can interpret independently.",
+            "Event schema evolution without versioning: Changing event schemas without backward compatibility breaks existing consumers. Use schema registries (Confluent Schema Registry, AWS Glue), include a version field in events, and follow compatible evolution rules (add optional fields, never remove or rename required fields). Consumers must tolerate unknown fields gracefully.",
+            "Saga without idempotent participants: If a saga step is retried (due to network timeout or duplicate delivery), non-idempotent operations execute twice (double-charging a payment, double-reserving inventory). Every saga participant must be idempotent, using idempotency keys or conditional writes to ensure repeated execution produces the same result.",
+            "CQRS read model inconsistency during failures: If the event projection fails after the command succeeds, the read model becomes stale. Implement retry logic with dead-letter handling for failed projections, and provide a mechanism to rebuild the read model from the event log. Users should understand that the read model may lag behind the write model by seconds.",
+            "Over-engineering with messaging: Not every service interaction needs asynchronous messaging. Synchronous HTTP calls are simpler and appropriate when the caller needs an immediate response, when the operation is fast, and when the coupling is acceptable. Introducing messaging adds complexity (eventual consistency, ordering challenges, operational overhead) that must be justified by concrete benefits.",
+            "Ignoring message ordering in multi-partition topics: When events for the same entity are spread across multiple partitions (wrong partitioning key), consumers may process them out of order. Always partition by the entity ID (customer ID, order ID) to ensure all events for one entity are processed sequentially by a single consumer."
+          ]
+        }
+      ],
+      "wordCount": 302,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "E-commerce order fulfillment with saga: A marketplace coordinates order processing across payment, inventory, shipping, and notification services using an orchestrated saga. The saga coordinator publishes commands to each service's queue and listens for success/failure events. If payment succeeds but shipping fails, the coordinator publishes compensation commands to refund the payment and release inventory, maintaining consistency without distributed transactions.",
+            "Real-time recommendation engine with CQRS: A streaming platform uses CQRS where the write model captures user interactions (views, likes, skips) as events in Kafka. Multiple read-model projections consume these events: one builds user preference vectors for recommendations, another builds trending content rankings, and a third builds social graphs for collaborative filtering. Each projection is optimized for its specific query pattern.",
+            "Financial audit trail with event sourcing: A banking application stores all account operations as immutable events (deposits, withdrawals, transfers, fee assessments). The current balance is a projection derived from replaying events. Auditors can query the event store to reconstruct account state at any point in time. Regulatory reports are generated by replaying events through compliance-checking projections without affecting the production read model.",
+            "IoT fleet management with event-driven architecture: A logistics company processes millions of GPS events per minute from delivery vehicles. Kafka ingests raw telemetry, Kafka Streams computes real-time metrics (speed, route deviation, idle time), and RabbitMQ distributes driver notifications and dispatch commands with priority routing. The separation allows the high-throughput ingestion path to operate independently from the lower-throughput command path."
+          ]
+        }
+      ],
+      "wordCount": 239,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose Kafka over RabbitMQ, and vice versa?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose Kafka when you need event replay (consumers re-reading historical events), when multiple independent consumer groups need the same data, when throughput exceeds 100K messages/second, or when you need stream processing capabilities. Choose RabbitMQ when you need complex routing logic (topic patterns, header-based routing), priority queues, request-reply patterns, per-message TTL, or when messages should be deleted after consumption. Many production systems use both: Kafka for the event backbone and RabbitMQ for task distribution and routing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between event sourcing and event-driven architecture."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Event-driven architecture (EDA) is a communication pattern where services interact through events — it describes how services communicate. Event sourcing is a persistence pattern where state is stored as a sequence of immutable events rather than mutable current state — it describes how state is stored. You can have EDA without event sourcing (services communicate via events but store current state in a database) and event sourcing without EDA (a monolith stores state as events internally). They complement each other but are independent concepts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle eventual consistency in a CQRS system?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Accept that the read model may lag behind the write model by milliseconds to seconds. Strategies include: returning the write result directly to the user after a command (optimistic UI), polling the read model until the projection catches up (with timeout), using WebSocket notifications when the projection completes, or including a version/timestamp in responses so clients can detect stale data. For critical operations, read from the write model directly (bypassing CQRS for that specific query)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the outbox pattern and why is it needed?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The outbox pattern solves the dual-write problem: when a service needs to update its database AND publish an event, doing both independently risks inconsistency (database updated but event lost, or event published but database write failed). The outbox pattern writes the event to an outbox table in the same database transaction as the state change. A separate process (CDC connector or poller) reads the outbox table and publishes events to the message broker. This guarantees that if the state change is committed, the event will eventually be published."
+        }
+      ],
+      "wordCount": 369,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement dead-letter handling from day one: Every consumer should have a dead-letter strategy for messages that cannot be processed after retries. Without DLQ handling, poison messages block partition consumption (Kafka) or accumulate in queues (RabbitMQ). Monitor DLQ depth and set up alerts — messages in the DLQ represent data that needs manual intervention or bug fixes.",
+            "Schema registry for event contracts: Use a schema registry (Confluent Schema Registry, AWS Glue Schema Registry) to enforce event schema compatibility. Configure producers to register schemas and consumers to validate against registered schemas. This catches breaking changes at deployment time rather than at runtime when consumers start failing.",
+            "Correlation IDs for distributed tracing: Include a correlation ID in every message header, propagated from the original request through all downstream events and commands. This enables tracing a business operation across multiple services and message hops. Combine with distributed tracing (OpenTelemetry) for end-to-end visibility.",
+            "Consumer lag monitoring and alerting: For Kafka, monitor consumer group lag per partition and alert when lag exceeds your SLA (e.g., more than 1000 messages or 30 seconds behind). For RabbitMQ, monitor queue depth and consumer utilization. Lag indicates either insufficient consumer capacity or processing bottlenecks that need investigation before they affect user experience."
+          ]
+        }
+      ],
+      "wordCount": 202,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Apache Kafka — Deep dive into Kafka's architecture, configuration, and operational patterns",
+            "RabbitMQ — Deep dive into RabbitMQ's exchange model, acknowledgments, and clustering",
+            "Transactions and Consistency — Distributed transaction patterns including sagas and outbox"
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Domain event definition\npublic sealed interface OrderEvent {\n    UUID orderId();\n    Instant occurredAt();\n\n    record OrderCreated(UUID orderId, UUID customerId, List<OrderItem> items,\n                        BigDecimal totalAmount, Instant occurredAt) implements OrderEvent {}\n\n    record OrderPaymentReceived(UUID orderId, UUID paymentId,\n                                BigDecimal amount, Instant occurredAt) implements OrderEvent {}\n\n    record OrderShipped(UUID orderId, String trackingNumber,\n                        String carrier, Instant occurredAt) implements OrderEvent {}\n\n    record OrderCancelled(UUID orderId, String reason,\n                          UUID cancelledBy, Instant occurredAt) implements OrderEvent {}\n}\n\n// Event publisher abstraction\npublic interface EventPublisher {\n    <T> void publish(String topic, String key, T event);\n    <T> void publish(String topic, String key, T event, Map<String, String> headers);\n}\n\n// Kafka implementation\n@Component\n@RequiredArgsConstructor\npublic class KafkaEventPublisher implements EventPublisher {\n\n    private final KafkaTemplate<String, Object> kafkaTemplate;\n    private final ObjectMapper objectMapper;\n\n    @Override\n    public <T> void publish(String topic, String key, T event, Map<String, String> headers) {\n        ProducerRecord<String, Object> record = new ProducerRecord<>(topic, key, event);\n        headers.forEach((k, v) -> record.headers().add(k, v.getBytes(StandardCharsets.UTF_8)));\n        record.headers().add(\"event-type\", event.getClass().getSimpleName().getBytes());\n        record.headers().add(\"published-at\", Instant.now().toString().getBytes());\n\n        kafkaTemplate.send(record).whenComplete((result, ex) -> {\n            if (ex != null) {\n                log.error(\"Failed to publish event: topic={}, key={}, type={}\",\n                    topic, key, event.getClass().getSimpleName(), ex);\n            }\n        });\n    }\n}\n\n// Event consumer with routing by event type\n@Component\n@RequiredArgsConstructor\npublic class OrderEventRouter {\n\n    private final InventoryService inventoryService;\n    private final NotificationService notificationService;\n    private final AnalyticsService analyticsService;\n\n    @KafkaListener(topics = \"order-events\", groupId = \"order-event-router\")\n    public void routeEvent(ConsumerRecord<String, OrderEvent> record) {\n        OrderEvent event = record.value();\n        String eventType = new String(record.headers().lastHeader(\"event-type\").value());\n\n        switch (event) {\n            case OrderEvent.OrderCreated created -> {\n                inventoryService.reserveStock(created.items());\n                notificationService.sendOrderConfirmation(created.customerId(), created.orderId());\n                analyticsService.trackOrderCreated(created);\n            }\n            case OrderEvent.OrderCancelled cancelled -> {\n                inventoryService.releaseStock(cancelled.orderId());\n                notificationService.sendCancellationNotice(cancelled.orderId());\n            }\n            default -> log.debug(\"Unhandled event type: {}\", eventType);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Command side: handles writes with full validation and business rules\n@Service\n@RequiredArgsConstructor\npublic class OrderCommandService {\n\n    private final OrderRepository orderRepository;\n    private final EventPublisher eventPublisher;\n\n    @Transactional\n    public UUID createOrder(CreateOrderCommand command) {\n        // Validate business rules\n        if (command.items().isEmpty()) {\n            throw new InvalidOrderException(\"Order must have at least one item\");\n        }\n\n        // Create aggregate and apply domain logic\n        Order order = Order.create(command.customerId(), command.items());\n        order.calculateTotals();\n        order.validateInventoryAvailability();\n\n        // Persist to write store (normalized, ACID)\n        orderRepository.save(order);\n\n        // Publish event for read model projection\n        eventPublisher.publish(\"order-events\", order.getId().toString(),\n            new OrderEvent.OrderCreated(order.getId(), command.customerId(),\n                command.items(), order.getTotalAmount(), Instant.now()));\n\n        return order.getId();\n    }\n}\n\n// Query side: optimized read model with denormalized data\n@Service\n@RequiredArgsConstructor\npublic class OrderQueryService {\n\n    private final OrderReadRepository readRepository; // Elasticsearch or denormalized DB\n\n    public Page<OrderSummaryView> searchOrders(OrderSearchCriteria criteria) {\n        return readRepository.search(criteria);\n    }\n\n    public OrderDetailView getOrderDetail(UUID orderId) {\n        return readRepository.findById(orderId)\n            .orElseThrow(() -> new OrderNotFoundException(orderId));\n    }\n}\n\n// Projection: builds read model from events\n@Component\n@RequiredArgsConstructor\npublic class OrderProjection {\n\n    private final OrderReadRepository readRepository;\n\n    @KafkaListener(topics = \"order-events\", groupId = \"order-read-projection\")\n    public void project(OrderEvent event) {\n        switch (event) {\n            case OrderEvent.OrderCreated created -> {\n                OrderSummaryView view = OrderSummaryView.builder()\n                    .orderId(created.orderId())\n                    .customerId(created.customerId())\n                    .totalAmount(created.totalAmount())\n                    .status(\"CREATED\")\n                    .itemCount(created.items().size())\n                    .createdAt(created.occurredAt())\n                    .build();\n                readRepository.save(view);\n            }\n            case OrderEvent.OrderShipped shipped -> {\n                readRepository.updateStatus(shipped.orderId(), \"SHIPPED\");\n                readRepository.setTrackingNumber(shipped.orderId(), shipped.trackingNumber());\n            }\n            case OrderEvent.OrderCancelled cancelled -> {\n                readRepository.updateStatus(cancelled.orderId(), \"CANCELLED\");\n            }\n            default -> {}\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Saga definition with steps and compensations\npublic class OrderSaga {\n\n    private final List<SagaStep> steps = new ArrayList<>();\n    private final List<SagaStep> completedSteps = new ArrayList<>();\n    private SagaStatus status = SagaStatus.STARTED;\n\n    public void addStep(String name, Runnable action, Runnable compensation) {\n        steps.add(new SagaStep(name, action, compensation));\n    }\n\n    public SagaResult execute() {\n        for (SagaStep step : steps) {\n            try {\n                step.action().run();\n                completedSteps.add(step);\n            } catch (Exception e) {\n                status = SagaStatus.COMPENSATING;\n                compensate();\n                status = SagaStatus.FAILED;\n                return SagaResult.failure(step.name(), e);\n            }\n        }\n        status = SagaStatus.COMPLETED;\n        return SagaResult.success();\n    }\n\n    private void compensate() {\n        // Execute compensations in reverse order\n        ListIterator<SagaStep> iterator = completedSteps.listIterator(completedSteps.size());\n        while (iterator.hasPrevious()) {\n            SagaStep step = iterator.previous();\n            try {\n                step.compensation().run();\n            } catch (Exception e) {\n                log.error(\"Compensation failed for step: {}\", step.name(), e);\n                // Alert for manual intervention\n                alertService.critical(\"Saga compensation failure\", step.name(), e);\n            }\n        }\n    }\n}\n\n// Choreography-based saga with event handlers\n@Component\npublic class PaymentSagaParticipant {\n\n    @KafkaListener(topics = \"saga-commands\", groupId = \"payment-saga\")\n    public void handleCommand(SagaCommand command) {\n        if (command instanceof ProcessPaymentCommand cmd) {\n            try {\n                PaymentResult result = paymentGateway.charge(cmd.amount(), cmd.paymentMethod());\n                eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                    new PaymentProcessedEvent(cmd.sagaId(), result.transactionId()));\n            } catch (PaymentDeclinedException e) {\n                eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                    new PaymentFailedEvent(cmd.sagaId(), e.getReason()));\n            }\n        } else if (command instanceof RefundPaymentCommand cmd) {\n            paymentGateway.refund(cmd.transactionId());\n            eventPublisher.publish(\"saga-events\", cmd.sagaId(),\n                new PaymentRefundedEvent(cmd.sagaId(), cmd.transactionId()));\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Decision framework implementation\npublic class MessagingPlatformSelector {\n\n    public MessagingPlatform recommend(WorkloadCharacteristics workload) {\n        // Kafka strengths\n        if (workload.requiresEventReplay()) return KAFKA;\n        if (workload.throughputPerSecond() > 100_000) return KAFKA;\n        if (workload.requiresEventSourcing()) return KAFKA;\n        if (workload.hasMultipleIndependentConsumers()) return KAFKA;\n        if (workload.requiresStreamProcessing()) return KAFKA;\n\n        // RabbitMQ strengths\n        if (workload.requiresComplexRouting()) return RABBITMQ;\n        if (workload.requiresPriorityQueues()) return RABBITMQ;\n        if (workload.requiresRequestReply()) return RABBITMQ;\n        if (workload.requiresPerMessageTTL()) return RABBITMQ;\n        if (workload.requiresMessageDeletionAfterConsumption()) return RABBITMQ;\n        if (workload.throughputPerSecond() < 10_000) return RABBITMQ;\n\n        // Default: Kafka for event-driven, RabbitMQ for task-driven\n        return workload.isEventDriven() ? KAFKA : RABBITMQ;\n    }\n}\n\n/*\n * Summary comparison:\n *\n * | Aspect              | Kafka                        | RabbitMQ                    |\n * |---------------------|------------------------------|-----------------------------|\n * | Model               | Distributed log              | Message broker              |\n * | Persistence         | Retained after consumption   | Deleted after ack           |\n * | Ordering            | Per-partition                | Per-queue (FIFO)            |\n * | Replay              | Yes (seek to any offset)     | No (consumed = gone)        |\n * | Routing             | Topic-based only             | Exchange types + bindings   |\n * | Throughput          | Millions/sec                 | Tens of thousands/sec       |\n * | Consumer model      | Pull (consumer polls)        | Push (broker delivers)      |\n * | Scaling             | Add partitions + consumers   | Add queues + consumers      |\n * | Use case            | Event streaming, CDC, logs   | Task queues, routing, RPC   |\n */",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/messaging/messaging-patterns.md",
+    "wordCount": 1418,
+    "sectionCount": 12
+  }
+}

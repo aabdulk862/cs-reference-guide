@@ -1,0 +1,390 @@
+{
+  "id": "data-structures-and-algorithms-linked-lists",
+  "slug": "linked-lists",
+  "title": "Linked Lists",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Linked Lists",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A linked list is a linear data structure where elements are stored in nodes, each containing a data field and one or more pointers to adjacent nodes. Unlike arrays, linked lists do not store elements in contiguous memory locations. Instead, each node is independently allocated and connected to the next (and optionally previous) node through references. This fundamental design choice gives linked lists O(1) insertion and deletion at known positions, at the cost of O(n) random access and poor cache locality."
+        },
+        {
+          "type": "paragraph",
+          "text": "Linked lists are one of the most foundational data structures in computer science, serving as building blocks for stacks, queues, hash table chains, adjacency lists in graphs, memory allocators, and operating system schedulers. Understanding linked lists deeply is essential for systems programming, interview preparation, and reasoning about pointer-based data structures. The pointer manipulation patterns learned with linked lists — such as the two-pointer technique, sentinel nodes, and recursive decomposition — transfer directly to trees, graphs, and other complex structures."
+        }
+      ],
+      "wordCount": 160,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Singly linked list: each node has a next pointer; traversal is forward-only",
+            "Doubly linked list: each node has next and prev pointers; bidirectional traversal",
+            "Circular linked list: the tail node points back to the head, forming a ring",
+            "Access by index: O(n) — must traverse from head",
+            "Insert/delete at head: O(1) — adjust head pointer",
+            "Insert/delete at tail: O(1) with tail pointer (doubly linked); O(n) without",
+            "Insert/delete at arbitrary position: O(1) if you have a reference to the node; O(n) to find it",
+            "Search: O(n) — linear scan required",
+            "Space overhead: one pointer per node (singly) or two pointers per node (doubly), plus object header",
+            "No random access: cannot index into a linked list in constant time",
+            "Dynamic size: grows and shrinks without reallocation or copying",
+            "Java implementation: java.util.LinkedList is a doubly linked list implementing both List and Deque interfaces"
+          ]
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Linked lists are the right choice when your workload is dominated by insertions and deletions at known positions, and you rarely need random access by index. In modern systems with CPU caches optimized for sequential memory access, arrays often outperform linked lists even for insertion-heavy workloads. Choose linked lists deliberately based on measured performance characteristics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose a linked list when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You frequently insert or remove elements at the beginning or middle of the collection (given a reference to the node)",
+            "You need a deque (double-ended queue) with O(1) operations at both ends",
+            "You are implementing an LRU cache where O(1) move-to-front is required",
+            "You need to splice two lists together in O(1) time",
+            "Memory allocation patterns favor many small allocations over one large contiguous block",
+            "You are implementing a free list in a memory allocator"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose an array or dynamic array instead when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need random access by index",
+            "Cache locality matters for iteration performance",
+            "Memory overhead per element must be minimal",
+            "Most operations are reads or appends to the end"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose a skip list instead when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need O(log n) search in a linked structure",
+            "You want a concurrent-friendly sorted data structure without complex tree balancing"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid linked lists when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need O(1) lookup by key (use a hash table)",
+            "You need sorted order with O(log n) operations (use a balanced BST)",
+            "Your workload is primarily sequential iteration (arrays have 10-100x better cache performance)"
+          ]
+        }
+      ],
+      "wordCount": 235,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "singly-linked-list-implementation",
+          "heading": "Singly Linked List Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A complete singly linked list with insert, delete, search, and reverse operations. This demonstrates the core pointer manipulation patterns that appear in interview problems."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class SinglyLinkedList<T> {\n    private Node<T> head;\n    private int size;\n\n    private static class Node<T> {\n        T data;\n        Node<T> next;\n\n        Node(T data) {\n            this.data = data;\n            this.next = null;\n        }\n    }\n\n    public void insertAtHead(T data) {\n        Node<T> newNode = new Node<>(data);\n        newNode.next = head;\n        head = newNode;\n        size++;\n    }\n\n    public void insertAtTail(T data) {\n        Node<T> newNode = new Node<>(data);\n        if (head == null) {\n            head = newNode;\n        } else {\n            Node<T> current = head;\n            while (current.next != null) {\n                current = current.next;\n            }\n            current.next = newNode;\n        }\n        size++;\n    }\n\n    public boolean delete(T data) {\n        if (head == null) return false;\n        if (head.data.equals(data)) {\n            head = head.next;\n            size--;\n            return true;\n        }\n        Node<T> current = head;\n        while (current.next != null) {\n            if (current.next.data.equals(data)) {\n                current.next = current.next.next;\n                size--;\n                return true;\n            }\n            current = current.next;\n        }\n        return false;\n    }\n\n    public Node<T> reverse() {\n        Node<T> prev = null;\n        Node<T> current = head;\n        while (current != null) {\n            Node<T> next = current.next;\n            current.next = prev;\n            prev = current;\n            current = next;\n        }\n        head = prev;\n        return head;\n    }\n\n    public int size() {\n        return size;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        },
+        {
+          "id": "doubly-linked-list-with-sentinel-nodes-python",
+          "heading": "Doubly Linked List with Sentinel Nodes (Python)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Sentinel nodes (dummy head and tail) eliminate edge cases for empty lists and boundary operations. This pattern is used in production implementations like Java's LinkedList and Linux kernel's list_head."
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "class DoublyLinkedList:\n    class Node:\n        def __init__(self, data=None):\n            self.data = data\n            self.prev = None\n            self.next = None\n\n    def __init__(self):\n        self.head = self.Node()  # Sentinel head\n        self.tail = self.Node()  # Sentinel tail\n        self.head.next = self.tail\n        self.tail.prev = self.head\n        self.size = 0\n\n    def insert_after(self, node, data):\n        \"\"\"Insert new node after the given node in O(1).\"\"\"\n        new_node = self.Node(data)\n        new_node.prev = node\n        new_node.next = node.next\n        node.next.prev = new_node\n        node.next = new_node\n        self.size += 1\n        return new_node\n\n    def insert_at_head(self, data):\n        return self.insert_after(self.head, data)\n\n    def insert_at_tail(self, data):\n        return self.insert_after(self.tail.prev, data)\n\n    def remove(self, node):\n        \"\"\"Remove the given node in O(1). Node must not be a sentinel.\"\"\"\n        if node is self.head or node is self.tail:\n            raise ValueError(\"Cannot remove sentinel nodes\")\n        node.prev.next = node.next\n        node.next.prev = node.prev\n        self.size -= 1\n        return node.data\n\n    def move_to_front(self, node):\n        \"\"\"Move existing node to front in O(1) — used in LRU caches.\"\"\"\n        self.remove(node)\n        self.insert_after(self.head, node.data)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        },
+        {
+          "id": "floyds-cycle-detection-algorithm",
+          "heading": "Floyd's Cycle Detection Algorithm",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The tortoise and hare algorithm detects cycles in O(n) time with O(1) space. This is a fundamental linked list technique that appears in many interview problems."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class CycleDetection {\n    public boolean hasCycle(ListNode head) {\n        if (head == null || head.next == null) return false;\n        ListNode slow = head;\n        ListNode fast = head;\n        while (fast != null && fast.next != null) {\n            slow = slow.next;\n            fast = fast.next.next;\n            if (slow == fast) return true;\n        }\n        return false;\n    }\n\n    public ListNode findCycleStart(ListNode head) {\n        ListNode slow = head, fast = head;\n        // Phase 1: Detect cycle\n        while (fast != null && fast.next != null) {\n            slow = slow.next;\n            fast = fast.next.next;\n            if (slow == fast) break;\n        }\n        if (fast == null || fast.next == null) return null;\n        // Phase 2: Find cycle start\n        slow = head;\n        while (slow != fast) {\n            slow = slow.next;\n            fast = fast.next;\n        }\n        return slow;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        },
+        {
+          "id": "lru-cache-using-doubly-linked-list-hash-map",
+          "heading": "LRU Cache Using Doubly Linked List + Hash Map",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The combination of a doubly linked list (for O(1) ordering operations) and a hash map (for O(1) key lookup) creates an O(1) LRU cache. This is one of the most common interview problems and a real production pattern."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class LRUCache {\n    private final int capacity;\n    private final Map<Integer, Node> map;\n    private final Node head, tail;  // Sentinels\n\n    public LRUCache(int capacity) {\n        this.capacity = capacity;\n        this.map = new HashMap<>();\n        head = new Node(0, 0);\n        tail = new Node(0, 0);\n        head.next = tail;\n        tail.prev = head;\n    }\n\n    public int get(int key) {\n        if (!map.containsKey(key)) return -1;\n        Node node = map.get(key);\n        removeNode(node);\n        addToFront(node);\n        return node.value;\n    }\n\n    public void put(int key, int value) {\n        if (map.containsKey(key)) {\n            Node node = map.get(key);\n            node.value = value;\n            removeNode(node);\n            addToFront(node);\n        } else {\n            if (map.size() == capacity) {\n                Node lru = tail.prev;\n                removeNode(lru);\n                map.remove(lru.key);\n            }\n            Node newNode = new Node(key, value);\n            map.put(key, newNode);\n            addToFront(newNode);\n        }\n    }\n\n    private void addToFront(Node node) {\n        node.next = head.next;\n        node.prev = head;\n        head.next.prev = node;\n        head.next = node;\n    }\n\n    private void removeNode(Node node) {\n        node.prev.next = node.next;\n        node.next.prev = node.prev;\n    }\n\n    private static class Node {\n        int key, value;\n        Node prev, next;\n        Node(int key, int value) {\n            this.key = key;\n            this.value = value;\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 38,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Losing references during pointer manipulation: When reversing or rearranging nodes, failing to save the next pointer before overwriting it causes the rest of the list to become unreachable. Always store current.next in a temporary variable before modifying current.next. This is the single most common bug in linked list code and the source of most interview mistakes.",
+            "Off-by-one errors with null checks: Forgetting to handle the empty list case (head == null) or the single-element case (head.next == null) causes NullPointerExceptions. Always consider these boundary conditions explicitly. Using sentinel nodes eliminates most of these edge cases by ensuring head and tail are never null.",
+            "Memory leaks from dangling references: In garbage-collected languages, removed nodes that still have references pointing to them (or from them to the list) may not be collected. In non-GC languages like C/C++, failing to free removed nodes causes memory leaks. Always null out references in removed nodes and explicitly free memory in manual memory management environments.",
+            "Using LinkedList for random access: Calling list.get(i) on a Java LinkedList is O(n) because it must traverse from the head (or tail) to the target index. If you need indexed access, use ArrayList. This is the most common performance mistake — developers choose LinkedList thinking it is \"more flexible\" without measuring actual access patterns.",
+            "Ignoring cache locality in performance-critical code: Linked list nodes are scattered across the heap, causing frequent cache misses during traversal. On modern CPUs, iterating an array is 10-100x faster than iterating a linked list of the same size due to hardware prefetching and cache line utilization. Profile before choosing a linked list for performance-sensitive paths.",
+            "Concurrent modification without synchronization: Java's LinkedList is not thread-safe. Concurrent reads and writes cause corrupted state, lost nodes, and infinite loops. Use ConcurrentLinkedDeque for concurrent access, or protect the list with explicit synchronization.",
+            "Circular reference bugs: When implementing circular linked lists, forgetting to properly terminate traversal causes infinite loops. Always use a sentinel condition (checking if you have returned to the starting node) rather than checking for null."
+          ]
+        }
+      ],
+      "wordCount": 336,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Operating system process schedulers: The Linux kernel uses circular doubly linked lists (list_head) extensively for process scheduling. The run queue is a linked list of task structs, allowing O(1) insertion and removal of processes as they transition between states (running, waiting, sleeping). The kernel's list implementation uses the container_of macro to embed list nodes directly in structures without separate allocation."
+        },
+        {
+          "type": "paragraph",
+          "text": "LRU cache eviction: Production caches (Memcached, Redis, Caffeine) use doubly linked lists to maintain access order. When a cache entry is accessed, it is moved to the front of the list in O(1). When the cache is full, the tail entry (least recently used) is evicted in O(1). Combined with a hash map for O(1) key lookup, this provides a complete O(1) LRU cache."
+        },
+        {
+          "type": "paragraph",
+          "text": "Memory allocators (free lists): Memory allocators like glibc's malloc maintain free lists — linked lists of available memory blocks organized by size class. When memory is freed, the block is inserted into the appropriate free list. When memory is requested, the allocator searches the free list for a suitable block. This enables O(1) allocation for common sizes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Undo/redo systems: Text editors and design tools implement undo/redo as a doubly linked list of state snapshots or operations. The current position pointer moves backward (undo) or forward (redo) through the list. When a new action is performed after undoing, the forward portion of the list is discarded and the new action is appended."
+        },
+        {
+          "type": "paragraph",
+          "text": "Browser navigation history: Web browsers maintain forward and backward navigation as a doubly linked list of visited URLs. The back button traverses the prev pointer, the forward button traverses next. When you navigate to a new page after going back, the forward history is truncated."
+        },
+        {
+          "type": "paragraph",
+          "text": "Blockchain structure: Each block in a blockchain contains a hash pointer to the previous block, forming a singly linked list from the most recent block back to the genesis block. This linked structure provides tamper evidence — modifying any block invalidates all subsequent hash pointers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Music playlist and media players: Media players implement playlists as doubly linked lists (or circular linked lists for repeat mode). Skip forward and skip backward are O(1) pointer traversals. Shuffle can be implemented by randomly relinking nodes."
+        }
+      ],
+      "wordCount": 362,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you reverse a singly linked list in-place?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use three pointers: prev (initially null), current (initially head), and next (temporary). At each step, save current.next in next, point current.next to prev, advance prev to current, and advance current to next. When current becomes null, prev is the new head. This runs in O(n) time with O(1) space. The recursive approach uses O(n) stack space and is less suitable for very long lists."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you find the middle node of a linked list in one pass?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use the slow/fast pointer technique (also called the tortoise and hare). Initialize both pointers at the head. Move slow one step and fast two steps at each iteration. When fast reaches the end (null or last node), slow is at the middle. For even-length lists, this gives the first of the two middle nodes. This runs in O(n) time with O(1) space and is the foundation for many linked list algorithms including merge sort on linked lists."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you detect and find the start of a cycle in a linked list?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Phase 1 (detection): Use Floyd's algorithm with slow and fast pointers. If they meet, a cycle exists. Phase 2 (finding the start): Reset slow to head, keep fast at the meeting point, and advance both one step at a time. They will meet at the cycle start. The mathematical proof relies on the fact that the distance from head to cycle start equals the distance from the meeting point to cycle start (modulo cycle length). Time: O(n), Space: O(1)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you merge two sorted linked lists into one sorted list?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a dummy head node and a tail pointer. Compare the heads of both lists, append the smaller node to tail, and advance that list's pointer. Continue until one list is exhausted, then append the remaining list directly (no need to copy). Time: O(n + m), Space: O(1). This is the merge step in merge sort for linked lists, which is particularly efficient because linked list merge sort requires no extra space (unlike array merge sort)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the trade-offs between singly and doubly linked lists?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Singly linked lists use one pointer per node (less memory, simpler implementation) but only support forward traversal. Deletion requires a reference to the previous node, making arbitrary deletion O(n) unless you have the predecessor. Doubly linked lists use two pointers per node (more memory, more complex pointer updates) but support bidirectional traversal and O(1) deletion given any node reference. In practice, doubly linked lists are preferred for most applications because the O(1) deletion capability is critical for caches, schedulers, and deques."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement merge sort on a linked list, and why is it preferred over quicksort for lists?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Split the list in half using the slow/fast pointer technique to find the middle. Recursively sort each half. Merge the two sorted halves using the sorted merge algorithm. Time: O(n log n), Space: O(log n) for recursion stack. Merge sort is preferred over quicksort for linked lists because: (1) merge sort's merge step is O(1) space on linked lists (just pointer manipulation), while quicksort's partition requires random access for efficient pivot selection; (2) linked lists lack cache locality regardless, so quicksort's cache advantage over merge sort disappears; (3) merge sort is stable, preserving relative order of equal elements."
+        }
+      ],
+      "wordCount": 566,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Prefer ArrayDeque over LinkedList for stacks and queues: In Java, ArrayDeque outperforms LinkedList for both stack (LIFO) and queue (FIFO) operations due to cache locality and lower per-element overhead. LinkedList allocates a separate Node object for each element (40+ bytes overhead), while ArrayDeque stores elements in a contiguous circular array. Benchmarks consistently show 2-5x throughput improvement with ArrayDeque.",
+            "Use intrusive linked lists in performance-critical systems: Standard linked lists allocate separate node objects that point to data. Intrusive linked lists embed the list pointers directly in the data structure, eliminating one level of indirection and one allocation per element. The Linux kernel, DPDK, and game engines use intrusive lists extensively. In Java, this pattern is less common but can be implemented with explicit prev/next fields in your domain objects.",
+            "Implement sentinel nodes to eliminate edge cases: Production linked list implementations use dummy head and tail nodes that are never removed. This eliminates null checks for empty lists and simplifies insertion/deletion code by ensuring every real node always has valid prev and next references. Java's LinkedList uses this pattern internally. The small memory cost of two extra nodes is negligible compared to the bug-prevention benefit.",
+            "Monitor list length in production: Linked lists that grow unboundedly (e.g., event queues, work queues) can consume excessive memory and cause GC pressure. Instrument your lists with size counters and set alerts when they exceed expected bounds. Consider bounded alternatives (ArrayBlockingQueue) when backpressure is appropriate.",
+            "Use ConcurrentLinkedDeque for multi-threaded scenarios: When multiple threads need to add and remove elements concurrently, ConcurrentLinkedDeque provides lock-free operations using CAS (compare-and-swap) instructions. It avoids the contention of synchronized wrappers while maintaining correctness. For single-producer/single-consumer patterns, consider ConcurrentLinkedQueue which has even lower overhead."
+          ]
+        }
+      ],
+      "wordCount": 281,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Hash Tables — Separate chaining collision resolution uses linked lists within each hash bucket",
+            "Arrays and Strings — Contrasting contiguous vs. pointer-based storage trade-offs",
+            "Queue — LinkedList implements the Deque interface for double-ended queue operations",
+            "Big O Notation — Comparing O(1) insertion/deletion vs. O(n) access in linked structures"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class SinglyLinkedList<T> {\n    private Node<T> head;\n    private int size;\n\n    private static class Node<T> {\n        T data;\n        Node<T> next;\n\n        Node(T data) {\n            this.data = data;\n            this.next = null;\n        }\n    }\n\n    public void insertAtHead(T data) {\n        Node<T> newNode = new Node<>(data);\n        newNode.next = head;\n        head = newNode;\n        size++;\n    }\n\n    public void insertAtTail(T data) {\n        Node<T> newNode = new Node<>(data);\n        if (head == null) {\n            head = newNode;\n        } else {\n            Node<T> current = head;\n            while (current.next != null) {\n                current = current.next;\n            }\n            current.next = newNode;\n        }\n        size++;\n    }\n\n    public boolean delete(T data) {\n        if (head == null) return false;\n        if (head.data.equals(data)) {\n            head = head.next;\n            size--;\n            return true;\n        }\n        Node<T> current = head;\n        while (current.next != null) {\n            if (current.next.data.equals(data)) {\n                current.next = current.next.next;\n                size--;\n                return true;\n            }\n            current = current.next;\n        }\n        return false;\n    }\n\n    public Node<T> reverse() {\n        Node<T> prev = null;\n        Node<T> current = head;\n        while (current != null) {\n            Node<T> next = current.next;\n            current.next = prev;\n            prev = current;\n            current = next;\n        }\n        head = prev;\n        return head;\n    }\n\n    public int size() {\n        return size;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "class DoublyLinkedList:\n    class Node:\n        def __init__(self, data=None):\n            self.data = data\n            self.prev = None\n            self.next = None\n\n    def __init__(self):\n        self.head = self.Node()  # Sentinel head\n        self.tail = self.Node()  # Sentinel tail\n        self.head.next = self.tail\n        self.tail.prev = self.head\n        self.size = 0\n\n    def insert_after(self, node, data):\n        \"\"\"Insert new node after the given node in O(1).\"\"\"\n        new_node = self.Node(data)\n        new_node.prev = node\n        new_node.next = node.next\n        node.next.prev = new_node\n        node.next = new_node\n        self.size += 1\n        return new_node\n\n    def insert_at_head(self, data):\n        return self.insert_after(self.head, data)\n\n    def insert_at_tail(self, data):\n        return self.insert_after(self.tail.prev, data)\n\n    def remove(self, node):\n        \"\"\"Remove the given node in O(1). Node must not be a sentinel.\"\"\"\n        if node is self.head or node is self.tail:\n            raise ValueError(\"Cannot remove sentinel nodes\")\n        node.prev.next = node.next\n        node.next.prev = node.prev\n        self.size -= 1\n        return node.data\n\n    def move_to_front(self, node):\n        \"\"\"Move existing node to front in O(1) — used in LRU caches.\"\"\"\n        self.remove(node)\n        self.insert_after(self.head, node.data)",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class CycleDetection {\n    public boolean hasCycle(ListNode head) {\n        if (head == null || head.next == null) return false;\n        ListNode slow = head;\n        ListNode fast = head;\n        while (fast != null && fast.next != null) {\n            slow = slow.next;\n            fast = fast.next.next;\n            if (slow == fast) return true;\n        }\n        return false;\n    }\n\n    public ListNode findCycleStart(ListNode head) {\n        ListNode slow = head, fast = head;\n        // Phase 1: Detect cycle\n        while (fast != null && fast.next != null) {\n            slow = slow.next;\n            fast = fast.next.next;\n            if (slow == fast) break;\n        }\n        if (fast == null || fast.next == null) return null;\n        // Phase 2: Find cycle start\n        slow = head;\n        while (slow != fast) {\n            slow = slow.next;\n            fast = fast.next;\n        }\n        return slow;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class LRUCache {\n    private final int capacity;\n    private final Map<Integer, Node> map;\n    private final Node head, tail;  // Sentinels\n\n    public LRUCache(int capacity) {\n        this.capacity = capacity;\n        this.map = new HashMap<>();\n        head = new Node(0, 0);\n        tail = new Node(0, 0);\n        head.next = tail;\n        tail.prev = head;\n    }\n\n    public int get(int key) {\n        if (!map.containsKey(key)) return -1;\n        Node node = map.get(key);\n        removeNode(node);\n        addToFront(node);\n        return node.value;\n    }\n\n    public void put(int key, int value) {\n        if (map.containsKey(key)) {\n            Node node = map.get(key);\n            node.value = value;\n            removeNode(node);\n            addToFront(node);\n        } else {\n            if (map.size() == capacity) {\n                Node lru = tail.prev;\n                removeNode(lru);\n                map.remove(lru.key);\n            }\n            Node newNode = new Node(key, value);\n            map.put(key, newNode);\n            addToFront(newNode);\n        }\n    }\n\n    private void addToFront(Node node) {\n        node.next = head.next;\n        node.prev = head;\n        head.next.prev = node;\n        head.next = node;\n    }\n\n    private void removeNode(Node node) {\n        node.prev.next = node.next;\n        node.next.prev = node.prev;\n    }\n\n    private static class Node {\n        int key, value;\n        Node prev, next;\n        Node(int key, int value) {\n            this.key = key;\n            this.value = value;\n        }\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/linked-lists.md",
+    "wordCount": 2245,
+    "sectionCount": 13
+  }
+}

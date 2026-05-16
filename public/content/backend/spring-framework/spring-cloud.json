@@ -1,0 +1,281 @@
+{
+  "id": "spring-framework-spring-cloud-and-microservices",
+  "slug": "spring-cloud",
+  "title": "Spring Cloud and Microservices",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Cloud provides tools for building distributed systems: service discovery, configuration management, circuit breakers, and API gateways",
+            "Service discovery with Eureka or Consul enables dynamic service registration and client-side load balancing",
+            "Spring Cloud Config Server centralizes externalized configuration across all environments and services",
+            "Spring Cloud Gateway provides reactive, non-blocking API routing with filters for rate limiting, authentication, and transformation",
+            "Circuit breaker pattern (via Resilience4j integration) prevents cascade failures by failing fast when downstream services are unhealthy",
+            "Distributed tracing with Micrometer Tracing (formerly Spring Cloud Sleuth) propagates trace and span IDs across service boundaries",
+            "Spring Cloud Stream abstracts message broker interactions (Kafka, RabbitMQ) with declarative bindings and consumer groups",
+            "@FeignClient provides declarative HTTP client interfaces with built-in load balancing and circuit breaker integration"
+          ]
+        }
+      ],
+      "wordCount": 122,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Cloud is the right choice when building microservice architectures on the JVM that need production-grade infrastructure patterns without reinventing them. Use Spring Cloud when your system has multiple independently deployable services that need to discover and communicate with each other dynamically, when you need centralized configuration that can be updated without redeploying services, when you require resilience patterns like circuit breakers and bulkheads to prevent cascade failures, or when you need an API gateway to handle cross-cutting concerns like authentication, rate limiting, and request routing. Spring Cloud is particularly valuable in Kubernetes environments where it complements platform-level service discovery with application-level resilience patterns, and in organizations transitioning from monoliths to microservices where the framework provides a proven migration path. The framework's opinionated defaults and auto-configuration reduce the boilerplate of distributed systems programming while allowing deep customization when needed."
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "service-discovery-with-eureka",
+          "heading": "Service Discovery with Eureka",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Eureka Server\n@SpringBootApplication\n@EnableEurekaServer\npublic class DiscoveryServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(DiscoveryServerApplication.class, args);\n    }\n}\n\n// Eureka Client (any microservice)\n@SpringBootApplication\n@EnableDiscoveryClient\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}\n\n// application.yml for Eureka client\n// spring:\n//   application:\n//     name: order-service\n// eureka:\n//   client:\n//     service-url:\n//       defaultZone: http://discovery:8761/eureka/\n//   instance:\n//     prefer-ip-address: true\n//     lease-renewal-interval-in-seconds: 10\n//     lease-expiration-duration-in-seconds: 30\n\n// Using DiscoveryClient programmatically\n@Service\n@RequiredArgsConstructor\npublic class ServiceLocator {\n\n    private final DiscoveryClient discoveryClient;\n\n    public URI getServiceUri(String serviceName) {\n        List<ServiceInstance> instances = discoveryClient.getInstances(serviceName);\n        if (instances.isEmpty()) {\n            throw new ServiceUnavailableException(serviceName);\n        }\n        // Client-side load balancing (round-robin)\n        ServiceInstance instance = instances.get(\n            ThreadLocalRandom.current().nextInt(instances.size()));\n        return instance.getUri();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "declarative-http-clients-with-openfeign",
+          "heading": "Declarative HTTP Clients with OpenFeign",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@FeignClient(\n    name = \"payment-service\",\n    fallbackFactory = PaymentClientFallbackFactory.class,\n    configuration = PaymentClientConfig.class\n)\npublic interface PaymentClient {\n\n    @PostMapping(\"/api/v1/payments\")\n    PaymentResponse processPayment(@RequestBody PaymentRequest request);\n\n    @GetMapping(\"/api/v1/payments/{paymentId}\")\n    PaymentResponse getPayment(@PathVariable UUID paymentId);\n\n    @GetMapping(\"/api/v1/payments\")\n    Page<PaymentResponse> listPayments(\n        @RequestParam(\"customerId\") UUID customerId,\n        @RequestParam(\"page\") int page,\n        @RequestParam(\"size\") int size);\n}\n\n@Component\n@Slf4j\npublic class PaymentClientFallbackFactory implements FallbackFactory<PaymentClient> {\n\n    @Override\n    public PaymentClient create(Throwable cause) {\n        return new PaymentClient() {\n            @Override\n            public PaymentResponse processPayment(PaymentRequest request) {\n                log.error(\"Payment service unavailable, queuing for retry\", cause);\n                throw new ServiceDegradedException(\"Payment processing delayed\", cause);\n            }\n\n            @Override\n            public PaymentResponse getPayment(UUID paymentId) {\n                log.warn(\"Payment service unavailable, returning cached response\", cause);\n                return PaymentResponse.unavailable(paymentId);\n            }\n\n            @Override\n            public Page<PaymentResponse> listPayments(UUID customerId, int page, int size) {\n                return Page.empty();\n            }\n        };\n    }\n}\n\npublic class PaymentClientConfig {\n\n    @Bean\n    public RequestInterceptor authInterceptor(OAuth2AuthorizedClientManager clientManager) {\n        return template -> {\n            OAuth2AuthorizedClient client = clientManager.authorize(\n                OAuth2AuthorizeRequest.withClientRegistrationId(\"payment-service\")\n                    .principal(\"order-service\")\n                    .build());\n            template.header(\"Authorization\",\n                \"Bearer \" + client.getAccessToken().getTokenValue());\n        };\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "spring-cloud-gateway-configuration",
+          "heading": "Spring Cloud Gateway Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\npublic class GatewayConfig {\n\n    @Bean\n    public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {\n        return builder.routes()\n            .route(\"order-service\", r -> r\n                .path(\"/api/v1/orders/**\")\n                .filters(f -> f\n                    .stripPrefix(0)\n                    .addRequestHeader(\"X-Gateway-Source\", \"api-gateway\")\n                    .retry(config -> config\n                        .setRetries(3)\n                        .setStatuses(HttpStatus.SERVICE_UNAVAILABLE)\n                        .setBackoff(Duration.ofMillis(100), Duration.ofSeconds(2), 2, true))\n                    .circuitBreaker(config -> config\n                        .setName(\"orderServiceCB\")\n                        .setFallbackUri(\"forward:/fallback/orders\"))\n                    .requestRateLimiter(config -> config\n                        .setRateLimiter(redisRateLimiter())\n                        .setKeyResolver(userKeyResolver())))\n                .uri(\"lb://order-service\"))\n            .route(\"payment-service\", r -> r\n                .path(\"/api/v1/payments/**\")\n                .filters(f -> f\n                    .tokenRelay()\n                    .circuitBreaker(config -> config\n                        .setName(\"paymentServiceCB\")\n                        .setFallbackUri(\"forward:/fallback/payments\")))\n                .uri(\"lb://payment-service\"))\n            .build();\n    }\n\n    @Bean\n    public RedisRateLimiter redisRateLimiter() {\n        return new RedisRateLimiter(10, 20, 1); // 10 req/s, burst 20\n    }\n\n    @Bean\n    public KeyResolver userKeyResolver() {\n        return exchange -> Mono.justOrEmpty(\n            exchange.getRequest().getHeaders().getFirst(\"X-User-Id\"))\n            .defaultIfEmpty(\"anonymous\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "circuit-breaker-with-resilience4j",
+          "heading": "Circuit Breaker with Resilience4j",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\n@RequiredArgsConstructor\npublic class InventoryService {\n\n    private final InventoryClient inventoryClient;\n    private final CircuitBreakerRegistry circuitBreakerRegistry;\n\n    @CircuitBreaker(name = \"inventory\", fallbackMethod = \"getStockFallback\")\n    @Retry(name = \"inventory\", fallbackMethod = \"getStockFallback\")\n    @Bulkhead(name = \"inventory\", type = Bulkhead.Type.THREADPOOL)\n    public StockResponse getStock(String productId) {\n        return inventoryClient.checkStock(productId);\n    }\n\n    private StockResponse getStockFallback(String productId, Throwable t) {\n        log.warn(\"Inventory service unavailable for product {}: {}\", productId, t.getMessage());\n        return StockResponse.unknown(productId);\n    }\n}\n\n// application.yml circuit breaker configuration\n// resilience4j:\n//   circuitbreaker:\n//     instances:\n//       inventory:\n//         sliding-window-size: 10\n//         failure-rate-threshold: 50\n//         wait-duration-in-open-state: 30s\n//         permitted-number-of-calls-in-half-open-state: 3\n//         slow-call-duration-threshold: 2s\n//         slow-call-rate-threshold: 80\n//   retry:\n//     instances:\n//       inventory:\n//         max-attempts: 3\n//         wait-duration: 500ms\n//         exponential-backoff-multiplier: 2\n//         retry-exceptions:\n//           - java.io.IOException\n//           - java.util.concurrent.TimeoutException\n//   bulkhead:\n//     instances:\n//       inventory:\n//         max-concurrent-calls: 20\n//         max-wait-duration: 500ms",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "distributed-configuration-with-config-server",
+          "heading": "Distributed Configuration with Config Server",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Config Server\n@SpringBootApplication\n@EnableConfigServer\npublic class ConfigServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(ConfigServerApplication.class, args);\n    }\n}\n\n// Config Server application.yml\n// spring:\n//   cloud:\n//     config:\n//       server:\n//         git:\n//           uri: https://github.com/org/config-repo\n//           default-label: main\n//           search-paths: '{application}'\n//         encrypt:\n//           enabled: true\n\n// Client-side configuration refresh\n@RestController\n@RefreshScope\n@RequiredArgsConstructor\npublic class FeatureFlagController {\n\n    @Value(\"${feature.new-checkout-flow:false}\")\n    private boolean newCheckoutEnabled;\n\n    @Value(\"${rate-limit.max-requests:100}\")\n    private int maxRequests;\n\n    @GetMapping(\"/api/features\")\n    public Map<String, Object> getFeatures() {\n        return Map.of(\n            \"newCheckoutFlow\", newCheckoutEnabled,\n            \"maxRequests\", maxRequests\n        );\n    }\n}\n\n// Bus refresh for cluster-wide config updates\n// POST /actuator/busrefresh triggers all instances to reload config",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Eureka self-preservation mode confusion: When Eureka stops receiving heartbeats from a threshold of instances (default 85%), it enters self-preservation mode and stops evicting instances, assuming a network partition rather than actual failures. This can keep stale entries in the registry. In development, disable it with eureka.server.enable-self-preservation=false; in production, tune the renewal threshold and understand that stale entries are preferable to mass eviction during network issues.",
+            "Circuit breaker state not shared across instances: Each application instance maintains its own circuit breaker state. If one instance detects a downstream failure and opens its circuit, other instances continue sending requests until they independently detect the failure. For coordinated circuit breaking, use a shared state store (Redis) or rely on the natural convergence as all instances detect the failure within seconds.",
+            "Feign client timeout misconfiguration: Feign has separate connect and read timeouts that default to very long values. Without explicit configuration, a slow downstream service blocks the calling thread for extended periods, exhausting the thread pool. Always set feign.client.config.default.connectTimeout=5000 and readTimeout=10000 (milliseconds), and combine with circuit breakers for fast failure.",
+            "Config server single point of failure: Running a single Config Server instance means all services fail to start if it is unavailable during deployment. Run multiple Config Server instances behind a load balancer, enable config caching on clients with spring.cloud.config.fail-fast=false, and use local fallback configuration files.",
+            "Distributed tracing context loss in async operations: Trace context is propagated via thread-local storage. When using @Async, CompletableFuture, or reactive streams, the trace context is lost unless you use instrumented executors. Configure LazyTraceExecutor or use Micrometer's context propagation support to maintain trace continuity across thread boundaries.",
+            "Gateway memory pressure with large request bodies: Spring Cloud Gateway buffers request bodies in memory by default. Large file uploads or batch requests can exhaust gateway memory. Configure spring.cloud.gateway.httpclient.response-timeout and use streaming for large payloads, or route file upload endpoints directly to the backend service bypassing the gateway."
+          ]
+        }
+      ],
+      "wordCount": 316,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "E-commerce platform migration: A monolithic retail application is decomposed into microservices (catalog, cart, checkout, payment, shipping) using Spring Cloud. Eureka handles service discovery as new instances scale up during peak traffic. Spring Cloud Gateway routes external traffic and applies rate limiting per API key. Config Server manages feature flags that enable gradual rollout of new checkout flows to percentage-based user cohorts without redeployment.",
+            "Financial services event-driven architecture: A banking platform uses Spring Cloud Stream with Kafka bindings to process transactions across fraud detection, compliance checking, and ledger services. Each service consumes from topic partitions with consumer groups ensuring exactly-once processing. Circuit breakers protect against cascade failures when the fraud detection service experiences latency spikes, allowing transactions to proceed with async fraud checking rather than blocking.",
+            "Multi-region deployment with failover: A global SaaS platform deploys Spring Cloud services across three AWS regions. Spring Cloud Gateway in each region routes to local service instances by default, with fallback routing to other regions when local instances are unhealthy. Config Server provides region-specific configuration (database endpoints, cache clusters) while maintaining shared business configuration. Distributed tracing with Micrometer spans across regions for end-to-end visibility.",
+            "IoT data ingestion pipeline: An industrial IoT platform uses Spring Cloud Stream to ingest millions of sensor readings per minute from edge gateways. Function-based programming model (java.util.function.Function) processes streams with windowed aggregations. Spring Cloud Data Flow orchestrates the pipeline topology, scaling individual processing stages independently based on partition lag metrics."
+          ]
+        }
+      ],
+      "wordCount": 239,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does service discovery work in Spring Cloud, and what happens when the discovery server is unavailable?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Services register with the discovery server (Eureka) on startup, sending periodic heartbeats. Clients fetch the service registry and cache it locally, performing client-side load balancing. If the discovery server becomes unavailable, clients continue using their cached registry (stale but functional). New services cannot register, and deregistered services remain in client caches until the TTL expires. This design prioritizes availability over consistency, following the AP side of CAP theorem."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the circuit breaker pattern and its states."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A circuit breaker monitors calls to a downstream service and transitions between three states. Closed (normal): requests pass through, failures are counted. When the failure rate exceeds a threshold (e.g., 50% of last 10 calls), it transitions to Open: all requests fail immediately without calling the downstream service, returning a fallback response. After a wait duration, it transitions to Half-Open: a limited number of test requests are allowed through. If they succeed, the circuit closes; if they fail, it reopens. This prevents cascade failures and gives failing services time to recover."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Spring Cloud Gateway and Netflix Zuul?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Cloud Gateway is built on Project Reactor and Netty, providing a non-blocking, reactive architecture that handles many concurrent connections with few threads. Zuul 1 (now deprecated in Spring Cloud) used a blocking, thread-per-request model. Gateway supports WebSocket routing, rate limiting with Redis, and integrates natively with Spring Cloud circuit breakers. It also supports route predicates (path, header, cookie, time-based) and filter chains for request/response modification."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you handle distributed transactions across microservices?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Avoid distributed transactions (2PC) in microservices due to their blocking nature and tight coupling. Instead, use the Saga pattern: either choreography (services emit events and react to others' events via Spring Cloud Stream) or orchestration (a saga coordinator sends commands and handles responses). Each service performs its local transaction and publishes an event. If a step fails, compensating transactions undo previous steps. Spring Cloud Stream with Kafka provides the reliable event backbone, and idempotent consumers handle duplicate deliveries."
+        }
+      ],
+      "wordCount": 355,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Health check configuration for Kubernetes: Configure Spring Boot Actuator health endpoints to distinguish between liveness (/actuator/health/liveness) and readiness (/actuator/health/readiness). Include downstream service health in readiness checks but not liveness checks, so a failing dependency causes the pod to stop receiving traffic without being restarted. Set management.endpoint.health.group.readiness.include=db,diskSpace,discoveryComposite.",
+            "Graceful shutdown coordination: In Kubernetes deployments, configure a preStop hook with a sleep (5-10 seconds) to allow the service to deregister from Eureka and for load balancers to drain connections before the pod receives SIGTERM. Combine with server.shutdown=graceful and spring.lifecycle.timeout-per-shutdown-phase=30s to complete in-flight requests.",
+            "Config encryption for secrets: Use Spring Cloud Config Server's encryption support (/encrypt endpoint) to store sensitive values encrypted in Git. The Config Server decrypts values before serving them to clients. For stronger security, integrate with HashiCorp Vault via Spring Cloud Vault, which provides dynamic secrets with automatic rotation and lease management.",
+            "Observability stack integration: Configure Micrometer with Prometheus metrics export, distributed tracing with OpenTelemetry (replacing Zipkin/Jaeger direct integration), and structured logging with trace/span IDs in every log line. This enables correlating logs, metrics, and traces across service boundaries for rapid incident diagnosis. Use Spring Cloud Gateway's built-in metrics to monitor route-level latency percentiles and error rates."
+          ]
+        }
+      ],
+      "wordCount": 196,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Framework Core Container — Spring Cloud builds on Spring Boot auto-configuration and the IoC container",
+            "Spring Security — OAuth2 token relay and service-to-service authentication in microservice architectures",
+            "Apache Kafka — Spring Cloud Stream provides declarative Kafka integration for event-driven microservices"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Eureka Server\n@SpringBootApplication\n@EnableEurekaServer\npublic class DiscoveryServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(DiscoveryServerApplication.class, args);\n    }\n}\n\n// Eureka Client (any microservice)\n@SpringBootApplication\n@EnableDiscoveryClient\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}\n\n// application.yml for Eureka client\n// spring:\n//   application:\n//     name: order-service\n// eureka:\n//   client:\n//     service-url:\n//       defaultZone: http://discovery:8761/eureka/\n//   instance:\n//     prefer-ip-address: true\n//     lease-renewal-interval-in-seconds: 10\n//     lease-expiration-duration-in-seconds: 30\n\n// Using DiscoveryClient programmatically\n@Service\n@RequiredArgsConstructor\npublic class ServiceLocator {\n\n    private final DiscoveryClient discoveryClient;\n\n    public URI getServiceUri(String serviceName) {\n        List<ServiceInstance> instances = discoveryClient.getInstances(serviceName);\n        if (instances.isEmpty()) {\n            throw new ServiceUnavailableException(serviceName);\n        }\n        // Client-side load balancing (round-robin)\n        ServiceInstance instance = instances.get(\n            ThreadLocalRandom.current().nextInt(instances.size()));\n        return instance.getUri();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@FeignClient(\n    name = \"payment-service\",\n    fallbackFactory = PaymentClientFallbackFactory.class,\n    configuration = PaymentClientConfig.class\n)\npublic interface PaymentClient {\n\n    @PostMapping(\"/api/v1/payments\")\n    PaymentResponse processPayment(@RequestBody PaymentRequest request);\n\n    @GetMapping(\"/api/v1/payments/{paymentId}\")\n    PaymentResponse getPayment(@PathVariable UUID paymentId);\n\n    @GetMapping(\"/api/v1/payments\")\n    Page<PaymentResponse> listPayments(\n        @RequestParam(\"customerId\") UUID customerId,\n        @RequestParam(\"page\") int page,\n        @RequestParam(\"size\") int size);\n}\n\n@Component\n@Slf4j\npublic class PaymentClientFallbackFactory implements FallbackFactory<PaymentClient> {\n\n    @Override\n    public PaymentClient create(Throwable cause) {\n        return new PaymentClient() {\n            @Override\n            public PaymentResponse processPayment(PaymentRequest request) {\n                log.error(\"Payment service unavailable, queuing for retry\", cause);\n                throw new ServiceDegradedException(\"Payment processing delayed\", cause);\n            }\n\n            @Override\n            public PaymentResponse getPayment(UUID paymentId) {\n                log.warn(\"Payment service unavailable, returning cached response\", cause);\n                return PaymentResponse.unavailable(paymentId);\n            }\n\n            @Override\n            public Page<PaymentResponse> listPayments(UUID customerId, int page, int size) {\n                return Page.empty();\n            }\n        };\n    }\n}\n\npublic class PaymentClientConfig {\n\n    @Bean\n    public RequestInterceptor authInterceptor(OAuth2AuthorizedClientManager clientManager) {\n        return template -> {\n            OAuth2AuthorizedClient client = clientManager.authorize(\n                OAuth2AuthorizeRequest.withClientRegistrationId(\"payment-service\")\n                    .principal(\"order-service\")\n                    .build());\n            template.header(\"Authorization\",\n                \"Bearer \" + client.getAccessToken().getTokenValue());\n        };\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Configuration\npublic class GatewayConfig {\n\n    @Bean\n    public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {\n        return builder.routes()\n            .route(\"order-service\", r -> r\n                .path(\"/api/v1/orders/**\")\n                .filters(f -> f\n                    .stripPrefix(0)\n                    .addRequestHeader(\"X-Gateway-Source\", \"api-gateway\")\n                    .retry(config -> config\n                        .setRetries(3)\n                        .setStatuses(HttpStatus.SERVICE_UNAVAILABLE)\n                        .setBackoff(Duration.ofMillis(100), Duration.ofSeconds(2), 2, true))\n                    .circuitBreaker(config -> config\n                        .setName(\"orderServiceCB\")\n                        .setFallbackUri(\"forward:/fallback/orders\"))\n                    .requestRateLimiter(config -> config\n                        .setRateLimiter(redisRateLimiter())\n                        .setKeyResolver(userKeyResolver())))\n                .uri(\"lb://order-service\"))\n            .route(\"payment-service\", r -> r\n                .path(\"/api/v1/payments/**\")\n                .filters(f -> f\n                    .tokenRelay()\n                    .circuitBreaker(config -> config\n                        .setName(\"paymentServiceCB\")\n                        .setFallbackUri(\"forward:/fallback/payments\")))\n                .uri(\"lb://payment-service\"))\n            .build();\n    }\n\n    @Bean\n    public RedisRateLimiter redisRateLimiter() {\n        return new RedisRateLimiter(10, 20, 1); // 10 req/s, burst 20\n    }\n\n    @Bean\n    public KeyResolver userKeyResolver() {\n        return exchange -> Mono.justOrEmpty(\n            exchange.getRequest().getHeaders().getFirst(\"X-User-Id\"))\n            .defaultIfEmpty(\"anonymous\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\n@RequiredArgsConstructor\npublic class InventoryService {\n\n    private final InventoryClient inventoryClient;\n    private final CircuitBreakerRegistry circuitBreakerRegistry;\n\n    @CircuitBreaker(name = \"inventory\", fallbackMethod = \"getStockFallback\")\n    @Retry(name = \"inventory\", fallbackMethod = \"getStockFallback\")\n    @Bulkhead(name = \"inventory\", type = Bulkhead.Type.THREADPOOL)\n    public StockResponse getStock(String productId) {\n        return inventoryClient.checkStock(productId);\n    }\n\n    private StockResponse getStockFallback(String productId, Throwable t) {\n        log.warn(\"Inventory service unavailable for product {}: {}\", productId, t.getMessage());\n        return StockResponse.unknown(productId);\n    }\n}\n\n// application.yml circuit breaker configuration\n// resilience4j:\n//   circuitbreaker:\n//     instances:\n//       inventory:\n//         sliding-window-size: 10\n//         failure-rate-threshold: 50\n//         wait-duration-in-open-state: 30s\n//         permitted-number-of-calls-in-half-open-state: 3\n//         slow-call-duration-threshold: 2s\n//         slow-call-rate-threshold: 80\n//   retry:\n//     instances:\n//       inventory:\n//         max-attempts: 3\n//         wait-duration: 500ms\n//         exponential-backoff-multiplier: 2\n//         retry-exceptions:\n//           - java.io.IOException\n//           - java.util.concurrent.TimeoutException\n//   bulkhead:\n//     instances:\n//       inventory:\n//         max-concurrent-calls: 20\n//         max-wait-duration: 500ms",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Config Server\n@SpringBootApplication\n@EnableConfigServer\npublic class ConfigServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(ConfigServerApplication.class, args);\n    }\n}\n\n// Config Server application.yml\n// spring:\n//   cloud:\n//     config:\n//       server:\n//         git:\n//           uri: https://github.com/org/config-repo\n//           default-label: main\n//           search-paths: '{application}'\n//         encrypt:\n//           enabled: true\n\n// Client-side configuration refresh\n@RestController\n@RefreshScope\n@RequiredArgsConstructor\npublic class FeatureFlagController {\n\n    @Value(\"${feature.new-checkout-flow:false}\")\n    private boolean newCheckoutEnabled;\n\n    @Value(\"${rate-limit.max-requests:100}\")\n    private int maxRequests;\n\n    @GetMapping(\"/api/features\")\n    public Map<String, Object> getFeatures() {\n        return Map.of(\n            \"newCheckoutFlow\", newCheckoutEnabled,\n            \"maxRequests\", maxRequests\n        );\n    }\n}\n\n// Bus refresh for cluster-wide config updates\n// POST /actuator/busrefresh triggers all instances to reload config",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-cloud.md",
+    "wordCount": 1408,
+    "sectionCount": 13
+  }
+}

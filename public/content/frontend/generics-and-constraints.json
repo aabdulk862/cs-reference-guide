@@ -1,0 +1,222 @@
+{
+  "id": "typescript-generics-and-constraints",
+  "slug": "generics-and-constraints",
+  "title": "Generics and Constraints",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Generics capture actual types at call sites using type parameters (<T>), preserving type information that any would discard",
+            "Generic constraints (<T extends U>) restrict type parameters to types assignable to U, enabling safe property access on generic values",
+            "TypeScript infers generic type arguments from function arguments in most cases; explicit type arguments are needed when inference fails",
+            "Default type parameters (<T = DefaultType>) provide fallback types when no argument is specified or inferred",
+            "The keyof operator produces a union of an object type's keys; T[K] accesses the type of property K on type T",
+            "Generic classes and interfaces create reusable containers (collections, stores, builders) that maintain type safety across operations",
+            "Variance annotations (in, out) explicitly declare whether a generic type is covariant, contravariant, or invariant",
+            "Multiple type parameters can reference each other in constraints: <T, K extends keyof T> ensures K is a valid key of T"
+          ]
+        }
+      ],
+      "wordCount": 147,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Generics are appropriate whenever you write a function, class, or interface that operates on data of varying types while needing to preserve the relationship between input and output types. Use generics for collection utilities (map, filter, reduce over typed arrays), data access layers (repositories that return typed entities), API clients (request functions that return typed responses based on the endpoint), state management (stores that maintain type-safe state slices), and builder patterns (query builders, form builders that accumulate type information). Generics become essential when you find yourself duplicating function signatures that differ only in the types they operate on, or when using any to achieve flexibility at the cost of type safety. The key indicator is: if the return type or behavior depends on the input type in a way that should be tracked by the compiler, generics are the solution."
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Generic function with multiple type parameters and constraints\nfunction groupBy<T, K extends keyof T>(\n  items: T[],\n  key: K\n): Map<T[K], T[]> {\n  const groups = new Map<T[K], T[]>();\n\n  for (const item of items) {\n    const groupKey = item[key];\n    const existing = groups.get(groupKey) ?? [];\n    existing.push(item);\n    groups.set(groupKey, existing);\n  }\n\n  return groups;\n}\n\ninterface Employee {\n  id: string;\n  name: string;\n  department: 'engineering' | 'design' | 'product';\n  level: number;\n}\n\nconst employees: Employee[] = [\n  { id: '1', name: 'Alice', department: 'engineering', level: 5 },\n  { id: '2', name: 'Bob', department: 'design', level: 3 },\n  { id: '3', name: 'Carol', department: 'engineering', level: 4 },\n];\n\n// TypeScript infers K = 'department', return type = Map<'engineering' | 'design' | 'product', Employee[]>\nconst byDepartment = groupBy(employees, 'department');\n// groupBy(employees, 'invalid'); // Error: 'invalid' not assignable to keyof Employee\n\n\n// Generic class: type-safe Result monad for error handling\nclass Result<T, E extends Error = Error> {\n  private constructor(\n    private readonly value: T | null,\n    private readonly error: E | null\n  ) {}\n\n  static ok<T>(value: T): Result<T, never> {\n    return new Result(value, null) as Result<T, never>;\n  }\n\n  static err<E extends Error>(error: E): Result<never, E> {\n    return new Result(null, error) as Result<never, E>;\n  }\n\n  isOk(): this is Result<T, never> {\n    return this.error === null;\n  }\n\n  isErr(): this is Result<never, E> {\n    return this.error !== null;\n  }\n\n  // map transforms the success value while preserving the error type\n  map<U>(fn: (value: T) => U): Result<U, E> {\n    if (this.isOk()) {\n      return Result.ok(fn(this.value!));\n    }\n    return this as unknown as Result<U, E>;\n  }\n\n  // flatMap chains operations that might fail\n  flatMap<U, E2 extends Error>(fn: (value: T) => Result<U, E2>): Result<U, E | E2> {\n    if (this.isOk()) {\n      return fn(this.value!);\n    }\n    return this as unknown as Result<U, E | E2>;\n  }\n\n  // unwrap returns the value or throws the error\n  unwrap(): T {\n    if (this.isOk()) return this.value!;\n    throw this.error;\n  }\n\n  // getOrElse provides a fallback value\n  getOrElse(fallback: T): T {\n    return this.isOk() ? this.value! : fallback;\n  }\n}\n\n// Usage with type inference\nclass ValidationError extends Error {\n  constructor(public field: string, message: string) {\n    super(message);\n    this.name = 'ValidationError';\n  }\n}\n\nfunction parseAge(input: string): Result<number, ValidationError> {\n  const age = parseInt(input, 10);\n  if (isNaN(age)) return Result.err(new ValidationError('age', 'Must be a number'));\n  if (age < 0 || age > 150) return Result.err(new ValidationError('age', 'Must be 0-150'));\n  return Result.ok(age);\n}\n\nfunction parseEmail(input: string): Result<string, ValidationError> {\n  if (!input.includes('@')) return Result.err(new ValidationError('email', 'Invalid email'));\n  return Result.ok(input.toLowerCase().trim());\n}\n\n// Chaining preserves error types\nconst ageResult = parseAge('25').map(age => age * 365); // Result<number, ValidationError>",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Generic interface for type-safe repository pattern\ninterface Repository<T extends { id: string }> {\n  findById(id: string): Promise<T | null>;\n  findAll(filter?: Partial<T>): Promise<T[]>;\n  create(data: Omit<T, 'id'>): Promise<T>;\n  update(id: string, data: Partial<Omit<T, 'id'>>): Promise<T>;\n  delete(id: string): Promise<boolean>;\n}\n\ninterface User {\n  id: string;\n  name: string;\n  email: string;\n  role: 'admin' | 'user';\n  createdAt: Date;\n}\n\ninterface Post {\n  id: string;\n  title: string;\n  content: string;\n  authorId: string;\n  publishedAt: Date | null;\n}\n\n// Implementation maintains full type safety\nclass InMemoryRepository<T extends { id: string }> implements Repository<T> {\n  private items = new Map<string, T>();\n\n  async findById(id: string): Promise<T | null> {\n    return this.items.get(id) ?? null;\n  }\n\n  async findAll(filter?: Partial<T>): Promise<T[]> {\n    const all = Array.from(this.items.values());\n    if (!filter) return all;\n\n    return all.filter(item =>\n      Object.entries(filter).every(([key, value]) =>\n        item[key as keyof T] === value\n      )\n    );\n  }\n\n  async create(data: Omit<T, 'id'>): Promise<T> {\n    const id = crypto.randomUUID();\n    const item = { ...data, id } as T;\n    this.items.set(id, item);\n    return item;\n  }\n\n  async update(id: string, data: Partial<Omit<T, 'id'>>): Promise<T> {\n    const existing = this.items.get(id);\n    if (!existing) throw new Error(`Item ${id} not found`);\n    const updated = { ...existing, ...data };\n    this.items.set(id, updated);\n    return updated;\n  }\n\n  async delete(id: string): Promise<boolean> {\n    return this.items.delete(id);\n  }\n}\n\n// Type-safe usage: compiler knows exact return types\nconst userRepo = new InMemoryRepository<User>();\nconst postRepo = new InMemoryRepository<Post>();\n\nasync function example() {\n  // TypeScript knows this returns User\n  const user = await userRepo.create({\n    name: 'Alice',\n    email: 'alice@example.com',\n    role: 'admin',\n    createdAt: new Date(),\n  });\n\n  // TypeScript knows this returns Post[]\n  const posts = await postRepo.findAll({ authorId: user.id });\n\n  // Error: 'invalid' not assignable to 'admin' | 'user'\n  // await userRepo.create({ name: 'Bob', email: 'bob@example.com', role: 'invalid', createdAt: new Date() });\n}\n\n\n// Generic constraints with conditional return types\ninterface CacheOptions {\n  ttl?: number;\n  staleWhileRevalidate?: boolean;\n}\n\ntype CacheResult<T, Options extends CacheOptions> =\n  Options extends { staleWhileRevalidate: true }\n    ? { data: T; isStale: boolean; revalidating: boolean }\n    : { data: T };\n\nfunction createCache<T>() {\n  const store = new Map<string, { value: T; expiresAt: number }>();\n\n  return {\n    get<O extends CacheOptions>(\n      key: string,\n      fetcher: () => Promise<T>,\n      options?: O\n    ): Promise<CacheResult<T, O>> {\n      // Implementation would check cache, fetch if needed\n      // Return type adapts based on options\n      return fetcher().then(data => {\n        if (options?.staleWhileRevalidate) {\n          return { data, isStale: false, revalidating: false } as CacheResult<T, O>;\n        }\n        return { data } as CacheResult<T, O>;\n      });\n    },\n\n    set(key: string, value: T, ttl: number = 60000): void {\n      store.set(key, { value, expiresAt: Date.now() + ttl });\n    },\n\n    invalidate(key: string): void {\n      store.delete(key);\n    },\n  };\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Builder pattern with generics: accumulating type information\ninterface QueryBuilder<T, Selected extends keyof T = keyof T> {\n  select<K extends keyof T>(...fields: K[]): QueryBuilder<T, K>;\n  where(condition: Partial<T>): QueryBuilder<T, Selected>;\n  orderBy(field: Selected, direction?: 'asc' | 'desc'): QueryBuilder<T, Selected>;\n  limit(count: number): QueryBuilder<T, Selected>;\n  execute(): Promise<Pick<T, Selected>[]>;\n}\n\n// Type-safe event emitter with generic event map\ntype EventMap = Record<string, unknown>;\ntype EventHandler<T> = (payload: T) => void;\n\nclass TypedEmitter<Events extends EventMap> {\n  private handlers = new Map<keyof Events, Set<Function>>();\n\n  on<K extends keyof Events>(event: K, handler: EventHandler<Events[K]>): () => void {\n    if (!this.handlers.has(event)) {\n      this.handlers.set(event, new Set());\n    }\n    this.handlers.get(event)!.add(handler);\n\n    // Return unsubscribe function\n    return () => {\n      this.handlers.get(event)?.delete(handler);\n    };\n  }\n\n  emit<K extends keyof Events>(event: K, payload: Events[K]): void {\n    const eventHandlers = this.handlers.get(event);\n    if (eventHandlers) {\n      eventHandlers.forEach(handler => handler(payload));\n    }\n  }\n\n  once<K extends keyof Events>(event: K, handler: EventHandler<Events[K]>): void {\n    const unsubscribe = this.on(event, (payload) => {\n      unsubscribe();\n      handler(payload);\n    });\n  }\n}\n\n// Usage with full type safety\ninterface AppEvents {\n  'user:login': { userId: string; timestamp: number; method: 'password' | 'oauth' };\n  'user:logout': { userId: string; reason: 'manual' | 'timeout' | 'forced' };\n  'page:view': { path: string; referrer: string | null; duration: number };\n  'error': { message: string; stack?: string; context: Record<string, unknown> };\n}\n\nconst bus = new TypedEmitter<AppEvents>();\n\n// TypeScript enforces correct payload types\nbus.on('user:login', (payload) => {\n  console.log(payload.userId);    // string\n  console.log(payload.method);    // 'password' | 'oauth'\n  // console.log(payload.invalid); // Error: property does not exist\n});\n\nbus.emit('user:login', {\n  userId: '123',\n  timestamp: Date.now(),\n  method: 'oauth',\n});\n\n// Error: missing required fields\n// bus.emit('user:login', { userId: '123' });",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Over-constraining generic parameters: Adding unnecessary constraints limits the reusability of generic functions. If a function only needs to access .length, constrain to { length: number } rather than extends Array<unknown> which excludes strings and other length-bearing types. Start with minimal constraints and add more only when the implementation requires specific properties.",
+            "Failing to leverage type inference: Explicitly specifying type arguments when TypeScript can infer them adds noise without benefit. Write groupBy(items, 'name') rather than groupBy<Item, 'name'>(items, 'name'). Explicit arguments are only needed when inference produces a type that is too broad (inferring string when you need a literal type) or when there is no value to infer from (generic factory functions).",
+            "Using generics when a union type suffices: Not every function that handles multiple types needs generics. If a function accepts string | number and returns void, a simple union parameter is clearer than <T extends string | number>. Generics are warranted when the return type or other parameters depend on the specific type argument, creating a relationship that the compiler should track.",
+            "Forgetting that generic defaults do not constrain: A default type parameter (<T = string>) provides a fallback when T is not specified, but it does not restrict T to string. Callers can still pass any type. If you want to restrict T, use a constraint (<T extends string = string>). Defaults and constraints serve different purposes and are often needed together.",
+            "Creating overly complex generic signatures: Generic types with 4+ type parameters, nested conditional types, and recursive constraints become unreadable and produce incomprehensible error messages. If a generic signature requires extensive documentation to understand, consider simplifying by splitting into multiple functions, using overloads for common cases, or accepting some type widening in exchange for clarity.",
+            "Not understanding variance in generic types: A Repository<Animal> is not assignable to Repository<Dog> even though Dog extends Animal, because the repository's create method would accept any Animal but the Dog repository should only accept Dogs. This contravariance in input positions catches real bugs but confuses developers expecting simple subtype relationships. Use variance annotations (in, out) in TypeScript 4.7+ to make variance explicit."
+          ]
+        }
+      ],
+      "wordCount": 350,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type-safe HTTP client libraries: Libraries like tRPC and Zodios use generics to create API clients where the request body type, response type, and URL parameters are all inferred from a schema definition. Calling client.users.get({ id: '123' }) returns a typed User object without any manual type annotations, because the generic infrastructure propagates types from the API definition through the client methods.",
+            "ORM query builders: Prisma and Drizzle ORM use generics extensively to create query builders where column names, join conditions, and where clauses are all type-checked against the database schema. The generic type parameter represents the table being queried, and constraints ensure that only valid column names can be used in select, where, and orderBy clauses.",
+            "React component libraries with polymorphic components: UI libraries implement polymorphic components (buttons that render as <a>, <button>, or custom components) using generics. The as prop is a generic parameter that determines which HTML attributes are valid: <Button as=\"a\" href=\"/path\"> accepts anchor attributes while <Button as=\"button\" type=\"submit\"> accepts button attributes, all enforced at compile time.",
+            "State management with typed selectors: Zustand and Redux Toolkit use generics to create stores where selectors return correctly typed slices. useStore(state => state.user.name) returns string because the generic store type flows through the selector function, enabling autocomplete for state paths and type-safe derived values.",
+            "Dependency injection containers: TypeScript DI frameworks (tsyringe, InversifyJS) use generics to maintain type safety between registration and resolution. When you register container.register<Logger>(ConsoleLogger), resolving container.resolve<Logger>() returns the correct type without casting, because the generic parameter links the token to the implementation type."
+          ]
+        }
+      ],
+      "wordCount": 255,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain generic constraints and give an example of when you would use extends keyof T."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Generic constraints restrict the types that can be used as type arguments using the extends keyword. <K extends keyof T> constrains K to be one of T's property keys, enabling safe property access with T[K]. A practical example is a pick function: function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K>. The constraint ensures you can only pick keys that actually exist on the object, and the return type correctly reflects only the picked properties. Without the constraint, K could be any string, and accessing obj[key] would be unsafe."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does TypeScript infer generic type arguments, and when does inference fail?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: TypeScript infers generic arguments by examining the types of values passed to function parameters. If a function is <T>(arr: T[]): T, passing [1, 2, 3] infers T as number. Inference fails when: there is no value to infer from (generic factory functions with no parameters), when the desired type is narrower than what inference produces (wanting a literal type but inference widens to string), when multiple parameters provide conflicting evidence for the same type parameter, or when the generic appears only in the return type with no corresponding parameter. In these cases, explicit type arguments are required."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between <T extends object> and <T extends Record<string, unknown>>?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: <T extends object> constrains T to any non-primitive type, including arrays, functions, class instances, and plain objects. <T extends Record<string, unknown>> constrains T to objects with string keys and unknown values, which excludes arrays (whose primary keys are numeric indices) and functions. Use extends object when you need any reference type; use extends Record<string, unknown> when you specifically need a dictionary-like object with string property access. The distinction matters for functions that iterate over keys or access properties by string index."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain covariance and contravariance in TypeScript generics with a practical example."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Covariance means a generic type preserves the subtype relationship: if Dog extends Animal, then ReadonlyArray<Dog> is assignable to ReadonlyArray<Animal> (output/read positions are covariant). Contravariance reverses it: (animal: Animal) => void is assignable to (dog: Dog) => void because a function that handles any Animal can safely handle Dogs (input/write positions are contravariant). Practically, a Repository<Dog> with a save(dog: Dog) method cannot be assigned to Repository<Animal> because the save method would need to accept any Animal, not just Dogs. TypeScript 4.7+ lets you annotate this explicitly with interface Repository<in out T>."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement a type-safe builder pattern using generics?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a generic type parameter that accumulates information as methods are called. Each builder method returns a new type with additional type information. For example, a form builder starts as FormBuilder<{}> and each .field('name', stringValidator) call returns FormBuilder<Previous & { name: string }>. The final .build() method returns the accumulated type. This ensures that accessing form.values.name is only valid after the name field has been added, and the compiler tracks which fields exist at each point in the builder chain."
+        }
+      ],
+      "wordCount": 510,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use generic constraints to document API contracts: Rather than accepting any or unknown and performing runtime checks, use constraints to express what your function needs from its type parameter. <T extends { id: string; createdAt: Date }> communicates to callers exactly what shape their type must have, provides autocomplete for those properties inside the function, and produces clear error messages when the constraint is not satisfied.",
+            "Prefer inference over explicit type arguments in public APIs: Design function signatures so that TypeScript can infer generic arguments from the values passed. This reduces boilerplate for callers and makes the API feel natural. If inference consistently fails for a particular use case, add an overload with explicit types for that case rather than requiring all callers to specify type arguments.",
+            "Use branded types with generics for domain safety: Combine generics with branded types to create type-safe identifiers: type Id<Entity> = string & { __entity: Entity }. A UserId (Id<User>) and PostId (Id<Post>) are both strings at runtime but incompatible at compile time, preventing accidental ID swaps in function calls like findPost(userId) which would compile with plain strings but fail at runtime."
+          ]
+        }
+      ],
+      "wordCount": 188,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type System Fundamentals — Structural typing and type narrowing are the foundation that generics build upon",
+            "Advanced Types — Conditional types and mapped types use generics extensively for type-level computation",
+            "Patterns and Best Practices — Production patterns like the repository pattern and builder pattern rely heavily on generics"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Generic function with multiple type parameters and constraints\nfunction groupBy<T, K extends keyof T>(\n  items: T[],\n  key: K\n): Map<T[K], T[]> {\n  const groups = new Map<T[K], T[]>();\n\n  for (const item of items) {\n    const groupKey = item[key];\n    const existing = groups.get(groupKey) ?? [];\n    existing.push(item);\n    groups.set(groupKey, existing);\n  }\n\n  return groups;\n}\n\ninterface Employee {\n  id: string;\n  name: string;\n  department: 'engineering' | 'design' | 'product';\n  level: number;\n}\n\nconst employees: Employee[] = [\n  { id: '1', name: 'Alice', department: 'engineering', level: 5 },\n  { id: '2', name: 'Bob', department: 'design', level: 3 },\n  { id: '3', name: 'Carol', department: 'engineering', level: 4 },\n];\n\n// TypeScript infers K = 'department', return type = Map<'engineering' | 'design' | 'product', Employee[]>\nconst byDepartment = groupBy(employees, 'department');\n// groupBy(employees, 'invalid'); // Error: 'invalid' not assignable to keyof Employee\n\n\n// Generic class: type-safe Result monad for error handling\nclass Result<T, E extends Error = Error> {\n  private constructor(\n    private readonly value: T | null,\n    private readonly error: E | null\n  ) {}\n\n  static ok<T>(value: T): Result<T, never> {\n    return new Result(value, null) as Result<T, never>;\n  }\n\n  static err<E extends Error>(error: E): Result<never, E> {\n    return new Result(null, error) as Result<never, E>;\n  }\n\n  isOk(): this is Result<T, never> {\n    return this.error === null;\n  }\n\n  isErr(): this is Result<never, E> {\n    return this.error !== null;\n  }\n\n  // map transforms the success value while preserving the error type\n  map<U>(fn: (value: T) => U): Result<U, E> {\n    if (this.isOk()) {\n      return Result.ok(fn(this.value!));\n    }\n    return this as unknown as Result<U, E>;\n  }\n\n  // flatMap chains operations that might fail\n  flatMap<U, E2 extends Error>(fn: (value: T) => Result<U, E2>): Result<U, E | E2> {\n    if (this.isOk()) {\n      return fn(this.value!);\n    }\n    return this as unknown as Result<U, E | E2>;\n  }\n\n  // unwrap returns the value or throws the error\n  unwrap(): T {\n    if (this.isOk()) return this.value!;\n    throw this.error;\n  }\n\n  // getOrElse provides a fallback value\n  getOrElse(fallback: T): T {\n    return this.isOk() ? this.value! : fallback;\n  }\n}\n\n// Usage with type inference\nclass ValidationError extends Error {\n  constructor(public field: string, message: string) {\n    super(message);\n    this.name = 'ValidationError';\n  }\n}\n\nfunction parseAge(input: string): Result<number, ValidationError> {\n  const age = parseInt(input, 10);\n  if (isNaN(age)) return Result.err(new ValidationError('age', 'Must be a number'));\n  if (age < 0 || age > 150) return Result.err(new ValidationError('age', 'Must be 0-150'));\n  return Result.ok(age);\n}\n\nfunction parseEmail(input: string): Result<string, ValidationError> {\n  if (!input.includes('@')) return Result.err(new ValidationError('email', 'Invalid email'));\n  return Result.ok(input.toLowerCase().trim());\n}\n\n// Chaining preserves error types\nconst ageResult = parseAge('25').map(age => age * 365); // Result<number, ValidationError>",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Generic interface for type-safe repository pattern\ninterface Repository<T extends { id: string }> {\n  findById(id: string): Promise<T | null>;\n  findAll(filter?: Partial<T>): Promise<T[]>;\n  create(data: Omit<T, 'id'>): Promise<T>;\n  update(id: string, data: Partial<Omit<T, 'id'>>): Promise<T>;\n  delete(id: string): Promise<boolean>;\n}\n\ninterface User {\n  id: string;\n  name: string;\n  email: string;\n  role: 'admin' | 'user';\n  createdAt: Date;\n}\n\ninterface Post {\n  id: string;\n  title: string;\n  content: string;\n  authorId: string;\n  publishedAt: Date | null;\n}\n\n// Implementation maintains full type safety\nclass InMemoryRepository<T extends { id: string }> implements Repository<T> {\n  private items = new Map<string, T>();\n\n  async findById(id: string): Promise<T | null> {\n    return this.items.get(id) ?? null;\n  }\n\n  async findAll(filter?: Partial<T>): Promise<T[]> {\n    const all = Array.from(this.items.values());\n    if (!filter) return all;\n\n    return all.filter(item =>\n      Object.entries(filter).every(([key, value]) =>\n        item[key as keyof T] === value\n      )\n    );\n  }\n\n  async create(data: Omit<T, 'id'>): Promise<T> {\n    const id = crypto.randomUUID();\n    const item = { ...data, id } as T;\n    this.items.set(id, item);\n    return item;\n  }\n\n  async update(id: string, data: Partial<Omit<T, 'id'>>): Promise<T> {\n    const existing = this.items.get(id);\n    if (!existing) throw new Error(`Item ${id} not found`);\n    const updated = { ...existing, ...data };\n    this.items.set(id, updated);\n    return updated;\n  }\n\n  async delete(id: string): Promise<boolean> {\n    return this.items.delete(id);\n  }\n}\n\n// Type-safe usage: compiler knows exact return types\nconst userRepo = new InMemoryRepository<User>();\nconst postRepo = new InMemoryRepository<Post>();\n\nasync function example() {\n  // TypeScript knows this returns User\n  const user = await userRepo.create({\n    name: 'Alice',\n    email: 'alice@example.com',\n    role: 'admin',\n    createdAt: new Date(),\n  });\n\n  // TypeScript knows this returns Post[]\n  const posts = await postRepo.findAll({ authorId: user.id });\n\n  // Error: 'invalid' not assignable to 'admin' | 'user'\n  // await userRepo.create({ name: 'Bob', email: 'bob@example.com', role: 'invalid', createdAt: new Date() });\n}\n\n\n// Generic constraints with conditional return types\ninterface CacheOptions {\n  ttl?: number;\n  staleWhileRevalidate?: boolean;\n}\n\ntype CacheResult<T, Options extends CacheOptions> =\n  Options extends { staleWhileRevalidate: true }\n    ? { data: T; isStale: boolean; revalidating: boolean }\n    : { data: T };\n\nfunction createCache<T>() {\n  const store = new Map<string, { value: T; expiresAt: number }>();\n\n  return {\n    get<O extends CacheOptions>(\n      key: string,\n      fetcher: () => Promise<T>,\n      options?: O\n    ): Promise<CacheResult<T, O>> {\n      // Implementation would check cache, fetch if needed\n      // Return type adapts based on options\n      return fetcher().then(data => {\n        if (options?.staleWhileRevalidate) {\n          return { data, isStale: false, revalidating: false } as CacheResult<T, O>;\n        }\n        return { data } as CacheResult<T, O>;\n      });\n    },\n\n    set(key: string, value: T, ttl: number = 60000): void {\n      store.set(key, { value, expiresAt: Date.now() + ttl });\n    },\n\n    invalidate(key: string): void {\n      store.delete(key);\n    },\n  };\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Builder pattern with generics: accumulating type information\ninterface QueryBuilder<T, Selected extends keyof T = keyof T> {\n  select<K extends keyof T>(...fields: K[]): QueryBuilder<T, K>;\n  where(condition: Partial<T>): QueryBuilder<T, Selected>;\n  orderBy(field: Selected, direction?: 'asc' | 'desc'): QueryBuilder<T, Selected>;\n  limit(count: number): QueryBuilder<T, Selected>;\n  execute(): Promise<Pick<T, Selected>[]>;\n}\n\n// Type-safe event emitter with generic event map\ntype EventMap = Record<string, unknown>;\ntype EventHandler<T> = (payload: T) => void;\n\nclass TypedEmitter<Events extends EventMap> {\n  private handlers = new Map<keyof Events, Set<Function>>();\n\n  on<K extends keyof Events>(event: K, handler: EventHandler<Events[K]>): () => void {\n    if (!this.handlers.has(event)) {\n      this.handlers.set(event, new Set());\n    }\n    this.handlers.get(event)!.add(handler);\n\n    // Return unsubscribe function\n    return () => {\n      this.handlers.get(event)?.delete(handler);\n    };\n  }\n\n  emit<K extends keyof Events>(event: K, payload: Events[K]): void {\n    const eventHandlers = this.handlers.get(event);\n    if (eventHandlers) {\n      eventHandlers.forEach(handler => handler(payload));\n    }\n  }\n\n  once<K extends keyof Events>(event: K, handler: EventHandler<Events[K]>): void {\n    const unsubscribe = this.on(event, (payload) => {\n      unsubscribe();\n      handler(payload);\n    });\n  }\n}\n\n// Usage with full type safety\ninterface AppEvents {\n  'user:login': { userId: string; timestamp: number; method: 'password' | 'oauth' };\n  'user:logout': { userId: string; reason: 'manual' | 'timeout' | 'forced' };\n  'page:view': { path: string; referrer: string | null; duration: number };\n  'error': { message: string; stack?: string; context: Record<string, unknown> };\n}\n\nconst bus = new TypedEmitter<AppEvents>();\n\n// TypeScript enforces correct payload types\nbus.on('user:login', (payload) => {\n  console.log(payload.userId);    // string\n  console.log(payload.method);    // 'password' | 'oauth'\n  // console.log(payload.invalid); // Error: property does not exist\n});\n\nbus.emit('user:login', {\n  userId: '123',\n  timestamp: Date.now(),\n  method: 'oauth',\n});\n\n// Error: missing required fields\n// bus.emit('user:login', { userId: '123' });",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/typescript/generics-and-constraints.md",
+    "wordCount": 1638,
+    "sectionCount": 8
+  }
+}

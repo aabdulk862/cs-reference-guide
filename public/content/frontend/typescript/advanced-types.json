@@ -1,0 +1,222 @@
+{
+  "id": "typescript-advanced-types",
+  "slug": "advanced-types",
+  "title": "Advanced Types",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Conditional types (T extends U ? X : Y) select types based on assignability, enabling type-level branching logic",
+            "The infer keyword extracts types from complex structures within conditional type clauses (array elements, function returns, Promise values)",
+            "Distributive conditional types automatically distribute over union members when applied to naked type parameters",
+            "Mapped types ({ [K in keyof T]: NewType }) transform every property of a type systematically",
+            "Key remapping with as filters, renames, or transforms property keys during mapping",
+            "Template literal types (${Prefix}${string}) enable string manipulation at the type level",
+            "Recursive conditional types enable deep transformations (DeepReadonly, DeepPartial, JSON type parsing)",
+            "The satisfies operator validates expressions against types without widening the inferred type"
+          ]
+        }
+      ],
+      "wordCount": 112,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Advanced types become necessary when building library APIs that adapt their behavior based on input types, when creating type-safe wrappers around dynamic systems (ORMs, API clients, event systems), and when eliminating repetitive type definitions through systematic transformations. Conditional types are essential for utility types that extract or transform types based on their structure (unwrapping Promises, extracting function parameters, filtering union members). Mapped types eliminate boilerplate when you need multiple related types derived from a single source (Partial, Required, Readonly variants of the same interface). Template literal types enable compile-time string manipulation for generating method names, route patterns, or CSS class types. These features are primarily used by library authors and infrastructure code; application code should use them sparingly and prefer simpler types when possible, as complex type-level programming produces difficult-to-debug error messages."
+        }
+      ],
+      "wordCount": 132,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Conditional types with infer for type extraction\ntype UnwrapPromise<T> = T extends Promise<infer U> ? UnwrapPromise<U> : T;\ntype A = UnwrapPromise<Promise<Promise<string>>>; // string\n\n// Extract function parameter and return types\ntype FirstParam<F> = F extends (first: infer P, ...rest: unknown[]) => unknown ? P : never;\ntype ReturnOf<F> = F extends (...args: unknown[]) => infer R ? R : never;\n\ntype B = FirstParam<(name: string, age: number) => void>; // string\ntype C = ReturnOf<() => Promise<number[]>>; // Promise<number[]>\n\n// Extract component props from React component type\ntype PropsOf<C> = C extends React.ComponentType<infer P> ? P : never;\n\n// Distributive conditional types\ntype ToArray<T> = T extends unknown ? T[] : never;\ntype D = ToArray<string | number>; // string[] | number[]\n\n// Non-distributive (wrap in tuple to prevent distribution)\ntype ToArrayNonDist<T> = [T] extends [unknown] ? T[] : never;\ntype E = ToArrayNonDist<string | number>; // (string | number)[]\n\n// Practical: filter union members by condition\ntype ExtractStrings<T> = T extends string ? T : never;\ntype F = ExtractStrings<string | number | boolean | 'hello'>; // string | 'hello'\n\n// Extract only object types from a union\ntype ExtractObjects<T> = T extends object ? (T extends Function ? never : T) : never;\ntype Mixed = string | { a: 1 } | (() => void) | { b: 2 } | number;\ntype G = ExtractObjects<Mixed>; // { a: 1 } | { b: 2 }\n\n\n// Conditional types for type-safe API routing\ninterface ApiRoutes {\n  'GET /users': { response: User[]; params: never };\n  'GET /users/:id': { response: User; params: { id: string } };\n  'POST /users': { response: User; params: never; body: CreateUserDTO };\n  'PUT /users/:id': { response: User; params: { id: string }; body: UpdateUserDTO };\n  'DELETE /users/:id': { response: void; params: { id: string } };\n}\n\ntype RouteMethod<R extends string> = R extends `${infer M} ${string}` ? M : never;\ntype RoutePath<R extends string> = R extends `${string} ${infer P}` ? P : never;\n\ntype HasBody<R extends keyof ApiRoutes> =\n  ApiRoutes[R] extends { body: infer B } ? B : never;\n\ntype RouteResponse<R extends keyof ApiRoutes> = ApiRoutes[R]['response'];\ntype RouteParams<R extends keyof ApiRoutes> = ApiRoutes[R]['params'];\n\n// Type-safe fetch wrapper\nasync function apiCall<R extends keyof ApiRoutes>(\n  route: R,\n  ...args: HasBody<R> extends never\n    ? RouteParams<R> extends never\n      ? []\n      : [params: RouteParams<R>]\n    : RouteParams<R> extends never\n      ? [body: HasBody<R>]\n      : [params: RouteParams<R>, body: HasBody<R>]\n): Promise<RouteResponse<R>> {\n  // Implementation would parse route, substitute params, send request\n  throw new Error('Not implemented');\n}\n\n// Usage: TypeScript enforces correct arguments for each route\n// apiCall('GET /users');                              // OK: no params, no body\n// apiCall('GET /users/:id', { id: '123' });          // OK: params required\n// apiCall('POST /users', { name: 'Alice', email: 'a@b.com' }); // OK: body required\n// apiCall('PUT /users/:id', { id: '1' }, { name: 'Bob' });     // OK: params + body",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Mapped types with key remapping and template literals\ntype Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];\n};\n\ntype Setters<T> = {\n  [K in keyof T as `set${Capitalize<string & K>}`]: (value: T[K]) => void;\n};\n\ntype EventHandlers<T> = {\n  [K in keyof T as `on${Capitalize<string & K>}Change`]: (\n    oldValue: T[K],\n    newValue: T[K]\n  ) => void;\n};\n\ninterface UserState {\n  name: string;\n  age: number;\n  active: boolean;\n}\n\ntype UserGetters = Getters<UserState>;\n// { getName: () => string; getAge: () => number; getActive: () => boolean }\n\ntype UserSetters = Setters<UserState>;\n// { setName: (value: string) => void; setAge: (value: number) => void; ... }\n\ntype UserEvents = EventHandlers<UserState>;\n// { onNameChange: (old: string, new: string) => void; ... }\n\n\n// Filter properties by value type using key remapping\ntype PickByType<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? K : never]: T[K];\n};\n\ntype OmitByType<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? never : K]: T[K];\n};\n\ninterface Config {\n  host: string;\n  port: number;\n  debug: boolean;\n  timeout: number;\n  name: string;\n}\n\ntype StringConfig = PickByType<Config, string>;  // { host: string; name: string }\ntype NumericConfig = PickByType<Config, number>; // { port: number; timeout: number }\ntype NonBoolConfig = OmitByType<Config, boolean>; // { host: string; port: number; timeout: number; name: string }\n\n\n// Deep recursive mapped types\ntype DeepReadonly<T> = T extends Function\n  ? T\n  : T extends object\n    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }\n    : T;\n\ntype DeepPartial<T> = T extends Function\n  ? T\n  : T extends object\n    ? { [K in keyof T]?: DeepPartial<T[K]> }\n    : T;\n\ntype DeepRequired<T> = T extends Function\n  ? T\n  : T extends object\n    ? { [K in keyof T]-?: DeepRequired<T[K]> }\n    : T;\n\n// Practical: make specific paths of a nested object mutable\ntype Mutable<T> = { -readonly [K in keyof T]: T[K] };\n\ninterface AppState {\n  readonly user: {\n    readonly name: string;\n    readonly preferences: {\n      readonly theme: 'light' | 'dark';\n      readonly fontSize: number;\n    };\n  };\n  readonly settings: {\n    readonly notifications: boolean;\n  };\n}\n\n// Only make preferences mutable for the settings page\ntype EditablePreferences = Mutable<AppState['user']['preferences']>;\n// { theme: 'light' | 'dark'; fontSize: number } — no longer readonly",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Template literal types for string manipulation\ntype EventName<T extends string> = `${T}Changed` | `${T}Error` | `${T}Loading`;\n\ntype CrudEvents<Entity extends string> =\n  | `${Entity}:created`\n  | `${Entity}:updated`\n  | `${Entity}:deleted`\n  | `${Entity}:fetched`;\n\ntype UserCrudEvents = CrudEvents<'user'>;\n// 'user:created' | 'user:updated' | 'user:deleted' | 'user:fetched'\n\n// Parse route parameters from path strings\ntype ExtractParams<Path extends string> =\n  Path extends `${string}:${infer Param}/${infer Rest}`\n    ? { [K in Param | keyof ExtractParams<Rest>]: string }\n    : Path extends `${string}:${infer Param}`\n      ? { [K in Param]: string }\n      : {};\n\ntype Params1 = ExtractParams<'/users/:id'>;\n// { id: string }\n\ntype Params2 = ExtractParams<'/users/:userId/posts/:postId'>;\n// { userId: string; postId: string }\n\n// Type-safe CSS class builder\ntype Modifier<Base extends string, Mod extends string> = `${Base}--${Mod}`;\ntype Element<Block extends string, Elem extends string> = `${Block}__${Elem}`;\n\ntype ButtonClasses =\n  | 'btn'\n  | Element<'btn', 'icon' | 'label' | 'spinner'>\n  | Modifier<'btn', 'primary' | 'secondary' | 'danger' | 'disabled'>;\n\nfunction classNames(...classes: ButtonClasses[]): string {\n  return classes.join(' ');\n}\n\n// Type-safe: only valid BEM classes allowed\nclassNames('btn', 'btn--primary', 'btn__icon');\n// classNames('btn', 'btn--invalid'); // Error\n\n\n// Recursive type for JSON-compatible values\ntype JSONValue =\n  | string\n  | number\n  | boolean\n  | null\n  | JSONValue[]\n  | { [key: string]: JSONValue };\n\n// Type-safe path access for nested objects\ntype PathKeys<T, Prefix extends string = ''> = T extends object\n  ? {\n      [K in keyof T & string]: T[K] extends object\n        ? `${Prefix}${K}` | PathKeys<T[K], `${Prefix}${K}.`>\n        : `${Prefix}${K}`;\n    }[keyof T & string]\n  : never;\n\ntype PathValue<T, P extends string> =\n  P extends `${infer Key}.${infer Rest}`\n    ? Key extends keyof T\n      ? PathValue<T[Key], Rest>\n      : never\n    : P extends keyof T\n      ? T[P]\n      : never;\n\ninterface NestedConfig {\n  database: {\n    host: string;\n    port: number;\n    credentials: {\n      username: string;\n      password: string;\n    };\n  };\n  cache: {\n    ttl: number;\n    maxSize: number;\n  };\n}\n\ntype ConfigPaths = PathKeys<NestedConfig>;\n// 'database' | 'database.host' | 'database.port' | 'database.credentials' | ...\n\nfunction getConfig<P extends PathKeys<NestedConfig>>(\n  path: P\n): PathValue<NestedConfig, P> {\n  // Implementation would traverse the config object\n  throw new Error('Not implemented');\n}\n\nconst host = getConfig('database.host');        // type: string\nconst port = getConfig('database.port');        // type: number\nconst creds = getConfig('database.credentials'); // type: { username: string; password: string }",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Creating unreadable error messages with deeply nested conditional types: When conditional types are nested 3+ levels deep, TypeScript error messages become incomprehensible to consumers of your API. The error might reference internal type aliases that the user has never seen. Prefer simpler type structures with clear names, use intermediate type aliases to break complex types into understandable steps, and provide overloads for common cases that produce clear errors.",
+            "Forgetting distributive behavior of conditional types: When a conditional type receives a union as its type parameter, it distributes over each member individually. ToArray<string | number> produces string[] | number[], not (string | number)[]. This is usually desired but can produce unexpected results. Wrap the type parameter in a tuple ([T] extends [U]) to prevent distribution when you want to check the union as a whole.",
+            "Infinite recursion in recursive types: Recursive conditional types and mapped types can cause the compiler to enter infinite loops or hit recursion depth limits. TypeScript has a built-in recursion limit (typically around 50 levels), but hitting it produces cryptic \"Type instantiation is excessively deep\" errors. Add base cases to recursive types and test with complex nested structures to ensure they terminate.",
+            "Over-engineering types that could be simpler: Not every type relationship needs conditional types or mapped types. If you find yourself writing complex type-level code to handle 2-3 specific cases, consider using function overloads or a simple union type instead. Type-level programming should be reserved for genuinely generic patterns that apply across many types, not for encoding specific business logic.",
+            "Template literal types with unbounded string inputs: Template literal types work well with finite unions ('get' | 'set') but produce string when combined with broad types like string itself. ${string}Changed is just string because any string satisfies the pattern. Ensure template literal types are used with constrained inputs (literal unions, keyof results) to produce useful narrow types.",
+            "Mapped types losing method signatures: When mapping over a type that has both properties and methods, the mapped type may lose the distinction between a method (method(): void) and a function property (method: () => void). This can affect this binding and overload resolution. Be aware of this when creating mapped type utilities that transform object types with methods."
+          ]
+        }
+      ],
+      "wordCount": 370,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type-safe ORM schema definitions: Prisma generates TypeScript types from database schemas using mapped types and conditional types. The generated client provides autocomplete for table names, column names, and relationship traversals, with return types that exactly match the selected fields. A query selecting only name and email returns { name: string; email: string } rather than the full model type.",
+            "API client code generation: OpenAPI and GraphQL code generators produce TypeScript types using conditional types to map HTTP methods to request/response shapes. Template literal types generate method names from endpoint paths (/users/:id becomes getUsersById), and mapped types create the full client interface from the API specification.",
+            "CSS-in-JS type safety: Libraries like vanilla-extract and Stitches use template literal types and mapped types to provide type-safe CSS authoring. Theme tokens are typed so that color: '$blue500' is valid but color: '$blue999' produces a compile error. Responsive variants are generated from breakpoint definitions using mapped types.",
+            "State machine type safety: XState uses conditional types and mapped types to generate type-safe state machines where transitions are only allowed between valid states, actions receive correctly-typed context, and guards have access to the event that triggered the transition. The machine definition is a single source of truth from which all runtime types are derived.",
+            "Form library type inference: React Hook Form and Formik use mapped types to derive validation schemas, error types, and field registration types from the form data interface. Registering a field with register('user.email') uses template literal types to validate the path and infer the field's value type from the nested form structure."
+          ]
+        }
+      ],
+      "wordCount": 258,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how infer works in conditional types and provide a practical example."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The infer keyword introduces a type variable within the extends clause of a conditional type that TypeScript fills in by matching the structure. For example, type ElementOf<T> = T extends (infer E)[] ? E : never extracts the element type from an array: ElementOf<string[]> resolves to string because TypeScript matches string[] against (infer E)[] and infers E as string. A practical use is type Awaited<T> = T extends Promise<infer U> ? Awaited<U> : T which recursively unwraps nested Promises to get the final resolved value type."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between distributive and non-distributive conditional types?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A conditional type is distributive when it is applied to a naked (unwrapped) type parameter. Given type Wrap<T> = T extends unknown ? T[] : never, applying it to a union Wrap<string | number> distributes: it evaluates string extends unknown ? string[] : never and number extends unknown ? number[] : never separately, producing string[] | number[]. To prevent distribution, wrap the type parameter in a tuple: type Wrap<T> = [T] extends [unknown] ? T[] : never evaluates the union as a whole, producing (string | number)[]. Distribution is usually desired for filtering and transforming union members but must be prevented when you want to treat the union as a single type."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do mapped types work, and how does key remapping with as extend their capabilities?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Mapped types iterate over the keys of a type using { [K in keyof T]: ... } to produce a new type with transformed properties. Each property can have its value type changed, and modifiers (readonly, ?) can be added or removed with +/-. Key remapping with as (TypeScript 4.1+) allows filtering keys (as T[K] extends Function ? never : K removes methods), renaming keys (as \\get${Capitalize<K>}`` generates getter names), or transforming keys based on their value types. This enables generating entire API surfaces (getters, setters, event handlers) from a single data interface."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are template literal types and how do they enable type-safe string manipulation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Template literal types use the same backtick syntax as JavaScript template literals but operate at the type level: type Greeting = `Hello ${string}` creates a type matching any string starting with \"Hello \". Combined with union types, they generate all combinations: type Method = `${'get' | 'set'}${Capitalize<'name' | 'age'>}` produces 'getName' | 'getAge' | 'setName' | 'setAge'. Built-in intrinsic types (Uppercase, Lowercase, Capitalize, Uncapitalize) transform string literals. Practical uses include parsing route parameters from path strings, generating BEM class names, and creating type-safe event name registries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement a type-safe deep path accessor (like lodash's get) using advanced types?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use recursive conditional types with template literal types to parse dot-separated paths and traverse the type structure. The path type uses PathKeys<T> which recursively generates all valid dot-separated paths through the object. The value type uses PathValue<T, P> which splits the path at the first dot, indexes into T with the first segment, and recursively processes the rest. For get(obj, 'user.address.city'), the path is validated against the object structure and the return type is inferred as the type at that path. This requires careful handling of arrays, optional properties, and recursion depth limits."
+        }
+      ],
+      "wordCount": 545,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use intermediate type aliases to improve error messages and readability: Instead of inlining complex conditional types, break them into named steps. type IsArray<T> = T extends unknown[] ? true : false is clearer than embedding the condition inline. Named types appear in error messages, making it easier for consumers to understand what went wrong when a type constraint is not satisfied.",
+            "Test complex types with type-level assertions: Use type Assert<T extends true> = T and conditional types to write compile-time tests for your type utilities. For example, type _test = Assert<IsEqual<Getters<{name: string}>, {getName: () => string}>> fails to compile if your Getters type produces the wrong result. This catches regressions when modifying complex type definitions.",
+            "Prefer satisfies over type annotations for validated constants: When defining configuration objects, route maps, or theme tokens, use const config = { ... } satisfies ConfigSchema instead of const config: ConfigSchema = { ... }. The satisfies approach validates the shape while preserving literal types, giving you both compile-time validation and precise autocomplete for the actual values."
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type System Fundamentals — Structural typing and narrowing are prerequisites for understanding conditional type behavior",
+            "Generics and Constraints — Generic type parameters are the inputs to conditional and mapped type transformations",
+            "Patterns and Best Practices — Advanced types enable production patterns like branded types, builder patterns, and type-safe APIs"
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Conditional types with infer for type extraction\ntype UnwrapPromise<T> = T extends Promise<infer U> ? UnwrapPromise<U> : T;\ntype A = UnwrapPromise<Promise<Promise<string>>>; // string\n\n// Extract function parameter and return types\ntype FirstParam<F> = F extends (first: infer P, ...rest: unknown[]) => unknown ? P : never;\ntype ReturnOf<F> = F extends (...args: unknown[]) => infer R ? R : never;\n\ntype B = FirstParam<(name: string, age: number) => void>; // string\ntype C = ReturnOf<() => Promise<number[]>>; // Promise<number[]>\n\n// Extract component props from React component type\ntype PropsOf<C> = C extends React.ComponentType<infer P> ? P : never;\n\n// Distributive conditional types\ntype ToArray<T> = T extends unknown ? T[] : never;\ntype D = ToArray<string | number>; // string[] | number[]\n\n// Non-distributive (wrap in tuple to prevent distribution)\ntype ToArrayNonDist<T> = [T] extends [unknown] ? T[] : never;\ntype E = ToArrayNonDist<string | number>; // (string | number)[]\n\n// Practical: filter union members by condition\ntype ExtractStrings<T> = T extends string ? T : never;\ntype F = ExtractStrings<string | number | boolean | 'hello'>; // string | 'hello'\n\n// Extract only object types from a union\ntype ExtractObjects<T> = T extends object ? (T extends Function ? never : T) : never;\ntype Mixed = string | { a: 1 } | (() => void) | { b: 2 } | number;\ntype G = ExtractObjects<Mixed>; // { a: 1 } | { b: 2 }\n\n\n// Conditional types for type-safe API routing\ninterface ApiRoutes {\n  'GET /users': { response: User[]; params: never };\n  'GET /users/:id': { response: User; params: { id: string } };\n  'POST /users': { response: User; params: never; body: CreateUserDTO };\n  'PUT /users/:id': { response: User; params: { id: string }; body: UpdateUserDTO };\n  'DELETE /users/:id': { response: void; params: { id: string } };\n}\n\ntype RouteMethod<R extends string> = R extends `${infer M} ${string}` ? M : never;\ntype RoutePath<R extends string> = R extends `${string} ${infer P}` ? P : never;\n\ntype HasBody<R extends keyof ApiRoutes> =\n  ApiRoutes[R] extends { body: infer B } ? B : never;\n\ntype RouteResponse<R extends keyof ApiRoutes> = ApiRoutes[R]['response'];\ntype RouteParams<R extends keyof ApiRoutes> = ApiRoutes[R]['params'];\n\n// Type-safe fetch wrapper\nasync function apiCall<R extends keyof ApiRoutes>(\n  route: R,\n  ...args: HasBody<R> extends never\n    ? RouteParams<R> extends never\n      ? []\n      : [params: RouteParams<R>]\n    : RouteParams<R> extends never\n      ? [body: HasBody<R>]\n      : [params: RouteParams<R>, body: HasBody<R>]\n): Promise<RouteResponse<R>> {\n  // Implementation would parse route, substitute params, send request\n  throw new Error('Not implemented');\n}\n\n// Usage: TypeScript enforces correct arguments for each route\n// apiCall('GET /users');                              // OK: no params, no body\n// apiCall('GET /users/:id', { id: '123' });          // OK: params required\n// apiCall('POST /users', { name: 'Alice', email: 'a@b.com' }); // OK: body required\n// apiCall('PUT /users/:id', { id: '1' }, { name: 'Bob' });     // OK: params + body",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Mapped types with key remapping and template literals\ntype Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];\n};\n\ntype Setters<T> = {\n  [K in keyof T as `set${Capitalize<string & K>}`]: (value: T[K]) => void;\n};\n\ntype EventHandlers<T> = {\n  [K in keyof T as `on${Capitalize<string & K>}Change`]: (\n    oldValue: T[K],\n    newValue: T[K]\n  ) => void;\n};\n\ninterface UserState {\n  name: string;\n  age: number;\n  active: boolean;\n}\n\ntype UserGetters = Getters<UserState>;\n// { getName: () => string; getAge: () => number; getActive: () => boolean }\n\ntype UserSetters = Setters<UserState>;\n// { setName: (value: string) => void; setAge: (value: number) => void; ... }\n\ntype UserEvents = EventHandlers<UserState>;\n// { onNameChange: (old: string, new: string) => void; ... }\n\n\n// Filter properties by value type using key remapping\ntype PickByType<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? K : never]: T[K];\n};\n\ntype OmitByType<T, ValueType> = {\n  [K in keyof T as T[K] extends ValueType ? never : K]: T[K];\n};\n\ninterface Config {\n  host: string;\n  port: number;\n  debug: boolean;\n  timeout: number;\n  name: string;\n}\n\ntype StringConfig = PickByType<Config, string>;  // { host: string; name: string }\ntype NumericConfig = PickByType<Config, number>; // { port: number; timeout: number }\ntype NonBoolConfig = OmitByType<Config, boolean>; // { host: string; port: number; timeout: number; name: string }\n\n\n// Deep recursive mapped types\ntype DeepReadonly<T> = T extends Function\n  ? T\n  : T extends object\n    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }\n    : T;\n\ntype DeepPartial<T> = T extends Function\n  ? T\n  : T extends object\n    ? { [K in keyof T]?: DeepPartial<T[K]> }\n    : T;\n\ntype DeepRequired<T> = T extends Function\n  ? T\n  : T extends object\n    ? { [K in keyof T]-?: DeepRequired<T[K]> }\n    : T;\n\n// Practical: make specific paths of a nested object mutable\ntype Mutable<T> = { -readonly [K in keyof T]: T[K] };\n\ninterface AppState {\n  readonly user: {\n    readonly name: string;\n    readonly preferences: {\n      readonly theme: 'light' | 'dark';\n      readonly fontSize: number;\n    };\n  };\n  readonly settings: {\n    readonly notifications: boolean;\n  };\n}\n\n// Only make preferences mutable for the settings page\ntype EditablePreferences = Mutable<AppState['user']['preferences']>;\n// { theme: 'light' | 'dark'; fontSize: number } — no longer readonly",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Template literal types for string manipulation\ntype EventName<T extends string> = `${T}Changed` | `${T}Error` | `${T}Loading`;\n\ntype CrudEvents<Entity extends string> =\n  | `${Entity}:created`\n  | `${Entity}:updated`\n  | `${Entity}:deleted`\n  | `${Entity}:fetched`;\n\ntype UserCrudEvents = CrudEvents<'user'>;\n// 'user:created' | 'user:updated' | 'user:deleted' | 'user:fetched'\n\n// Parse route parameters from path strings\ntype ExtractParams<Path extends string> =\n  Path extends `${string}:${infer Param}/${infer Rest}`\n    ? { [K in Param | keyof ExtractParams<Rest>]: string }\n    : Path extends `${string}:${infer Param}`\n      ? { [K in Param]: string }\n      : {};\n\ntype Params1 = ExtractParams<'/users/:id'>;\n// { id: string }\n\ntype Params2 = ExtractParams<'/users/:userId/posts/:postId'>;\n// { userId: string; postId: string }\n\n// Type-safe CSS class builder\ntype Modifier<Base extends string, Mod extends string> = `${Base}--${Mod}`;\ntype Element<Block extends string, Elem extends string> = `${Block}__${Elem}`;\n\ntype ButtonClasses =\n  | 'btn'\n  | Element<'btn', 'icon' | 'label' | 'spinner'>\n  | Modifier<'btn', 'primary' | 'secondary' | 'danger' | 'disabled'>;\n\nfunction classNames(...classes: ButtonClasses[]): string {\n  return classes.join(' ');\n}\n\n// Type-safe: only valid BEM classes allowed\nclassNames('btn', 'btn--primary', 'btn__icon');\n// classNames('btn', 'btn--invalid'); // Error\n\n\n// Recursive type for JSON-compatible values\ntype JSONValue =\n  | string\n  | number\n  | boolean\n  | null\n  | JSONValue[]\n  | { [key: string]: JSONValue };\n\n// Type-safe path access for nested objects\ntype PathKeys<T, Prefix extends string = ''> = T extends object\n  ? {\n      [K in keyof T & string]: T[K] extends object\n        ? `${Prefix}${K}` | PathKeys<T[K], `${Prefix}${K}.`>\n        : `${Prefix}${K}`;\n    }[keyof T & string]\n  : never;\n\ntype PathValue<T, P extends string> =\n  P extends `${infer Key}.${infer Rest}`\n    ? Key extends keyof T\n      ? PathValue<T[Key], Rest>\n      : never\n    : P extends keyof T\n      ? T[P]\n      : never;\n\ninterface NestedConfig {\n  database: {\n    host: string;\n    port: number;\n    credentials: {\n      username: string;\n      password: string;\n    };\n  };\n  cache: {\n    ttl: number;\n    maxSize: number;\n  };\n}\n\ntype ConfigPaths = PathKeys<NestedConfig>;\n// 'database' | 'database.host' | 'database.port' | 'database.credentials' | ...\n\nfunction getConfig<P extends PathKeys<NestedConfig>>(\n  path: P\n): PathValue<NestedConfig, P> {\n  // Implementation would traverse the config object\n  throw new Error('Not implemented');\n}\n\nconst host = getConfig('database.host');        // type: string\nconst port = getConfig('database.port');        // type: number\nconst creds = getConfig('database.credentials'); // type: { username: string; password: string }",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/typescript/advanced-types.md",
+    "wordCount": 1638,
+    "sectionCount": 8
+  }
+}

@@ -1,0 +1,256 @@
+{
+  "id": "aws-iam-and-security",
+  "slug": "iam-and-security",
+  "title": "IAM and Security",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "IAM (Identity and Access Management) controls who can do what across all AWS services using policies, roles, users, and groups",
+            "Policy evaluation order: explicit Deny → Organizations SCPs → Resource-based policies → Identity-based policies → Permissions boundaries → Session policies",
+            "IAM roles provide temporary credentials via AWS STS (Security Token Service) and are preferred over long-lived access keys",
+            "Least-privilege principle: grant only the minimum permissions required for a task, then expand based on access patterns",
+            "Service-linked roles are predefined by AWS services and cannot be modified; they grant exactly the permissions the service needs",
+            "Cross-account access uses IAM roles with trust policies specifying the trusted account's principal ARN",
+            "IAM Access Analyzer identifies resources shared externally and validates policies against best practices before deployment",
+            "MFA (Multi-Factor Authentication) should be enforced on all human users, especially those with administrative access"
+          ]
+        }
+      ],
+      "wordCount": 138,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "IAM is not optional — it is the foundation of every AWS deployment and the first service you configure when setting up any account. You need deep IAM knowledge when designing multi-account architectures where workloads in one account must access resources in another, when implementing service-to-service authentication for microservices running on ECS or EKS using task roles or IRSA (IAM Roles for Service Accounts), when building CI/CD pipelines that need deployment permissions without storing long-lived credentials, when implementing break-glass procedures for emergency access that bypass normal approval workflows, and when preparing for compliance audits that require demonstrating least-privilege access controls."
+        },
+        {
+          "type": "paragraph",
+          "text": "Understanding IAM policy evaluation logic is critical when debugging access denied errors in production, when designing permission boundaries that prevent privilege escalation even if a developer has IAM permissions, and when implementing attribute-based access control (ABAC) that scales across hundreds of services without requiring per-resource policy updates."
+        }
+      ],
+      "wordCount": 147,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "iam-policy-with-conditions-and-resource-constraints",
+          "heading": "IAM Policy with Conditions and Resource Constraints",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"AllowS3AccessToSpecificBucket\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:PutObject\",\n        \"s3:ListBucket\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::production-data-bucket\",\n        \"arn:aws:s3:::production-data-bucket/*\"\n      ],\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:RequestedRegion\": \"us-east-1\",\n          \"s3:x-amz-server-side-encryption\": \"aws:kms\"\n        },\n        \"IpAddress\": {\n          \"aws:SourceIp\": [\"10.0.0.0/8\", \"172.16.0.0/12\"]\n        },\n        \"Bool\": {\n          \"aws:SecureTransport\": \"true\"\n        }\n      }\n    },\n    {\n      \"Sid\": \"DenyUnencryptedUploads\",\n      \"Effect\": \"Deny\",\n      \"Action\": \"s3:PutObject\",\n      \"Resource\": \"arn:aws:s3:::production-data-bucket/*\",\n      \"Condition\": {\n        \"StringNotEquals\": {\n          \"s3:x-amz-server-side-encryption\": \"aws:kms\"\n        }\n      }\n    },\n    {\n      \"Sid\": \"DenyAccessOutsideBusinessHours\",\n      \"Effect\": \"Deny\",\n      \"Action\": \"*\",\n      \"Resource\": \"*\",\n      \"Condition\": {\n        \"DateGreaterThan\": {\n          \"aws:CurrentTime\": \"2024-01-01T22:00:00Z\"\n        },\n        \"DateLessThan\": {\n          \"aws:CurrentTime\": \"2024-01-02T06:00:00Z\"\n        }\n      }\n    }\n  ]\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cross-account-role-assumption-with-aws-cdk",
+          "heading": "Cross-Account Role Assumption with AWS CDK",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import * as cdk from 'aws-cdk-lib';\nimport * as iam from 'aws-cdk-lib/aws-iam';\n\nexport class CrossAccountAccessStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {\n    super(scope, id, props);\n\n    // Role in Account B that Account A can assume\n    const crossAccountRole = new iam.Role(this, 'CrossAccountDeployRole', {\n      roleName: 'production-deploy-role',\n      assumedBy: new iam.CompositePrincipal(\n        // Trust the CI/CD role in Account A\n        new iam.ArnPrincipal('arn:aws:iam::111111111111:role/ci-cd-pipeline-role'),\n        // Trust the platform team role in Account A\n        new iam.ArnPrincipal('arn:aws:iam::111111111111:role/platform-team-role')\n      ),\n      // Require MFA for human users\n      externalId: 'deploy-2024-secure',\n      maxSessionDuration: cdk.Duration.hours(1),\n    });\n\n    // Permissions boundary prevents privilege escalation\n    const boundary = new iam.ManagedPolicy(this, 'DeployBoundary', {\n      statements: [\n        new iam.PolicyStatement({\n          effect: iam.Effect.DENY,\n          actions: [\n            'iam:CreateUser',\n            'iam:CreateRole',\n            'iam:DeleteRole',\n            'iam:AttachRolePolicy',\n            'organizations:*',\n          ],\n          resources: ['*'],\n        }),\n      ],\n    });\n    iam.PermissionsBoundary.of(crossAccountRole).apply(boundary);\n\n    // Grant specific deployment permissions\n    crossAccountRole.addToPolicy(new iam.PolicyStatement({\n      actions: [\n        'ecs:UpdateService',\n        'ecs:DescribeServices',\n        'ecs:RegisterTaskDefinition',\n        'ecr:GetAuthorizationToken',\n        'ecr:BatchGetImage',\n        'ecr:GetDownloadUrlForLayer',\n      ],\n      resources: ['*'],\n      conditions: {\n        StringEquals: {\n          'aws:RequestedRegion': ['us-east-1', 'us-west-2'],\n        },\n      },\n    }));\n\n    // Assume role from Account A\n    // In the CI/CD pipeline (Account A):\n    // aws sts assume-role \\\n    //   --role-arn arn:aws:iam::222222222222:role/production-deploy-role \\\n    //   --role-session-name ci-deploy-$(date +%s) \\\n    //   --external-id deploy-2024-secure \\\n    //   --duration-seconds 3600\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "irsa-iam-roles-for-service-accounts-for-eks",
+          "heading": "IRSA (IAM Roles for Service Accounts) for EKS",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Kubernetes ServiceAccount with IAM role annotation\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/order-service-role\n    eks.amazonaws.com/sts-regional-endpoints: \"true\"\n---\n# Pod using the annotated ServiceAccount\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  template:\n    spec:\n      serviceAccountName: order-service\n      containers:\n        - name: order-service\n          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/order-service:2.1.0\n          env:\n            - name: AWS_REGION\n              value: us-east-1\n            # AWS SDK automatically uses IRSA credentials via projected token\n            # No access keys needed in environment or config",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// IAM role trust policy for IRSA (CDK)\nconst orderServiceRole = new iam.Role(this, 'OrderServiceRole', {\n  roleName: 'order-service-role',\n  assumedBy: new iam.FederatedPrincipal(\n    `arn:aws:iam::${this.account}:oidc-provider/${oidcProviderUrl}`,\n    {\n      StringEquals: {\n        [`${oidcProviderUrl}:sub`]: 'system:serviceaccount:production:order-service',\n        [`${oidcProviderUrl}:aud`]: 'sts.amazonaws.com',\n      },\n    },\n    'sts:AssumeRoleWithWebIdentity'\n  ),\n});\n\n// Grant only the permissions the service needs\norderServiceRole.addToPolicy(new iam.PolicyStatement({\n  actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query'],\n  resources: [`arn:aws:dynamodb:us-east-1:${this.account}:table/orders`],\n}));\n\norderServiceRole.addToPolicy(new iam.PolicyStatement({\n  actions: ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage'],\n  resources: [`arn:aws:sqs:us-east-1:${this.account}:order-events`],\n}));",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Using wildcard resources in production policies: Policies with \"Resource\": \"*\" grant access to all resources of that type across the entire account. A policy allowing s3:GetObject on * means the role can read every S3 bucket including those containing secrets, backups, and other teams' data. Always scope resources to specific ARNs or ARN patterns. Use resource tags with condition keys for dynamic scoping when exact ARNs are not known at policy creation time.",
+            "Relying on access keys instead of IAM roles: Long-lived access keys stored in environment variables, configuration files, or CI/CD secrets are the most common source of AWS credential leaks. Keys cannot be automatically rotated by AWS, do not expire unless manually configured, and provide persistent access if compromised. Use IAM roles everywhere: EC2 instance profiles, ECS task roles, Lambda execution roles, IRSA for EKS, and aws sts assume-role for cross-account access. The only acceptable use of access keys is for external systems that cannot assume roles.",
+            "Granting IAM permissions without permissions boundaries: If a developer role has iam:CreateRole and iam:AttachRolePolicy permissions, they can create a new role with AdministratorAccess and assume it, effectively escalating to full admin. Permissions boundaries set a maximum permission ceiling that no policy attached to the role can exceed. Always apply permissions boundaries to roles that have any IAM write permissions, and deny the ability to modify or remove the boundary itself.",
+            "Not using condition keys to restrict policy scope: Policies without conditions are overly broad. Condition keys like aws:RequestedRegion, aws:SourceIp, aws:PrincipalOrgID, and aws:ResourceTag dramatically reduce blast radius. For example, restricting EC2 actions to aws:RequestedRegion: us-east-1 prevents accidental or malicious resource creation in other regions. Combine multiple conditions for defense-in-depth: region restriction plus VPC endpoint restriction plus tag-based scoping.",
+            "Ignoring the policy evaluation order during debugging: When troubleshooting access denied errors, engineers often add more Allow statements without understanding that an explicit Deny anywhere in the evaluation chain (SCPs, resource policies, identity policies, boundaries) overrides all Allows. Use IAM Policy Simulator and CloudTrail logs to identify which policy is denying access. Check SCPs first in multi-account setups, then resource-based policies, then identity policies, then boundaries.",
+            "Sharing IAM users across team members or services: IAM users should map one-to-one with human identities or service identities. Shared credentials make audit trails meaningless (you cannot determine who performed an action), prevent individual access revocation, and violate compliance requirements. Use IAM Identity Center (SSO) for human access with individual accounts federated from your identity provider, and IAM roles for service-to-service authentication."
+          ]
+        }
+      ],
+      "wordCount": 414,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Multi-account deployment pipeline: A platform team manages 50+ AWS accounts organized by environment and team. The CI/CD pipeline in the tooling account assumes deployment roles in target accounts using cross-account role assumption with external IDs. Each target account's deployment role has a permissions boundary preventing IAM modifications, and SCPs at the organization level prevent disabling CloudTrail or modifying security configurations. Deployments are auditable through CloudTrail with the pipeline's session name identifying the specific build.",
+            "Emergency break-glass access: A critical production incident requires database-level access that no engineer normally has. The break-glass procedure involves assuming a specially configured role that requires MFA, has a 1-hour maximum session duration, triggers an immediate PagerDuty alert to the security team, and logs all actions to a tamper-proof CloudTrail trail in a separate security account. The role's trust policy requires the engineer to be a member of a specific IAM group that is normally empty — adding themselves requires approval from two other engineers.",
+            "Attribute-based access control for microservices: A platform with 200+ microservices uses ABAC instead of maintaining per-service policies. Each service's IAM role is tagged with team, environment, and data-classification. Resource policies on DynamoDB tables, SQS queues, and S3 buckets use condition keys matching these tags. When a new service is created, it automatically gets access to resources tagged with matching attributes without requiring policy updates to existing resources.",
+            "Compliance audit evidence generation: Before a SOC 2 audit, the security team uses IAM Access Analyzer to generate findings for all resources shared externally, credential reports showing MFA status and key age for all users, and policy validation reports identifying overly permissive policies. Automated remediation scripts rotate keys older than 90 days, disable unused credentials, and generate evidence packages showing the current state of access controls across all accounts."
+          ]
+        }
+      ],
+      "wordCount": 295,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the IAM policy evaluation logic. How does AWS determine whether a request is allowed or denied?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: AWS evaluates policies in a specific order with explicit Deny taking precedence at every level. First, if any applicable policy contains an explicit Deny matching the request, it is denied regardless of any Allow statements. For cross-account requests, both the identity-based policy in the source account and the resource-based policy in the target account must allow the action. Within a single account, the evaluation checks: Organizations SCPs (if applicable) → resource-based policies → identity-based policies → permissions boundaries → session policies. The request is allowed only if at least one policy grants Allow and no policy contains an explicit Deny. An implicit deny (absence of Allow) results in denial. Permissions boundaries do not grant access themselves but set the maximum permissions that identity-based policies can grant."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement least-privilege access for a microservice that needs to read from DynamoDB and write to SQS?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Create a dedicated IAM role for the service with a trust policy allowing only the specific compute resource (ECS task, Lambda function, or EKS service account) to assume it. The role's policy should specify exact resource ARNs for the DynamoDB table and SQS queue, not wildcards. Limit DynamoDB actions to only what is needed (GetItem, Query — not Scan or DeleteItem). Add condition keys restricting the region and requiring encryption in transit. Apply a permissions boundary that prevents the role from modifying IAM resources or accessing services outside its scope. Use IAM Access Analyzer to verify the policy grants no unintended access, and enable CloudTrail data events to audit actual API calls for further refinement."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between identity-based policies, resource-based policies, and permissions boundaries?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Identity-based policies are attached to IAM users, groups, or roles and define what actions that identity can perform on which resources. Resource-based policies are attached to resources (S3 buckets, SQS queues, KMS keys) and define which principals can access that resource — they are the only way to grant cross-account access without role assumption. Permissions boundaries are advanced policies attached to roles or users that set the maximum permissions the identity can have — they do not grant access themselves but act as a ceiling. The effective permissions are the intersection of identity-based policies and permissions boundaries. A common pattern uses boundaries to prevent privilege escalation: even if a developer can create roles, the boundary ensures those roles cannot exceed the developer's own permission level."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you secure cross-account access in a multi-account AWS organization?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use IAM roles with trust policies rather than sharing credentials. The trust policy in the target account specifies the source account's role ARN as the trusted principal, optionally requiring an external ID to prevent confused deputy attacks. Apply SCPs at the organization level to enforce guardrails (prevent disabling CloudTrail, require encryption, restrict regions). Use AWS Organizations delegated administrator for services like Security Hub and GuardDuty. Implement a hub-and-spoke model where a central security account aggregates findings. For human access, use IAM Identity Center with permission sets that map to roles in target accounts, providing centralized access management with individual audit trails."
+        }
+      ],
+      "wordCount": 534,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use IAM Access Analyzer continuously, not just during audits: Enable Access Analyzer in every account and region. Configure it to alert on new external access findings via EventBridge rules that notify the security team. Review findings weekly and either remediate unintended external access or archive intentional sharing with documentation. Use the policy validation feature in CI/CD pipelines to catch overly permissive policies before they reach production.",
+            "Implement credential rotation automation for the few cases where access keys are unavoidable: For external integrations that genuinely cannot use role assumption, automate key rotation using a Lambda function triggered by a CloudWatch Events rule on a schedule (every 90 days maximum). The function creates a new key, updates the external system via API, verifies the new key works, then deactivates and deletes the old key. Monitor for keys approaching the rotation deadline using IAM credential reports and alert if rotation fails.",
+            "Tag all IAM roles with ownership and purpose metadata: Apply consistent tags (team, service, environment, created-by, purpose) to every IAM role. This enables automated cleanup of orphaned roles (roles not assumed in 90+ days), cost attribution for services using those roles, and rapid identification of role ownership during security incidents. Use tag-based SCPs to enforce tagging requirements — deny role creation without required tags."
+          ]
+        }
+      ],
+      "wordCount": 212,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "VPC and Networking — Network-level security controls that complement IAM access policies",
+            "AWS Compute and Containers — Task roles and instance profiles for compute workloads",
+            "Kubernetes & EKS — IRSA integration for pod-level AWS access",
+            "Observability — CloudTrail and access logging for IAM audit trails"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "json",
+      "code": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"AllowS3AccessToSpecificBucket\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:PutObject\",\n        \"s3:ListBucket\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::production-data-bucket\",\n        \"arn:aws:s3:::production-data-bucket/*\"\n      ],\n      \"Condition\": {\n        \"StringEquals\": {\n          \"aws:RequestedRegion\": \"us-east-1\",\n          \"s3:x-amz-server-side-encryption\": \"aws:kms\"\n        },\n        \"IpAddress\": {\n          \"aws:SourceIp\": [\"10.0.0.0/8\", \"172.16.0.0/12\"]\n        },\n        \"Bool\": {\n          \"aws:SecureTransport\": \"true\"\n        }\n      }\n    },\n    {\n      \"Sid\": \"DenyUnencryptedUploads\",\n      \"Effect\": \"Deny\",\n      \"Action\": \"s3:PutObject\",\n      \"Resource\": \"arn:aws:s3:::production-data-bucket/*\",\n      \"Condition\": {\n        \"StringNotEquals\": {\n          \"s3:x-amz-server-side-encryption\": \"aws:kms\"\n        }\n      }\n    },\n    {\n      \"Sid\": \"DenyAccessOutsideBusinessHours\",\n      \"Effect\": \"Deny\",\n      \"Action\": \"*\",\n      \"Resource\": \"*\",\n      \"Condition\": {\n        \"DateGreaterThan\": {\n          \"aws:CurrentTime\": \"2024-01-01T22:00:00Z\"\n        },\n        \"DateLessThan\": {\n          \"aws:CurrentTime\": \"2024-01-02T06:00:00Z\"\n        }\n      }\n    }\n  ]\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import * as cdk from 'aws-cdk-lib';\nimport * as iam from 'aws-cdk-lib/aws-iam';\n\nexport class CrossAccountAccessStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {\n    super(scope, id, props);\n\n    // Role in Account B that Account A can assume\n    const crossAccountRole = new iam.Role(this, 'CrossAccountDeployRole', {\n      roleName: 'production-deploy-role',\n      assumedBy: new iam.CompositePrincipal(\n        // Trust the CI/CD role in Account A\n        new iam.ArnPrincipal('arn:aws:iam::111111111111:role/ci-cd-pipeline-role'),\n        // Trust the platform team role in Account A\n        new iam.ArnPrincipal('arn:aws:iam::111111111111:role/platform-team-role')\n      ),\n      // Require MFA for human users\n      externalId: 'deploy-2024-secure',\n      maxSessionDuration: cdk.Duration.hours(1),\n    });\n\n    // Permissions boundary prevents privilege escalation\n    const boundary = new iam.ManagedPolicy(this, 'DeployBoundary', {\n      statements: [\n        new iam.PolicyStatement({\n          effect: iam.Effect.DENY,\n          actions: [\n            'iam:CreateUser',\n            'iam:CreateRole',\n            'iam:DeleteRole',\n            'iam:AttachRolePolicy',\n            'organizations:*',\n          ],\n          resources: ['*'],\n        }),\n      ],\n    });\n    iam.PermissionsBoundary.of(crossAccountRole).apply(boundary);\n\n    // Grant specific deployment permissions\n    crossAccountRole.addToPolicy(new iam.PolicyStatement({\n      actions: [\n        'ecs:UpdateService',\n        'ecs:DescribeServices',\n        'ecs:RegisterTaskDefinition',\n        'ecr:GetAuthorizationToken',\n        'ecr:BatchGetImage',\n        'ecr:GetDownloadUrlForLayer',\n      ],\n      resources: ['*'],\n      conditions: {\n        StringEquals: {\n          'aws:RequestedRegion': ['us-east-1', 'us-west-2'],\n        },\n      },\n    }));\n\n    // Assume role from Account A\n    // In the CI/CD pipeline (Account A):\n    // aws sts assume-role \\\n    //   --role-arn arn:aws:iam::222222222222:role/production-deploy-role \\\n    //   --role-session-name ci-deploy-$(date +%s) \\\n    //   --external-id deploy-2024-secure \\\n    //   --duration-seconds 3600\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Kubernetes ServiceAccount with IAM role annotation\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/order-service-role\n    eks.amazonaws.com/sts-regional-endpoints: \"true\"\n---\n# Pod using the annotated ServiceAccount\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  template:\n    spec:\n      serviceAccountName: order-service\n      containers:\n        - name: order-service\n          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/order-service:2.1.0\n          env:\n            - name: AWS_REGION\n              value: us-east-1\n            # AWS SDK automatically uses IRSA credentials via projected token\n            # No access keys needed in environment or config",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// IAM role trust policy for IRSA (CDK)\nconst orderServiceRole = new iam.Role(this, 'OrderServiceRole', {\n  roleName: 'order-service-role',\n  assumedBy: new iam.FederatedPrincipal(\n    `arn:aws:iam::${this.account}:oidc-provider/${oidcProviderUrl}`,\n    {\n      StringEquals: {\n        [`${oidcProviderUrl}:sub`]: 'system:serviceaccount:production:order-service',\n        [`${oidcProviderUrl}:aud`]: 'sts.amazonaws.com',\n      },\n    },\n    'sts:AssumeRoleWithWebIdentity'\n  ),\n});\n\n// Grant only the permissions the service needs\norderServiceRole.addToPolicy(new iam.PolicyStatement({\n  actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query'],\n  resources: [`arn:aws:dynamodb:us-east-1:${this.account}:table/orders`],\n}));\n\norderServiceRole.addToPolicy(new iam.PolicyStatement({\n  actions: ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage'],\n  resources: [`arn:aws:sqs:us-east-1:${this.account}:order-events`],\n}));",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/aws/iam-and-security.md",
+    "wordCount": 1785,
+    "sectionCount": 11
+  }
+}

@@ -278,6 +278,6 @@ A: HTTP/3 eliminates TCP head-of-line blocking (a single lost packet in HTTP/2 b
 
 - [System Design](./system-design.md) — distributed systems fundamentals, CAP theorem, and scaling strategies that build on networking concepts
 - [Operating Systems](./operating-systems.md) — kernel networking stack, socket implementation, and I/O multiplexing (epoll, kqueue) that underpin application networking
-- [Docker & Containerization](../infrastructure/docker-containerization.md) — container networking, bridge networks, overlay networks, and service discovery
-- [Kubernetes & EKS](../infrastructure/kubernetes-eks.md) — service networking, ingress controllers, network policies, and DNS-based service discovery
+- [Docker & Containerization](../infrastructure/docker/index.md) — container networking, bridge networks, overlay networks, and service discovery
+- [Kubernetes & EKS](../infrastructure/kubernetes/index.md) — service networking, ingress controllers, network policies, and DNS-based service discovery
 - [Apache Kafka](../backend/apache-kafka.md) — distributed messaging that relies on TCP connections, partitioning (consistent hashing), and replication protocols

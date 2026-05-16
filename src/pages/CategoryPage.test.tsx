@@ -85,7 +85,7 @@ describe('CategoryPage', () => {
     renderCategoryPage('backend');
 
     await waitFor(() => {
-      expect(screen.getByText('Backend')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
     });
 
     expect(screen.getByText('Java')).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe('CategoryPage', () => {
     renderCategoryPage('backend');
 
     await waitFor(() => {
-      expect(screen.getByText('Backend')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
     });
 
     const statusBadges = screen.getAllByText('Not Started');
@@ -162,7 +162,7 @@ describe('CategoryPage', () => {
     renderCategoryPage('backend');
 
     await waitFor(() => {
-      expect(screen.getByText('Backend')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
     });
 
     expect(screen.getByText('In Progress')).toBeInTheDocument();
@@ -185,7 +185,7 @@ describe('CategoryPage', () => {
     renderCategoryPage('backend');
 
     await waitFor(() => {
-      expect(screen.getByText('Backend')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Backend' })).toBeInTheDocument();
     });
 
     expect(screen.getByText('Complete')).toBeInTheDocument();
@@ -219,7 +219,7 @@ describe('CategoryPage', () => {
     renderCategoryPage('frontend');
 
     await waitFor(() => {
-      expect(screen.getByText('Frontend')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Frontend' })).toBeInTheDocument();
     });
 
     expect(screen.getByText('1 topic')).toBeInTheDocument();

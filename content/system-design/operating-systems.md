@@ -482,4 +482,4 @@ A: User-level threads are managed entirely in user space by a threading library 
 
 - [System Design](./system-design.md) - Distributed systems fundamentals build on OS concepts like consistency, concurrency, and resource management
 - [Networking](./networking.md) - The OS network stack (TCP/IP, sockets, epoll) is the foundation for all networked applications
-- [Docker & Containerization](../infrastructure/docker-containerization.md) - Containers use OS primitives (namespaces, cgroups) for process isolation and resource control
+- [Docker & Containerization](../infrastructure/docker/index.md) - Containers use OS primitives (namespaces, cgroups) for process isolation and resource control

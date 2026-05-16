@@ -1,0 +1,222 @@
+{
+  "id": "javascript-modules-and-tooling",
+  "slug": "modules-and-tooling",
+  "title": "Modules and Tooling",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "ES Modules (ESM) use static import/export declarations that enable tree-shaking; they are the standard module system for modern JavaScript",
+            "CommonJS (CJS) uses require()/module.exports with synchronous, runtime-evaluated loading; it is Node.js's original module system",
+            "Dynamic import() returns a Promise resolving to the module namespace, enabling code splitting and conditional loading",
+            "ES Modules have live bindings (importing modules see updated values); CommonJS exports are copied values at require time",
+            "<script type=\"module\"> loads ES Modules in browsers with deferred execution, strict mode, and CORS requirements",
+            "Bundlers (Vite, Webpack, Rollup) resolve imports, tree-shake unused exports, split code into chunks, and transform syntax",
+            "Package.json \"exports\" field defines entry points for different conditions (import, require, types, browser, node)",
+            "Top-level await in ES Modules pauses module evaluation until the awaited Promise resolves"
+          ]
+        }
+      ],
+      "wordCount": 125,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "ES Modules should be the default for all new JavaScript and TypeScript projects. They provide static analysis for tree-shaking (removing unused code from bundles), clear dependency graphs for bundler optimization, and standardized syntax that works in browsers, Node.js, and Deno without transpilation. Use CommonJS only when maintaining legacy Node.js code or when a dependency requires it. Dynamic imports are appropriate for route-level code splitting (loading page components on navigation), feature-level splitting (loading heavy libraries only when needed), and conditional polyfill loading (importing polyfills only in browsers that need them). Understanding module resolution is critical for configuring bundlers, debugging import errors, publishing npm packages that work across environments, and optimizing bundle size through strategic code splitting."
+        }
+      ],
+      "wordCount": 115,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// ES Module patterns: named exports, default exports, and re-exports\n\n// utils/validation.js — Named exports for utility functions\nexport function isEmail(value) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);\n}\n\nexport function isURL(value) {\n  try {\n    new URL(value);\n    return true;\n  } catch {\n    return false;\n  }\n}\n\nexport function isInRange(value, min, max) {\n  return value >= min && value <= max;\n}\n\n// Grouped export (equivalent to individual exports above)\nexport { isEmail, isURL, isInRange };\n\n\n// services/api.js — Default export for primary functionality\nconst API_BASE = '/api/v1';\n\nasync function request(method, path, options = {}) {\n  const url = `${API_BASE}${path}`;\n  const response = await fetch(url, {\n    method,\n    headers: {\n      'Content-Type': 'application/json',\n      ...options.headers,\n    },\n    body: options.body ? JSON.stringify(options.body) : undefined,\n    signal: options.signal,\n  });\n\n  if (!response.ok) {\n    const error = new Error(`API Error: ${response.status}`);\n    error.status = response.status;\n    error.response = response;\n    throw error;\n  }\n\n  return response.json();\n}\n\n// Default export: the primary thing this module provides\nexport default {\n  get: (path, options) => request('GET', path, options),\n  post: (path, body, options) => request('POST', path, { ...options, body }),\n  put: (path, body, options) => request('PUT', path, { ...options, body }),\n  delete: (path, options) => request('DELETE', path, options),\n};\n\n// Named exports alongside default (both are valid)\nexport { API_BASE, request };\n\n\n// index.js — Barrel file with re-exports\nexport { default as api } from './services/api.js';\nexport { isEmail, isURL, isInRange } from './utils/validation.js';\nexport { default as Logger } from './utils/logger.js';\nexport * from './types/constants.js'; // Re-export all named exports\n// Note: export * does NOT re-export default exports\n\n\n// Dynamic import for code splitting\nasync function loadEditor() {\n  // Webpack/Vite magic comment for chunk naming\n  const { EditorView, basicSetup } = await import(\n    /* webpackChunkName: \"editor\" */\n    '@codemirror/view'\n  );\n  const { javascript } = await import(\n    /* webpackChunkName: \"editor\" */\n    '@codemirror/lang-javascript'\n  );\n\n  return new EditorView({\n    extensions: [basicSetup, javascript()],\n    parent: document.getElementById('editor'),\n  });\n}\n\n// Conditional loading based on feature detection\nasync function loadPolyfills() {\n  const polyfills = [];\n\n  if (!globalThis.structuredClone) {\n    polyfills.push(import('core-js/actual/structured-clone'));\n  }\n  if (!globalThis.AbortSignal?.timeout) {\n    polyfills.push(import('abort-controller/polyfill'));\n  }\n\n  await Promise.all(polyfills);\n}\n\n// Route-level code splitting in React\nconst routes = {\n  '/dashboard': () => import('./pages/Dashboard.js'),\n  '/settings': () => import('./pages/Settings.js'),\n  '/analytics': () => import('./pages/Analytics.js'),\n};\n\nasync function navigateTo(path) {\n  const loader = routes[path];\n  if (!loader) throw new Error(`Unknown route: ${path}`);\n\n  const module = await loader();\n  const Page = module.default;\n  renderPage(Page);\n}",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// CommonJS patterns and ESM interoperability\n\n// CommonJS module (legacy Node.js pattern)\n// config.cjs\nconst path = require('path');\nconst fs = require('fs');\n\nconst CONFIG_PATH = path.resolve(__dirname, '../config.json');\n\nfunction loadConfig() {\n  const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');\n  return JSON.parse(raw);\n}\n\n// CommonJS exports\nmodule.exports = { loadConfig, CONFIG_PATH };\n// Or: module.exports = loadConfig; (single default-like export)\n\n\n// ESM importing CommonJS (Node.js with \"type\": \"module\" in package.json)\nimport config from './config.cjs'; // CJS module.exports becomes default import\n// import { loadConfig } from './config.cjs'; // Named imports from CJS may not work\n\n// CJS importing ESM (must use dynamic import)\n// const esmModule = require('./esm-module.js'); // ERROR: Cannot require ESM\nasync function loadESM() {\n  const { default: api, request } = await import('./services/api.js');\n  return api;\n}\n\n\n// Package.json exports field for dual CJS/ESM packages\n// package.json\n// {\n//   \"name\": \"my-library\",\n//   \"type\": \"module\",\n//   \"exports\": {\n//     \".\": {\n//       \"types\": \"./dist/index.d.ts\",\n//       \"import\": \"./dist/esm/index.js\",\n//       \"require\": \"./dist/cjs/index.cjs\",\n//       \"default\": \"./dist/esm/index.js\"\n//     },\n//     \"./utils\": {\n//       \"types\": \"./dist/utils.d.ts\",\n//       \"import\": \"./dist/esm/utils.js\",\n//       \"require\": \"./dist/cjs/utils.cjs\"\n//     },\n//     \"./package.json\": \"./package.json\"\n//   },\n//   \"main\": \"./dist/cjs/index.cjs\",\n//   \"module\": \"./dist/esm/index.js\",\n//   \"types\": \"./dist/index.d.ts\"\n// }\n\n\n// Top-level await in ES Modules\n// db.js — Module initialization with top-level await\nconst connection = await createDatabaseConnection({\n  host: process.env.DB_HOST,\n  port: parseInt(process.env.DB_PORT ?? '5432'),\n  database: process.env.DB_NAME,\n});\n\n// Module consumers get the initialized connection\nexport { connection };\nexport async function query(sql, params) {\n  return connection.query(sql, params);\n}\n\n// Importing module waits for initialization to complete\n// app.js\nimport { query } from './db.js'; // Waits for db.js top-level await\nconst users = await query('SELECT * FROM users WHERE active = $1', [true]);",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Bundler configuration and optimization patterns\n\n// vite.config.js — Modern bundler configuration\nimport { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  build: {\n    rollupOptions: {\n      output: {\n        // Manual chunk splitting for optimal caching\n        manualChunks: {\n          // Vendor chunks: change rarely, cached long-term\n          'react-vendor': ['react', 'react-dom', 'react-router-dom'],\n          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],\n          // Feature chunks: loaded on demand\n          'editor': ['@codemirror/view', '@codemirror/lang-javascript'],\n          'charts': ['recharts', 'd3-scale'],\n        },\n      },\n    },\n    // Target modern browsers for smaller output\n    target: 'es2020',\n    // Chunk size warning threshold\n    chunkSizeWarningLimit: 500, // KB\n  },\n  // Dependency optimization\n  optimizeDeps: {\n    include: ['react', 'react-dom'], // Pre-bundle for faster dev startup\n    exclude: ['@my-org/local-package'], // Don't pre-bundle local packages\n  },\n});\n\n\n// Tree-shaking: how to write tree-shakeable code\n// BAD: barrel file that imports everything\n// import { Button, Input, Modal, Table, ... } from './components';\n// Even if you only use Button, the bundler may include all components\n\n// GOOD: direct imports for tree-shaking\nimport { Button } from './components/Button.js';\nimport { Input } from './components/Input.js';\n\n// BAD: side effects prevent tree-shaking\n// utils.js\nlet counter = 0; // Module-level side effect\nexport function increment() { return ++counter; }\nexport function getCount() { return counter; }\n// Bundler cannot remove getCount even if unused because module has side effects\n\n// GOOD: pure functions are safely tree-shakeable\n// math.js\nexport function add(a, b) { return a + b; }\nexport function multiply(a, b) { return a * b; }\n// Bundler can safely remove unused exports\n\n// package.json sideEffects field for library authors\n// {\n//   \"sideEffects\": false,  // All files are pure (safe to tree-shake)\n//   // Or specify files with side effects:\n//   \"sideEffects\": [\"./src/polyfills.js\", \"*.css\"]\n// }\n\n\n// Module resolution debugging\n// Node.js ESM resolution algorithm (simplified):\n// 1. Check package.json \"exports\" field (if present, takes precedence)\n// 2. Check package.json \"main\" field\n// 3. Look for index.js in the package directory\n// 4. For relative imports: exact path, then .js, .mjs, .cjs extensions\n\n// Common resolution issues and fixes:\n// Error: \"Cannot find module './utils'\" in ESM\n// Fix: Add file extension: import { helper } from './utils.js';\n// (ESM requires explicit extensions unlike CJS)\n\n// Error: \"require() of ES Module not supported\"\n// Fix: Use dynamic import: const mod = await import('./esm-module.js');\n\n// Error: \"__dirname is not defined in ES module scope\"\n// Fix: import { fileURLToPath } from 'url';\n//      const __dirname = path.dirname(fileURLToPath(import.meta.url));",
+          "runnable": true
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Circular dependencies causing undefined imports: When module A imports from B and B imports from A, one of them receives an incomplete (partially initialized) module object. The module that is evaluated second sees undefined for imports from the first module that have not been initialized yet. Break circular dependencies by extracting shared code into a third module, using lazy imports (dynamic import inside functions), or restructuring the dependency graph.",
+            "Forgetting file extensions in ES Module imports: Unlike CommonJS where require('./utils') automatically resolves to utils.js, ES Modules in Node.js require explicit file extensions: import { helper } from './utils.js'. Omitting the extension works in bundlers (Vite, Webpack) that add resolution logic, but fails in native Node.js ESM. This discrepancy between development (bundler) and production (Node.js) causes deployment failures.",
+            "Barrel files defeating tree-shaking: A barrel file (index.js) that re-exports everything from a directory (export * from './Button'; export * from './Modal'; ...) can prevent tree-shaking if any re-exported module has side effects. Bundlers must include the entire barrel if they cannot prove all modules are side-effect-free. Use direct imports to specific files for optimal bundle size, or ensure all modules are marked as side-effect-free.",
+            "Mixing require() and import in the same file: A file is either a CommonJS module or an ES Module, determined by file extension (.mjs/.cjs) or the nearest package.json \"type\" field. Using require() in an ES Module or import in a CommonJS module causes syntax errors. Use dynamic import() (which works in both) when you need to load ESM from CJS.",
+            "Not understanding live bindings vs copied values: ES Module imports are live bindings — if the exporting module changes a value, the importing module sees the update. CommonJS exports are copied at require time — subsequent changes in the exporting module are not reflected. This difference causes subtle bugs when migrating from CJS to ESM, especially with mutable state like counters or configuration that changes after initialization.",
+            "Over-splitting code into too many small chunks: While code splitting improves initial load time, creating dozens of tiny chunks (under 10KB each) can hurt performance due to HTTP/2 multiplexing overhead, connection limits, and chunk loading waterfalls where one chunk depends on another. Group related functionality into meaningful chunks (route-level, feature-level) and use bundler analysis tools to find the optimal split points."
+          ]
+        }
+      ],
+      "wordCount": 380,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Micro-frontend architectures: Large organizations use ES Module federation (Webpack Module Federation, Vite's module federation plugin) to compose independently deployed frontend applications at runtime. Each micro-frontend is a separate build that exports components as ES Modules, loaded dynamically by the shell application. This enables independent team deployments without coordinating releases.",
+            "Monorepo package management: Monorepos (Turborepo, Nx, Lerna) use package.json exports and TypeScript path mappings to create internal packages that are consumed like npm packages but resolved to source code during development. This provides fast feedback loops (no build step for internal packages) while maintaining clean module boundaries and enabling independent publishing.",
+            "Progressive web application loading strategies: PWAs use dynamic imports with service worker caching to implement sophisticated loading strategies: critical path modules are precached during service worker installation, route modules are cached on first navigation, and heavy feature modules (editors, charts) are cached on demand. The module graph determines the caching strategy.",
+            "Server-side rendering with selective hydration: Next.js and Remix use the module system to determine which code runs on the server versus the client. Server-only modules (database access, file system) are tree-shaken from the client bundle. Client-only modules (event handlers, browser APIs) are excluded from server rendering. The \"use client\" and \"use server\" directives in React Server Components leverage module boundaries for this separation.",
+            "Plugin systems with dynamic module loading: VS Code extensions, Webpack plugins, and Babel plugins use dynamic imports to load plugin modules at runtime based on configuration. The host application defines a plugin interface, and plugins export conforming modules that are discovered and loaded on demand. This enables extensibility without bundling all possible plugins into the core application."
+          ]
+        }
+      ],
+      "wordCount": 271,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between ES Modules and CommonJS, and why does it matter for bundlers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: ES Modules use static import/export declarations that must appear at the top level — the dependency graph is known at parse time without executing code. CommonJS uses require() which is a runtime function that can appear anywhere (inside conditionals, loops, functions) with dynamic paths. This static vs dynamic distinction matters because bundlers can only tree-shake (remove unused exports) from ES Modules where they can statically determine which exports are used. CommonJS requires including the entire module because the bundler cannot know which exports will be accessed at runtime. Additionally, ES Modules have live bindings (imports reflect current values) while CommonJS copies values at require time."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does tree-shaking work and what prevents it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Tree-shaking is dead code elimination based on the ES Module import/export graph. The bundler starts from entry points, follows import statements to build a dependency graph, marks all referenced exports as \"used,\" and removes everything else. It is prevented by: side effects (module-level code that runs on import, like polyfills or global mutations), dynamic property access (obj[key] where key is unknown), CommonJS modules (cannot statically analyze require), barrel files that re-export modules with side effects, and eval or indirect references that the bundler cannot trace. The \"sideEffects\": false field in package.json tells bundlers that all files in a package are safe to tree-shake."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain dynamic import() and its use cases."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Dynamic import() is a function-like expression that returns a Promise resolving to the module's namespace object. Unlike static imports, it can be used anywhere in code (inside functions, conditionals, loops) and accepts dynamic paths (variables, template literals). Use cases include: route-level code splitting (load page components on navigation), conditional feature loading (load polyfills only when needed), lazy loading heavy dependencies (editors, chart libraries), and plugin systems (load modules based on configuration). In React, React.lazy(() => import('./Component')) wraps dynamic import for component-level code splitting with Suspense."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the exports field in package.json and why is it important?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The exports field defines the public entry points of a package, replacing the older main and module fields with a more powerful conditional system. It maps import paths to different files based on conditions: \"import\" for ESM consumers, \"require\" for CJS consumers, \"types\" for TypeScript, \"browser\" for browser environments, and \"default\" as fallback. It also encapsulates the package — paths not listed in exports cannot be imported, preventing consumers from depending on internal files. This enables dual CJS/ESM packages, platform-specific builds, and clean public APIs while hiding implementation details."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you debug module resolution issues in Node.js?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start by checking: (1) The \"type\" field in the nearest package.json determines if .js files are ESM or CJS. (2) File extensions matter in ESM — use .js, .mjs, or .cjs explicitly. (3) The exports field in dependency package.json may restrict importable paths. (4) Use node --experimental-loader or NODE_DEBUG=module for resolution tracing. (5) Check for duplicate packages in node_modules (different versions of the same package). (6) Verify tsconfig.json moduleResolution matches the runtime (node16 for Node.js ESM, bundler for Vite/Webpack). Common fixes include adding explicit extensions, using createRequire for CJS interop in ESM, and checking that the package's exports field includes the path you are importing."
+        }
+      ],
+      "wordCount": 549,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Analyze bundle size regularly with visualization tools: Run npx vite-bundle-visualizer or webpack-bundle-analyzer after every significant dependency addition. Identify unexpectedly large modules, duplicate dependencies (same library at different versions), and opportunities for code splitting. Set CI checks that fail when bundle size exceeds a threshold.",
+            "Use import maps or bundler aliases for dependency management: Configure path aliases (@/components, @/utils) in your bundler to avoid deep relative imports (../../../components/Button). This makes imports readable, simplifies refactoring (moving files does not break imports), and enables swapping implementations (mock modules in tests) without changing import statements throughout the codebase.",
+            "Mark packages as side-effect-free for optimal tree-shaking: If your library has no module-level side effects (no global mutations, no polyfills, no CSS imports at the top level), add \"sideEffects\": false to package.json. This tells bundlers they can safely remove any unused exports without worrying about losing important side effects. For packages with some side-effectful files (CSS, polyfills), list them explicitly: \"sideEffects\": [\"*.css\", \"./src/polyfills.js\"]."
+          ]
+        }
+      ],
+      "wordCount": 157,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Language and ES6+ — ES Modules are an ES6 feature; understanding import/export syntax is foundational",
+            "Asynchronous JavaScript — Dynamic import() returns Promises; top-level await works in ES Modules",
+            "TypeScript — TypeScript module resolution, declaration files, and isolatedModules affect how modules are processed"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// ES Module patterns: named exports, default exports, and re-exports\n\n// utils/validation.js — Named exports for utility functions\nexport function isEmail(value) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);\n}\n\nexport function isURL(value) {\n  try {\n    new URL(value);\n    return true;\n  } catch {\n    return false;\n  }\n}\n\nexport function isInRange(value, min, max) {\n  return value >= min && value <= max;\n}\n\n// Grouped export (equivalent to individual exports above)\nexport { isEmail, isURL, isInRange };\n\n\n// services/api.js — Default export for primary functionality\nconst API_BASE = '/api/v1';\n\nasync function request(method, path, options = {}) {\n  const url = `${API_BASE}${path}`;\n  const response = await fetch(url, {\n    method,\n    headers: {\n      'Content-Type': 'application/json',\n      ...options.headers,\n    },\n    body: options.body ? JSON.stringify(options.body) : undefined,\n    signal: options.signal,\n  });\n\n  if (!response.ok) {\n    const error = new Error(`API Error: ${response.status}`);\n    error.status = response.status;\n    error.response = response;\n    throw error;\n  }\n\n  return response.json();\n}\n\n// Default export: the primary thing this module provides\nexport default {\n  get: (path, options) => request('GET', path, options),\n  post: (path, body, options) => request('POST', path, { ...options, body }),\n  put: (path, body, options) => request('PUT', path, { ...options, body }),\n  delete: (path, options) => request('DELETE', path, options),\n};\n\n// Named exports alongside default (both are valid)\nexport { API_BASE, request };\n\n\n// index.js — Barrel file with re-exports\nexport { default as api } from './services/api.js';\nexport { isEmail, isURL, isInRange } from './utils/validation.js';\nexport { default as Logger } from './utils/logger.js';\nexport * from './types/constants.js'; // Re-export all named exports\n// Note: export * does NOT re-export default exports\n\n\n// Dynamic import for code splitting\nasync function loadEditor() {\n  // Webpack/Vite magic comment for chunk naming\n  const { EditorView, basicSetup } = await import(\n    /* webpackChunkName: \"editor\" */\n    '@codemirror/view'\n  );\n  const { javascript } = await import(\n    /* webpackChunkName: \"editor\" */\n    '@codemirror/lang-javascript'\n  );\n\n  return new EditorView({\n    extensions: [basicSetup, javascript()],\n    parent: document.getElementById('editor'),\n  });\n}\n\n// Conditional loading based on feature detection\nasync function loadPolyfills() {\n  const polyfills = [];\n\n  if (!globalThis.structuredClone) {\n    polyfills.push(import('core-js/actual/structured-clone'));\n  }\n  if (!globalThis.AbortSignal?.timeout) {\n    polyfills.push(import('abort-controller/polyfill'));\n  }\n\n  await Promise.all(polyfills);\n}\n\n// Route-level code splitting in React\nconst routes = {\n  '/dashboard': () => import('./pages/Dashboard.js'),\n  '/settings': () => import('./pages/Settings.js'),\n  '/analytics': () => import('./pages/Analytics.js'),\n};\n\nasync function navigateTo(path) {\n  const loader = routes[path];\n  if (!loader) throw new Error(`Unknown route: ${path}`);\n\n  const module = await loader();\n  const Page = module.default;\n  renderPage(Page);\n}",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// CommonJS patterns and ESM interoperability\n\n// CommonJS module (legacy Node.js pattern)\n// config.cjs\nconst path = require('path');\nconst fs = require('fs');\n\nconst CONFIG_PATH = path.resolve(__dirname, '../config.json');\n\nfunction loadConfig() {\n  const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');\n  return JSON.parse(raw);\n}\n\n// CommonJS exports\nmodule.exports = { loadConfig, CONFIG_PATH };\n// Or: module.exports = loadConfig; (single default-like export)\n\n\n// ESM importing CommonJS (Node.js with \"type\": \"module\" in package.json)\nimport config from './config.cjs'; // CJS module.exports becomes default import\n// import { loadConfig } from './config.cjs'; // Named imports from CJS may not work\n\n// CJS importing ESM (must use dynamic import)\n// const esmModule = require('./esm-module.js'); // ERROR: Cannot require ESM\nasync function loadESM() {\n  const { default: api, request } = await import('./services/api.js');\n  return api;\n}\n\n\n// Package.json exports field for dual CJS/ESM packages\n// package.json\n// {\n//   \"name\": \"my-library\",\n//   \"type\": \"module\",\n//   \"exports\": {\n//     \".\": {\n//       \"types\": \"./dist/index.d.ts\",\n//       \"import\": \"./dist/esm/index.js\",\n//       \"require\": \"./dist/cjs/index.cjs\",\n//       \"default\": \"./dist/esm/index.js\"\n//     },\n//     \"./utils\": {\n//       \"types\": \"./dist/utils.d.ts\",\n//       \"import\": \"./dist/esm/utils.js\",\n//       \"require\": \"./dist/cjs/utils.cjs\"\n//     },\n//     \"./package.json\": \"./package.json\"\n//   },\n//   \"main\": \"./dist/cjs/index.cjs\",\n//   \"module\": \"./dist/esm/index.js\",\n//   \"types\": \"./dist/index.d.ts\"\n// }\n\n\n// Top-level await in ES Modules\n// db.js — Module initialization with top-level await\nconst connection = await createDatabaseConnection({\n  host: process.env.DB_HOST,\n  port: parseInt(process.env.DB_PORT ?? '5432'),\n  database: process.env.DB_NAME,\n});\n\n// Module consumers get the initialized connection\nexport { connection };\nexport async function query(sql, params) {\n  return connection.query(sql, params);\n}\n\n// Importing module waits for initialization to complete\n// app.js\nimport { query } from './db.js'; // Waits for db.js top-level await\nconst users = await query('SELECT * FROM users WHERE active = $1', [true]);",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Bundler configuration and optimization patterns\n\n// vite.config.js — Modern bundler configuration\nimport { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  build: {\n    rollupOptions: {\n      output: {\n        // Manual chunk splitting for optimal caching\n        manualChunks: {\n          // Vendor chunks: change rarely, cached long-term\n          'react-vendor': ['react', 'react-dom', 'react-router-dom'],\n          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],\n          // Feature chunks: loaded on demand\n          'editor': ['@codemirror/view', '@codemirror/lang-javascript'],\n          'charts': ['recharts', 'd3-scale'],\n        },\n      },\n    },\n    // Target modern browsers for smaller output\n    target: 'es2020',\n    // Chunk size warning threshold\n    chunkSizeWarningLimit: 500, // KB\n  },\n  // Dependency optimization\n  optimizeDeps: {\n    include: ['react', 'react-dom'], // Pre-bundle for faster dev startup\n    exclude: ['@my-org/local-package'], // Don't pre-bundle local packages\n  },\n});\n\n\n// Tree-shaking: how to write tree-shakeable code\n// BAD: barrel file that imports everything\n// import { Button, Input, Modal, Table, ... } from './components';\n// Even if you only use Button, the bundler may include all components\n\n// GOOD: direct imports for tree-shaking\nimport { Button } from './components/Button.js';\nimport { Input } from './components/Input.js';\n\n// BAD: side effects prevent tree-shaking\n// utils.js\nlet counter = 0; // Module-level side effect\nexport function increment() { return ++counter; }\nexport function getCount() { return counter; }\n// Bundler cannot remove getCount even if unused because module has side effects\n\n// GOOD: pure functions are safely tree-shakeable\n// math.js\nexport function add(a, b) { return a + b; }\nexport function multiply(a, b) { return a * b; }\n// Bundler can safely remove unused exports\n\n// package.json sideEffects field for library authors\n// {\n//   \"sideEffects\": false,  // All files are pure (safe to tree-shake)\n//   // Or specify files with side effects:\n//   \"sideEffects\": [\"./src/polyfills.js\", \"*.css\"]\n// }\n\n\n// Module resolution debugging\n// Node.js ESM resolution algorithm (simplified):\n// 1. Check package.json \"exports\" field (if present, takes precedence)\n// 2. Check package.json \"main\" field\n// 3. Look for index.js in the package directory\n// 4. For relative imports: exact path, then .js, .mjs, .cjs extensions\n\n// Common resolution issues and fixes:\n// Error: \"Cannot find module './utils'\" in ESM\n// Fix: Add file extension: import { helper } from './utils.js';\n// (ESM requires explicit extensions unlike CJS)\n\n// Error: \"require() of ES Module not supported\"\n// Fix: Use dynamic import: const mod = await import('./esm-module.js');\n\n// Error: \"__dirname is not defined in ES module scope\"\n// Fix: import { fileURLToPath } from 'url';\n//      const __dirname = path.dirname(fileURLToPath(import.meta.url));",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/javascript/modules-and-tooling.md",
+    "wordCount": 1640,
+    "sectionCount": 8
+  }
+}

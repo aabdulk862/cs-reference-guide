@@ -1,0 +1,245 @@
+{
+  "id": "observability-alerting-and-incident-response",
+  "slug": "alerting-and-incident-response",
+  "title": "Alerting and Incident Response",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Effective alerts are actionable (someone can do something about it), urgent (it needs attention now), and specific (the alert identifies the problem)",
+            "Alert severity tiers: P1/Critical (customer-facing outage, page immediately), P2/High (degraded service, page during business hours), P3/Medium (potential issue, ticket), P4/Low (informational, dashboard only)",
+            "On-call rotation best practices: 1-week rotations, maximum 2 pages per shift for sustainable operations, follow-the-sun for global teams",
+            "Incident response phases: Detection → Triage → Mitigation → Resolution → Post-Incident Review",
+            "Mean Time to Detect (MTTD) + Mean Time to Mitigate (MTTM) = Mean Time to Recovery (MTTR)",
+            "Runbooks document step-by-step procedures for known failure modes, reducing MTTM by eliminating investigation time",
+            "Post-incident reviews (blameless retrospectives) focus on systemic improvements, not individual fault",
+            "Alert fatigue is the primary operational risk — teams that receive more than 5 actionable alerts per on-call shift begin ignoring them"
+          ]
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Alerting and incident response practices apply to every production system that has users depending on its availability. You need structured alerting when your system has SLAs or SLOs that define acceptable performance levels, when multiple teams share on-call responsibility and need clear escalation paths, when incidents require coordinated response across teams (backend, infrastructure, database), and when regulatory requirements mandate documented incident response procedures and post-incident analysis."
+        },
+        {
+          "type": "paragraph",
+          "text": "Invest in incident response maturity when your organization experiences recurring incidents with the same root causes (indicating systemic issues not being addressed), when MTTR exceeds acceptable thresholds (indicating investigation and mitigation processes are inefficient), when on-call engineers report burnout from alert volume (indicating alert quality problems), and when post-incident reviews consistently identify the same categories of contributing factors (indicating organizational learning failures)."
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "alert-configuration-with-tiered-severity-cdk",
+          "heading": "Alert Configuration with Tiered Severity (CDK)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import * as cdk from 'aws-cdk-lib';\nimport * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';\nimport * as sns from 'aws-cdk-lib/aws-sns';\nimport * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';\nimport * as chatbot from 'aws-cdk-lib/aws-chatbot';\n\nexport class AlertingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {\n    super(scope, id, props);\n\n    // Tiered notification channels\n    const p1Topic = new sns.Topic(this, 'P1Critical', {\n      topicName: 'alerts-p1-critical',\n      displayName: 'Critical Alerts - Pages On-Call',\n    });\n\n    const p2Topic = new sns.Topic(this, 'P2High', {\n      topicName: 'alerts-p2-high',\n      displayName: 'High Alerts - Business Hours',\n    });\n\n    const p3Topic = new sns.Topic(this, 'P3Medium', {\n      topicName: 'alerts-p3-medium',\n      displayName: 'Medium Alerts - Ticket Creation',\n    });\n\n    // Slack integration for team visibility\n    const slackChannel = new chatbot.SlackChannelConfiguration(this, 'AlertsSlack', {\n      slackChannelConfigurationName: 'platform-alerts',\n      slackWorkspaceId: 'T0123456789',\n      slackChannelId: 'C0123456789',\n      notificationTopics: [p1Topic, p2Topic],\n    });\n\n    // P1: Complete service outage - page immediately\n    const serviceDownAlarm = new cloudwatch.Alarm(this, 'ServiceDown', {\n      alarmName: 'P1-order-service-down',\n      alarmDescription: 'Order service returning zero successful responses. RUNBOOK: https://wiki/runbooks/order-service-down',\n      metric: new cloudwatch.Metric({\n        namespace: 'OrderService/Production',\n        metricName: 'SuccessfulResponses',\n        statistic: 'Sum',\n        period: cdk.Duration.minutes(1),\n      }),\n      threshold: 0,\n      evaluationPeriods: 3,\n      datapointsToAlarm: 3,\n      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.BREACHING,\n    });\n    serviceDownAlarm.addAlarmAction(new actions.SnsAction(p1Topic));\n\n    // P2: High error rate - degraded but not down\n    const highErrorRate = new cloudwatch.Alarm(this, 'HighErrorRate', {\n      alarmName: 'P2-order-service-high-errors',\n      alarmDescription: 'Error rate exceeds 5% for sustained period. RUNBOOK: https://wiki/runbooks/high-error-rate',\n      metric: new cloudwatch.MathExpression({\n        expression: '(errors / total) * 100',\n        usingMetrics: {\n          errors: new cloudwatch.Metric({\n            namespace: 'OrderService/Production',\n            metricName: 'Errors',\n            statistic: 'Sum',\n            period: cdk.Duration.minutes(5),\n          }),\n          total: new cloudwatch.Metric({\n            namespace: 'OrderService/Production',\n            metricName: 'TotalRequests',\n            statistic: 'Sum',\n            period: cdk.Duration.minutes(5),\n          }),\n        },\n      }),\n      threshold: 5,\n      evaluationPeriods: 3,\n      datapointsToAlarm: 2,\n      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,\n    });\n    highErrorRate.addAlarmAction(new actions.SnsAction(p2Topic));\n\n    // P3: Approaching capacity - needs attention but not urgent\n    const highCpuAlarm = new cloudwatch.Alarm(this, 'HighCpu', {\n      alarmName: 'P3-order-service-high-cpu',\n      alarmDescription: 'CPU utilization approaching limits. Review scaling configuration.',\n      metric: new cloudwatch.Metric({\n        namespace: 'AWS/ECS',\n        metricName: 'CPUUtilization',\n        dimensionsMap: { ServiceName: 'order-service', ClusterName: 'production' },\n        statistic: 'Average',\n        period: cdk.Duration.minutes(10),\n      }),\n      threshold: 80,\n      evaluationPeriods: 6, // 1 hour sustained\n      datapointsToAlarm: 5,\n      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,\n    });\n    highCpuAlarm.addAlarmAction(new actions.SnsAction(p3Topic));\n\n    // Composite alarm: only page for real outages, not transient issues\n    const realOutage = new cloudwatch.CompositeAlarm(this, 'RealOutage', {\n      compositeAlarmName: 'P1-order-service-confirmed-outage',\n      alarmRule: cloudwatch.AlarmRule.allOf(\n        cloudwatch.AlarmRule.fromAlarm(serviceDownAlarm, cloudwatch.AlarmState.ALARM),\n        cloudwatch.AlarmRule.fromAlarm(highErrorRate, cloudwatch.AlarmState.ALARM)\n      ),\n    });\n    realOutage.addAlarmAction(new actions.SnsAction(p1Topic));\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "automated-incident-response-with-systems-manager",
+          "heading": "Automated Incident Response with Systems Manager",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# SSM Automation Document for automated rollback\nschemaVersion: '0.3'\ndescription: 'Automated rollback of ECS service to previous task definition'\nassumeRole: '{{AutomationAssumeRole}}'\nparameters:\n  ClusterName:\n    type: String\n    description: ECS cluster name\n  ServiceName:\n    type: String\n    description: ECS service name\n  AutomationAssumeRole:\n    type: String\n    description: IAM role for automation execution\n  NotificationTopic:\n    type: String\n    description: SNS topic for notifications\n\nmainSteps:\n  - name: GetCurrentTaskDefinition\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: DescribeServices\n      cluster: '{{ClusterName}}'\n      services:\n        - '{{ServiceName}}'\n    outputs:\n      - Name: CurrentTaskDef\n        Selector: $.services[0].taskDefinition\n        Type: String\n      - Name: DesiredCount\n        Selector: $.services[0].desiredCount\n        Type: Integer\n\n  - name: GetPreviousTaskDefinition\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: ListTaskDefinitions\n      familyPrefix: '{{ServiceName}}'\n      sort: DESC\n      maxResults: 5\n    outputs:\n      - Name: PreviousTaskDef\n        Selector: $.taskDefinitionArns[1]\n        Type: String\n\n  - name: NotifyRollbackStarting\n    action: aws:executeAwsApi\n    inputs:\n      Service: sns\n      Api: Publish\n      TopicArn: '{{NotificationTopic}}'\n      Subject: 'AUTOMATED ROLLBACK: {{ServiceName}}'\n      Message: |\n        Automated rollback initiated for {{ServiceName}} in {{ClusterName}}.\n        Current task definition: {{GetCurrentTaskDefinition.CurrentTaskDef}}\n        Rolling back to: {{GetPreviousTaskDefinition.PreviousTaskDef}}\n        Reason: CloudWatch alarm triggered automated remediation.\n\n  - name: UpdateService\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: UpdateService\n      cluster: '{{ClusterName}}'\n      service: '{{ServiceName}}'\n      taskDefinition: '{{GetPreviousTaskDefinition.PreviousTaskDef}}'\n      forceNewDeployment: true\n\n  - name: WaitForStability\n    action: aws:waitForAwsResourceProperty\n    timeoutSeconds: 600\n    inputs:\n      Service: ecs\n      Api: DescribeServices\n      cluster: '{{ClusterName}}'\n      services:\n        - '{{ServiceName}}'\n      PropertySelector: $.services[0].deployments[0].rolloutState\n      DesiredValues:\n        - COMPLETED\n\n  - name: NotifyRollbackComplete\n    action: aws:executeAwsApi\n    inputs:\n      Service: sns\n      Api: Publish\n      TopicArn: '{{NotificationTopic}}'\n      Subject: 'ROLLBACK COMPLETE: {{ServiceName}}'\n      Message: |\n        Automated rollback completed successfully for {{ServiceName}}.\n        Service is now running: {{GetPreviousTaskDefinition.PreviousTaskDef}}\n        Please investigate the root cause and create a post-incident ticket.",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pagerduty-integration-for-on-call-management",
+          "heading": "PagerDuty Integration for On-Call Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import json\nimport boto3\nimport urllib3\nfrom datetime import datetime\n\nhttp = urllib3.PoolManager()\n\ndef lambda_handler(event, context):\n    \"\"\"\n    Lambda function triggered by SNS from CloudWatch alarms.\n    Routes to PagerDuty with enriched context for faster incident response.\n    \"\"\"\n    for record in event['Records']:\n        message = json.loads(record['Sns']['Message'])\n        alarm_name = message['AlarmName']\n        alarm_description = message.get('AlarmDescription', '')\n        new_state = message['NewStateValue']\n        reason = message['NewStateReason']\n        timestamp = message['StateChangeTime']\n\n        # Determine severity from alarm name prefix\n        if alarm_name.startswith('P1-'):\n            severity = 'critical'\n            urgency = 'high'\n        elif alarm_name.startswith('P2-'):\n            severity = 'error'\n            urgency = 'high'\n        elif alarm_name.startswith('P3-'):\n            severity = 'warning'\n            urgency = 'low'\n        else:\n            severity = 'info'\n            urgency = 'low'\n\n        # Extract runbook URL from alarm description\n        runbook_url = None\n        if 'RUNBOOK:' in alarm_description:\n            runbook_url = alarm_description.split('RUNBOOK:')[1].strip()\n\n        # Build PagerDuty event\n        pd_event = {\n            'routing_key': get_routing_key(alarm_name),\n            'event_action': 'trigger' if new_state == 'ALARM' else 'resolve',\n            'dedup_key': alarm_name,\n            'payload': {\n                'summary': f'[{severity.upper()}] {alarm_name}: {reason[:200]}',\n                'severity': severity,\n                'source': 'aws-cloudwatch',\n                'timestamp': timestamp,\n                'component': extract_service_name(alarm_name),\n                'group': 'production',\n                'custom_details': {\n                    'alarm_name': alarm_name,\n                    'alarm_description': alarm_description,\n                    'state_reason': reason,\n                    'region': message.get('Region', 'us-east-1'),\n                    'account_id': message.get('AWSAccountId', ''),\n                    'metric_name': message.get('Trigger', {}).get('MetricName', ''),\n                    'threshold': message.get('Trigger', {}).get('Threshold', ''),\n                },\n            },\n            'links': [],\n        }\n\n        # Add runbook link if available\n        if runbook_url:\n            pd_event['links'].append({\n                'href': runbook_url,\n                'text': 'Runbook: Step-by-step remediation guide',\n            })\n\n        # Add CloudWatch console link\n        pd_event['links'].append({\n            'href': f'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:alarm/{alarm_name}',\n            'text': 'CloudWatch Alarm Console',\n        })\n\n        # Send to PagerDuty Events API v2\n        response = http.request(\n            'POST',\n            'https://events.pagerduty.com/v2/enqueue',\n            body=json.dumps(pd_event),\n            headers={'Content-Type': 'application/json'},\n        )\n\n        print(json.dumps({\n            'level': 'INFO',\n            'message': 'PagerDuty event sent',\n            'alarm': alarm_name,\n            'severity': severity,\n            'action': pd_event['event_action'],\n            'pd_response_status': response.status,\n        }))",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Alert fatigue from excessive non-actionable alerts: Teams receiving more than 5 actionable pages per on-call shift begin ignoring alerts, leading to missed real incidents. Every alert must have a clear action the on-call engineer can take. If the response to an alert is \"wait and see if it resolves,\" it should not page — make it a dashboard metric or a low-priority ticket. Regularly audit alert volume: if an alert fires more than once per week without requiring action, either fix the underlying issue or reduce the alert to informational severity.",
+            "Missing runbooks for known failure modes: When an alert fires at 3 AM, the on-call engineer should not need to figure out the investigation and remediation steps from scratch. Every P1 and P2 alert should link to a runbook documenting: what the alert means, how to verify the issue, immediate mitigation steps, escalation criteria, and root cause investigation guidance. Runbooks reduce MTTM from hours to minutes for known failure modes and enable less experienced engineers to handle incidents confidently.",
+            "Not implementing alert deduplication and correlation: During a major incident, dozens of alarms fire simultaneously as cascading failures propagate through the system. Without deduplication, the on-call engineer receives 50 pages in 5 minutes, each requiring individual acknowledgment. Implement composite alarms that represent the actual failure (not symptoms), use PagerDuty's alert grouping to consolidate related alerts into a single incident, and suppress downstream alerts when an upstream dependency is known to be failing.",
+            "Conducting blame-focused post-incident reviews: Post-incident reviews that focus on \"who made the mistake\" create a culture where engineers hide errors, avoid taking risks, and do not report near-misses. Blameless retrospectives focus on systemic factors: what made the error possible, what safeguards failed to prevent it, and what changes to systems, processes, or tooling would prevent recurrence. The goal is organizational learning, not individual punishment. Document contributing factors, not root causes (complex systems rarely have a single root cause).",
+            "Setting SLOs without error budgets or consequences: Defining SLOs (99.9% availability) without tracking error budget consumption or defining what happens when the budget is exhausted makes SLOs meaningless aspirations rather than operational tools. Track error budget burn rate in real-time. When the budget is consumed: freeze feature deployments, redirect engineering effort to reliability improvements, and require additional review for any production changes. This creates organizational alignment between feature velocity and reliability investment.",
+            "Not testing incident response procedures regularly: Incident response plans that are never practiced fail when needed. Engineers forget procedures, runbooks become outdated, escalation contacts change, and automation scripts break silently. Conduct regular game days (chaos engineering exercises) that simulate realistic failures and require the team to follow incident response procedures. Identify gaps in runbooks, communication channels, and tooling during controlled exercises rather than during real incidents."
+          ]
+        }
+      ],
+      "wordCount": 458,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Automated rollback preventing extended outage: A deployment introduces a memory leak that causes gradual degradation over 20 minutes. CloudWatch detects memory utilization exceeding 90% sustained for 10 minutes and error rate climbing above 5%. The composite alarm triggers an SSM automation document that rolls back to the previous ECS task definition, notifies the team, and creates a Jira ticket. Total customer impact: 12 minutes of degraded performance instead of a potential 2-hour outage requiring manual intervention.",
+            "Tiered alerting reducing on-call burnout: A platform team receiving 30+ pages per week implements tiered alerting. P1 alerts (complete outage) page immediately — these occur 1-2 times per month. P2 alerts (degraded service) page during business hours only — these occur 3-5 times per week. P3 alerts (approaching limits) create tickets — these occur daily. After implementation, on-call engineers receive 2-3 pages per shift instead of 30+, response quality improves because engineers are not fatigued, and MTTM decreases by 40% because engineers can focus on real issues.",
+            "Blameless post-incident review driving systemic improvement: A database failover causes 45 minutes of downtime. The post-incident review identifies contributing factors: the failover procedure was documented but never tested, the monitoring did not detect the primary's degradation before failure, and the application did not handle read-replica promotion gracefully. Action items: quarterly failover drills, enhanced database health monitoring, and connection pool configuration that handles endpoint changes. No individual is blamed; the system is improved.",
+            "Error budget-driven development prioritization: A team's SLO is 99.95% availability (21.9 minutes of downtime per month). After two incidents consuming 15 minutes of budget in the first week, the engineering manager pauses feature work and redirects the team to address the reliability issues identified in post-incident reviews. The team implements circuit breakers, improves health check accuracy, and adds integration tests for failure scenarios. The next month has zero incidents, and feature work resumes with confidence."
+          ]
+        }
+      ],
+      "wordCount": 310,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design an alerting strategy for a microservices platform with 50+ services?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Implement a layered approach. First, define SLOs for each service based on business criticality (payment service: 99.99%, recommendation service: 99.9%). Second, create symptom-based alerts that detect user-facing impact (error rate, latency percentiles) rather than cause-based alerts (CPU usage, memory). Third, implement tiered severity: P1 pages for complete outage of critical services, P2 for degraded performance, P3 for capacity warnings. Fourth, use composite alarms that combine multiple signals to reduce false positives (high errors AND sufficient traffic AND not during maintenance). Fifth, require every alert to link to a runbook. Sixth, implement alert routing based on service ownership — each team owns their service's alerts. Seventh, track alert quality metrics: pages per shift, false positive rate, time-to-acknowledge, and regularly retire noisy alerts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the incident response lifecycle and the role of each phase."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Detection: automated monitoring identifies an anomaly (alert fires, customer reports issue, synthetic monitor fails). The goal is minimizing MTTD through comprehensive monitoring and appropriate alert thresholds. Triage: the on-call engineer assesses severity, determines customer impact, and decides whether to escalate. This should take under 5 minutes using pre-defined severity criteria. Mitigation: take immediate action to reduce customer impact — rollback, failover, scale up, enable feature flag, or redirect traffic. Mitigation prioritizes speed over elegance; the goal is stopping the bleeding, not fixing the root cause. Resolution: after mitigation stabilizes the system, investigate and fix the underlying issue. This may happen hours or days later. Post-Incident Review: within 48 hours, conduct a blameless retrospective documenting the timeline, contributing factors, what went well, what could improve, and action items with owners and deadlines. The review drives systemic improvements that prevent recurrence."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What makes a good runbook and how do you keep them maintained?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A good runbook contains: trigger conditions (what alert or symptom leads here), verification steps (how to confirm the issue is real), immediate mitigation actions (step-by-step commands with expected output), escalation criteria (when to involve other teams), root cause investigation guidance (where to look, what queries to run), and recovery verification (how to confirm the issue is resolved). Keep runbooks maintained by: linking them directly from alert descriptions (engineers update them during incidents when steps are wrong), requiring runbook updates as post-incident review action items, conducting quarterly runbook reviews where the team walks through each one, and tracking runbook usage metrics (which runbooks are accessed during incidents, which are never used). Delete runbooks for alerts that no longer exist and create new ones for every new P1/P2 alert."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you measure and improve incident response effectiveness?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Track key metrics: MTTD (time from issue start to detection), MTTA (time from alert to acknowledgment), MTTM (time from acknowledgment to mitigation), MTTR (total time from issue start to resolution), and incident frequency by severity. Improve MTTD by expanding monitoring coverage and reducing alert thresholds for critical paths. Improve MTTA by optimizing on-call routing and reducing alert noise (fewer false positives means faster response to real issues). Improve MTTM by maintaining current runbooks, implementing automated remediation for known failure modes, and conducting regular incident response drills. Track these metrics over time, set improvement targets, and review progress quarterly. Also measure leading indicators: alert noise ratio (actionable vs total alerts), runbook coverage (percentage of P1/P2 alerts with runbooks), and post-incident action item completion rate."
+        }
+      ],
+      "wordCount": 564,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement automated alert suppression during planned maintenance windows: Create a maintenance mode mechanism that suppresses non-critical alerts during planned changes (deployments, database migrations, infrastructure updates). Use a CloudWatch metric or feature flag that composite alarms check before firing. This prevents alert storms during expected disruptions while keeping critical safety alerts (data loss, security breach) active. Automatically exit maintenance mode after a timeout to prevent accidental permanent suppression.",
+            "Track and publish on-call health metrics to leadership: Measure pages per shift, false positive rate, time-to-acknowledge, and engineer satisfaction scores. Publish these monthly to engineering leadership. When metrics degrade (pages per shift increasing, satisfaction decreasing), it creates organizational pressure to invest in reliability improvements, alert quality, and automation. Without visibility, on-call burden is invisible to decision-makers and never gets prioritized against feature work.",
+            "Implement progressive alert escalation rather than immediate paging: For non-critical alerts, implement a progressive escalation chain: first notify Slack (5-minute window for team response), then page the primary on-call (10-minute window), then page the secondary, then page the engineering manager. This gives the team opportunity to respond during working hours without paging, while ensuring critical issues always reach someone. Configure PagerDuty escalation policies to match this progression."
+          ]
+        }
+      ],
+      "wordCount": 197,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CloudWatch and Metrics — Metric-based alarms that trigger incident response",
+            "Log Aggregation and Analysis — Log-based investigation during incidents",
+            "Distributed Tracing — Trace-driven root cause analysis",
+            "Kubernetes & EKS — Pod health monitoring and automated remediation in Kubernetes"
+          ]
+        }
+      ],
+      "wordCount": 38,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import * as cdk from 'aws-cdk-lib';\nimport * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';\nimport * as sns from 'aws-cdk-lib/aws-sns';\nimport * as actions from 'aws-cdk-lib/aws-cloudwatch-actions';\nimport * as chatbot from 'aws-cdk-lib/aws-chatbot';\n\nexport class AlertingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {\n    super(scope, id, props);\n\n    // Tiered notification channels\n    const p1Topic = new sns.Topic(this, 'P1Critical', {\n      topicName: 'alerts-p1-critical',\n      displayName: 'Critical Alerts - Pages On-Call',\n    });\n\n    const p2Topic = new sns.Topic(this, 'P2High', {\n      topicName: 'alerts-p2-high',\n      displayName: 'High Alerts - Business Hours',\n    });\n\n    const p3Topic = new sns.Topic(this, 'P3Medium', {\n      topicName: 'alerts-p3-medium',\n      displayName: 'Medium Alerts - Ticket Creation',\n    });\n\n    // Slack integration for team visibility\n    const slackChannel = new chatbot.SlackChannelConfiguration(this, 'AlertsSlack', {\n      slackChannelConfigurationName: 'platform-alerts',\n      slackWorkspaceId: 'T0123456789',\n      slackChannelId: 'C0123456789',\n      notificationTopics: [p1Topic, p2Topic],\n    });\n\n    // P1: Complete service outage - page immediately\n    const serviceDownAlarm = new cloudwatch.Alarm(this, 'ServiceDown', {\n      alarmName: 'P1-order-service-down',\n      alarmDescription: 'Order service returning zero successful responses. RUNBOOK: https://wiki/runbooks/order-service-down',\n      metric: new cloudwatch.Metric({\n        namespace: 'OrderService/Production',\n        metricName: 'SuccessfulResponses',\n        statistic: 'Sum',\n        period: cdk.Duration.minutes(1),\n      }),\n      threshold: 0,\n      evaluationPeriods: 3,\n      datapointsToAlarm: 3,\n      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_OR_EQUAL_TO_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.BREACHING,\n    });\n    serviceDownAlarm.addAlarmAction(new actions.SnsAction(p1Topic));\n\n    // P2: High error rate - degraded but not down\n    const highErrorRate = new cloudwatch.Alarm(this, 'HighErrorRate', {\n      alarmName: 'P2-order-service-high-errors',\n      alarmDescription: 'Error rate exceeds 5% for sustained period. RUNBOOK: https://wiki/runbooks/high-error-rate',\n      metric: new cloudwatch.MathExpression({\n        expression: '(errors / total) * 100',\n        usingMetrics: {\n          errors: new cloudwatch.Metric({\n            namespace: 'OrderService/Production',\n            metricName: 'Errors',\n            statistic: 'Sum',\n            period: cdk.Duration.minutes(5),\n          }),\n          total: new cloudwatch.Metric({\n            namespace: 'OrderService/Production',\n            metricName: 'TotalRequests',\n            statistic: 'Sum',\n            period: cdk.Duration.minutes(5),\n          }),\n        },\n      }),\n      threshold: 5,\n      evaluationPeriods: 3,\n      datapointsToAlarm: 2,\n      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,\n    });\n    highErrorRate.addAlarmAction(new actions.SnsAction(p2Topic));\n\n    // P3: Approaching capacity - needs attention but not urgent\n    const highCpuAlarm = new cloudwatch.Alarm(this, 'HighCpu', {\n      alarmName: 'P3-order-service-high-cpu',\n      alarmDescription: 'CPU utilization approaching limits. Review scaling configuration.',\n      metric: new cloudwatch.Metric({\n        namespace: 'AWS/ECS',\n        metricName: 'CPUUtilization',\n        dimensionsMap: { ServiceName: 'order-service', ClusterName: 'production' },\n        statistic: 'Average',\n        period: cdk.Duration.minutes(10),\n      }),\n      threshold: 80,\n      evaluationPeriods: 6, // 1 hour sustained\n      datapointsToAlarm: 5,\n      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,\n      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,\n    });\n    highCpuAlarm.addAlarmAction(new actions.SnsAction(p3Topic));\n\n    // Composite alarm: only page for real outages, not transient issues\n    const realOutage = new cloudwatch.CompositeAlarm(this, 'RealOutage', {\n      compositeAlarmName: 'P1-order-service-confirmed-outage',\n      alarmRule: cloudwatch.AlarmRule.allOf(\n        cloudwatch.AlarmRule.fromAlarm(serviceDownAlarm, cloudwatch.AlarmState.ALARM),\n        cloudwatch.AlarmRule.fromAlarm(highErrorRate, cloudwatch.AlarmState.ALARM)\n      ),\n    });\n    realOutage.addAlarmAction(new actions.SnsAction(p1Topic));\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# SSM Automation Document for automated rollback\nschemaVersion: '0.3'\ndescription: 'Automated rollback of ECS service to previous task definition'\nassumeRole: '{{AutomationAssumeRole}}'\nparameters:\n  ClusterName:\n    type: String\n    description: ECS cluster name\n  ServiceName:\n    type: String\n    description: ECS service name\n  AutomationAssumeRole:\n    type: String\n    description: IAM role for automation execution\n  NotificationTopic:\n    type: String\n    description: SNS topic for notifications\n\nmainSteps:\n  - name: GetCurrentTaskDefinition\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: DescribeServices\n      cluster: '{{ClusterName}}'\n      services:\n        - '{{ServiceName}}'\n    outputs:\n      - Name: CurrentTaskDef\n        Selector: $.services[0].taskDefinition\n        Type: String\n      - Name: DesiredCount\n        Selector: $.services[0].desiredCount\n        Type: Integer\n\n  - name: GetPreviousTaskDefinition\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: ListTaskDefinitions\n      familyPrefix: '{{ServiceName}}'\n      sort: DESC\n      maxResults: 5\n    outputs:\n      - Name: PreviousTaskDef\n        Selector: $.taskDefinitionArns[1]\n        Type: String\n\n  - name: NotifyRollbackStarting\n    action: aws:executeAwsApi\n    inputs:\n      Service: sns\n      Api: Publish\n      TopicArn: '{{NotificationTopic}}'\n      Subject: 'AUTOMATED ROLLBACK: {{ServiceName}}'\n      Message: |\n        Automated rollback initiated for {{ServiceName}} in {{ClusterName}}.\n        Current task definition: {{GetCurrentTaskDefinition.CurrentTaskDef}}\n        Rolling back to: {{GetPreviousTaskDefinition.PreviousTaskDef}}\n        Reason: CloudWatch alarm triggered automated remediation.\n\n  - name: UpdateService\n    action: aws:executeAwsApi\n    inputs:\n      Service: ecs\n      Api: UpdateService\n      cluster: '{{ClusterName}}'\n      service: '{{ServiceName}}'\n      taskDefinition: '{{GetPreviousTaskDefinition.PreviousTaskDef}}'\n      forceNewDeployment: true\n\n  - name: WaitForStability\n    action: aws:waitForAwsResourceProperty\n    timeoutSeconds: 600\n    inputs:\n      Service: ecs\n      Api: DescribeServices\n      cluster: '{{ClusterName}}'\n      services:\n        - '{{ServiceName}}'\n      PropertySelector: $.services[0].deployments[0].rolloutState\n      DesiredValues:\n        - COMPLETED\n\n  - name: NotifyRollbackComplete\n    action: aws:executeAwsApi\n    inputs:\n      Service: sns\n      Api: Publish\n      TopicArn: '{{NotificationTopic}}'\n      Subject: 'ROLLBACK COMPLETE: {{ServiceName}}'\n      Message: |\n        Automated rollback completed successfully for {{ServiceName}}.\n        Service is now running: {{GetPreviousTaskDefinition.PreviousTaskDef}}\n        Please investigate the root cause and create a post-incident ticket.",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import json\nimport boto3\nimport urllib3\nfrom datetime import datetime\n\nhttp = urllib3.PoolManager()\n\ndef lambda_handler(event, context):\n    \"\"\"\n    Lambda function triggered by SNS from CloudWatch alarms.\n    Routes to PagerDuty with enriched context for faster incident response.\n    \"\"\"\n    for record in event['Records']:\n        message = json.loads(record['Sns']['Message'])\n        alarm_name = message['AlarmName']\n        alarm_description = message.get('AlarmDescription', '')\n        new_state = message['NewStateValue']\n        reason = message['NewStateReason']\n        timestamp = message['StateChangeTime']\n\n        # Determine severity from alarm name prefix\n        if alarm_name.startswith('P1-'):\n            severity = 'critical'\n            urgency = 'high'\n        elif alarm_name.startswith('P2-'):\n            severity = 'error'\n            urgency = 'high'\n        elif alarm_name.startswith('P3-'):\n            severity = 'warning'\n            urgency = 'low'\n        else:\n            severity = 'info'\n            urgency = 'low'\n\n        # Extract runbook URL from alarm description\n        runbook_url = None\n        if 'RUNBOOK:' in alarm_description:\n            runbook_url = alarm_description.split('RUNBOOK:')[1].strip()\n\n        # Build PagerDuty event\n        pd_event = {\n            'routing_key': get_routing_key(alarm_name),\n            'event_action': 'trigger' if new_state == 'ALARM' else 'resolve',\n            'dedup_key': alarm_name,\n            'payload': {\n                'summary': f'[{severity.upper()}] {alarm_name}: {reason[:200]}',\n                'severity': severity,\n                'source': 'aws-cloudwatch',\n                'timestamp': timestamp,\n                'component': extract_service_name(alarm_name),\n                'group': 'production',\n                'custom_details': {\n                    'alarm_name': alarm_name,\n                    'alarm_description': alarm_description,\n                    'state_reason': reason,\n                    'region': message.get('Region', 'us-east-1'),\n                    'account_id': message.get('AWSAccountId', ''),\n                    'metric_name': message.get('Trigger', {}).get('MetricName', ''),\n                    'threshold': message.get('Trigger', {}).get('Threshold', ''),\n                },\n            },\n            'links': [],\n        }\n\n        # Add runbook link if available\n        if runbook_url:\n            pd_event['links'].append({\n                'href': runbook_url,\n                'text': 'Runbook: Step-by-step remediation guide',\n            })\n\n        # Add CloudWatch console link\n        pd_event['links'].append({\n            'href': f'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:alarm/{alarm_name}',\n            'text': 'CloudWatch Alarm Console',\n        })\n\n        # Send to PagerDuty Events API v2\n        response = http.request(\n            'POST',\n            'https://events.pagerduty.com/v2/enqueue',\n            body=json.dumps(pd_event),\n            headers={'Content-Type': 'application/json'},\n        )\n\n        print(json.dumps({\n            'level': 'INFO',\n            'message': 'PagerDuty event sent',\n            'alarm': alarm_name,\n            'severity': severity,\n            'action': pd_event['event_action'],\n            'pd_response_status': response.status,\n        }))",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/observability/alerting-and-incident-response.md",
+    "wordCount": 1835,
+    "sectionCount": 11
+  }
+}

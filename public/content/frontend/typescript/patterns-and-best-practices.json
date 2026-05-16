@@ -1,0 +1,222 @@
+{
+  "id": "typescript-patterns-and-best-practices",
+  "slug": "patterns-and-best-practices",
+  "title": "Patterns and Best Practices",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Branded types create nominally distinct types from structural primitives: type UserId = string & { __brand: 'UserId' }",
+            "The builder pattern accumulates type information through method chaining, with each call returning a more specific type",
+            "Discriminated unions model state machines where each state has exactly the fields relevant to it, making impossible states unrepresentable",
+            "Utility types (Partial, Required, Pick, Omit, Record) derive related types from a single source of truth",
+            "satisfies validates expressions against types without widening, preserving literal types while ensuring schema compliance",
+            "Exhaustive pattern matching with never in default cases catches unhandled union members at compile time",
+            "Opaque types hide internal structure behind a branded interface, enforcing construction through validated factory functions",
+            "Type-safe error handling uses discriminated union Result types instead of thrown exceptions for expected failure cases"
+          ]
+        }
+      ],
+      "wordCount": 130,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "TypeScript patterns and best practices apply across all production TypeScript codebases. Branded types are essential in domains where structurally identical values have different semantics (user IDs vs order IDs, USD vs EUR amounts, validated vs unvalidated strings). The builder pattern suits configuration objects, query construction, and any API where options accumulate incrementally. Discriminated unions should be the default approach for modeling state in React components, Redux reducers, and any system with distinct modes of operation. Utility types eliminate repetitive type definitions when you need create/update/response variants of the same entity. These patterns collectively produce code that is self-documenting, resistant to logic errors, and provides excellent IDE support through precise type inference and autocomplete."
+        }
+      ],
+      "wordCount": 113,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Branded types for domain safety\ndeclare const __brand: unique symbol;\ntype Brand<T, B extends string> = T & { [__brand]: B };\n\ntype UserId = Brand<string, 'UserId'>;\ntype OrderId = Brand<string, 'OrderId'>;\ntype Email = Brand<string, 'Email'>;\ntype PositiveInt = Brand<number, 'PositiveInt'>;\n\n// Factory functions that validate and brand\nfunction createUserId(value: string): UserId {\n  if (!value.match(/^usr_[a-z0-9]{12}$/)) {\n    throw new Error(`Invalid user ID format: ${value}`);\n  }\n  return value as UserId;\n}\n\nfunction createEmail(value: string): Email {\n  if (!value.includes('@') || !value.includes('.')) {\n    throw new Error(`Invalid email: ${value}`);\n  }\n  return value.toLowerCase().trim() as Email;\n}\n\nfunction createPositiveInt(value: number): PositiveInt {\n  if (!Number.isInteger(value) || value <= 0) {\n    throw new Error(`Expected positive integer, got: ${value}`);\n  }\n  return value as PositiveInt;\n}\n\n// Type system prevents mixing branded types\nfunction findUser(id: UserId): Promise<User | null> {\n  return db.users.findById(id);\n}\n\nfunction findOrder(id: OrderId): Promise<Order | null> {\n  return db.orders.findById(id);\n}\n\nconst userId = createUserId('usr_abc123def456');\nconst orderId = 'ord_xyz789' as OrderId;\n\nfindUser(userId);   // OK\n// findUser(orderId); // Error: OrderId not assignable to UserId\n// findOrder(userId); // Error: UserId not assignable to OrderId\n\n\n// Discriminated unions for state machine modeling\ntype AsyncState<T, E = Error> =\n  | { status: 'idle' }\n  | { status: 'loading'; startedAt: number }\n  | { status: 'success'; data: T; fetchedAt: number }\n  | { status: 'error'; error: E; failedAt: number; retryCount: number }\n  | { status: 'refreshing'; data: T; startedAt: number };\n\n// State transitions are type-safe\nfunction transition<T>(\n  state: AsyncState<T>,\n  action:\n    | { type: 'FETCH_START' }\n    | { type: 'FETCH_SUCCESS'; data: T }\n    | { type: 'FETCH_ERROR'; error: Error }\n    | { type: 'REFRESH' }\n    | { type: 'RESET' }\n): AsyncState<T> {\n  switch (action.type) {\n    case 'FETCH_START':\n      return { status: 'loading', startedAt: Date.now() };\n\n    case 'FETCH_SUCCESS':\n      return { status: 'success', data: action.data, fetchedAt: Date.now() };\n\n    case 'FETCH_ERROR':\n      const retryCount = state.status === 'error' ? state.retryCount + 1 : 0;\n      return { status: 'error', error: action.error, failedAt: Date.now(), retryCount };\n\n    case 'REFRESH':\n      if (state.status !== 'success') return state;\n      return { status: 'refreshing', data: state.data, startedAt: Date.now() };\n\n    case 'RESET':\n      return { status: 'idle' };\n\n    default:\n      const _exhaustive: never = action;\n      return _exhaustive;\n  }\n}\n\n// Rendering based on state: TypeScript narrows in each branch\nfunction renderState<T>(state: AsyncState<T>, render: (data: T) => string): string {\n  switch (state.status) {\n    case 'idle':\n      return 'Ready to load';\n    case 'loading':\n      return `Loading since ${new Date(state.startedAt).toLocaleTimeString()}`;\n    case 'success':\n      return render(state.data); // data is available\n    case 'error':\n      return `Error: ${state.error.message} (retry #${state.retryCount})`;\n    case 'refreshing':\n      return `${render(state.data)} (refreshing...)`; // stale data available\n  }\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Type-safe builder pattern with progressive type accumulation\ninterface HttpRequestConfig {\n  url: string;\n  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';\n  headers: Record<string, string>;\n  body?: unknown;\n  timeout?: number;\n  retries?: number;\n}\n\ntype RequiredFields = 'url' | 'method';\ntype OptionalFields = Exclude<keyof HttpRequestConfig, RequiredFields>;\n\nclass RequestBuilder<Built extends string = never> {\n  private config: Partial<HttpRequestConfig> = { headers: {} };\n\n  url(url: string): RequestBuilder<Built | 'url'> {\n    this.config.url = url;\n    return this as unknown as RequestBuilder<Built | 'url'>;\n  }\n\n  method(method: HttpRequestConfig['method']): RequestBuilder<Built | 'method'> {\n    this.config.method = method;\n    return this as unknown as RequestBuilder<Built | 'method'>;\n  }\n\n  header(key: string, value: string): this {\n    this.config.headers = { ...this.config.headers, [key]: value };\n    return this;\n  }\n\n  body(body: unknown): this {\n    this.config.body = body;\n    return this;\n  }\n\n  timeout(ms: number): this {\n    this.config.timeout = ms;\n    return this;\n  }\n\n  retries(count: number): this {\n    this.config.retries = count;\n    return this;\n  }\n\n  // build() is only available when all required fields are set\n  build(this: RequestBuilder<RequiredFields>): HttpRequestConfig {\n    return this.config as HttpRequestConfig;\n  }\n}\n\n// Usage: TypeScript enforces that url and method are set before build\nconst request = new RequestBuilder()\n  .url('/api/users')\n  .method('POST')\n  .header('Content-Type', 'application/json')\n  .body({ name: 'Alice' })\n  .timeout(5000)\n  .build(); // OK: url and method are set\n\n// const invalid = new RequestBuilder()\n//   .url('/api/users')\n//   .build(); // Error: method not set, build() not available\n\n\n// Result type for type-safe error handling without exceptions\ntype Result<T, E extends Error = Error> =\n  | { ok: true; value: T }\n  | { ok: false; error: E };\n\n// Namespace for Result constructors and utilities\nconst Result = {\n  ok<T>(value: T): Result<T, never> {\n    return { ok: true, value };\n  },\n\n  err<E extends Error>(error: E): Result<never, E> {\n    return { ok: false, error };\n  },\n\n  map<T, U, E extends Error>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {\n    return result.ok ? Result.ok(fn(result.value)) : result;\n  },\n\n  flatMap<T, U, E extends Error, E2 extends Error>(\n    result: Result<T, E>,\n    fn: (value: T) => Result<U, E2>\n  ): Result<U, E | E2> {\n    return result.ok ? fn(result.value) : result;\n  },\n\n  unwrap<T, E extends Error>(result: Result<T, E>): T {\n    if (result.ok) return result.value;\n    throw result.error;\n  },\n\n  fromPromise<T>(promise: Promise<T>): Promise<Result<T, Error>> {\n    return promise\n      .then(value => Result.ok(value) as Result<T, Error>)\n      .catch(error => Result.err(error instanceof Error ? error : new Error(String(error))));\n  },\n};\n\n// Usage: composing fallible operations\nclass ValidationError extends Error {\n  constructor(public field: string, message: string) {\n    super(message);\n    this.name = 'ValidationError';\n  }\n}\n\nclass NetworkError extends Error {\n  constructor(public statusCode: number, message: string) {\n    super(message);\n    this.name = 'NetworkError';\n  }\n}\n\nfunction validateEmail(input: string): Result<Email, ValidationError> {\n  if (!input.includes('@')) {\n    return Result.err(new ValidationError('email', 'Must contain @'));\n  }\n  return Result.ok(input.toLowerCase().trim() as Email);\n}\n\nasync function registerUser(\n  email: string,\n  password: string\n): Promise<Result<User, ValidationError | NetworkError>> {\n  const emailResult = validateEmail(email);\n  if (!emailResult.ok) return emailResult;\n\n  const response = await fetch('/api/register', {\n    method: 'POST',\n    body: JSON.stringify({ email: emailResult.value, password }),\n  });\n\n  if (!response.ok) {\n    return Result.err(new NetworkError(response.status, response.statusText));\n  }\n\n  const user = await response.json();\n  return Result.ok(user);\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Utility type patterns for DRY type definitions\ninterface BaseEntity {\n  id: string;\n  createdAt: Date;\n  updatedAt: Date;\n  version: number;\n}\n\ninterface User extends BaseEntity {\n  name: string;\n  email: string;\n  role: 'admin' | 'user' | 'moderator';\n  preferences: UserPreferences;\n}\n\ninterface UserPreferences {\n  theme: 'light' | 'dark' | 'system';\n  language: string;\n  notifications: {\n    email: boolean;\n    push: boolean;\n    sms: boolean;\n  };\n}\n\n// Derive all related types from the base User interface\ntype CreateUserInput = Omit<User, keyof BaseEntity>;\ntype UpdateUserInput = Partial<Omit<User, keyof BaseEntity | 'email'>> & { id: string };\ntype UserResponse = Omit<User, 'version'>;\ntype PublicProfile = Pick<User, 'id' | 'name' | 'role'>;\ntype UserSummary = Pick<User, 'id' | 'name' | 'email' | 'role'>;\n\n// Deep partial for patch operations on nested objects\ntype DeepPartial<T> = T extends object\n  ? { [K in keyof T]?: DeepPartial<T[K]> }\n  : T;\n\ntype PatchUserPreferences = DeepPartial<UserPreferences>;\n// { theme?: ...; language?: ...; notifications?: { email?: ...; push?: ...; sms?: ... } }\n\n\n// satisfies operator for validated constants with preserved literals\ninterface RouteConfig {\n  path: string;\n  component: string;\n  auth: boolean;\n  roles?: Array<'admin' | 'user' | 'moderator'>;\n}\n\n// satisfies validates shape while preserving literal types\nconst routes = {\n  home: { path: '/', component: 'Dashboard', auth: false },\n  profile: { path: '/profile', component: 'Profile', auth: true },\n  admin: { path: '/admin', component: 'AdminPanel', auth: true, roles: ['admin'] },\n  settings: { path: '/settings', component: 'Settings', auth: true, roles: ['admin', 'moderator'] },\n} satisfies Record<string, RouteConfig>;\n\n// TypeScript knows the exact literal types:\ntype HomeRoute = typeof routes.home;\n// { path: \"/\"; component: \"Dashboard\"; auth: false }\n// NOT { path: string; component: string; auth: boolean }\n\n// Autocomplete works for route keys:\nfunction navigate(route: keyof typeof routes): void {\n  window.location.href = routes[route].path;\n}\nnavigate('home');    // OK\n// navigate('invalid'); // Error: not a valid route key\n\n\n// Exhaustive pattern matching with compile-time safety\ntype PaymentMethod =\n  | { type: 'credit_card'; last4: string; brand: string; expiryMonth: number; expiryYear: number }\n  | { type: 'bank_transfer'; bankName: string; accountLast4: string }\n  | { type: 'paypal'; email: string }\n  | { type: 'crypto'; walletAddress: string; network: 'ethereum' | 'bitcoin' };\n\nfunction processPayment(method: PaymentMethod): string {\n  switch (method.type) {\n    case 'credit_card':\n      return `Charging ${method.brand} ending in ${method.last4}`;\n    case 'bank_transfer':\n      return `Transferring from ${method.bankName} account ***${method.accountLast4}`;\n    case 'paypal':\n      return `Processing PayPal payment for ${method.email}`;\n    case 'crypto':\n      return `Sending to ${method.network} wallet ${method.walletAddress.slice(0, 8)}...`;\n    default:\n      // If a new payment type is added to the union without a case here,\n      // this line produces a compile error\n      const _exhaustive: never = method;\n      return _exhaustive;\n  }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Overusing branded types for every primitive: Branding every string and number in the codebase creates excessive ceremony (factory functions, type assertions) without proportional safety benefit. Brand types only when mixing values would cause real bugs: IDs that reference different entities, monetary amounts in different currencies, validated vs unvalidated inputs. Simple strings like display names or descriptions rarely need branding.",
+            "Making impossible states representable with optional fields: Using { data?: T; error?: Error; loading?: boolean } allows states like { data: user, error: someError, loading: true } which should never occur. Discriminated unions ({ status: 'success'; data: T } | { status: 'error'; error: Error }) make each state explicit and mutually exclusive, enabling exhaustive handling and preventing logic bugs from impossible combinations.",
+            "Deriving too many types from a single source: While DRY type definitions are good, creating 10+ derived types from one interface (CreateInput, UpdateInput, PatchInput, Response, Summary, PublicView, AdminView, etc.) can make the type relationships hard to follow. If derived types diverge significantly from the source, consider defining them independently with explicit documentation of their relationship.",
+            "Using as assertions instead of type guards in Result patterns: When working with Result types or discriminated unions, using result.value as T bypasses the type narrowing that makes these patterns safe. Always check the discriminant (if (result.ok)) to narrow the type, letting TypeScript verify that you are accessing the correct fields for the current state.",
+            "Ignoring the satisfies operator for configuration objects: Annotating constants with a type (const config: Config = { ... }) widens literal values to their base types, losing autocomplete for specific values. Using satisfies preserves the exact literal types while still validating the shape, giving you both compile-time safety and precise type inference for downstream consumers.",
+            "Not providing escape hatches in strict type systems: Overly strict types that require extensive ceremony for simple operations frustrate developers and lead to widespread as any usage. Design type APIs with reasonable defaults, provide helper functions for common operations, and allow gradual strictness (accept broader types at boundaries, narrow internally) rather than requiring maximum precision everywhere."
+          ]
+        }
+      ],
+      "wordCount": 343,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Financial systems with currency safety: Trading platforms and payment processors use branded types to prevent arithmetic between different currencies (USD + EUR is a compile error), ensure amounts pass through validation before processing, and distinguish between gross/net/tax amounts that are all numbers but semantically different. The type system catches currency conversion bugs that would otherwise cause financial discrepancies.",
+            "React state management with discriminated unions: Complex UI components (multi-step forms, data fetching, authentication flows) model their state as discriminated unions where each state variant contains exactly the data available in that state. This eliminates null checks, prevents accessing data before it is loaded, and enables exhaustive rendering logic where the compiler verifies every state is handled.",
+            "API contract enforcement with utility types: Backend teams define a single entity interface and derive all API-related types (create input, update input, response, list response) using utility types. When the base entity changes, all derived types update automatically, and TypeScript catches any API handler that does not conform to the new shape. This pattern is used extensively in tRPC and NestJS applications.",
+            "Configuration management with satisfies: Large applications with complex configuration (feature flags, environment-specific settings, theme tokens) use satisfies to validate configuration objects against schemas while preserving literal types for autocomplete. Developers get immediate feedback when configuration is invalid, and consuming code gets precise types for each configuration value.",
+            "Event-driven architectures with typed event maps: Microservice communication, WebSocket protocols, and pub/sub systems define typed event maps where each event name maps to a specific payload type. The TypeScript compiler ensures that event publishers send correctly-shaped payloads and event subscribers handle the correct types, catching protocol mismatches at compile time rather than runtime."
+          ]
+        }
+      ],
+      "wordCount": 277,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What are branded types and when would you use them over plain type aliases?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Branded types add a phantom property (a property that exists only at the type level) to a primitive type, creating a nominally distinct type that is structurally incompatible with the unbranded version. type UserId = string & { __brand: 'UserId' } makes UserId incompatible with plain strings or other branded strings. Use them when structurally identical values have different semantics and mixing them would cause bugs: database IDs for different entities, monetary amounts in different currencies, validated vs unvalidated inputs. Plain type aliases (type UserId = string) provide documentation but no safety because they are structurally identical to their base type."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you model state machines in TypeScript to prevent impossible states?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use discriminated unions where each state is a separate object type with a literal status (or type) discriminant field and only the fields relevant to that state. Instead of { data?: T; error?: Error; loading: boolean } which allows impossible combinations, define { status: 'loading' } | { status: 'success'; data: T } | { status: 'error'; error: Error }. Each state variant is self-contained, TypeScript narrows to the correct variant in switch/if blocks, and exhaustive checking ensures all states are handled. Transition functions accept the current state and an action, returning the new state with compile-time verification that only valid transitions occur."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the satisfies operator and how it differs from type annotations."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A type annotation (const x: Type = value) checks that the value conforms to the type but widens the variable's type to the annotation, losing literal information. satisfies (const x = value satisfies Type) validates the value against the type (including excess property checks) while preserving the narrowest inferred type of the value. This means const routes = { home: '/home' } satisfies Record<string, string> gives routes.home the type \"/home\" (literal) rather than string (widened). Use satisfies for configuration objects, route maps, and constants where you want both validation and precise types."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement type-safe error handling without exceptions in TypeScript?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a Result discriminated union type: type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }. Functions that can fail return Result instead of throwing. Callers must check result.ok before accessing the value, which TypeScript enforces through narrowing. Compose fallible operations with map (transform success values) and flatMap (chain operations that might fail). This approach makes error handling explicit in function signatures, prevents unhandled errors, and enables typed error discrimination (different error types for different failure modes). It is particularly valuable for validation pipelines, API calls, and any operation where failure is expected rather than exceptional."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Pick, Omit, and manual interface definition for creating type variants?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Pick<T, K> creates a type with only the specified keys from T, useful for creating focused views (public profile from full user). Omit<T, K> creates a type with all keys except the specified ones, useful for creation inputs (omit auto-generated fields like id and timestamps). Both maintain a live connection to the source type: if a property's type changes in T, the derived type updates automatically. Manual interface definition is independent and does not track changes to the source. Use Pick/Omit when the derived type should always mirror the source; use manual definition when the types may diverge independently or when the relationship is coincidental rather than intentional."
+        }
+      ],
+      "wordCount": 580,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Establish a type utilities module early in the project: Create a src/types/utils.ts file with project-specific branded types, Result types, and commonly-used type transformations. Having these available from the start encourages consistent patterns across the team and prevents ad-hoc solutions that diverge in style and capability.",
+            "Use discriminated unions as the default for component state: Every React component with more than two boolean state variables should consider a discriminated union instead. The upfront cost of defining the union pays dividends in preventing impossible state bugs, simplifying rendering logic (each case handles exactly one state), and making state transitions explicit and auditable.",
+            "Validate at boundaries, trust internally: Apply runtime validation (Zod, io-ts, or custom type guards) at system boundaries where external data enters (API responses, user input, localStorage, URL params). Once data passes validation and receives a branded or narrowed type, internal code can trust the types without additional runtime checks. This concentrates validation logic at entry points rather than scattering defensive checks throughout the codebase."
+          ]
+        }
+      ],
+      "wordCount": 164,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type System Fundamentals — Structural typing and discriminated unions are the foundation for these patterns",
+            "Generics and Constraints — Generic Result types and builder patterns rely on generic type parameters",
+            "Advanced Types — Utility types, conditional types, and mapped types enable the DRY type derivation patterns"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Branded types for domain safety\ndeclare const __brand: unique symbol;\ntype Brand<T, B extends string> = T & { [__brand]: B };\n\ntype UserId = Brand<string, 'UserId'>;\ntype OrderId = Brand<string, 'OrderId'>;\ntype Email = Brand<string, 'Email'>;\ntype PositiveInt = Brand<number, 'PositiveInt'>;\n\n// Factory functions that validate and brand\nfunction createUserId(value: string): UserId {\n  if (!value.match(/^usr_[a-z0-9]{12}$/)) {\n    throw new Error(`Invalid user ID format: ${value}`);\n  }\n  return value as UserId;\n}\n\nfunction createEmail(value: string): Email {\n  if (!value.includes('@') || !value.includes('.')) {\n    throw new Error(`Invalid email: ${value}`);\n  }\n  return value.toLowerCase().trim() as Email;\n}\n\nfunction createPositiveInt(value: number): PositiveInt {\n  if (!Number.isInteger(value) || value <= 0) {\n    throw new Error(`Expected positive integer, got: ${value}`);\n  }\n  return value as PositiveInt;\n}\n\n// Type system prevents mixing branded types\nfunction findUser(id: UserId): Promise<User | null> {\n  return db.users.findById(id);\n}\n\nfunction findOrder(id: OrderId): Promise<Order | null> {\n  return db.orders.findById(id);\n}\n\nconst userId = createUserId('usr_abc123def456');\nconst orderId = 'ord_xyz789' as OrderId;\n\nfindUser(userId);   // OK\n// findUser(orderId); // Error: OrderId not assignable to UserId\n// findOrder(userId); // Error: UserId not assignable to OrderId\n\n\n// Discriminated unions for state machine modeling\ntype AsyncState<T, E = Error> =\n  | { status: 'idle' }\n  | { status: 'loading'; startedAt: number }\n  | { status: 'success'; data: T; fetchedAt: number }\n  | { status: 'error'; error: E; failedAt: number; retryCount: number }\n  | { status: 'refreshing'; data: T; startedAt: number };\n\n// State transitions are type-safe\nfunction transition<T>(\n  state: AsyncState<T>,\n  action:\n    | { type: 'FETCH_START' }\n    | { type: 'FETCH_SUCCESS'; data: T }\n    | { type: 'FETCH_ERROR'; error: Error }\n    | { type: 'REFRESH' }\n    | { type: 'RESET' }\n): AsyncState<T> {\n  switch (action.type) {\n    case 'FETCH_START':\n      return { status: 'loading', startedAt: Date.now() };\n\n    case 'FETCH_SUCCESS':\n      return { status: 'success', data: action.data, fetchedAt: Date.now() };\n\n    case 'FETCH_ERROR':\n      const retryCount = state.status === 'error' ? state.retryCount + 1 : 0;\n      return { status: 'error', error: action.error, failedAt: Date.now(), retryCount };\n\n    case 'REFRESH':\n      if (state.status !== 'success') return state;\n      return { status: 'refreshing', data: state.data, startedAt: Date.now() };\n\n    case 'RESET':\n      return { status: 'idle' };\n\n    default:\n      const _exhaustive: never = action;\n      return _exhaustive;\n  }\n}\n\n// Rendering based on state: TypeScript narrows in each branch\nfunction renderState<T>(state: AsyncState<T>, render: (data: T) => string): string {\n  switch (state.status) {\n    case 'idle':\n      return 'Ready to load';\n    case 'loading':\n      return `Loading since ${new Date(state.startedAt).toLocaleTimeString()}`;\n    case 'success':\n      return render(state.data); // data is available\n    case 'error':\n      return `Error: ${state.error.message} (retry #${state.retryCount})`;\n    case 'refreshing':\n      return `${render(state.data)} (refreshing...)`; // stale data available\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Type-safe builder pattern with progressive type accumulation\ninterface HttpRequestConfig {\n  url: string;\n  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';\n  headers: Record<string, string>;\n  body?: unknown;\n  timeout?: number;\n  retries?: number;\n}\n\ntype RequiredFields = 'url' | 'method';\ntype OptionalFields = Exclude<keyof HttpRequestConfig, RequiredFields>;\n\nclass RequestBuilder<Built extends string = never> {\n  private config: Partial<HttpRequestConfig> = { headers: {} };\n\n  url(url: string): RequestBuilder<Built | 'url'> {\n    this.config.url = url;\n    return this as unknown as RequestBuilder<Built | 'url'>;\n  }\n\n  method(method: HttpRequestConfig['method']): RequestBuilder<Built | 'method'> {\n    this.config.method = method;\n    return this as unknown as RequestBuilder<Built | 'method'>;\n  }\n\n  header(key: string, value: string): this {\n    this.config.headers = { ...this.config.headers, [key]: value };\n    return this;\n  }\n\n  body(body: unknown): this {\n    this.config.body = body;\n    return this;\n  }\n\n  timeout(ms: number): this {\n    this.config.timeout = ms;\n    return this;\n  }\n\n  retries(count: number): this {\n    this.config.retries = count;\n    return this;\n  }\n\n  // build() is only available when all required fields are set\n  build(this: RequestBuilder<RequiredFields>): HttpRequestConfig {\n    return this.config as HttpRequestConfig;\n  }\n}\n\n// Usage: TypeScript enforces that url and method are set before build\nconst request = new RequestBuilder()\n  .url('/api/users')\n  .method('POST')\n  .header('Content-Type', 'application/json')\n  .body({ name: 'Alice' })\n  .timeout(5000)\n  .build(); // OK: url and method are set\n\n// const invalid = new RequestBuilder()\n//   .url('/api/users')\n//   .build(); // Error: method not set, build() not available\n\n\n// Result type for type-safe error handling without exceptions\ntype Result<T, E extends Error = Error> =\n  | { ok: true; value: T }\n  | { ok: false; error: E };\n\n// Namespace for Result constructors and utilities\nconst Result = {\n  ok<T>(value: T): Result<T, never> {\n    return { ok: true, value };\n  },\n\n  err<E extends Error>(error: E): Result<never, E> {\n    return { ok: false, error };\n  },\n\n  map<T, U, E extends Error>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {\n    return result.ok ? Result.ok(fn(result.value)) : result;\n  },\n\n  flatMap<T, U, E extends Error, E2 extends Error>(\n    result: Result<T, E>,\n    fn: (value: T) => Result<U, E2>\n  ): Result<U, E | E2> {\n    return result.ok ? fn(result.value) : result;\n  },\n\n  unwrap<T, E extends Error>(result: Result<T, E>): T {\n    if (result.ok) return result.value;\n    throw result.error;\n  },\n\n  fromPromise<T>(promise: Promise<T>): Promise<Result<T, Error>> {\n    return promise\n      .then(value => Result.ok(value) as Result<T, Error>)\n      .catch(error => Result.err(error instanceof Error ? error : new Error(String(error))));\n  },\n};\n\n// Usage: composing fallible operations\nclass ValidationError extends Error {\n  constructor(public field: string, message: string) {\n    super(message);\n    this.name = 'ValidationError';\n  }\n}\n\nclass NetworkError extends Error {\n  constructor(public statusCode: number, message: string) {\n    super(message);\n    this.name = 'NetworkError';\n  }\n}\n\nfunction validateEmail(input: string): Result<Email, ValidationError> {\n  if (!input.includes('@')) {\n    return Result.err(new ValidationError('email', 'Must contain @'));\n  }\n  return Result.ok(input.toLowerCase().trim() as Email);\n}\n\nasync function registerUser(\n  email: string,\n  password: string\n): Promise<Result<User, ValidationError | NetworkError>> {\n  const emailResult = validateEmail(email);\n  if (!emailResult.ok) return emailResult;\n\n  const response = await fetch('/api/register', {\n    method: 'POST',\n    body: JSON.stringify({ email: emailResult.value, password }),\n  });\n\n  if (!response.ok) {\n    return Result.err(new NetworkError(response.status, response.statusText));\n  }\n\n  const user = await response.json();\n  return Result.ok(user);\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Utility type patterns for DRY type definitions\ninterface BaseEntity {\n  id: string;\n  createdAt: Date;\n  updatedAt: Date;\n  version: number;\n}\n\ninterface User extends BaseEntity {\n  name: string;\n  email: string;\n  role: 'admin' | 'user' | 'moderator';\n  preferences: UserPreferences;\n}\n\ninterface UserPreferences {\n  theme: 'light' | 'dark' | 'system';\n  language: string;\n  notifications: {\n    email: boolean;\n    push: boolean;\n    sms: boolean;\n  };\n}\n\n// Derive all related types from the base User interface\ntype CreateUserInput = Omit<User, keyof BaseEntity>;\ntype UpdateUserInput = Partial<Omit<User, keyof BaseEntity | 'email'>> & { id: string };\ntype UserResponse = Omit<User, 'version'>;\ntype PublicProfile = Pick<User, 'id' | 'name' | 'role'>;\ntype UserSummary = Pick<User, 'id' | 'name' | 'email' | 'role'>;\n\n// Deep partial for patch operations on nested objects\ntype DeepPartial<T> = T extends object\n  ? { [K in keyof T]?: DeepPartial<T[K]> }\n  : T;\n\ntype PatchUserPreferences = DeepPartial<UserPreferences>;\n// { theme?: ...; language?: ...; notifications?: { email?: ...; push?: ...; sms?: ... } }\n\n\n// satisfies operator for validated constants with preserved literals\ninterface RouteConfig {\n  path: string;\n  component: string;\n  auth: boolean;\n  roles?: Array<'admin' | 'user' | 'moderator'>;\n}\n\n// satisfies validates shape while preserving literal types\nconst routes = {\n  home: { path: '/', component: 'Dashboard', auth: false },\n  profile: { path: '/profile', component: 'Profile', auth: true },\n  admin: { path: '/admin', component: 'AdminPanel', auth: true, roles: ['admin'] },\n  settings: { path: '/settings', component: 'Settings', auth: true, roles: ['admin', 'moderator'] },\n} satisfies Record<string, RouteConfig>;\n\n// TypeScript knows the exact literal types:\ntype HomeRoute = typeof routes.home;\n// { path: \"/\"; component: \"Dashboard\"; auth: false }\n// NOT { path: string; component: string; auth: boolean }\n\n// Autocomplete works for route keys:\nfunction navigate(route: keyof typeof routes): void {\n  window.location.href = routes[route].path;\n}\nnavigate('home');    // OK\n// navigate('invalid'); // Error: not a valid route key\n\n\n// Exhaustive pattern matching with compile-time safety\ntype PaymentMethod =\n  | { type: 'credit_card'; last4: string; brand: string; expiryMonth: number; expiryYear: number }\n  | { type: 'bank_transfer'; bankName: string; accountLast4: string }\n  | { type: 'paypal'; email: string }\n  | { type: 'crypto'; walletAddress: string; network: 'ethereum' | 'bitcoin' };\n\nfunction processPayment(method: PaymentMethod): string {\n  switch (method.type) {\n    case 'credit_card':\n      return `Charging ${method.brand} ending in ${method.last4}`;\n    case 'bank_transfer':\n      return `Transferring from ${method.bankName} account ***${method.accountLast4}`;\n    case 'paypal':\n      return `Processing PayPal payment for ${method.email}`;\n    case 'crypto':\n      return `Sending to ${method.network} wallet ${method.walletAddress.slice(0, 8)}...`;\n    default:\n      // If a new payment type is added to the union without a case here,\n      // this line produces a compile error\n      const _exhaustive: never = method;\n      return _exhaustive;\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/typescript/patterns-and-best-practices.md",
+    "wordCount": 1653,
+    "sectionCount": 8
+  }
+}

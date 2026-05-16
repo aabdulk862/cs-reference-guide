@@ -1,0 +1,259 @@
+{
+  "id": "java-concurrency-and-multithreading",
+  "slug": "concurrency",
+  "title": "Concurrency and Multithreading",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Thread creation: Thread class, Runnable interface, Callable<V> (returns value), ExecutorService",
+            "Synchronization primitives: synchronized keyword, ReentrantLock, ReadWriteLock, StampedLock",
+            "volatile guarantees visibility across threads but not atomicity of compound operations",
+            "java.util.concurrent provides ExecutorService, CountDownLatch, CyclicBarrier, Semaphore, Phaser",
+            "Atomic classes: AtomicInteger, AtomicLong, AtomicReference — lock-free thread-safe operations via CAS",
+            "CompletableFuture enables async composition with thenApply, thenCompose, exceptionally, allOf",
+            "Virtual threads (Java 21+): lightweight threads managed by the JVM, ideal for I/O-bound workloads",
+            "Happens-before relationship defines memory visibility guarantees between threads"
+          ]
+        }
+      ],
+      "wordCount": 77,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Concurrency is essential when building high-throughput server applications, parallel data processing systems, or responsive user interfaces. Use thread pools (ExecutorService) when handling concurrent requests in web servers, processing batch jobs in parallel, or performing background tasks without blocking the main thread. Use synchronization when multiple threads access shared mutable state that must remain consistent. Use CompletableFuture when orchestrating multiple asynchronous operations with dependencies (call service A, then use its result to call service B, combine with service C). Use virtual threads (Java 21+) when you have thousands of concurrent I/O-bound tasks where platform threads would be wasteful. Understanding concurrency is critical for system design interviews involving scalability, for debugging production race conditions, and for designing thread-safe libraries and frameworks."
+        }
+      ],
+      "wordCount": 119,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "executorservice-and-thread-pools",
+          "heading": "ExecutorService and Thread Pools",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Fixed thread pool for CPU-bound work\nExecutorService cpuPool = Executors.newFixedThreadPool(\n    Runtime.getRuntime().availableProcessors()\n);\n\n// Cached thread pool for short-lived I/O tasks\nExecutorService ioPool = Executors.newCachedThreadPool();\n\n// Custom thread pool with bounded queue and rejection policy\nThreadPoolExecutor customPool = new ThreadPoolExecutor(\n    4,                          // Core pool size\n    16,                         // Maximum pool size\n    60L, TimeUnit.SECONDS,      // Keep-alive time for idle threads\n    new LinkedBlockingQueue<>(1000),  // Bounded work queue\n    new ThreadPoolExecutor.CallerRunsPolicy()  // Backpressure: caller executes task\n);\n\n// Submit tasks and collect results\nList<Future<ProcessingResult>> futures = orders.stream()\n    .map(order -> cpuPool.submit(() -> processOrder(order)))\n    .toList();\n\n// Gather results with timeout\nList<ProcessingResult> results = new ArrayList<>();\nfor (Future<ProcessingResult> future : futures) {\n    try {\n        results.add(future.get(5, TimeUnit.SECONDS));\n    } catch (TimeoutException e) {\n        future.cancel(true);\n        log.warn(\"Order processing timed out\");\n    } catch (ExecutionException e) {\n        log.error(\"Order processing failed\", e.getCause());\n    }\n}\n\n// Graceful shutdown\ncpuPool.shutdown();\nif (!cpuPool.awaitTermination(30, TimeUnit.SECONDS)) {\n    cpuPool.shutdownNow();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "completablefuture-composition",
+          "heading": "CompletableFuture Composition",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Async pipeline with error handling\npublic CompletableFuture<OrderResult> processOrderAsync(Order order) {\n    return CompletableFuture\n        .supplyAsync(() -> validateOrder(order), validationPool)\n        .thenComposeAsync(validated -> processPayment(validated), paymentPool)\n        .thenComposeAsync(paid -> reserveInventory(paid), inventoryPool)\n        .thenApplyAsync(reserved -> createShipment(reserved), shippingPool)\n        .exceptionally(ex -> {\n            log.error(\"Order processing failed for {}\", order.getId(), ex);\n            compensate(order);  // Saga compensation\n            return OrderResult.failed(order.getId(), ex.getMessage());\n        });\n}\n\n// Combining multiple independent async operations\npublic CompletableFuture<DashboardData> loadDashboard(UUID userId) {\n    CompletableFuture<UserProfile> profileFuture =\n        CompletableFuture.supplyAsync(() -> userService.getProfile(userId));\n    CompletableFuture<List<Order>> ordersFuture =\n        CompletableFuture.supplyAsync(() -> orderService.getRecent(userId));\n    CompletableFuture<AccountBalance> balanceFuture =\n        CompletableFuture.supplyAsync(() -> accountService.getBalance(userId));\n\n    return CompletableFuture.allOf(profileFuture, ordersFuture, balanceFuture)\n        .thenApply(v -> new DashboardData(\n            profileFuture.join(),\n            ordersFuture.join(),\n            balanceFuture.join()\n        ));\n}\n\n// Timeout and fallback\npublic CompletableFuture<Price> getPriceWithFallback(String productId) {\n    return CompletableFuture\n        .supplyAsync(() -> pricingService.getPrice(productId))\n        .orTimeout(2, TimeUnit.SECONDS)\n        .exceptionally(ex -> {\n            log.warn(\"Pricing service timeout, using cached price\");\n            return priceCache.getCachedPrice(productId);\n        });\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "synchronization-and-lock-patterns",
+          "heading": "Synchronization and Lock Patterns",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// ReentrantLock with try-finally for guaranteed release\npublic class BankAccount {\n    private final ReentrantLock lock = new ReentrantLock();\n    private BigDecimal balance;\n\n    public void transfer(BankAccount target, BigDecimal amount) {\n        // Acquire locks in consistent order to prevent deadlock\n        BankAccount first = System.identityHashCode(this) < System.identityHashCode(target)\n            ? this : target;\n        BankAccount second = (first == this) ? target : this;\n\n        first.lock.lock();\n        try {\n            second.lock.lock();\n            try {\n                if (this.balance.compareTo(amount) < 0) {\n                    throw new InsufficientFundsException(amount, this.balance);\n                }\n                this.balance = this.balance.subtract(amount);\n                target.balance = target.balance.add(amount);\n            } finally {\n                second.lock.unlock();\n            }\n        } finally {\n            first.lock.unlock();\n        }\n    }\n}\n\n// ReadWriteLock for read-heavy workloads\npublic class ConfigurationStore {\n    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();\n    private final Map<String, String> config = new HashMap<>();\n\n    public String get(String key) {\n        rwLock.readLock().lock();\n        try {\n            return config.get(key);\n        } finally {\n            rwLock.readLock().unlock();\n        }\n    }\n\n    public void update(Map<String, String> newConfig) {\n        rwLock.writeLock().lock();\n        try {\n            config.clear();\n            config.putAll(newConfig);\n        } finally {\n            rwLock.writeLock().unlock();\n        }\n    }\n}\n\n// ConcurrentHashMap atomic operations (no external locking needed)\nConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();\ncounters.computeIfAbsent(\"requests\", k -> new AtomicLong()).incrementAndGet();\ncounters.compute(\"active\", (k, v) -> v == null ? new AtomicLong(1) : v);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "virtual-threads-java-21",
+          "heading": "Virtual Threads (Java 21+)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Virtual threads for I/O-bound workloads\ntry (var executor = Executors.newVirtualThreadPerTaskExecutor()) {\n    List<Future<Response>> futures = urls.stream()\n        .map(url -> executor.submit(() -> httpClient.send(url)))\n        .toList();\n\n    List<Response> responses = futures.stream()\n        .map(f -> {\n            try { return f.get(); }\n            catch (Exception e) { return Response.error(e); }\n        })\n        .toList();\n}\n\n// Structured concurrency (Preview in Java 21+)\ntry (var scope = new StructuredTaskScope.ShutdownOnFailure()) {\n    Subtask<UserProfile> profileTask = scope.fork(() -> fetchProfile(userId));\n    Subtask<List<Order>> ordersTask = scope.fork(() -> fetchOrders(userId));\n    Subtask<Preferences> prefsTask = scope.fork(() -> fetchPreferences(userId));\n\n    scope.join();           // Wait for all tasks\n    scope.throwIfFailed();  // Propagate first failure\n\n    return new UserDashboard(\n        profileTask.get(),\n        ordersTask.get(),\n        prefsTask.get()\n    );\n}\n\n// Virtual thread per request in HTTP server\nvar server = HttpServer.create(new InetSocketAddress(8080), 0);\nserver.setExecutor(Executors.newVirtualThreadPerTaskExecutor());\nserver.createContext(\"/api\", exchange -> {\n    // Each request runs on its own virtual thread\n    // Blocking I/O is fine — virtual thread yields automatically\n    String result = databaseQuery(exchange.getRequestURI());\n    exchange.sendResponseHeaders(200, result.length());\n    exchange.getResponseBody().write(result.getBytes());\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Race conditions with check-then-act: Code like if (!map.containsKey(key)) map.put(key, value) is not atomic even with ConcurrentHashMap. Between the check and the put, another thread can insert the same key. Use atomic operations like putIfAbsent(), computeIfAbsent(), or merge() that perform the check and modification as a single atomic operation.",
+            "Deadlocks from inconsistent lock ordering: When two threads acquire multiple locks in different orders, they can deadlock waiting for each other. Always acquire locks in a globally consistent order (e.g., by object hash code or a natural ordering). Use tryLock() with timeout to detect and recover from potential deadlocks rather than blocking indefinitely.",
+            "Thread pool exhaustion: Using unbounded thread pools (newCachedThreadPool) under load creates thousands of threads, causing excessive context switching and OOM. Using bounded pools with unbounded queues hides backpressure. Use bounded pools with bounded queues and an appropriate rejection policy (CallerRunsPolicy provides natural backpressure by making the submitting thread do the work).",
+            "Visibility without volatile or synchronization: Without volatile, synchronized, or atomic classes, changes made by one thread may never be visible to another thread due to CPU caching and compiler optimizations. The JVM is allowed to reorder instructions and cache values in registers. Every shared mutable variable must be protected by a happens-before relationship.",
+            "Virtual thread pinning: Virtual threads pin to their carrier thread when executing inside synchronized blocks or native methods, preventing other virtual threads from using that carrier. Use ReentrantLock instead of synchronized in code that will run on virtual threads. Monitor pinning events with -Djdk.tracePinnedThreads=full during testing."
+          ]
+        }
+      ],
+      "wordCount": 251,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "HTTP request handling in web servers: Application servers like Tomcat and Netty use thread pools to handle concurrent HTTP requests. Each request is processed on a thread from the pool, with the pool size tuned based on expected concurrency and whether the workload is CPU-bound or I/O-bound. Virtual threads (Java 21+) enable the thread-per-request model at massive scale without the memory overhead of platform threads.",
+            "Parallel data processing pipelines: Batch processing systems use ForkJoinPool to parallelize CPU-intensive transformations across large datasets. The work-stealing algorithm ensures efficient utilization when tasks have variable processing times. CompletableFuture orchestrates multi-stage pipelines where each stage may involve different thread pools optimized for their workload characteristics.",
+            "Rate limiting and throttling: Semaphore controls concurrent access to limited resources (database connections, external API calls). A Semaphore with 10 permits ensures no more than 10 concurrent requests hit a downstream service, preventing overload while allowing maximum throughput within the limit. Combined with a timeout, this provides graceful degradation under load.",
+            "Distributed lock coordination: Systems use CountDownLatch for one-time synchronization barriers (wait for all services to initialize before accepting traffic) and CyclicBarrier for repeated synchronization points (process data in phases where all workers must complete phase N before any starts phase N+1). These patterns are fundamental to MapReduce-style parallel algorithms.",
+            "Event-driven architectures: Producer-consumer patterns using BlockingQueue decouple event generation from processing. Multiple producer threads enqueue events while a pool of consumer threads processes them at their own pace. LinkedBlockingQueue provides unbounded buffering while ArrayBlockingQueue provides bounded buffering with natural backpressure when the queue is full."
+          ]
+        }
+      ],
+      "wordCount": 255,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the Java Memory Model and the happens-before relationship."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The Java Memory Model (JMM) defines how threads interact through memory and what behaviors are allowed by the JVM and hardware. The happens-before relationship guarantees that memory writes by one thread are visible to reads by another thread. Key happens-before edges include: program order within a single thread, monitor unlock happens-before subsequent lock of the same monitor, volatile write happens-before subsequent volatile read of the same variable, thread start happens-before any action in the started thread, and thread termination happens-before join() returning. Without a happens-before relationship, the JVM may reorder operations and cache values, making changes invisible across threads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between synchronized and ReentrantLock?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: synchronized is a language keyword that automatically acquires and releases a monitor lock, is reentrant, and cannot be interrupted while waiting. ReentrantLock is an explicit lock class that provides additional features: tryLock() with timeout for non-blocking acquisition, lockInterruptibly() for interruptible waiting, newCondition() for multiple wait sets, and fair ordering option. ReentrantLock requires explicit unlock in a finally block (error-prone if forgotten). Use synchronized for simple cases; use ReentrantLock when you need timeout, interruptibility, fairness, or multiple conditions. For virtual threads, prefer ReentrantLock to avoid pinning."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do virtual threads differ from platform threads?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Platform threads are thin wrappers around OS threads, limited to thousands due to memory overhead (typically 1MB stack each) and OS scheduling costs. Virtual threads are lightweight threads managed by the JVM runtime, with stacks that grow and shrink dynamically (starting at a few hundred bytes). Millions of virtual threads can exist simultaneously. When a virtual thread blocks on I/O, it unmounts from its carrier platform thread, allowing other virtual threads to run. Virtual threads are ideal for I/O-bound workloads (HTTP clients, database queries) but provide no benefit for CPU-bound work since they still need platform threads for actual execution."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is a CompletableFuture and how does it differ from Future?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Future represents a pending result that can only be retrieved by blocking with get(). CompletableFuture extends Future with a rich composition API: thenApply (transform result), thenCompose (chain async operations), thenCombine (combine two futures), exceptionally (handle errors), and allOf/anyOf (coordinate multiple futures). CompletableFuture supports non-blocking callbacks, can be completed manually (complete(value)), and enables building complex async pipelines without blocking threads. It is Java's equivalent of JavaScript Promises or Scala Futures."
+        }
+      ],
+      "wordCount": 397,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Thread pool sizing formula: For CPU-bound tasks, use Runtime.getRuntime().availableProcessors() threads. For I/O-bound tasks, use processors * (1 + waitTime/computeTime). For mixed workloads, separate CPU-bound and I/O-bound work into different pools. Always use bounded thread pools with bounded queues in production to prevent resource exhaustion under load spikes.",
+            "Monitor thread pool health: Expose thread pool metrics via Micrometer: active threads, queue size, completed task count, and rejected task count. Alert when queue size exceeds 80% capacity or when rejection rate increases. Use custom ThreadFactory to name threads for easier debugging in thread dumps and monitoring dashboards.",
+            "Use virtual threads for I/O-heavy services: In Java 21+, replace thread-per-request pools with virtual thread executors for services that primarily wait on I/O (database queries, HTTP calls, file operations). This eliminates thread pool sizing as a concern and allows natural scaling to thousands of concurrent requests without tuning. Ensure your code avoids synchronized blocks on hot paths to prevent carrier thread pinning."
+          ]
+        }
+      ],
+      "wordCount": 157,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JVM Internals and Performance — Memory model, thread scheduling, and garbage collection impact on concurrent code",
+            "Streams and Lambdas — Parallel streams and CompletableFuture use functional composition patterns"
+          ]
+        }
+      ],
+      "wordCount": 28,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Fixed thread pool for CPU-bound work\nExecutorService cpuPool = Executors.newFixedThreadPool(\n    Runtime.getRuntime().availableProcessors()\n);\n\n// Cached thread pool for short-lived I/O tasks\nExecutorService ioPool = Executors.newCachedThreadPool();\n\n// Custom thread pool with bounded queue and rejection policy\nThreadPoolExecutor customPool = new ThreadPoolExecutor(\n    4,                          // Core pool size\n    16,                         // Maximum pool size\n    60L, TimeUnit.SECONDS,      // Keep-alive time for idle threads\n    new LinkedBlockingQueue<>(1000),  // Bounded work queue\n    new ThreadPoolExecutor.CallerRunsPolicy()  // Backpressure: caller executes task\n);\n\n// Submit tasks and collect results\nList<Future<ProcessingResult>> futures = orders.stream()\n    .map(order -> cpuPool.submit(() -> processOrder(order)))\n    .toList();\n\n// Gather results with timeout\nList<ProcessingResult> results = new ArrayList<>();\nfor (Future<ProcessingResult> future : futures) {\n    try {\n        results.add(future.get(5, TimeUnit.SECONDS));\n    } catch (TimeoutException e) {\n        future.cancel(true);\n        log.warn(\"Order processing timed out\");\n    } catch (ExecutionException e) {\n        log.error(\"Order processing failed\", e.getCause());\n    }\n}\n\n// Graceful shutdown\ncpuPool.shutdown();\nif (!cpuPool.awaitTermination(30, TimeUnit.SECONDS)) {\n    cpuPool.shutdownNow();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Async pipeline with error handling\npublic CompletableFuture<OrderResult> processOrderAsync(Order order) {\n    return CompletableFuture\n        .supplyAsync(() -> validateOrder(order), validationPool)\n        .thenComposeAsync(validated -> processPayment(validated), paymentPool)\n        .thenComposeAsync(paid -> reserveInventory(paid), inventoryPool)\n        .thenApplyAsync(reserved -> createShipment(reserved), shippingPool)\n        .exceptionally(ex -> {\n            log.error(\"Order processing failed for {}\", order.getId(), ex);\n            compensate(order);  // Saga compensation\n            return OrderResult.failed(order.getId(), ex.getMessage());\n        });\n}\n\n// Combining multiple independent async operations\npublic CompletableFuture<DashboardData> loadDashboard(UUID userId) {\n    CompletableFuture<UserProfile> profileFuture =\n        CompletableFuture.supplyAsync(() -> userService.getProfile(userId));\n    CompletableFuture<List<Order>> ordersFuture =\n        CompletableFuture.supplyAsync(() -> orderService.getRecent(userId));\n    CompletableFuture<AccountBalance> balanceFuture =\n        CompletableFuture.supplyAsync(() -> accountService.getBalance(userId));\n\n    return CompletableFuture.allOf(profileFuture, ordersFuture, balanceFuture)\n        .thenApply(v -> new DashboardData(\n            profileFuture.join(),\n            ordersFuture.join(),\n            balanceFuture.join()\n        ));\n}\n\n// Timeout and fallback\npublic CompletableFuture<Price> getPriceWithFallback(String productId) {\n    return CompletableFuture\n        .supplyAsync(() -> pricingService.getPrice(productId))\n        .orTimeout(2, TimeUnit.SECONDS)\n        .exceptionally(ex -> {\n            log.warn(\"Pricing service timeout, using cached price\");\n            return priceCache.getCachedPrice(productId);\n        });\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// ReentrantLock with try-finally for guaranteed release\npublic class BankAccount {\n    private final ReentrantLock lock = new ReentrantLock();\n    private BigDecimal balance;\n\n    public void transfer(BankAccount target, BigDecimal amount) {\n        // Acquire locks in consistent order to prevent deadlock\n        BankAccount first = System.identityHashCode(this) < System.identityHashCode(target)\n            ? this : target;\n        BankAccount second = (first == this) ? target : this;\n\n        first.lock.lock();\n        try {\n            second.lock.lock();\n            try {\n                if (this.balance.compareTo(amount) < 0) {\n                    throw new InsufficientFundsException(amount, this.balance);\n                }\n                this.balance = this.balance.subtract(amount);\n                target.balance = target.balance.add(amount);\n            } finally {\n                second.lock.unlock();\n            }\n        } finally {\n            first.lock.unlock();\n        }\n    }\n}\n\n// ReadWriteLock for read-heavy workloads\npublic class ConfigurationStore {\n    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();\n    private final Map<String, String> config = new HashMap<>();\n\n    public String get(String key) {\n        rwLock.readLock().lock();\n        try {\n            return config.get(key);\n        } finally {\n            rwLock.readLock().unlock();\n        }\n    }\n\n    public void update(Map<String, String> newConfig) {\n        rwLock.writeLock().lock();\n        try {\n            config.clear();\n            config.putAll(newConfig);\n        } finally {\n            rwLock.writeLock().unlock();\n        }\n    }\n}\n\n// ConcurrentHashMap atomic operations (no external locking needed)\nConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();\ncounters.computeIfAbsent(\"requests\", k -> new AtomicLong()).incrementAndGet();\ncounters.compute(\"active\", (k, v) -> v == null ? new AtomicLong(1) : v);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Virtual threads for I/O-bound workloads\ntry (var executor = Executors.newVirtualThreadPerTaskExecutor()) {\n    List<Future<Response>> futures = urls.stream()\n        .map(url -> executor.submit(() -> httpClient.send(url)))\n        .toList();\n\n    List<Response> responses = futures.stream()\n        .map(f -> {\n            try { return f.get(); }\n            catch (Exception e) { return Response.error(e); }\n        })\n        .toList();\n}\n\n// Structured concurrency (Preview in Java 21+)\ntry (var scope = new StructuredTaskScope.ShutdownOnFailure()) {\n    Subtask<UserProfile> profileTask = scope.fork(() -> fetchProfile(userId));\n    Subtask<List<Order>> ordersTask = scope.fork(() -> fetchOrders(userId));\n    Subtask<Preferences> prefsTask = scope.fork(() -> fetchPreferences(userId));\n\n    scope.join();           // Wait for all tasks\n    scope.throwIfFailed();  // Propagate first failure\n\n    return new UserDashboard(\n        profileTask.get(),\n        ordersTask.get(),\n        prefsTask.get()\n    );\n}\n\n// Virtual thread per request in HTTP server\nvar server = HttpServer.create(new InetSocketAddress(8080), 0);\nserver.setExecutor(Executors.newVirtualThreadPerTaskExecutor());\nserver.createContext(\"/api\", exchange -> {\n    // Each request runs on its own virtual thread\n    // Blocking I/O is fine — virtual thread yields automatically\n    String result = databaseQuery(exchange.getRequestURI());\n    exchange.sendResponseHeaders(200, result.length());\n    exchange.getResponseBody().write(result.getBytes());\n});",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/java/concurrency.md",
+    "wordCount": 1284,
+    "sectionCount": 12
+  }
+}

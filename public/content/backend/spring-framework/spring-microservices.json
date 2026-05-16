@@ -1,0 +1,387 @@
+{
+  "id": "spring-framework-spring-cloud-microservices",
+  "slug": "spring-microservices",
+  "title": "Spring Cloud & Microservices",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Microservices architecture decomposes applications into small, independently deployable services organized around business capabilities",
+            "Service Discovery: Eureka Server for registration, @EnableDiscoveryClient for clients, heartbeat-based health (30s default)",
+            "API Gateway: Spring Cloud Gateway (or Zuul) provides routing, load balancing, security, and rate limiting at the edge",
+            "Client-side load balancing: Spring Cloud LoadBalancer (replaces Ribbon) distributes requests across service instances",
+            "Declarative REST clients: OpenFeign (@FeignClient) generates HTTP client implementations from interfaces with built-in load balancing",
+            "Resilience: Resilience4j circuit breaker (replaces Hystrix) — states: Closed → Open → Half-Open with fallback methods",
+            "Distributed tracing: Micrometer Tracing (replaces Sleuth) + Zipkin for end-to-end request tracking via traceId/spanId",
+            "Centralized configuration: Spring Cloud Config Server backed by Git with @RefreshScope for runtime updates"
+          ]
+        }
+      ],
+      "wordCount": 116,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Cloud microservices architecture is appropriate when your application has grown beyond what a single team can effectively develop, deploy, and maintain as a monolith. Choose microservices when you need independent deployment cycles for different business domains, polyglot technology choices per service, or the ability to scale individual components based on their specific load patterns. Spring Cloud provides battle-tested solutions for the distributed systems challenges that microservices introduce: service discovery eliminates hardcoded URLs, circuit breakers prevent cascading failures, distributed tracing enables debugging across service boundaries, and centralized configuration manages environment-specific settings without redeployment. Use this architecture when your organization has the operational maturity for container orchestration (Kubernetes), CI/CD pipelines per service, and distributed monitoring. Do not adopt microservices prematurely — a well-structured monolith is simpler to develop, test, and deploy for small teams. The overhead of network communication, distributed transactions, and operational complexity only pays off at scale."
+        }
+      ],
+      "wordCount": 148,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "service-discovery-with-eureka",
+          "heading": "Service Discovery with Eureka",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Eureka Server\n@SpringBootApplication\n@EnableEurekaServer\npublic class DiscoveryServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(DiscoveryServerApplication.class, args);\n    }\n}\n\n// application.yml for Eureka Server\n// server:\n//   port: 8761\n// eureka:\n//   client:\n//     register-with-eureka: false\n//     fetch-registry: false\n\n// Eureka Client (any microservice)\n@SpringBootApplication\n@EnableDiscoveryClient\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# application.yml for a microservice client\nspring:\n  application:\n    name: order-service\neureka:\n  client:\n    service-url:\n      defaultZone: http://localhost:8761/eureka/\n  instance:\n    prefer-ip-address: true",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "api-gateway-with-spring-cloud-gateway",
+          "heading": "API Gateway with Spring Cloud Gateway",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@SpringBootApplication\npublic class GatewayApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(GatewayApplication.class, args);\n    }\n\n    @Bean\n    public RouteLocator customRoutes(RouteLocatorBuilder builder) {\n        return builder.routes()\n                .route(\"order-service\", r -> r\n                        .path(\"/api/orders/**\")\n                        .filters(f -> f\n                                .stripPrefix(1)\n                                .addRequestHeader(\"X-Gateway\", \"true\")\n                                .circuitBreaker(config -> config\n                                        .setName(\"orderCircuitBreaker\")\n                                        .setFallbackUri(\"forward:/fallback/orders\")))\n                        .uri(\"lb://order-service\"))\n                .route(\"inventory-service\", r -> r\n                        .path(\"/api/inventory/**\")\n                        .filters(f -> f.stripPrefix(1))\n                        .uri(\"lb://inventory-service\"))\n                .build();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "feign-declarative-client-with-fallback",
+          "heading": "Feign Declarative Client with Fallback",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@FeignClient(name = \"inventory-service\",\n             fallbackFactory = InventoryClientFallbackFactory.class)\npublic interface InventoryClient {\n\n    @GetMapping(\"/inventory/{sku}\")\n    InventoryResponse checkStock(@PathVariable String sku);\n\n    @PostMapping(\"/inventory/reserve\")\n    ReservationResponse reserve(@RequestBody ReservationRequest request);\n}\n\n@Component\npublic class InventoryClientFallbackFactory\n        implements FallbackFactory<InventoryClient> {\n\n    @Override\n    public InventoryClient create(Throwable cause) {\n        return new InventoryClient() {\n            @Override\n            public InventoryResponse checkStock(String sku) {\n                return InventoryResponse.unknown(sku);\n            }\n\n            @Override\n            public ReservationResponse reserve(ReservationRequest request) {\n                throw new ServiceUnavailableException(\n                        \"Inventory service unavailable\", cause);\n            }\n        };\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "circuit-breaker-with-resilience4j",
+          "heading": "Circuit Breaker with Resilience4j",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\npublic class OrderService {\n\n    private final InventoryClient inventoryClient;\n\n    @CircuitBreaker(name = \"inventory\", fallbackMethod = \"inventoryFallback\")\n    @Retry(name = \"inventory\", fallbackMethod = \"inventoryFallback\")\n    @TimeLimiter(name = \"inventory\")\n    public CompletableFuture<OrderResponse> placeOrder(OrderRequest request) {\n        InventoryResponse stock = inventoryClient.checkStock(request.getSku());\n        if (!stock.isAvailable()) {\n            throw new InsufficientStockException(request.getSku());\n        }\n        // proceed with order creation\n        return CompletableFuture.completedFuture(createOrder(request));\n    }\n\n    private CompletableFuture<OrderResponse> inventoryFallback(\n            OrderRequest request, Throwable t) {\n        // Queue order for later processing\n        orderQueue.enqueue(request);\n        return CompletableFuture.completedFuture(\n                OrderResponse.pending(\"Order queued, inventory check pending\"));\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Resilience4j configuration\nresilience4j:\n  circuitbreaker:\n    instances:\n      inventory:\n        sliding-window-size: 10\n        failure-rate-threshold: 50\n        wait-duration-in-open-state: 10s\n        permitted-number-of-calls-in-half-open-state: 3\n  retry:\n    instances:\n      inventory:\n        max-attempts: 3\n        wait-duration: 500ms\n  timelimiter:\n    instances:\n      inventory:\n        timeout-duration: 3s",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "centralized-configuration",
+          "heading": "Centralized Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Config Server\n@SpringBootApplication\n@EnableConfigServer\npublic class ConfigServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(ConfigServerApplication.class, args);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Config Server application.yml\nserver:\n  port: 8888\nspring:\n  cloud:\n    config:\n      server:\n        git:\n          uri: https://github.com/org/config-repo\n          default-label: main\n          search-paths: '{application}'",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Client microservice application.yml\nspring:\n  application:\n    name: order-service\n  config:\n    import: optional:configserver:http://localhost:8888",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Using @RefreshScope for runtime config updates\n@RestController\n@RefreshScope\npublic class FeatureFlagController {\n\n    @Value(\"${feature.new-checkout:false}\")\n    private boolean newCheckoutEnabled;\n\n    @GetMapping(\"/features/checkout\")\n    public Map<String, Boolean> getCheckoutFeature() {\n        return Map.of(\"newCheckout\", newCheckoutEnabled);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "distributed-tracing-with-micrometer",
+          "heading": "Distributed Tracing with Micrometer",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "xml",
+              "code": "<!-- Dependencies for tracing -->\n<dependency>\n    <groupId>io.micrometer</groupId>\n    <artifactId>micrometer-tracing-bridge-brave</artifactId>\n</dependency>\n<dependency>\n    <groupId>io.zipkin.reporter2</groupId>\n    <artifactId>zipkin-reporter-brave</artifactId>\n</dependency>",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Tracing configuration\nmanagement:\n  tracing:\n    sampling:\n      probability: 1.0  # 100% in dev, lower in prod\n  zipkin:\n    tracing:\n      endpoint: http://localhost:9411/api/v2/spans",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    CLIENT[Client] --> GATEWAY[API Gateway<br/>Spring Cloud Gateway]\n    GATEWAY --> AUTH[Auth Service<br/>OAuth2/JWT]\n    GATEWAY --> ORDER[Order Service]\n    GATEWAY --> PRODUCT[Product Service]\n    GATEWAY --> USER[User Service]\n\n    ORDER --> INVENTORY[Inventory Service]\n    ORDER --> PAYMENT[Payment Service]\n\n    subgraph \"Infrastructure\"\n        EUREKA[Eureka Server<br/>Service Discovery]\n        CONFIG[Config Server<br/>Git-backed]\n        ZIPKIN[Zipkin<br/>Distributed Tracing]\n    end\n\n    ORDER -.->|registers| EUREKA\n    PRODUCT -.->|registers| EUREKA\n    GATEWAY -.->|discovers routes| EUREKA\n    ORDER -.->|fetches config| CONFIG\n    ORDER -.->|sends traces| ZIPKIN"
+        },
+        {
+          "type": "mermaid",
+          "source": "stateDiagram-v2\n    [*] --> Closed\n    Closed --> Open : Failure rate > threshold\n    Open --> HalfOpen : Wait duration elapsed\n    HalfOpen --> Closed : Test requests succeed\n    HalfOpen --> Open : Test requests fail\n\n    note right of Closed : Normal operation<br/>Requests pass through<br/>Failures counted\n    note right of Open : Requests blocked<br/>Fallback invoked<br/>Timer running\n    note right of HalfOpen : Limited test requests<br/>Evaluating recovery"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant C as Client\n    participant G as Gateway\n    participant O as Order Service\n    participant I as Inventory Service\n    participant P as Payment Service\n\n    C->>G: POST /api/orders\n    G->>O: Forward (traceId: abc123)\n    O->>I: Check stock (traceId: abc123, spanId: def456)\n    I-->>O: Available\n    O->>P: Process payment (traceId: abc123, spanId: ghi789)\n    P-->>O: Payment confirmed\n    O-->>G: Order created (201)\n    G-->>C: Response"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Distributed monolith: Splitting a monolith into microservices that still share a database, deploy together, or require synchronized releases gives you the worst of both worlds — distributed complexity without independent deployability. Each service must own its data and be deployable independently. If changing one service requires changing another, they should be merged.",
+            "No circuit breaker on external calls: Without circuit breakers, a slow downstream service causes thread pool exhaustion in the caller, which cascades to its callers, eventually bringing down the entire system. Every inter-service HTTP call needs a circuit breaker with appropriate thresholds and a meaningful fallback (cached data, degraded response, or queued retry).",
+            "Synchronous chains of service calls: A request that synchronously calls Service A → B → C → D creates a fragile chain where any service failure or slowness blocks the entire request. Use asynchronous messaging (Kafka, RabbitMQ) for operations that don't need immediate responses. For necessary synchronous calls, parallelize independent calls and set aggressive timeouts.",
+            "Shared database between services: Two services reading/writing the same database tables creates hidden coupling — schema changes in one service break the other. Each service should own its data exclusively. Use events or API composition for cross-service data needs. Accept eventual consistency as the trade-off for independence.",
+            "Not handling partial failures in API composition: When an endpoint aggregates data from multiple services and one fails, returning a 500 error to the client is often wrong. Design for graceful degradation — return available data with indicators of what's missing. A product page can show details without reviews if the review service is down."
+          ]
+        }
+      ],
+      "wordCount": 262,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "E-commerce platform decomposition: Order, inventory, payment, shipping, and notification services each own their domain. The API gateway routes requests, Feign clients handle inter-service communication, and Kafka events trigger asynchronous workflows (order placed → reserve inventory → process payment → schedule shipping → send confirmation).",
+            "Multi-tenant SaaS platform: Each tenant's configuration is managed via Spring Cloud Config with tenant-specific profiles. Service discovery enables dynamic scaling of compute-intensive services during peak hours. Circuit breakers isolate tenant workloads so one tenant's heavy usage doesn't degrade others.",
+            "Real-time data pipeline: Microservices consume events from Kafka topics, process them (enrichment, validation, aggregation), and produce to downstream topics. Spring Cloud Stream provides the abstraction layer. Distributed tracing tracks an event's journey through the pipeline for debugging data quality issues.",
+            "Progressive migration from monolith: The Strangler Fig pattern uses Spring Cloud Gateway to route requests — new features go to microservices while legacy features remain in the monolith. Over time, functionality is extracted service by service. Service discovery and the gateway make this transparent to clients."
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does service discovery work with Eureka, and what happens when the Eureka server goes down?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Services register with Eureka on startup and send heartbeats every 30 seconds. Clients cache the registry locally and refresh every 30 seconds. If Eureka goes down, clients continue operating using their cached registry — they can still discover and call other services. However, new services cannot register and stale entries won't be evicted. For production, run Eureka in a cluster (peer-aware mode) where instances replicate registry data to each other, eliminating the single point of failure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the circuit breaker pattern and its three states."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The circuit breaker monitors calls to a downstream service. In the Closed state, requests pass through normally while failures are counted. When the failure rate exceeds a threshold (e.g., 50% of the last 10 calls), it transitions to Open — all requests are immediately rejected and the fallback is invoked. After a configured wait duration, it moves to Half-Open, allowing a limited number of test requests through. If they succeed, the circuit closes; if they fail, it reopens. This prevents cascading failures by failing fast rather than waiting for timeouts on a known-broken service."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between choreography and orchestration in microservices?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: In choreography, services react to events independently — Order Service publishes \"OrderPlaced\", and Inventory, Payment, and Notification services each subscribe and act autonomously. There's no central coordinator. In orchestration, a central service (saga orchestrator) explicitly tells each service what to do and handles the workflow logic. Choreography is more decoupled but harder to debug and monitor. Orchestration is easier to understand and modify but creates a central point of coupling. Choose choreography for simple flows and orchestration for complex multi-step transactions requiring compensation logic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle distributed transactions across microservices?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Avoid distributed transactions (2PC) due to coupling and availability costs. Instead, use the Saga pattern: a sequence of local transactions where each service commits its own transaction and publishes an event. If a step fails, compensating transactions undo previous steps. For example: Order Service creates order → Payment Service charges card → if shipping fails, Payment Service refunds and Order Service cancels. Implement with choreography (events) or orchestration (coordinator). Ensure operations are idempotent so retries are safe."
+        }
+      ],
+      "wordCount": 382,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Health check configuration for Kubernetes: Configure separate liveness and readiness probes. Readiness should verify Eureka registration and downstream service connectivity. Set eureka.instance.lease-renewal-interval-in-seconds=10 and lease-expiration-duration-in-seconds=30 for faster failure detection in container environments where pods restart frequently.",
+            "Feign client timeout and retry tuning: Set explicit connect and read timeouts on Feign clients (feign.client.config.default.connectTimeout=2000, readTimeout=5000). Combine with Resilience4j retry (not Feign's built-in retry) for better control. Log all Feign requests at DEBUG level in staging to catch unexpected latency before production.",
+            "Config Server high availability: Run multiple Config Server instances behind a load balancer. Configure spring.cloud.config.fail-fast=true with retry (spring.cloud.config.retry.max-attempts=5) so services wait for Config Server during rolling deployments rather than starting with stale configuration. Use encryption for sensitive properties ({cipher} prefix).",
+            "Trace sampling in production: Set management.tracing.sampling.probability=0.1 (10%) in production to reduce tracing overhead and storage costs. Use 100% sampling only for specific problematic requests by propagating a sampling decision header from the gateway. Retain traces for at least 7 days in Zipkin for post-incident analysis."
+          ]
+        }
+      ],
+      "wordCount": 163,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Boot — Foundation framework for building individual microservices",
+            "Spring REST — HTTP API layer for inter-service communication",
+            "Apache Kafka — Event-driven communication between microservices"
+          ]
+        }
+      ],
+      "wordCount": 25,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Eureka Server\n@SpringBootApplication\n@EnableEurekaServer\npublic class DiscoveryServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(DiscoveryServerApplication.class, args);\n    }\n}\n\n// application.yml for Eureka Server\n// server:\n//   port: 8761\n// eureka:\n//   client:\n//     register-with-eureka: false\n//     fetch-registry: false\n\n// Eureka Client (any microservice)\n@SpringBootApplication\n@EnableDiscoveryClient\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# application.yml for a microservice client\nspring:\n  application:\n    name: order-service\neureka:\n  client:\n    service-url:\n      defaultZone: http://localhost:8761/eureka/\n  instance:\n    prefer-ip-address: true",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@SpringBootApplication\npublic class GatewayApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(GatewayApplication.class, args);\n    }\n\n    @Bean\n    public RouteLocator customRoutes(RouteLocatorBuilder builder) {\n        return builder.routes()\n                .route(\"order-service\", r -> r\n                        .path(\"/api/orders/**\")\n                        .filters(f -> f\n                                .stripPrefix(1)\n                                .addRequestHeader(\"X-Gateway\", \"true\")\n                                .circuitBreaker(config -> config\n                                        .setName(\"orderCircuitBreaker\")\n                                        .setFallbackUri(\"forward:/fallback/orders\")))\n                        .uri(\"lb://order-service\"))\n                .route(\"inventory-service\", r -> r\n                        .path(\"/api/inventory/**\")\n                        .filters(f -> f.stripPrefix(1))\n                        .uri(\"lb://inventory-service\"))\n                .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@FeignClient(name = \"inventory-service\",\n             fallbackFactory = InventoryClientFallbackFactory.class)\npublic interface InventoryClient {\n\n    @GetMapping(\"/inventory/{sku}\")\n    InventoryResponse checkStock(@PathVariable String sku);\n\n    @PostMapping(\"/inventory/reserve\")\n    ReservationResponse reserve(@RequestBody ReservationRequest request);\n}\n\n@Component\npublic class InventoryClientFallbackFactory\n        implements FallbackFactory<InventoryClient> {\n\n    @Override\n    public InventoryClient create(Throwable cause) {\n        return new InventoryClient() {\n            @Override\n            public InventoryResponse checkStock(String sku) {\n                return InventoryResponse.unknown(sku);\n            }\n\n            @Override\n            public ReservationResponse reserve(ReservationRequest request) {\n                throw new ServiceUnavailableException(\n                        \"Inventory service unavailable\", cause);\n            }\n        };\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\npublic class OrderService {\n\n    private final InventoryClient inventoryClient;\n\n    @CircuitBreaker(name = \"inventory\", fallbackMethod = \"inventoryFallback\")\n    @Retry(name = \"inventory\", fallbackMethod = \"inventoryFallback\")\n    @TimeLimiter(name = \"inventory\")\n    public CompletableFuture<OrderResponse> placeOrder(OrderRequest request) {\n        InventoryResponse stock = inventoryClient.checkStock(request.getSku());\n        if (!stock.isAvailable()) {\n            throw new InsufficientStockException(request.getSku());\n        }\n        // proceed with order creation\n        return CompletableFuture.completedFuture(createOrder(request));\n    }\n\n    private CompletableFuture<OrderResponse> inventoryFallback(\n            OrderRequest request, Throwable t) {\n        // Queue order for later processing\n        orderQueue.enqueue(request);\n        return CompletableFuture.completedFuture(\n                OrderResponse.pending(\"Order queued, inventory check pending\"));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Resilience4j configuration\nresilience4j:\n  circuitbreaker:\n    instances:\n      inventory:\n        sliding-window-size: 10\n        failure-rate-threshold: 50\n        wait-duration-in-open-state: 10s\n        permitted-number-of-calls-in-half-open-state: 3\n  retry:\n    instances:\n      inventory:\n        max-attempts: 3\n        wait-duration: 500ms\n  timelimiter:\n    instances:\n      inventory:\n        timeout-duration: 3s",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Config Server\n@SpringBootApplication\n@EnableConfigServer\npublic class ConfigServerApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(ConfigServerApplication.class, args);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Config Server application.yml\nserver:\n  port: 8888\nspring:\n  cloud:\n    config:\n      server:\n        git:\n          uri: https://github.com/org/config-repo\n          default-label: main\n          search-paths: '{application}'",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Client microservice application.yml\nspring:\n  application:\n    name: order-service\n  config:\n    import: optional:configserver:http://localhost:8888",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Using @RefreshScope for runtime config updates\n@RestController\n@RefreshScope\npublic class FeatureFlagController {\n\n    @Value(\"${feature.new-checkout:false}\")\n    private boolean newCheckoutEnabled;\n\n    @GetMapping(\"/features/checkout\")\n    public Map<String, Boolean> getCheckoutFeature() {\n        return Map.of(\"newCheckout\", newCheckoutEnabled);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "xml",
+      "code": "<!-- Dependencies for tracing -->\n<dependency>\n    <groupId>io.micrometer</groupId>\n    <artifactId>micrometer-tracing-bridge-brave</artifactId>\n</dependency>\n<dependency>\n    <groupId>io.zipkin.reporter2</groupId>\n    <artifactId>zipkin-reporter-brave</artifactId>\n</dependency>",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Tracing configuration\nmanagement:\n  tracing:\n    sampling:\n      probability: 1.0  # 100% in dev, lower in prod\n  zipkin:\n    tracing:\n      endpoint: http://localhost:9411/api/v2/spans",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-microservices.md",
+    "wordCount": 1265,
+    "sectionCount": 15
+  }
+}

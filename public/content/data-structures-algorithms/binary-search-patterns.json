@@ -1,0 +1,298 @@
+{
+  "id": "sorting-and-searching-binary-search-patterns",
+  "slug": "binary-search-patterns",
+  "title": "Binary Search Patterns",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Classic binary search: O(log n) time, O(1) space — find exact target in sorted array",
+            "Lower bound (first occurrence): O(log n) — leftmost position where target could be inserted",
+            "Upper bound (last occurrence): O(log n) — rightmost position after all occurrences of target",
+            "Search on answer (parametric): O(log(range) * verify) — binary search on the answer space",
+            "Rotated sorted array search: O(log n) — identify sorted half, search accordingly",
+            "Peak finding: O(log n) — find local maximum in bitonic array",
+            "Minimum in rotated array: O(log n) — find rotation point",
+            "Search insert position: O(log n) — where to insert to maintain sorted order",
+            "Key insight: binary search applies whenever the search space has a monotonic property",
+            "Invariant: maintain the property that the answer is always within [left, right]"
+          ]
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Binary search applies far beyond simple element lookup in sorted arrays. The core insight is that binary search works on any search space where you can determine which half contains the answer based on a condition evaluated at the midpoint. This generalization — called \"binary search on the answer\" or \"parametric search\" — is one of the most powerful algorithmic techniques."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use classic binary search when finding an element in a sorted array, finding insertion position, or finding the first/last occurrence of a value. Use binary search on the answer when the problem asks for the minimum or maximum value satisfying a condition, and you can verify whether a candidate answer is feasible in polynomial time (minimize maximum distance, maximize minimum value, find threshold)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use binary search on rotated or modified sorted arrays when the array has a known structure that preserves partial ordering (rotated sorted array, bitonic array, mountain array). Use binary search with custom predicates when the search space is not a simple array but any monotonic function (square root computation, finding the day when cumulative sum exceeds threshold)."
+        },
+        {
+          "type": "paragraph",
+          "text": "The key to applying binary search is identifying the monotonic property: there exists a boundary where the predicate changes from false to true (or vice versa), and binary search finds that boundary. If you can phrase your problem as \"find the smallest x such that condition(x) is true,\" binary search likely applies."
+        }
+      ],
+      "wordCount": 233,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "classic-binary-search-variants",
+          "heading": "Classic Binary Search Variants",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The three fundamental binary search patterns: exact match, lower bound (first occurrence), and upper bound (past last occurrence)."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class BinarySearch {\n    /**\n     * Standard binary search: find index of target, or -1 if not found.\n     * Invariant: if target exists, it is in arr[left..right].\n     */\n    public static int search(int[] arr, int target) {\n        int left = 0, right = arr.length - 1;\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] == target) return mid;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    /**\n     * Lower bound: first index where arr[i] >= target.\n     * Returns insertion point if target not present.\n     * Equivalent to C++ lower_bound, Python bisect_left.\n     */\n    public static int lowerBound(int[] arr, int target) {\n        int left = 0, right = arr.length;\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    /**\n     * Upper bound: first index where arr[i] > target.\n     * Equivalent to C++ upper_bound, Python bisect_right.\n     */\n    public static int upperBound(int[] arr, int target) {\n        int left = 0, right = arr.length;\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] <= target) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    /**\n     * Count occurrences of target in sorted array.\n     * Uses upper_bound - lower_bound.\n     */\n    public static int countOccurrences(int[] arr, int target) {\n        return upperBound(arr, target) - lowerBound(arr, target);\n    }\n\n    /**\n     * Find first and last position of target.\n     */\n    public static int[] searchRange(int[] arr, int target) {\n        int first = lowerBound(arr, target);\n        if (first == arr.length || arr[first] != target) return new int[]{-1, -1};\n        int last = upperBound(arr, target) - 1;\n        return new int[]{first, last};\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "function lowerBound(arr: number[], target: number): number {\n  let left = 0, right = arr.length;\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    if (arr[mid] < target) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}\n\nfunction upperBound(arr: number[], target: number): number {\n  let left = 0, right = arr.length;\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    if (arr[mid] <= target) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "binary-search-on-the-answer-parametric-search",
+          "heading": "Binary Search on the Answer (Parametric Search)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The most powerful binary search pattern: instead of searching in an array, search over the space of possible answers using a feasibility check."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class ParametricSearch {\n    /**\n     * Minimize the maximum distance between adjacent gas stations.\n     * Given stations[] and k additional stations to place,\n     * find the minimum possible maximum gap.\n     * Binary search on the answer (the maximum gap value).\n     */\n    public static double minMaxGap(int[] stations, int k) {\n        double left = 0, right = stations[stations.length - 1] - stations[0];\n\n        // Binary search on the answer: minimum gap that is achievable\n        for (int iter = 0; iter < 100; iter++) {  // 100 iterations for precision\n            double mid = (left + right) / 2;\n            if (canAchieveGap(stations, k, mid)) {\n                right = mid;  // Can achieve this gap, try smaller\n            } else {\n                left = mid;   // Cannot achieve, need larger gap\n            }\n        }\n        return left;\n    }\n\n    private static boolean canAchieveGap(int[] stations, int k, double maxGap) {\n        int stationsNeeded = 0;\n        for (int i = 1; i < stations.length; i++) {\n            double gap = stations[i] - stations[i - 1];\n            stationsNeeded += (int) (gap / maxGap);  // Stations needed to fill this gap\n        }\n        return stationsNeeded <= k;\n    }\n\n    /**\n     * Koko eating bananas: minimum eating speed to finish in h hours.\n     * Binary search on speed: find minimum speed where total hours <= h.\n     */\n    public static int minEatingSpeed(int[] piles, int h) {\n        int left = 1, right = Arrays.stream(piles).max().orElse(1);\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (canFinish(piles, h, mid)) {\n                right = mid;  // Can finish at this speed, try slower\n            } else {\n                left = mid + 1;  // Too slow, need faster\n            }\n        }\n        return left;\n    }\n\n    private static boolean canFinish(int[] piles, int h, int speed) {\n        int hours = 0;\n        for (int pile : piles) {\n            hours += (pile + speed - 1) / speed;  // Ceiling division\n        }\n        return hours <= h;\n    }\n\n    /**\n     * Split array largest sum: minimize the largest sum when splitting\n     * array into m subarrays.\n     */\n    public static int splitArray(int[] nums, int m) {\n        int left = Arrays.stream(nums).max().orElse(0);\n        int right = Arrays.stream(nums).sum();\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (canSplit(nums, m, mid)) {\n                right = mid;\n            } else {\n                left = mid + 1;\n            }\n        }\n        return left;\n    }\n\n    private static boolean canSplit(int[] nums, int m, int maxSum) {\n        int splits = 1, currentSum = 0;\n        for (int num : nums) {\n            if (currentSum + num > maxSum) {\n                splits++;\n                currentSum = num;\n                if (splits > m) return false;\n            } else {\n                currentSum += num;\n            }\n        }\n        return true;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "rotated-sorted-array-search",
+          "heading": "Rotated Sorted Array Search",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Searching in arrays that have been rotated, requiring identification of the sorted half at each step."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class RotatedArraySearch {\n    /**\n     * Search in rotated sorted array (no duplicates).\n     * At each step, one half is guaranteed to be sorted.\n     * Determine which half is sorted, check if target is in that half.\n     * Time: O(log n)\n     */\n    public static int search(int[] nums, int target) {\n        int left = 0, right = nums.length - 1;\n\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] == target) return mid;\n\n            // Left half is sorted\n            if (nums[left] <= nums[mid]) {\n                if (target >= nums[left] && target < nums[mid]) {\n                    right = mid - 1;  // Target in sorted left half\n                } else {\n                    left = mid + 1;   // Target in right half\n                }\n            }\n            // Right half is sorted\n            else {\n                if (target > nums[mid] && target <= nums[right]) {\n                    left = mid + 1;   // Target in sorted right half\n                } else {\n                    right = mid - 1;  // Target in left half\n                }\n            }\n        }\n        return -1;\n    }\n\n    /**\n     * Find minimum in rotated sorted array.\n     * The minimum is at the rotation point.\n     * Time: O(log n)\n     */\n    public static int findMin(int[] nums) {\n        int left = 0, right = nums.length - 1;\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] > nums[right]) {\n                left = mid + 1;  // Minimum is in right half\n            } else {\n                right = mid;     // Minimum is in left half (including mid)\n            }\n        }\n        return nums[left];\n    }\n\n    /**\n     * Find peak element: element greater than its neighbors.\n     * Binary search on the slope: move toward the ascending side.\n     * Time: O(log n)\n     */\n    public static int findPeakElement(int[] nums) {\n        int left = 0, right = nums.length - 1;\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] < nums[mid + 1]) {\n                left = mid + 1;  // Peak is to the right (ascending)\n            } else {\n                right = mid;     // Peak is to the left or at mid (descending)\n            }\n        }\n        return left;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "from bisect import bisect_left, bisect_right\n\ndef search_rotated(nums: list[int], target: int) -> int:\n    \"\"\"Search in rotated sorted array. O(log n) time.\"\"\"\n    left, right = 0, len(nums) - 1\n\n    while left <= right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n\n        if nums[left] <= nums[mid]:  # Left half sorted\n            if nums[left] <= target < nums[mid]:\n                right = mid - 1\n            else:\n                left = mid + 1\n        else:  # Right half sorted\n            if nums[mid] < target <= nums[right]:\n                left = mid + 1\n            else:\n                right = mid - 1\n\n    return -1\n\ndef min_eating_speed(piles: list[int], h: int) -> int:\n    \"\"\"Binary search on answer: minimum speed to eat all bananas in h hours.\"\"\"\n    left, right = 1, max(piles)\n\n    while left < right:\n        mid = (left + right) // 2\n        hours = sum((pile + mid - 1) // mid for pile in piles)\n        if hours <= h:\n            right = mid\n        else:\n            left = mid + 1\n\n    return left",
+              "runnable": false
+            }
+          ],
+          "wordCount": 16,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Off-by-one errors in loop condition and boundary updates: The most common binary search bug. Using left <= right with right = mid causes infinite loops (when left == right == mid). Using left < right with right = mid - 1 may skip the answer. The safe patterns are: (1) left <= right with left = mid + 1 and right = mid - 1 for exact search, or (2) left < right with left = mid + 1 and right = mid for lower bound. Choose one pattern and stick with it consistently.",
+            "Integer overflow in midpoint calculation: Computing mid = (left + right) / 2 overflows when left + right exceeds Integer.MAX_VALUE. Always use mid = left + (right - left) / 2. This bug existed in Java's standard library binary search for 9 years before being discovered. In languages with arbitrary-precision integers (Python), this is not an issue.",
+            "Applying binary search when the predicate is not monotonic: Binary search requires that the predicate transitions from false to true (or true to false) exactly once across the search space. If the predicate oscillates (true, false, true, false), binary search may converge to any transition point or miss the answer entirely. Always verify monotonicity before applying binary search.",
+            "Not handling duplicates in rotated array search: The standard rotated array search assumes no duplicates. With duplicates, when nums[left] == nums[mid] == nums[right], you cannot determine which half is sorted. The fix is to shrink the window (left++, right--) in this case, degrading worst-case to O(n). Failing to handle this case produces incorrect results on inputs like [1,1,1,0,1,1].",
+            "Using wrong precision termination for floating-point binary search: For floating-point binary search (square root, minimize maximum gap), using left < right never terminates due to floating-point precision. Use a fixed number of iterations (100 iterations gives 2^-100 precision) or check right - left < epsilon with an appropriate epsilon. Too few iterations give imprecise answers; too many waste time."
+          ]
+        }
+      ],
+      "wordCount": 326,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database query optimization uses binary search extensively. B-Tree index lookups perform binary search within each node to find the correct child pointer. Range queries use lower_bound and upper_bound to identify the start and end of matching ranges. The query optimizer uses binary search on statistics (histograms) to estimate selectivity and choose between index scan and sequential scan."
+        },
+        {
+          "type": "paragraph",
+          "text": "System configuration tuning uses binary search on the answer to find optimal parameters. Finding the maximum request rate a server can handle before latency exceeds an SLA is a parametric search problem: binary search on the rate, with a load test as the feasibility check. Similarly, finding the minimum number of replicas needed to achieve a target availability uses binary search on replica count with a reliability model as the predicate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Version control bisection (git bisect) uses binary search to find the commit that introduced a bug. Given a known-good commit and a known-bad commit, it checks the midpoint commit and narrows the range based on whether the bug is present. This finds the culprit in O(log n) tests instead of O(n) linear search through commit history."
+        },
+        {
+          "type": "paragraph",
+          "text": "Competitive programming and algorithm design uses binary search on the answer as a meta-technique. Problems like \"minimize the maximum load across k workers\" or \"maximize the minimum distance between placed objects\" are naturally solved by binary searching on the answer value and checking feasibility with a greedy algorithm. This pattern appears in hundreds of competitive programming problems."
+        },
+        {
+          "type": "paragraph",
+          "text": "Machine learning hyperparameter tuning uses binary search variants to find optimal learning rates, regularization strengths, and threshold values. When the metric is unimodal (increases then decreases as the parameter changes), ternary search or golden section search finds the optimum. When the metric has a monotonic feasibility boundary, binary search finds the threshold."
+        }
+      ],
+      "wordCount": 293,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between lower_bound and upper_bound. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Lower_bound finds the first position where arr[i] >= target (leftmost insertion point). Upper_bound finds the first position where arr[i] > target (past the last occurrence). Use lower_bound to find the first occurrence of a value, the insertion point for maintaining sorted order, or the start of a range. Use upper_bound to find the position after the last occurrence, enabling count = upper_bound - lower_bound. Together they define the range [lower_bound, upper_bound) containing all occurrences of target."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you search in a rotated sorted array?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: At each step, compare nums[mid] with nums[left] to determine which half is sorted. If nums[left] <= nums[mid], the left half is sorted; check if target falls in [nums[left], nums[mid]) and narrow accordingly. Otherwise, the right half is sorted; check if target falls in (nums[mid], nums[right]] and narrow accordingly. This works because rotation preserves one sorted half at every split. Time is O(log n). With duplicates, add a check for nums[left] == nums[mid] == nums[right] and shrink boundaries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is binary search on the answer? Give an example."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Binary search on the answer searches over the space of possible answer values rather than array indices. You need: (1) a bounded answer range [lo, hi], (2) a monotonic feasibility predicate (if answer x is feasible, all answers > x are also feasible, or vice versa), and (3) an efficient feasibility check. Example: \"minimum speed to eat all bananas in h hours.\" Binary search on speed from 1 to max(piles). For each candidate speed, check if total hours <= h (greedy check in O(n)). Total time: O(n * log(max_pile))."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you find the square root of a number using binary search?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Binary search on the answer in range [0, x]. For each midpoint, check if midmid <= x. If yes, the answer is at least mid (move left up). If no, the answer is less than mid (move right down). For integer square root, use left < right with left = mid + 1 when midmid <= x and right = mid otherwise, returning left - 1. For floating-point, iterate a fixed number of times (50-100) for sufficient precision. Handle edge cases: sqrt(0) = 0, sqrt(1) = 1, and for x < 1 the search range is [x, 1] not [0, x]."
+        }
+      ],
+      "wordCount": 395,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use language-standard binary search implementations: Java's Arrays.binarySearch, C++'s std::lower_bound/upper_bound, and Python's bisect module are thoroughly tested and optimized. They handle edge cases correctly and use branchless implementations on modern hardware. Only implement custom binary search when you need a non-standard predicate or the standard library does not support your data structure.",
+            "Add bounds checking and input validation in production binary search: Production code should validate that the array is actually sorted (or at least check a sample), handle empty arrays gracefully, and document the behavior for duplicate elements. A binary search that silently returns wrong results on unsorted input is worse than one that throws an exception.",
+            "Consider interpolation search for uniformly distributed data: When keys are uniformly distributed (database IDs, timestamps), interpolation search estimates the target position proportionally: pos = left + (target - arr[left]) * (right - left) / (arr[right] - arr[left]). This achieves O(log log n) average time for uniform distributions but degrades to O(n) for adversarial inputs. Use it when you can verify the distribution assumption."
+          ]
+        }
+      ],
+      "wordCount": 170,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Comparison-Based Sorting — Sorting algorithms that produce the sorted arrays binary search operates on",
+            "Non-Comparison and Linear Sorting — Alternative sorting for specialized inputs",
+            "Searching in Specialized Structures — Binary search extended to matrices and custom structures",
+            "Arrays and Strings — Array fundamentals underlying binary search"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class BinarySearch {\n    /**\n     * Standard binary search: find index of target, or -1 if not found.\n     * Invariant: if target exists, it is in arr[left..right].\n     */\n    public static int search(int[] arr, int target) {\n        int left = 0, right = arr.length - 1;\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] == target) return mid;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid - 1;\n        }\n        return -1;\n    }\n\n    /**\n     * Lower bound: first index where arr[i] >= target.\n     * Returns insertion point if target not present.\n     * Equivalent to C++ lower_bound, Python bisect_left.\n     */\n    public static int lowerBound(int[] arr, int target) {\n        int left = 0, right = arr.length;\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] < target) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    /**\n     * Upper bound: first index where arr[i] > target.\n     * Equivalent to C++ upper_bound, Python bisect_right.\n     */\n    public static int upperBound(int[] arr, int target) {\n        int left = 0, right = arr.length;\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (arr[mid] <= target) left = mid + 1;\n            else right = mid;\n        }\n        return left;\n    }\n\n    /**\n     * Count occurrences of target in sorted array.\n     * Uses upper_bound - lower_bound.\n     */\n    public static int countOccurrences(int[] arr, int target) {\n        return upperBound(arr, target) - lowerBound(arr, target);\n    }\n\n    /**\n     * Find first and last position of target.\n     */\n    public static int[] searchRange(int[] arr, int target) {\n        int first = lowerBound(arr, target);\n        if (first == arr.length || arr[first] != target) return new int[]{-1, -1};\n        int last = upperBound(arr, target) - 1;\n        return new int[]{first, last};\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "function lowerBound(arr: number[], target: number): number {\n  let left = 0, right = arr.length;\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    if (arr[mid] < target) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}\n\nfunction upperBound(arr: number[], target: number): number {\n  let left = 0, right = arr.length;\n  while (left < right) {\n    const mid = left + Math.floor((right - left) / 2);\n    if (arr[mid] <= target) left = mid + 1;\n    else right = mid;\n  }\n  return left;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class ParametricSearch {\n    /**\n     * Minimize the maximum distance between adjacent gas stations.\n     * Given stations[] and k additional stations to place,\n     * find the minimum possible maximum gap.\n     * Binary search on the answer (the maximum gap value).\n     */\n    public static double minMaxGap(int[] stations, int k) {\n        double left = 0, right = stations[stations.length - 1] - stations[0];\n\n        // Binary search on the answer: minimum gap that is achievable\n        for (int iter = 0; iter < 100; iter++) {  // 100 iterations for precision\n            double mid = (left + right) / 2;\n            if (canAchieveGap(stations, k, mid)) {\n                right = mid;  // Can achieve this gap, try smaller\n            } else {\n                left = mid;   // Cannot achieve, need larger gap\n            }\n        }\n        return left;\n    }\n\n    private static boolean canAchieveGap(int[] stations, int k, double maxGap) {\n        int stationsNeeded = 0;\n        for (int i = 1; i < stations.length; i++) {\n            double gap = stations[i] - stations[i - 1];\n            stationsNeeded += (int) (gap / maxGap);  // Stations needed to fill this gap\n        }\n        return stationsNeeded <= k;\n    }\n\n    /**\n     * Koko eating bananas: minimum eating speed to finish in h hours.\n     * Binary search on speed: find minimum speed where total hours <= h.\n     */\n    public static int minEatingSpeed(int[] piles, int h) {\n        int left = 1, right = Arrays.stream(piles).max().orElse(1);\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (canFinish(piles, h, mid)) {\n                right = mid;  // Can finish at this speed, try slower\n            } else {\n                left = mid + 1;  // Too slow, need faster\n            }\n        }\n        return left;\n    }\n\n    private static boolean canFinish(int[] piles, int h, int speed) {\n        int hours = 0;\n        for (int pile : piles) {\n            hours += (pile + speed - 1) / speed;  // Ceiling division\n        }\n        return hours <= h;\n    }\n\n    /**\n     * Split array largest sum: minimize the largest sum when splitting\n     * array into m subarrays.\n     */\n    public static int splitArray(int[] nums, int m) {\n        int left = Arrays.stream(nums).max().orElse(0);\n        int right = Arrays.stream(nums).sum();\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (canSplit(nums, m, mid)) {\n                right = mid;\n            } else {\n                left = mid + 1;\n            }\n        }\n        return left;\n    }\n\n    private static boolean canSplit(int[] nums, int m, int maxSum) {\n        int splits = 1, currentSum = 0;\n        for (int num : nums) {\n            if (currentSum + num > maxSum) {\n                splits++;\n                currentSum = num;\n                if (splits > m) return false;\n            } else {\n                currentSum += num;\n            }\n        }\n        return true;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class RotatedArraySearch {\n    /**\n     * Search in rotated sorted array (no duplicates).\n     * At each step, one half is guaranteed to be sorted.\n     * Determine which half is sorted, check if target is in that half.\n     * Time: O(log n)\n     */\n    public static int search(int[] nums, int target) {\n        int left = 0, right = nums.length - 1;\n\n        while (left <= right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] == target) return mid;\n\n            // Left half is sorted\n            if (nums[left] <= nums[mid]) {\n                if (target >= nums[left] && target < nums[mid]) {\n                    right = mid - 1;  // Target in sorted left half\n                } else {\n                    left = mid + 1;   // Target in right half\n                }\n            }\n            // Right half is sorted\n            else {\n                if (target > nums[mid] && target <= nums[right]) {\n                    left = mid + 1;   // Target in sorted right half\n                } else {\n                    right = mid - 1;  // Target in left half\n                }\n            }\n        }\n        return -1;\n    }\n\n    /**\n     * Find minimum in rotated sorted array.\n     * The minimum is at the rotation point.\n     * Time: O(log n)\n     */\n    public static int findMin(int[] nums) {\n        int left = 0, right = nums.length - 1;\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] > nums[right]) {\n                left = mid + 1;  // Minimum is in right half\n            } else {\n                right = mid;     // Minimum is in left half (including mid)\n            }\n        }\n        return nums[left];\n    }\n\n    /**\n     * Find peak element: element greater than its neighbors.\n     * Binary search on the slope: move toward the ascending side.\n     * Time: O(log n)\n     */\n    public static int findPeakElement(int[] nums) {\n        int left = 0, right = nums.length - 1;\n\n        while (left < right) {\n            int mid = left + (right - left) / 2;\n            if (nums[mid] < nums[mid + 1]) {\n                left = mid + 1;  // Peak is to the right (ascending)\n            } else {\n                right = mid;     // Peak is to the left or at mid (descending)\n            }\n        }\n        return left;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "from bisect import bisect_left, bisect_right\n\ndef search_rotated(nums: list[int], target: int) -> int:\n    \"\"\"Search in rotated sorted array. O(log n) time.\"\"\"\n    left, right = 0, len(nums) - 1\n\n    while left <= right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n\n        if nums[left] <= nums[mid]:  # Left half sorted\n            if nums[left] <= target < nums[mid]:\n                right = mid - 1\n            else:\n                left = mid + 1\n        else:  # Right half sorted\n            if nums[mid] < target <= nums[right]:\n                left = mid + 1\n            else:\n                right = mid - 1\n\n    return -1\n\ndef min_eating_speed(piles: list[int], h: int) -> int:\n    \"\"\"Binary search on answer: minimum speed to eat all bananas in h hours.\"\"\"\n    left, right = 1, max(piles)\n\n    while left < right:\n        mid = (left + right) // 2\n        hours = sum((pile + mid - 1) // mid for pile in piles)\n        if hours <= h:\n            right = mid\n        else:\n            left = mid + 1\n\n    return left",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/sorting-and-searching/binary-search-patterns.md",
+    "wordCount": 1648,
+    "sectionCount": 11
+  }
+}

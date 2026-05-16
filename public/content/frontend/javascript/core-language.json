@@ -1,0 +1,222 @@
+{
+  "id": "javascript-core-language-and-es6",
+  "slug": "core-language",
+  "title": "Core Language and ES6+",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "let and const are block-scoped and exist in a temporal dead zone until declaration; const prevents reassignment but not mutation",
+            "Arrow functions (=>) lexically bind this, have no arguments object, and cannot be used as constructors",
+            "Destructuring extracts values from arrays and objects into variables in a single statement, with support for defaults and rest elements",
+            "Spread (...) expands iterables into elements or copies object properties; rest collects remaining items into an array",
+            "Template literals use backticks for string interpolation (${expr}), multi-line strings, and tagged template functions",
+            "Optional chaining (?.) short-circuits to undefined on null/undefined; nullish coalescing (??) provides defaults for null/undefined only",
+            "Symbol creates unique identifiers for object properties; WeakMap/WeakSet hold weak references that allow garbage collection",
+            "Proxy and Reflect enable metaprogramming by intercepting fundamental object operations"
+          ]
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "ES6+ features should be the default for all modern JavaScript development. Block scoping with let and const eliminates entire categories of bugs related to variable hoisting and shared loop variables. Arrow functions are the standard for callbacks, array methods, and any function that should not have its own this binding. Destructuring dramatically reduces boilerplate when working with function parameters, API responses, and configuration objects. The spread operator enables immutable data patterns essential for React state management and Redux reducers. Optional chaining and nullish coalescing replace verbose null-checking chains with concise, readable expressions. These features are supported in all modern browsers and Node.js 14+, and are transpiled by Babel or TypeScript for older targets. There is no reason to use var, manual this binding, or string concatenation in new code."
+        }
+      ],
+      "wordCount": 129,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Block scoping, destructuring, and default parameters\nfunction createPaginatedQuery({\n  page = 1,\n  pageSize = 20,\n  sortBy = 'createdAt',\n  sortOrder = 'desc',\n  filters = {},\n} = {}) {\n  const offset = (page - 1) * pageSize;\n  const limit = pageSize;\n\n  // Destructure filters with defaults\n  const { status, dateRange, search, ...customFilters } = filters;\n\n  const conditions = [];\n  if (status) conditions.push({ field: 'status', op: 'eq', value: status });\n  if (dateRange) {\n    const { start, end } = dateRange;\n    conditions.push({ field: 'createdAt', op: 'between', value: [start, end] });\n  }\n  if (search) conditions.push({ field: 'name', op: 'contains', value: search });\n\n  // Spread custom filters into additional conditions\n  Object.entries(customFilters).forEach(([field, value]) => {\n    conditions.push({ field, op: 'eq', value });\n  });\n\n  return { offset, limit, sortBy, sortOrder, conditions };\n}\n\n// Usage with partial options\nconst query = createPaginatedQuery({\n  page: 3,\n  filters: { status: 'active', search: 'react' },\n});\n\n\n// Arrow functions and lexical this binding\nclass EventTracker {\n  #events = [];\n  #listeners = new Map();\n\n  // Arrow function preserves `this` in callbacks\n  track = (eventName, properties = {}) => {\n    const event = {\n      name: eventName,\n      properties,\n      timestamp: Date.now(),\n      sessionId: this.#getSessionId(),\n    };\n    this.#events.push(event);\n    this.#notifyListeners(eventName, event);\n    return event;\n  };\n\n  subscribe = (eventName, callback) => {\n    if (!this.#listeners.has(eventName)) {\n      this.#listeners.set(eventName, new Set());\n    }\n    this.#listeners.get(eventName).add(callback);\n\n    // Return unsubscribe function (arrow preserves closure)\n    return () => this.#listeners.get(eventName)?.delete(callback);\n  };\n\n  #getSessionId() {\n    return globalThis.sessionStorage?.getItem('sessionId') ?? 'anonymous';\n  }\n\n  #notifyListeners(eventName, event) {\n    this.#listeners.get(eventName)?.forEach(cb => cb(event));\n    this.#listeners.get('*')?.forEach(cb => cb(event));\n  }\n\n  getEvents = (filter) => {\n    if (!filter) return [...this.#events];\n    return this.#events.filter(e =>\n      Object.entries(filter).every(([key, value]) =>\n        key === 'name' ? e.name === value : e.properties[key] === value\n      )\n    );\n  };\n}\n\n// Can safely pass methods as callbacks without .bind()\nconst tracker = new EventTracker();\nconst button = document.querySelector('#submit');\nbutton?.addEventListener('click', () => tracker.track('button_click', { id: 'submit' }));",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Template literals with tagged templates\nfunction highlight(strings, ...values) {\n  return strings.reduce((result, str, i) => {\n    const value = i < values.length\n      ? `<mark class=\"highlight\">${values[i]}</mark>`\n      : '';\n    return result + str + value;\n  }, '');\n}\n\nconst searchTerm = 'JavaScript';\nconst result = highlight`Found ${searchTerm} in ${3} documents`;\n// \"Found <mark class=\"highlight\">JavaScript</mark> in <mark class=\"highlight\">3</mark> documents\"\n\n// SQL tagged template for parameterized queries (prevents injection)\nfunction sql(strings, ...values) {\n  const text = strings.reduce((query, str, i) => {\n    return query + str + (i < values.length ? `$${i + 1}` : '');\n  }, '');\n  return { text, values };\n}\n\nconst userId = 'usr_123';\nconst status = 'active';\nconst query = sql`SELECT * FROM users WHERE id = ${userId} AND status = ${status}`;\n// { text: \"SELECT * FROM users WHERE id = $1 AND status = $2\", values: [\"usr_123\", \"active\"] }\n\n\n// Optional chaining and nullish coalescing in real-world patterns\nfunction getUserDisplayInfo(user) {\n  return {\n    name: user?.profile?.displayName ?? user?.name ?? 'Anonymous',\n    avatar: user?.profile?.avatar?.url ?? '/default-avatar.png',\n    location: user?.address?.city\n      ? `${user.address.city}, ${user.address.country ?? 'Unknown'}`\n      : null,\n    memberSince: user?.createdAt?.toLocaleDateString?.() ?? 'Unknown',\n    // Nullish coalescing distinguishes null/undefined from falsy values\n    notificationCount: user?.notifications?.unread ?? 0, // 0 is valid, don't replace\n    bio: user?.profile?.bio ?? '', // empty string is valid\n  };\n}\n\n\n// Proxy for reactive state observation\nfunction createReactiveState(initialState, onChange) {\n  const handlers = {\n    set(target, property, value, receiver) {\n      const oldValue = target[property];\n      if (oldValue === value) return true;\n\n      const result = Reflect.set(target, property, value, receiver);\n      if (result) {\n        onChange(property, value, oldValue);\n      }\n      return result;\n    },\n\n    deleteProperty(target, property) {\n      const oldValue = target[property];\n      const result = Reflect.deleteProperty(target, property);\n      if (result) {\n        onChange(property, undefined, oldValue);\n      }\n      return result;\n    },\n  };\n\n  return new Proxy({ ...initialState }, handlers);\n}\n\nconst state = createReactiveState(\n  { count: 0, name: 'World' },\n  (prop, newVal, oldVal) => {\n    console.log(`${prop}: ${oldVal} → ${newVal}`);\n    // Trigger re-render, update DOM, etc.\n  }\n);\n\nstate.count = 1;  // Logs: \"count: 0 → 1\"\nstate.name = 'React'; // Logs: \"name: World → React\"",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Modern iteration patterns with Symbol.iterator and generators\nclass Range {\n  #start;\n  #end;\n  #step;\n\n  constructor(start, end, step = 1) {\n    this.#start = start;\n    this.#end = end;\n    this.#step = step;\n  }\n\n  // Make Range iterable with for...of\n  [Symbol.iterator]() {\n    let current = this.#start;\n    const end = this.#end;\n    const step = this.#step;\n\n    return {\n      next() {\n        if (current <= end) {\n          const value = current;\n          current += step;\n          return { value, done: false };\n        }\n        return { done: true };\n      },\n    };\n  }\n\n  // Utility methods that leverage iterability\n  toArray() {\n    return [...this];\n  }\n\n  map(fn) {\n    return [...this].map(fn);\n  }\n\n  filter(fn) {\n    return [...this].filter(fn);\n  }\n}\n\nconst range = new Range(1, 10, 2);\nfor (const n of range) {\n  console.log(n); // 1, 3, 5, 7, 9\n}\n\nconst squares = new Range(1, 5).map(n => n ** 2); // [1, 4, 9, 16, 25]\n\n\n// WeakMap for private data and metadata without memory leaks\nconst metadata = new WeakMap();\n\nclass Component {\n  constructor(name) {\n    this.name = name;\n    metadata.set(this, {\n      renderCount: 0,\n      lastRendered: null,\n      mountedAt: Date.now(),\n    });\n  }\n\n  render() {\n    const meta = metadata.get(this);\n    meta.renderCount++;\n    meta.lastRendered = Date.now();\n    // When Component is garbage collected, metadata entry is automatically removed\n  }\n\n  getStats() {\n    const meta = metadata.get(this);\n    return {\n      renders: meta.renderCount,\n      uptime: Date.now() - meta.mountedAt,\n      lastRendered: meta.lastRendered,\n    };\n  }\n}",
+          "runnable": true
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Using var in loops with closures: Variables declared with var are function-scoped, so closures created inside a loop all share the same variable binding. After the loop completes, all closures reference the final value. Using let creates a new binding per iteration, giving each closure its own copy. This is the most classic JavaScript bug and still appears in legacy codebases and interview questions.",
+            "Mutating const objects and assuming immutability: const prevents reassignment of the binding (const x = 1; x = 2 is an error) but does not make the value immutable. A const object can have properties added, modified, or deleted. For true immutability, use Object.freeze() (shallow) or libraries like Immer. In React, this distinction matters because const state = {}; state.count = 1 mutates without triggering re-renders.",
+            "Implicit type coercion with == and +: The == operator performs type coercion, producing counterintuitive results ([] == false is true, \"\" == 0 is true). The + operator concatenates when either operand is a string (\"5\" + 3 is \"53\"). Always use === for comparisons and explicit type conversion (Number(), String()) when needed. ESLint's eqeqeq rule enforces this.",
+            "Arrow functions as object methods losing this: Arrow functions lexically bind this from their enclosing scope, which means they do not get their own this when used as object methods. const obj = { name: 'test', getName: () => this.name } returns undefined because this refers to the outer scope, not obj. Use regular function syntax for object methods that need this.",
+            "Shallow copy with spread creating shared references: The spread operator ({...obj} or [...arr]) creates a shallow copy. Nested objects and arrays are still shared by reference between the original and the copy. Mutating a nested property on the copy mutates the original. Use structuredClone() for deep copies or Immer for immutable update patterns.",
+            "Optional chaining on assignment targets: Optional chaining (?.) works for reading properties and calling methods but cannot be used on the left side of an assignment. obj?.prop = value is a syntax error. You must check for null/undefined explicitly before assigning: if (obj) obj.prop = value."
+          ]
+        }
+      ],
+      "wordCount": 350,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "React state management with immutable patterns: React requires immutable state updates to trigger re-renders. Spread syntax, destructuring, and array methods (map, filter, reduce) are used constantly to create new state objects without mutating the previous state. Understanding these ES6+ features is essential for writing correct React components and Redux reducers.",
+            "Node.js API servers with modern syntax: Express and Fastify handlers use destructuring for request parameters (const { id } = req.params), optional chaining for nested body fields, template literals for dynamic SQL and log messages, and arrow functions for middleware chains. ES Modules enable tree-shaking and top-level await for server initialization.",
+            "Build tool configuration and scripting: Vite, Webpack, and ESLint configurations use ES6+ features extensively. Tagged templates power CSS-in-JS libraries (styled-components), Proxy enables reactive state in Vue 3, and Symbols provide unique keys for framework internals that do not collide with user code.",
+            "Serverless functions and edge computing: AWS Lambda and Cloudflare Workers execute JavaScript in isolated environments where startup time matters. ES Module top-level await initializes connections, destructuring extracts event properties, and optional chaining safely navigates variable event structures across different trigger types.",
+            "CLI tools and automation scripts: Node.js CLI tools use destructuring for argument parsing, template literals for colored terminal output, Proxy for configuration validation, and generators for streaming file processing. The npm ecosystem provides thousands of utilities that leverage modern JavaScript patterns."
+          ]
+        }
+      ],
+      "wordCount": 225,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the temporal dead zone and how does it affect let and const?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The temporal dead zone (TDZ) is the period between entering a block scope and the point where a let or const variable is declared. Accessing the variable during this period throws a ReferenceError, unlike var which returns undefined when accessed before its declaration (due to hoisting). The TDZ exists to catch bugs where code accidentally uses a variable before it is initialized. It applies from the start of the block (not the function) to the declaration statement, making the error deterministic and easy to locate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between shallow and deep copying in JavaScript."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Shallow copy ({...obj}, Object.assign(), [...arr]) creates a new top-level object but shares references to nested objects. Modifying a nested property on the copy affects the original. Deep copy (structuredClone(), JSON.parse(JSON.stringify())) creates completely independent copies at all nesting levels. structuredClone handles circular references, Maps, Sets, and Dates correctly, while the JSON approach fails on these types and loses functions and undefined values. Choose shallow copy for flat objects and deep copy for nested structures that must be independently mutable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do Proxy and Reflect work together, and what are practical use cases?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Proxy wraps an object and intercepts fundamental operations (get, set, delete, has, etc.) through handler traps. Reflect provides the default behavior for each trap, allowing you to perform the original operation after custom logic. Together they enable: reactive state systems (Vue 3 reactivity), validation layers (reject invalid property assignments), access control (restrict property access based on permissions), logging and debugging (trace all property accesses), and lazy initialization (load data only when accessed). Reflect ensures correct behavior for edge cases like inherited properties and receiver binding."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between ?? (nullish coalescing) and || (logical OR) for default values?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: || returns the right operand when the left is any falsy value (false, 0, '', null, undefined, NaN). ?? returns the right operand only when the left is null or undefined. This distinction matters when 0, empty string, or false are valid values: userCount ?? 10 preserves 0 as a valid count, while userCount || 10 incorrectly replaces 0 with 10. Use ?? for defaults where the value might legitimately be falsy; use || only when all falsy values should trigger the default."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Symbol and its use cases in JavaScript."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Symbol creates a unique, immutable primitive value that can be used as an object property key. Unlike string keys, Symbols never collide with other properties, making them ideal for: framework-internal properties that should not conflict with user code, implementing well-known protocols (Symbol.iterator for iteration, Symbol.toPrimitive for type conversion), creating truly private-like properties that do not appear in Object.keys() or JSON.stringify(), and defining metadata on objects without polluting their public interface. Symbols are not enumerable by default and require Object.getOwnPropertySymbols() to discover."
+        }
+      ],
+      "wordCount": 482,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use structuredClone() for deep copying instead of JSON round-tripping: The JSON.parse(JSON.stringify(obj)) pattern fails silently on Dates (converts to strings), Maps, Sets, RegExp, undefined values, and circular references. structuredClone() (available in all modern environments since 2022) handles all these cases correctly and is faster for large objects. It is the correct default for deep copying in production code.",
+            "Prefer Object.hasOwn() over hasOwnProperty: The Object.hasOwn(obj, prop) static method (ES2022) is safer than obj.hasOwnProperty(prop) because it works on objects created with Object.create(null) (which lack inherited methods) and cannot be shadowed by a property named hasOwnProperty on the object itself. It is also more concise and readable.",
+            "Use AbortController for cancellable operations: Every fetch request, event listener, and timer in production code should be cancellable. AbortController provides a standard mechanism: pass signal to fetch, addEventListener, and custom async operations. Cancel all pending operations on component unmount, route change, or user cancellation to prevent memory leaks and stale state updates."
+          ]
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Closures and Scope — Closures build on lexical scoping rules that ES6 block scoping refines",
+            "Asynchronous JavaScript — Promises and async/await are ES6+ features that transform async programming",
+            "TypeScript — TypeScript adds static types to JavaScript while compiling down to these ES6+ features"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// Block scoping, destructuring, and default parameters\nfunction createPaginatedQuery({\n  page = 1,\n  pageSize = 20,\n  sortBy = 'createdAt',\n  sortOrder = 'desc',\n  filters = {},\n} = {}) {\n  const offset = (page - 1) * pageSize;\n  const limit = pageSize;\n\n  // Destructure filters with defaults\n  const { status, dateRange, search, ...customFilters } = filters;\n\n  const conditions = [];\n  if (status) conditions.push({ field: 'status', op: 'eq', value: status });\n  if (dateRange) {\n    const { start, end } = dateRange;\n    conditions.push({ field: 'createdAt', op: 'between', value: [start, end] });\n  }\n  if (search) conditions.push({ field: 'name', op: 'contains', value: search });\n\n  // Spread custom filters into additional conditions\n  Object.entries(customFilters).forEach(([field, value]) => {\n    conditions.push({ field, op: 'eq', value });\n  });\n\n  return { offset, limit, sortBy, sortOrder, conditions };\n}\n\n// Usage with partial options\nconst query = createPaginatedQuery({\n  page: 3,\n  filters: { status: 'active', search: 'react' },\n});\n\n\n// Arrow functions and lexical this binding\nclass EventTracker {\n  #events = [];\n  #listeners = new Map();\n\n  // Arrow function preserves `this` in callbacks\n  track = (eventName, properties = {}) => {\n    const event = {\n      name: eventName,\n      properties,\n      timestamp: Date.now(),\n      sessionId: this.#getSessionId(),\n    };\n    this.#events.push(event);\n    this.#notifyListeners(eventName, event);\n    return event;\n  };\n\n  subscribe = (eventName, callback) => {\n    if (!this.#listeners.has(eventName)) {\n      this.#listeners.set(eventName, new Set());\n    }\n    this.#listeners.get(eventName).add(callback);\n\n    // Return unsubscribe function (arrow preserves closure)\n    return () => this.#listeners.get(eventName)?.delete(callback);\n  };\n\n  #getSessionId() {\n    return globalThis.sessionStorage?.getItem('sessionId') ?? 'anonymous';\n  }\n\n  #notifyListeners(eventName, event) {\n    this.#listeners.get(eventName)?.forEach(cb => cb(event));\n    this.#listeners.get('*')?.forEach(cb => cb(event));\n  }\n\n  getEvents = (filter) => {\n    if (!filter) return [...this.#events];\n    return this.#events.filter(e =>\n      Object.entries(filter).every(([key, value]) =>\n        key === 'name' ? e.name === value : e.properties[key] === value\n      )\n    );\n  };\n}\n\n// Can safely pass methods as callbacks without .bind()\nconst tracker = new EventTracker();\nconst button = document.querySelector('#submit');\nbutton?.addEventListener('click', () => tracker.track('button_click', { id: 'submit' }));",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Template literals with tagged templates\nfunction highlight(strings, ...values) {\n  return strings.reduce((result, str, i) => {\n    const value = i < values.length\n      ? `<mark class=\"highlight\">${values[i]}</mark>`\n      : '';\n    return result + str + value;\n  }, '');\n}\n\nconst searchTerm = 'JavaScript';\nconst result = highlight`Found ${searchTerm} in ${3} documents`;\n// \"Found <mark class=\"highlight\">JavaScript</mark> in <mark class=\"highlight\">3</mark> documents\"\n\n// SQL tagged template for parameterized queries (prevents injection)\nfunction sql(strings, ...values) {\n  const text = strings.reduce((query, str, i) => {\n    return query + str + (i < values.length ? `$${i + 1}` : '');\n  }, '');\n  return { text, values };\n}\n\nconst userId = 'usr_123';\nconst status = 'active';\nconst query = sql`SELECT * FROM users WHERE id = ${userId} AND status = ${status}`;\n// { text: \"SELECT * FROM users WHERE id = $1 AND status = $2\", values: [\"usr_123\", \"active\"] }\n\n\n// Optional chaining and nullish coalescing in real-world patterns\nfunction getUserDisplayInfo(user) {\n  return {\n    name: user?.profile?.displayName ?? user?.name ?? 'Anonymous',\n    avatar: user?.profile?.avatar?.url ?? '/default-avatar.png',\n    location: user?.address?.city\n      ? `${user.address.city}, ${user.address.country ?? 'Unknown'}`\n      : null,\n    memberSince: user?.createdAt?.toLocaleDateString?.() ?? 'Unknown',\n    // Nullish coalescing distinguishes null/undefined from falsy values\n    notificationCount: user?.notifications?.unread ?? 0, // 0 is valid, don't replace\n    bio: user?.profile?.bio ?? '', // empty string is valid\n  };\n}\n\n\n// Proxy for reactive state observation\nfunction createReactiveState(initialState, onChange) {\n  const handlers = {\n    set(target, property, value, receiver) {\n      const oldValue = target[property];\n      if (oldValue === value) return true;\n\n      const result = Reflect.set(target, property, value, receiver);\n      if (result) {\n        onChange(property, value, oldValue);\n      }\n      return result;\n    },\n\n    deleteProperty(target, property) {\n      const oldValue = target[property];\n      const result = Reflect.deleteProperty(target, property);\n      if (result) {\n        onChange(property, undefined, oldValue);\n      }\n      return result;\n    },\n  };\n\n  return new Proxy({ ...initialState }, handlers);\n}\n\nconst state = createReactiveState(\n  { count: 0, name: 'World' },\n  (prop, newVal, oldVal) => {\n    console.log(`${prop}: ${oldVal} → ${newVal}`);\n    // Trigger re-render, update DOM, etc.\n  }\n);\n\nstate.count = 1;  // Logs: \"count: 0 → 1\"\nstate.name = 'React'; // Logs: \"name: World → React\"",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Modern iteration patterns with Symbol.iterator and generators\nclass Range {\n  #start;\n  #end;\n  #step;\n\n  constructor(start, end, step = 1) {\n    this.#start = start;\n    this.#end = end;\n    this.#step = step;\n  }\n\n  // Make Range iterable with for...of\n  [Symbol.iterator]() {\n    let current = this.#start;\n    const end = this.#end;\n    const step = this.#step;\n\n    return {\n      next() {\n        if (current <= end) {\n          const value = current;\n          current += step;\n          return { value, done: false };\n        }\n        return { done: true };\n      },\n    };\n  }\n\n  // Utility methods that leverage iterability\n  toArray() {\n    return [...this];\n  }\n\n  map(fn) {\n    return [...this].map(fn);\n  }\n\n  filter(fn) {\n    return [...this].filter(fn);\n  }\n}\n\nconst range = new Range(1, 10, 2);\nfor (const n of range) {\n  console.log(n); // 1, 3, 5, 7, 9\n}\n\nconst squares = new Range(1, 5).map(n => n ** 2); // [1, 4, 9, 16, 25]\n\n\n// WeakMap for private data and metadata without memory leaks\nconst metadata = new WeakMap();\n\nclass Component {\n  constructor(name) {\n    this.name = name;\n    metadata.set(this, {\n      renderCount: 0,\n      lastRendered: null,\n      mountedAt: Date.now(),\n    });\n  }\n\n  render() {\n    const meta = metadata.get(this);\n    meta.renderCount++;\n    meta.lastRendered = Date.now();\n    // When Component is garbage collected, metadata entry is automatically removed\n  }\n\n  getStats() {\n    const meta = metadata.get(this);\n    return {\n      renders: meta.renderCount,\n      uptime: Date.now() - meta.mountedAt,\n      lastRendered: meta.lastRendered,\n    };\n  }\n}",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/javascript/core-language.md",
+    "wordCount": 1512,
+    "sectionCount": 8
+  }
+}

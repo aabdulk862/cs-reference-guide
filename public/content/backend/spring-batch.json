@@ -1,0 +1,301 @@
+{
+  "id": "spring-framework-spring-batch",
+  "slug": "spring-batch",
+  "title": "Spring Batch",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Batch is a lightweight framework for robust, scalable batch processing in Java built on top of Spring Framework",
+            "Core abstraction: Job → Step → (Tasklet | Chunk<Reader, Processor, Writer>)",
+            "Chunk-oriented processing: read N items → process each → write all in one transaction (commit-interval = chunk size)",
+            "Job Repository stores execution metadata (status, parameters, read/write counts) in BATCH_JOB_INSTANCE, BATCH_JOB_EXECUTION, BATCH_STEP_EXECUTION tables",
+            "Fault tolerance: skip(Exception.class).skipLimit(10), retry(Exception.class).retryLimit(3), restartable jobs resume from last checkpoint",
+            "Scaling strategies: multithreaded steps, partitioning (split data across threads/nodes), remote chunking (distribute processing)",
+            "Spring Batch is NOT a scheduler — use Cron, Quartz, Kubernetes CronJobs, or @Scheduled to trigger jobs"
+          ]
+        }
+      ],
+      "wordCount": 102,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Batch is the standard choice for Java-based batch processing where you need to process large volumes of data reliably with transaction management, restart capability, and skip/retry logic. Use Spring Batch when your business requires scheduled ETL pipelines, data migration between systems, report generation from large datasets, or periodic data cleanup jobs. It excels when processing millions of records where chunk-oriented processing keeps memory usage bounded and transactions manageable. Spring Batch provides the infrastructure for reading from diverse sources (databases, files, message queues, APIs), applying business transformations, and writing to multiple destinations in a single coordinated job. Choose Spring Batch over custom scripts when you need production-grade features like job restartability after failures, detailed execution auditing, skip policies for bad records, and the ability to scale horizontally via partitioning. The framework integrates naturally with Spring Boot for auto-configuration, Spring Data for database access, and Spring Integration for event-driven batch triggers."
+        }
+      ],
+      "wordCount": 150,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "complete-job-configuration-with-chunk-processing",
+          "heading": "Complete Job Configuration with Chunk Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\n@EnableBatchProcessing\npublic class ImportJobConfig {\n\n    private final JobBuilderFactory jobBuilderFactory;\n    private final StepBuilderFactory stepBuilderFactory;\n\n    public ImportJobConfig(JobBuilderFactory jobBuilderFactory,\n                           StepBuilderFactory stepBuilderFactory) {\n        this.jobBuilderFactory = jobBuilderFactory;\n        this.stepBuilderFactory = stepBuilderFactory;\n    }\n\n    @Bean\n    public Job importCustomerJob(Step importStep, Step notificationStep) {\n        return jobBuilderFactory.get(\"importCustomerJob\")\n                .incrementer(new RunIdIncrementer())\n                .validator(new DefaultJobParametersValidator(\n                    new String[]{\"inputFile\"}, new String[]{}))\n                .start(importStep)\n                .next(notificationStep)\n                .listener(new JobCompletionListener())\n                .build();\n    }\n\n    @Bean\n    public Step importStep(ItemReader<CustomerRecord> reader,\n                           ItemProcessor<CustomerRecord, Customer> processor,\n                           ItemWriter<Customer> writer) {\n        return stepBuilderFactory.get(\"importStep\")\n                .<CustomerRecord, Customer>chunk(100)\n                .reader(reader)\n                .processor(processor)\n                .writer(writer)\n                .faultTolerant()\n                .skip(FlatFileParseException.class)\n                .skipLimit(50)\n                .retry(DeadlockLoserDataAccessException.class)\n                .retryLimit(3)\n                .listener(new StepMetricsListener())\n                .build();\n    }\n\n    @Bean\n    public Step notificationStep(Tasklet notificationTasklet) {\n        return stepBuilderFactory.get(\"notificationStep\")\n                .tasklet(notificationTasklet)\n                .build();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "itemreader-processor-and-writer-implementations",
+          "heading": "ItemReader, Processor, and Writer Implementations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\n@StepScope\npublic FlatFileItemReader<CustomerRecord> csvReader(\n        @Value(\"#{jobParameters['inputFile']}\") Resource inputFile) {\n    return new FlatFileItemReaderBuilder<CustomerRecord>()\n            .name(\"customerCsvReader\")\n            .resource(inputFile)\n            .linesToSkip(1) // skip header\n            .delimited()\n            .delimiter(\",\")\n            .names(\"id\", \"name\", \"email\", \"phone\", \"createdDate\")\n            .fieldSetMapper(new BeanWrapperFieldSetMapper<>() {{\n                setTargetType(CustomerRecord.class);\n            }})\n            .build();\n}\n\n@Component\npublic class CustomerProcessor implements ItemProcessor<CustomerRecord, Customer> {\n\n    private final CustomerRepository repository;\n\n    public CustomerProcessor(CustomerRepository repository) {\n        this.repository = repository;\n    }\n\n    @Override\n    public Customer process(CustomerRecord record) throws Exception {\n        // Return null to filter out invalid records\n        if (record.getEmail() == null || record.getEmail().isBlank()) {\n            return null;\n        }\n        // Skip duplicates\n        if (repository.existsByEmail(record.getEmail())) {\n            return null;\n        }\n        // Transform to domain entity\n        Customer customer = new Customer();\n        customer.setName(record.getName().trim().toUpperCase());\n        customer.setEmail(record.getEmail().toLowerCase());\n        customer.setPhone(record.getPhone());\n        customer.setImportedAt(LocalDateTime.now());\n        return customer;\n    }\n}\n\n@Bean\npublic JdbcBatchItemWriter<Customer> jdbcWriter(DataSource dataSource) {\n    return new JdbcBatchItemWriterBuilder<Customer>()\n            .dataSource(dataSource)\n            .sql(\"INSERT INTO customers (name, email, phone, imported_at) \" +\n                 \"VALUES (:name, :email, :phone, :importedAt)\")\n            .beanMapped()\n            .build();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "conditional-job-flow-with-decider",
+          "heading": "Conditional Job Flow with Decider",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic Job conditionalJob(Step extractStep, Step transformStep,\n                          Step errorStep, Step loadStep) {\n    return jobBuilderFactory.get(\"conditionalJob\")\n            .start(extractStep)\n                .on(\"FAILED\").to(errorStep)\n            .from(extractStep)\n                .on(\"*\").to(decider())\n            .from(decider())\n                .on(\"WEEKDAY\").to(transformStep)\n            .from(decider())\n                .on(\"WEEKEND\").to(loadStep)\n            .end()\n            .build();\n}\n\n@Bean\npublic JobExecutionDecider decider() {\n    return (jobExecution, stepExecution) -> {\n        DayOfWeek day = LocalDate.now().getDayOfWeek();\n        String result = (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY)\n                ? \"WEEKEND\" : \"WEEKDAY\";\n        return new FlowExecutionStatus(result);\n    };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "partitioned-step-for-parallel-processing",
+          "heading": "Partitioned Step for Parallel Processing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Bean\npublic Step partitionedStep(Step workerStep, Partitioner partitioner) {\n    return stepBuilderFactory.get(\"partitionedStep\")\n            .partitioner(\"workerStep\", partitioner)\n            .step(workerStep)\n            .gridSize(4) // number of partitions\n            .taskExecutor(new SimpleAsyncTaskExecutor())\n            .build();\n}\n\n@Bean\npublic Partitioner rangePartitioner() {\n    return gridSize -> {\n        Map<String, ExecutionContext> partitions = new HashMap<>();\n        long totalRecords = customerRepository.count();\n        long partitionSize = totalRecords / gridSize;\n\n        for (int i = 0; i < gridSize; i++) {\n            ExecutionContext context = new ExecutionContext();\n            context.putLong(\"minId\", i * partitionSize + 1);\n            context.putLong(\"maxId\", (i + 1) * partitionSize);\n            partitions.put(\"partition\" + i, context);\n        }\n        return partitions;\n    };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "job-launcher-via-rest-endpoint",
+          "heading": "Job Launcher via REST Endpoint",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/api/jobs\")\npublic class JobController {\n\n    private final JobLauncher jobLauncher;\n    private final Job importCustomerJob;\n\n    @PostMapping(\"/import\")\n    public ResponseEntity<JobExecutionResponse> launchImport(\n            @RequestParam String inputFile) throws Exception {\n        JobParameters params = new JobParametersBuilder()\n                .addString(\"inputFile\", inputFile)\n                .addLong(\"timestamp\", System.currentTimeMillis())\n                .toJobParameters();\n\n        JobExecution execution = jobLauncher.run(importCustomerJob, params);\n\n        return ResponseEntity.accepted().body(new JobExecutionResponse(\n                execution.getId(),\n                execution.getStatus().toString(),\n                execution.getStartTime()));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Spring Batch Architecture\"\n        LAUNCHER[JobLauncher] --> JOB[Job]\n        JOB --> STEP1[Step 1<br/>Tasklet]\n        JOB --> STEP2[Step 2<br/>Chunk-Oriented]\n        JOB --> STEP3[Step 3<br/>Tasklet]\n\n        STEP2 --> READER[ItemReader<br/>CSV / DB / XML / JSON]\n        READER --> PROCESSOR[ItemProcessor<br/>Transform / Validate / Filter]\n        PROCESSOR --> WRITER[ItemWriter<br/>DB / File / Queue]\n\n        JOB --> REPO[(Job Repository<br/>Execution Metadata)]\n    end\n\n    subgraph \"Chunk Transaction Boundary\"\n        READ[Read N items] --> PROCESS[Process each item]\n        PROCESS --> WRITE[Write chunk<br/>Single Transaction]\n        WRITE -->|Commit| READ\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Scaling Strategies\"\n        SINGLE[Single Thread<br/>Sequential chunks]\n        MULTI[Multi-Threaded Step<br/>Parallel chunks]\n        PARTITION[Partitioning<br/>Split data across threads]\n        REMOTE[Remote Chunking<br/>Distribute across nodes]\n    end\n\n    SINGLE -->|More throughput needed| MULTI\n    MULTI -->|Data-parallelizable| PARTITION\n    PARTITION -->|Horizontal scale| REMOTE"
+        },
+        {
+          "type": "mermaid",
+          "source": "stateDiagram-v2\n    [*] --> STARTING\n    STARTING --> STARTED\n    STARTED --> COMPLETED : All steps succeed\n    STARTED --> FAILED : Unrecoverable error\n    STARTED --> STOPPED : Manual stop / StepExecution.setTerminateOnly()\n    FAILED --> STARTED : Restart (from checkpoint)\n    STOPPED --> STARTED : Restart\n    COMPLETED --> [*]"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Chunk size too large or too small: A chunk size of 1 means one transaction per record (slow due to commit overhead). A chunk size of 10,000 means one massive transaction that holds locks and risks OOM. Start with 100-500 items per chunk, measure throughput, and tune based on your data size and transaction duration. Monitor spring.batch.step.execution.write.count metrics.",
+            "Not making jobs restartable: If a job processes 1 million records and fails at record 600,000, you want to restart from 600,001, not from the beginning. Ensure your Job Repository uses a persistent database (not in-memory), and that your readers support restart (cursor-based readers track position automatically). Test restart behavior explicitly.",
+            "Self-invocation bypassing Spring proxies: Calling a @StepScope or @JobScope bean method from within the same class bypasses the proxy, so late binding of job parameters fails. Always inject scoped beans from a different Spring-managed bean. This is the same proxy limitation as @Transactional and @Cacheable.",
+            "Ignoring skip and retry interaction: If you configure both skip and retry for the same exception, Spring Batch retries first, then skips if retries are exhausted. But if you forget to add the exception to both skip() and retry(), the behavior may not match expectations. Always test fault tolerance with intentionally bad records in your test data.",
+            "Running jobs with identical parameters: Spring Batch considers a Job Instance unique by Job name + Job Parameters. Running the same job with identical parameters returns JobInstanceAlreadyCompleteException. Use RunIdIncrementer or add a timestamp parameter to allow re-execution. For idempotent jobs, this is actually a safety feature preventing accidental double-processing."
+          ]
+        }
+      ],
+      "wordCount": 260,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Financial reconciliation: Banks process millions of transactions nightly, matching records between internal ledgers and external payment networks. Spring Batch reads from multiple sources (database cursors, SWIFT files), applies matching logic in processors, writes reconciliation results, and generates exception reports for manual review. Partitioning by account range enables parallel processing across cores.",
+            "Data migration between systems: Migrating customer data from a legacy Oracle database to a new PostgreSQL system. Spring Batch handles schema transformation in processors, validates data integrity, writes to the new system, and maintains an audit trail of migrated records. Restart capability ensures the migration can resume after network interruptions without re-processing.",
+            "ETL for data warehousing: Extract operational data from multiple microservice databases, transform it into dimensional models (star schema), and load into a data warehouse for analytics. Multi-step jobs handle extraction, deduplication, dimension lookups, fact table loading, and index rebuilding in sequence with proper transaction boundaries.",
+            "Regulatory report generation: Financial institutions generate daily/monthly regulatory reports (Basel III, SOX compliance) by aggregating transaction data, applying complex calculations, and producing formatted output files. Spring Batch's chunk processing keeps memory bounded even for billions of transactions, while listeners track processing metrics for audit compliance."
+          ]
+        }
+      ],
+      "wordCount": 193,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Tasklet and a Chunk-oriented step?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A Tasklet executes a single block of code (the execute() method) repeatedly until it returns RepeatStatus.FINISHED. It runs in its own transaction per invocation. Use tasklets for simple operations like file cleanup, sending notifications, or calling APIs. Chunk-oriented steps follow the read-process-write pattern: read items one at a time, process each, then write the entire chunk in a single transaction. Use chunks when processing large datasets where you need bounded memory usage, transaction management per batch of records, and built-in skip/retry support."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Spring Batch handle job restartability?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Batch persists execution metadata (job parameters, step status, read/write counts, commit counts) in the Job Repository database tables. When a failed job is restarted with the same parameters, Spring Batch queries the repository to find the last successful checkpoint. Cursor-based readers resume from the last committed position. Chunk-oriented steps skip already-completed chunks. The restartable attribute on the job (default true) and allow-start-if-complete on steps control this behavior. A completed job instance cannot be restarted unless allow-start-if-complete=true."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the transaction model in chunk-oriented processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Each chunk operates within a single transaction. The reader reads items outside the transaction boundary (reader exceptions don't cause rollback). Processing and writing happen inside the transaction. If the writer throws an exception, the entire chunk rolls back and can be retried. The commit-interval (chunk size) determines how many items are processed per transaction. You can configure no-rollback-exception-classes for exceptions that should not trigger rollback, and skip policies for exceptions that should skip the item rather than fail the step."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you scale a Spring Batch job that processes 100 million records?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with multithreaded steps (TaskExecutor on the step) to process multiple chunks in parallel — this works when items are independent. If data can be logically partitioned (by date range, ID range, or file), use partitioning to split work across threads or remote workers. For CPU-intensive processing with simple I/O, remote chunking distributes processing to worker nodes while the master handles reading and writing. Monitor throughput at each stage to identify bottlenecks. Often, the database write is the bottleneck — use JdbcBatchItemWriter with large batch sizes and consider disabling indexes during bulk loads."
+        }
+      ],
+      "wordCount": 378,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor job execution with Actuator and Micrometer: Expose batch metrics via /actuator/metrics including spring.batch.job.active.count, spring.batch.step.execution.count, and custom timers on readers/writers. Set up alerts for jobs exceeding their SLA duration or exceeding skip thresholds. Integrate with Prometheus/Grafana for historical trend analysis of job performance.",
+            "Use a persistent Job Repository with proper cleanup: Configure the Job Repository to use your production database with proper connection pooling. Old execution metadata accumulates over time — implement a scheduled cleanup job that removes executions older than your retention period (typically 30-90 days). Without cleanup, the BATCH_STEP_EXECUTION_CONTEXT table grows unbounded and slows down job restarts.",
+            "Implement idempotent writers: Network failures or container restarts can cause a chunk to be written partially, then retried. Your writer must handle duplicate writes gracefully using INSERT ... ON CONFLICT DO NOTHING (PostgreSQL) or MERGE statements. For file writers, use temporary files and atomic rename on completion. This ensures restart safety without data corruption.",
+            "Configure thread pool sizing for partitioned jobs: Set partition grid size based on available CPU cores and database connection pool size. Each partition needs its own database connection for the duration of the step. If you have 20 max connections and 4 are used by the application, limit partitions to 16. Monitor connection pool metrics to detect exhaustion during batch runs."
+          ]
+        }
+      ],
+      "wordCount": 214,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Boot — Spring Batch auto-configuration and job launching via Spring Boot",
+            "Spring Framework — Transaction management and dependency injection foundation",
+            "Apache Maven — Build configuration for Spring Batch projects with starter dependencies",
+            "Apache Kafka — Event-driven batch triggers and Kafka-based ItemReader/Writer implementations"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Configuration\n@EnableBatchProcessing\npublic class ImportJobConfig {\n\n    private final JobBuilderFactory jobBuilderFactory;\n    private final StepBuilderFactory stepBuilderFactory;\n\n    public ImportJobConfig(JobBuilderFactory jobBuilderFactory,\n                           StepBuilderFactory stepBuilderFactory) {\n        this.jobBuilderFactory = jobBuilderFactory;\n        this.stepBuilderFactory = stepBuilderFactory;\n    }\n\n    @Bean\n    public Job importCustomerJob(Step importStep, Step notificationStep) {\n        return jobBuilderFactory.get(\"importCustomerJob\")\n                .incrementer(new RunIdIncrementer())\n                .validator(new DefaultJobParametersValidator(\n                    new String[]{\"inputFile\"}, new String[]{}))\n                .start(importStep)\n                .next(notificationStep)\n                .listener(new JobCompletionListener())\n                .build();\n    }\n\n    @Bean\n    public Step importStep(ItemReader<CustomerRecord> reader,\n                           ItemProcessor<CustomerRecord, Customer> processor,\n                           ItemWriter<Customer> writer) {\n        return stepBuilderFactory.get(\"importStep\")\n                .<CustomerRecord, Customer>chunk(100)\n                .reader(reader)\n                .processor(processor)\n                .writer(writer)\n                .faultTolerant()\n                .skip(FlatFileParseException.class)\n                .skipLimit(50)\n                .retry(DeadlockLoserDataAccessException.class)\n                .retryLimit(3)\n                .listener(new StepMetricsListener())\n                .build();\n    }\n\n    @Bean\n    public Step notificationStep(Tasklet notificationTasklet) {\n        return stepBuilderFactory.get(\"notificationStep\")\n                .tasklet(notificationTasklet)\n                .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\n@StepScope\npublic FlatFileItemReader<CustomerRecord> csvReader(\n        @Value(\"#{jobParameters['inputFile']}\") Resource inputFile) {\n    return new FlatFileItemReaderBuilder<CustomerRecord>()\n            .name(\"customerCsvReader\")\n            .resource(inputFile)\n            .linesToSkip(1) // skip header\n            .delimited()\n            .delimiter(\",\")\n            .names(\"id\", \"name\", \"email\", \"phone\", \"createdDate\")\n            .fieldSetMapper(new BeanWrapperFieldSetMapper<>() {{\n                setTargetType(CustomerRecord.class);\n            }})\n            .build();\n}\n\n@Component\npublic class CustomerProcessor implements ItemProcessor<CustomerRecord, Customer> {\n\n    private final CustomerRepository repository;\n\n    public CustomerProcessor(CustomerRepository repository) {\n        this.repository = repository;\n    }\n\n    @Override\n    public Customer process(CustomerRecord record) throws Exception {\n        // Return null to filter out invalid records\n        if (record.getEmail() == null || record.getEmail().isBlank()) {\n            return null;\n        }\n        // Skip duplicates\n        if (repository.existsByEmail(record.getEmail())) {\n            return null;\n        }\n        // Transform to domain entity\n        Customer customer = new Customer();\n        customer.setName(record.getName().trim().toUpperCase());\n        customer.setEmail(record.getEmail().toLowerCase());\n        customer.setPhone(record.getPhone());\n        customer.setImportedAt(LocalDateTime.now());\n        return customer;\n    }\n}\n\n@Bean\npublic JdbcBatchItemWriter<Customer> jdbcWriter(DataSource dataSource) {\n    return new JdbcBatchItemWriterBuilder<Customer>()\n            .dataSource(dataSource)\n            .sql(\"INSERT INTO customers (name, email, phone, imported_at) \" +\n                 \"VALUES (:name, :email, :phone, :importedAt)\")\n            .beanMapped()\n            .build();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Job conditionalJob(Step extractStep, Step transformStep,\n                          Step errorStep, Step loadStep) {\n    return jobBuilderFactory.get(\"conditionalJob\")\n            .start(extractStep)\n                .on(\"FAILED\").to(errorStep)\n            .from(extractStep)\n                .on(\"*\").to(decider())\n            .from(decider())\n                .on(\"WEEKDAY\").to(transformStep)\n            .from(decider())\n                .on(\"WEEKEND\").to(loadStep)\n            .end()\n            .build();\n}\n\n@Bean\npublic JobExecutionDecider decider() {\n    return (jobExecution, stepExecution) -> {\n        DayOfWeek day = LocalDate.now().getDayOfWeek();\n        String result = (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY)\n                ? \"WEEKEND\" : \"WEEKDAY\";\n        return new FlowExecutionStatus(result);\n    };\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Bean\npublic Step partitionedStep(Step workerStep, Partitioner partitioner) {\n    return stepBuilderFactory.get(\"partitionedStep\")\n            .partitioner(\"workerStep\", partitioner)\n            .step(workerStep)\n            .gridSize(4) // number of partitions\n            .taskExecutor(new SimpleAsyncTaskExecutor())\n            .build();\n}\n\n@Bean\npublic Partitioner rangePartitioner() {\n    return gridSize -> {\n        Map<String, ExecutionContext> partitions = new HashMap<>();\n        long totalRecords = customerRepository.count();\n        long partitionSize = totalRecords / gridSize;\n\n        for (int i = 0; i < gridSize; i++) {\n            ExecutionContext context = new ExecutionContext();\n            context.putLong(\"minId\", i * partitionSize + 1);\n            context.putLong(\"maxId\", (i + 1) * partitionSize);\n            partitions.put(\"partition\" + i, context);\n        }\n        return partitions;\n    };\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/api/jobs\")\npublic class JobController {\n\n    private final JobLauncher jobLauncher;\n    private final Job importCustomerJob;\n\n    @PostMapping(\"/import\")\n    public ResponseEntity<JobExecutionResponse> launchImport(\n            @RequestParam String inputFile) throws Exception {\n        JobParameters params = new JobParametersBuilder()\n                .addString(\"inputFile\", inputFile)\n                .addLong(\"timestamp\", System.currentTimeMillis())\n                .toJobParameters();\n\n        JobExecution execution = jobLauncher.run(importCustomerJob, params);\n\n        return ResponseEntity.accepted().body(new JobExecutionResponse(\n                execution.getId(),\n                execution.getStatus().toString(),\n                execution.getStartTime()));\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-batch.md",
+    "wordCount": 1340,
+    "sectionCount": 14
+  }
+}

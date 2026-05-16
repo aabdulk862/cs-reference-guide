@@ -1,0 +1,242 @@
+{
+  "id": "docker-docker-compose",
+  "slug": "docker-compose",
+  "title": "Docker Compose",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Docker Compose defines and runs multi-container applications using a declarative docker-compose.yml (or compose.yaml) file",
+            "Services, networks, and volumes are the three top-level concepts in a Compose file",
+            "docker compose up -d starts all services in detached mode; docker compose down stops and removes them",
+            "Service dependencies use depends_on with condition: service_healthy for readiness-aware startup ordering",
+            "Environment variable interpolation uses ${VAR:-default} syntax for environment-specific configuration",
+            "Compose profiles selectively enable services: docker compose --profile debug up",
+            "docker compose watch (v2.22+) enables hot-reload by syncing file changes into running containers",
+            "Override files (docker-compose.override.yml) layer environment-specific configuration without modifying the base file",
+            "Compose V2 is a Docker CLI plugin invoked as docker compose (not the legacy docker-compose binary)"
+          ]
+        }
+      ],
+      "wordCount": 114,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Docker Compose is the standard tool for local development environments that mirror production topology. Use it when your application consists of multiple services (API, database, cache, message broker) that need to run together for development and testing. Compose eliminates the need for developers to manually start and configure each dependency, reducing onboarding time from hours to minutes with a single docker compose up command."
+        },
+        {
+          "type": "paragraph",
+          "text": "Compose is also valuable for integration testing in CI pipelines where you need real service dependencies rather than mocks. Spin up the full stack, run integration tests against it, and tear it down in a clean, reproducible manner. For production deployments, Compose is appropriate for single-host scenarios but should be replaced by Kubernetes or ECS for multi-host orchestration with advanced scheduling, self-healing, and rolling updates."
+        }
+      ],
+      "wordCount": 129,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "full-stack-development-environment",
+          "heading": "Full-Stack Development Environment",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# compose.yaml - Microservice development environment\nname: order-platform\n\nservices:\n  api-gateway:\n    build:\n      context: ./gateway\n      dockerfile: Dockerfile\n      target: development\n    ports:\n      - \"8080:8080\"\n    environment:\n      - SPRING_PROFILES_ACTIVE=docker\n      - ORDER_SERVICE_URL=http://order-service:8081\n      - INVENTORY_SERVICE_URL=http://inventory-service:8082\n    depends_on:\n      order-service:\n        condition: service_healthy\n      inventory-service:\n        condition: service_healthy\n    develop:\n      watch:\n        - action: rebuild\n          path: ./gateway/src\n    networks:\n      - frontend\n      - backend\n\n  order-service:\n    build:\n      context: ./order-service\n      target: development\n    ports:\n      - \"8081:8081\"\n    environment:\n      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/orders\n      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092\n    depends_on:\n      postgres:\n        condition: service_healthy\n      kafka:\n        condition: service_healthy\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8081/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n      start_period: 30s\n    volumes:\n      - ./order-service/src:/app/src\n    networks:\n      - backend\n\n  inventory-service:\n    build:\n      context: ./inventory-service\n      target: development\n    ports:\n      - \"8082:8082\"\n    environment:\n      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/inventory\n    depends_on:\n      mongo:\n        condition: service_started\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8082/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n      start_period: 30s\n    networks:\n      - backend\n\n  postgres:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: orders\n      POSTGRES_USER: orderuser\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n      - ./init-scripts/postgres:/docker-entrypoint-initdb.d:ro\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U orderuser -d orders\"]\n      interval: 5s\n      timeout: 3s\n      retries: 5\n    ports:\n      - \"5432:5432\"\n    networks:\n      - backend\n\n  mongo:\n    image: mongo:7\n    volumes:\n      - mongo-data:/data/db\n      - ./init-scripts/mongo:/docker-entrypoint-initdb.d:ro\n    ports:\n      - \"27017:27017\"\n    networks:\n      - backend\n\n  kafka:\n    image: confluentinc/cp-kafka:7.5.0\n    environment:\n      KAFKA_NODE_ID: 1\n      KAFKA_PROCESS_ROLES: broker,controller\n      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\n      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093\n      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER\n      CLUSTER_ID: \"MkU3OEVBNTcwNTJENDM2Qk\"\n    healthcheck:\n      test: [\"CMD\", \"kafka-broker-api-versions\", \"--bootstrap-server\", \"localhost:9092\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n    ports:\n      - \"9092:9092\"\n    networks:\n      - backend\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru\n    ports:\n      - \"6379:6379\"\n    networks:\n      - backend\n    profiles:\n      - cache\n\nvolumes:\n  postgres-data:\n  mongo-data:\n\nnetworks:\n  frontend:\n    driver: bridge\n  backend:\n    driver: bridge",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cicd-integration-testing-with-compose",
+          "heading": "CI/CD Integration Testing with Compose",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# compose.ci.yaml - Integration test environment\nname: order-platform-ci\n\nservices:\n  api:\n    build:\n      context: .\n      dockerfile: Dockerfile\n      target: test\n    environment:\n      - DATABASE_URL=postgresql://testuser:testpass@postgres:5432/testdb\n      - REDIS_URL=redis://redis:6379\n      - KAFKA_BROKERS=kafka:9092\n    depends_on:\n      postgres:\n        condition: service_healthy\n      redis:\n        condition: service_started\n      kafka:\n        condition: service_healthy\n    command: [\"npm\", \"run\", \"test:integration\"]\n\n  postgres:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: testdb\n      POSTGRES_USER: testuser\n      POSTGRES_PASSWORD: testpass\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U testuser -d testdb\"]\n      interval: 2s\n      timeout: 2s\n      retries: 10\n    tmpfs:\n      - /var/lib/postgresql/data  # RAM-backed for speed\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --save \"\"  # Disable persistence for tests\n\n  kafka:\n    image: confluentinc/cp-kafka:7.5.0\n    environment:\n      KAFKA_NODE_ID: 1\n      KAFKA_PROCESS_ROLES: broker,controller\n      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\n      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093\n      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER\n      CLUSTER_ID: \"test-cluster-id-12345\"\n    healthcheck:\n      test: [\"CMD\", \"kafka-broker-api-versions\", \"--bootstrap-server\", \"localhost:9092\"]\n      interval: 5s\n      timeout: 5s\n      retries: 10",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "bash",
+              "code": "#!/bin/bash\n# CI script for running integration tests with Compose\nset -e\n\n# Start dependencies and wait for health checks\ndocker compose -f compose.ci.yaml up -d postgres redis kafka\ndocker compose -f compose.ci.yaml up --exit-code-from api api\n\n# Capture exit code\nEXIT_CODE=$?\n\n# Always clean up\ndocker compose -f compose.ci.yaml down --volumes --remove-orphans\n\nexit $EXIT_CODE",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using depends_on without health checks: The basic depends_on only waits for the container to start, not for the service inside to be ready. A database container starts in milliseconds but PostgreSQL takes seconds to accept connections. Always use condition: service_healthy with proper health checks to ensure dependencies are actually ready before dependent services start.",
+            "Hardcoding environment values instead of using interpolation: Committing passwords and environment-specific URLs directly in compose.yaml makes the file unusable across environments and risks leaking secrets to version control. Use ${VARIABLE:-default} syntax with .env files for local defaults and CI-injected variables for pipelines.",
+            "Not using profiles for optional services: Including debugging tools (pgAdmin, Kafka UI, Jaeger) in the default service set slows down docker compose up for developers who do not need them. Use profiles to group optional services that are only started when explicitly requested with --profile debug.",
+            "Forgetting --remove-orphans during development: When you rename or remove services from the Compose file, old containers from previous configurations continue running. Use docker compose up --remove-orphans or docker compose down --remove-orphans to clean up containers from services no longer defined in the current file.",
+            "Volume mount performance on macOS: Docker Desktop on macOS uses a Linux VM, and bind mounts between the macOS host and the VM have significant I/O overhead. For Node.js projects with large node_modules, this can make builds 5-10x slower. Use named volumes for node_modules and bind mount only source code, or use Docker's cached or delegated mount consistency options.",
+            "Not setting memory limits on development services: A Kafka or Elasticsearch container without memory limits can consume 4-8GB of RAM, leaving insufficient memory for your IDE and application. Set explicit memory limits on resource-hungry services in development to prevent laptop slowdowns."
+          ]
+        }
+      ],
+      "wordCount": 286,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Development teams use Compose to standardize local environments across a team of 20+ engineers. A new hire clones the repository, copies .env.example to .env, runs docker compose up, and has the full application stack running within 5 minutes. The Compose file documents the entire system topology, serving as living infrastructure documentation that is always in sync with the actual service dependencies."
+        },
+        {
+          "type": "paragraph",
+          "text": "Integration testing in CI pipelines uses Compose to spin up real dependencies instead of mocks. The pipeline starts PostgreSQL, Redis, and Kafka containers, runs the test suite against them, and tears everything down. Using tmpfs for database storage and disabling persistence for Redis makes tests run faster while still validating real service interactions. Test isolation is guaranteed because each pipeline run gets fresh containers with no state from previous runs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Feature branch environments use Compose with dynamic port allocation to run multiple instances of the application stack simultaneously. Each feature branch gets its own set of containers with unique port mappings, enabling parallel development and QA review without conflicts. A lightweight script generates the .env file with branch-specific ports and service names."
+        },
+        {
+          "type": "paragraph",
+          "text": "Demo and sales environments use Compose to run the full product on a single EC2 instance for customer demonstrations. The Compose file includes seed data scripts that populate databases with realistic sample data, providing a self-contained demo environment that can be spun up in any region within minutes for customer calls across time zones."
+        }
+      ],
+      "wordCount": 237,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does Docker Compose handle service startup ordering and readiness?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Compose uses depends_on to control startup order, but basic depends_on only ensures the dependency container has started, not that the service inside is ready. For true readiness-aware ordering, use depends_on with condition: service_healthy combined with healthcheck definitions on dependency services. The health check runs inside the container and reports whether the service can accept connections. Compose waits for the health check to pass before starting dependent services. Without this, race conditions cause connection failures during startup."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between docker compose up and docker compose run?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: docker compose up starts all services defined in the Compose file (or a specified subset) and attaches to their logs. It is designed for running the full application stack. docker compose run starts a single service with a one-off command, creating a new container that is removed after the command exits. Use run for one-time tasks like database migrations (docker compose run api npm run migrate), running tests, or executing administrative commands against a running stack."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you manage environment-specific configuration in Compose?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a layered approach: the base compose.yaml defines service structure and defaults, compose.override.yaml (auto-loaded) adds development-specific settings like volume mounts and debug ports, and named override files (compose.ci.yaml, compose.prod.yaml) provide environment-specific configuration loaded with -f flags. Environment variables use ${VAR:-default} interpolation with .env files for local values. This keeps the base file clean and reusable while allowing full customization per environment."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you debug networking issues between Compose services?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: First, verify services are on the same network with docker compose ps and docker network inspect. Use docker compose exec <service> nslookup <target> to test DNS resolution. Run docker compose exec <service> curl -v http://target:port/health to test connectivity. For deeper analysis, attach a network debugging container: docker run --rm --network <compose-network> nicolaka/netshoot tcpdump -i eth0. Check that services are listening on the correct interface (0.0.0.0, not 127.0.0.1) inside the container."
+        }
+      ],
+      "wordCount": 330,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use docker compose watch for development hot-reload: Instead of rebuilding containers on every code change, configure the develop.watch section to sync file changes directly into running containers. This provides sub-second feedback loops for interpreted languages (Python, Node.js) and triggers rebuilds only for compiled languages when source files change.",
+            "Implement health checks on every service: Even in development, health checks prevent cascading startup failures and make depends_on conditions work correctly. For databases, check connection readiness. For HTTP services, check a health endpoint. For message brokers, verify the broker is accepting connections. This eliminates the most common class of \"works on my machine\" issues.",
+            "Use named volumes for dependency data, bind mounts for source code: Named volumes for node_modules, Maven repositories, and database data avoid the performance overhead of bind mounts on macOS while keeping data persistent across container recreations. Bind mount only the source code directory that needs hot-reload capability."
+          ]
+        }
+      ],
+      "wordCount": 149,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Networking and Storage — Deep dive into Docker networking modes and volume drivers",
+            "Container Fundamentals — Core container concepts underlying Compose services",
+            "CI/CD Pipelines — Using Compose for integration testing in automated pipelines"
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "# compose.yaml - Microservice development environment\nname: order-platform\n\nservices:\n  api-gateway:\n    build:\n      context: ./gateway\n      dockerfile: Dockerfile\n      target: development\n    ports:\n      - \"8080:8080\"\n    environment:\n      - SPRING_PROFILES_ACTIVE=docker\n      - ORDER_SERVICE_URL=http://order-service:8081\n      - INVENTORY_SERVICE_URL=http://inventory-service:8082\n    depends_on:\n      order-service:\n        condition: service_healthy\n      inventory-service:\n        condition: service_healthy\n    develop:\n      watch:\n        - action: rebuild\n          path: ./gateway/src\n    networks:\n      - frontend\n      - backend\n\n  order-service:\n    build:\n      context: ./order-service\n      target: development\n    ports:\n      - \"8081:8081\"\n    environment:\n      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/orders\n      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092\n    depends_on:\n      postgres:\n        condition: service_healthy\n      kafka:\n        condition: service_healthy\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8081/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n      start_period: 30s\n    volumes:\n      - ./order-service/src:/app/src\n    networks:\n      - backend\n\n  inventory-service:\n    build:\n      context: ./inventory-service\n      target: development\n    ports:\n      - \"8082:8082\"\n    environment:\n      - SPRING_DATA_MONGODB_URI=mongodb://mongo:27017/inventory\n    depends_on:\n      mongo:\n        condition: service_started\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8082/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n      start_period: 30s\n    networks:\n      - backend\n\n  postgres:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: orders\n      POSTGRES_USER: orderuser\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n      - ./init-scripts/postgres:/docker-entrypoint-initdb.d:ro\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U orderuser -d orders\"]\n      interval: 5s\n      timeout: 3s\n      retries: 5\n    ports:\n      - \"5432:5432\"\n    networks:\n      - backend\n\n  mongo:\n    image: mongo:7\n    volumes:\n      - mongo-data:/data/db\n      - ./init-scripts/mongo:/docker-entrypoint-initdb.d:ro\n    ports:\n      - \"27017:27017\"\n    networks:\n      - backend\n\n  kafka:\n    image: confluentinc/cp-kafka:7.5.0\n    environment:\n      KAFKA_NODE_ID: 1\n      KAFKA_PROCESS_ROLES: broker,controller\n      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\n      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093\n      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER\n      CLUSTER_ID: \"MkU3OEVBNTcwNTJENDM2Qk\"\n    healthcheck:\n      test: [\"CMD\", \"kafka-broker-api-versions\", \"--bootstrap-server\", \"localhost:9092\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n    ports:\n      - \"9092:9092\"\n    networks:\n      - backend\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru\n    ports:\n      - \"6379:6379\"\n    networks:\n      - backend\n    profiles:\n      - cache\n\nvolumes:\n  postgres-data:\n  mongo-data:\n\nnetworks:\n  frontend:\n    driver: bridge\n  backend:\n    driver: bridge",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# compose.ci.yaml - Integration test environment\nname: order-platform-ci\n\nservices:\n  api:\n    build:\n      context: .\n      dockerfile: Dockerfile\n      target: test\n    environment:\n      - DATABASE_URL=postgresql://testuser:testpass@postgres:5432/testdb\n      - REDIS_URL=redis://redis:6379\n      - KAFKA_BROKERS=kafka:9092\n    depends_on:\n      postgres:\n        condition: service_healthy\n      redis:\n        condition: service_started\n      kafka:\n        condition: service_healthy\n    command: [\"npm\", \"run\", \"test:integration\"]\n\n  postgres:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: testdb\n      POSTGRES_USER: testuser\n      POSTGRES_PASSWORD: testpass\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U testuser -d testdb\"]\n      interval: 2s\n      timeout: 2s\n      retries: 10\n    tmpfs:\n      - /var/lib/postgresql/data  # RAM-backed for speed\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --save \"\"  # Disable persistence for tests\n\n  kafka:\n    image: confluentinc/cp-kafka:7.5.0\n    environment:\n      KAFKA_NODE_ID: 1\n      KAFKA_PROCESS_ROLES: broker,controller\n      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093\n      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092\n      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093\n      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER\n      CLUSTER_ID: \"test-cluster-id-12345\"\n    healthcheck:\n      test: [\"CMD\", \"kafka-broker-api-versions\", \"--bootstrap-server\", \"localhost:9092\"]\n      interval: 5s\n      timeout: 5s\n      retries: 10",
+      "runnable": false
+    },
+    {
+      "language": "bash",
+      "code": "#!/bin/bash\n# CI script for running integration tests with Compose\nset -e\n\n# Start dependencies and wait for health checks\ndocker compose -f compose.ci.yaml up -d postgres redis kafka\ndocker compose -f compose.ci.yaml up --exit-code-from api api\n\n# Capture exit code\nEXIT_CODE=$?\n\n# Always clean up\ndocker compose -f compose.ci.yaml down --volumes --remove-orphans\n\nexit $EXIT_CODE",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/docker/docker-compose.md",
+    "wordCount": 1278,
+    "sectionCount": 10
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "id": "typescript-declaration-files-and-module-systems",
+  "slug": "declaration-files",
+  "title": "Declaration Files and Module Systems",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Declaration files (.d.ts) provide type information for JavaScript code without modifying source; they contain only type declarations and produce no JavaScript output",
+            "declare module \"package\" types third-party libraries lacking type definitions; declare global extends the global scope",
+            "Module augmentation extends existing type declarations without modifying the original package using declare module in a module file",
+            "TypeScript resolves types through: co-located .d.ts files, types/typings in package.json, @types/ packages, and typeRoots configuration",
+            "/// <reference types=\"...\" /> triple-slash directives include global type definitions (Vite client types, Jest matchers)",
+            "The declare keyword introduces ambient declarations that describe runtime values without defining them",
+            "export = and import = require() handle CommonJS interop; esModuleInterop enables default import syntax for CJS modules",
+            "isolatedModules flag ensures each file can be independently transpiled, required for tools like esbuild and SWC"
+          ]
+        }
+      ],
+      "wordCount": 131,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Declaration files are necessary when consuming JavaScript libraries that do not ship their own types, when extending third-party type definitions with additional properties (Express middleware adding fields to Request), when typing global variables injected by build tools or CDN scripts, and when publishing TypeScript libraries that need to expose types to consumers. Module augmentation is essential for plugin architectures where middleware or extensions add capabilities to existing objects. Understanding type resolution is critical for debugging \"cannot find module\" errors, resolving conflicting type definitions from multiple sources, and configuring monorepo projects where packages reference each other. The isolatedModules flag and its implications matter for projects using fast transpilers (esbuild, SWC, Babel) that process files independently without full program type information."
+        }
+      ],
+      "wordCount": 119,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Writing declaration files for untyped JavaScript libraries\n// types/legacy-analytics.d.ts\n\ndeclare module \"legacy-analytics\" {\n  export interface AnalyticsConfig {\n    apiKey: string;\n    endpoint: string;\n    batchSize?: number;\n    flushInterval?: number;\n    debug?: boolean;\n    onError?: (error: Error) => void;\n  }\n\n  export interface TrackEvent {\n    name: string;\n    properties?: Record<string, string | number | boolean | null>;\n    timestamp?: Date;\n    userId?: string;\n  }\n\n  export interface IdentifyTraits {\n    email?: string;\n    name?: string;\n    plan?: string;\n    [key: string]: unknown;\n  }\n\n  export function initialize(config: AnalyticsConfig): void;\n  export function track(event: TrackEvent): Promise<void>;\n  export function identify(userId: string, traits?: IdentifyTraits): void;\n  export function page(name: string, properties?: Record<string, string>): void;\n  export function flush(): Promise<void>;\n  export function reset(): void;\n\n  // Default export for the analytics instance\n  const analytics: {\n    initialize: typeof initialize;\n    track: typeof track;\n    identify: typeof identify;\n    page: typeof page;\n    flush: typeof flush;\n    reset: typeof reset;\n  };\n  export default analytics;\n}\n\n// Typing a module that exports a class with static methods\ndeclare module \"connection-pool\" {\n  export interface PoolConfig {\n    min: number;\n    max: number;\n    idleTimeoutMs?: number;\n    acquireTimeoutMs?: number;\n  }\n\n  export interface PoolClient {\n    query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;\n    release(): void;\n  }\n\n  export default class Pool {\n    constructor(config: PoolConfig);\n    acquire(): Promise<PoolClient>;\n    release(client: PoolClient): void;\n    drain(): Promise<void>;\n    readonly size: number;\n    readonly available: number;\n    readonly pending: number;\n  }\n}\n\n\n// Global augmentation: extending Window, Process, and built-in types\n// types/global.d.ts\n\ndeclare global {\n  interface Window {\n    __APP_CONFIG__: {\n      apiUrl: string;\n      environment: 'development' | 'staging' | 'production';\n      version: string;\n      featureFlags: Record<string, boolean>;\n      sentryDsn?: string;\n    };\n    __INITIAL_STATE__?: Record<string, unknown>;\n    dataLayer: Array<Record<string, unknown>>; // Google Tag Manager\n  }\n\n  // Extend NodeJS namespace for custom environment variables\n  namespace NodeJS {\n    interface ProcessEnv {\n      NODE_ENV: 'development' | 'production' | 'test';\n      DATABASE_URL: string;\n      REDIS_URL: string;\n      JWT_SECRET: string;\n      PORT?: string;\n      LOG_LEVEL?: 'debug' | 'info' | 'warn' | 'error';\n    }\n  }\n\n  // Extend Array with a custom utility method\n  interface Array<T> {\n    groupBy<K extends string | number>(\n      keyFn: (item: T) => K\n    ): Record<K, T[]>;\n  }\n}\n\n// Must export something to make this a module (required for declare global)\nexport {};",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Module augmentation: extending third-party library types\n\n// Extending Express Request with middleware-added properties\n// types/express-augmentation.d.ts\nimport 'express';\n\ndeclare module 'express' {\n  interface Request {\n    // Added by authentication middleware\n    userId?: string;\n    userRole?: 'admin' | 'user' | 'moderator';\n    permissions?: string[];\n\n    // Added by request ID middleware\n    requestId: string;\n\n    // Added by rate limiting middleware\n    rateLimit?: {\n      remaining: number;\n      resetAt: Date;\n      limit: number;\n    };\n  }\n}\n\n// Extending React Router with typed route params\nimport 'react-router-dom';\n\ndeclare module 'react-router-dom' {\n  interface RouteParams {\n    categorySlug: string;\n    topicSlug: string;\n    subtopicSlug?: string;\n  }\n}\n\n// Extending Zustand store with custom middleware types\nimport 'zustand';\n\ndeclare module 'zustand' {\n  interface StoreMutators<S, A> {\n    'custom-logger': Write<Cast<S, object>, { logHistory: string[] }>;\n  }\n}\n\n\n// Ambient namespace declarations for global libraries loaded via CDN\n// types/vendor.d.ts\n\ndeclare namespace google.maps {\n  class Map {\n    constructor(element: HTMLElement, options: MapOptions);\n    setCenter(latLng: LatLngLiteral): void;\n    setZoom(zoom: number): void;\n    panTo(latLng: LatLngLiteral): void;\n    fitBounds(bounds: LatLngBounds): void;\n    addListener(event: string, handler: Function): MapsEventListener;\n  }\n\n  interface MapOptions {\n    center: LatLngLiteral;\n    zoom: number;\n    mapTypeId?: 'roadmap' | 'satellite' | 'hybrid' | 'terrain';\n    disableDefaultUI?: boolean;\n    styles?: MapTypeStyle[];\n  }\n\n  interface LatLngLiteral {\n    lat: number;\n    lng: number;\n  }\n\n  interface LatLngBounds {\n    extend(point: LatLngLiteral): void;\n    contains(point: LatLngLiteral): boolean;\n  }\n\n  interface MapsEventListener {\n    remove(): void;\n  }\n\n  interface MapTypeStyle {\n    featureType?: string;\n    elementType?: string;\n    stylers: Array<Record<string, string | number>>;\n  }\n\n  class Marker {\n    constructor(options: MarkerOptions);\n    setPosition(latLng: LatLngLiteral): void;\n    setMap(map: Map | null): void;\n    addListener(event: string, handler: Function): MapsEventListener;\n  }\n\n  interface MarkerOptions {\n    position: LatLngLiteral;\n    map?: Map;\n    title?: string;\n    icon?: string | Icon;\n    draggable?: boolean;\n  }\n\n  interface Icon {\n    url: string;\n    scaledSize?: Size;\n  }\n\n  class Size {\n    constructor(width: number, height: number);\n  }\n}\n\n// Stripe.js loaded via CDN\ndeclare namespace Stripe {\n  function create(publishableKey: string): StripeInstance;\n\n  interface StripeInstance {\n    elements(options?: ElementsOptions): Elements;\n    confirmPayment(options: ConfirmPaymentOptions): Promise<PaymentResult>;\n    createToken(element: Element): Promise<TokenResult>;\n  }\n\n  interface Elements {\n    create(type: 'card' | 'cardNumber' | 'cardExpiry' | 'cardCvc', options?: ElementOptions): Element;\n  }\n\n  interface Element {\n    mount(selector: string): void;\n    unmount(): void;\n    on(event: 'change' | 'ready' | 'focus' | 'blur', handler: Function): void;\n  }\n\n  interface ElementsOptions {\n    clientSecret?: string;\n    appearance?: { theme: 'stripe' | 'night' | 'flat' };\n  }\n\n  interface ElementOptions {\n    style?: Record<string, Record<string, string>>;\n    placeholder?: string;\n  }\n\n  interface ConfirmPaymentOptions {\n    elements: Elements;\n    confirmParams: { return_url: string };\n  }\n\n  interface PaymentResult {\n    error?: { message: string; type: string };\n    paymentIntent?: { id: string; status: string };\n  }\n\n  interface TokenResult {\n    error?: { message: string };\n    token?: { id: string; card: { last4: string; brand: string } };\n  }\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// TypeScript module resolution and project configuration\n\n// tsconfig.json paths for monorepo module resolution\n// {\n//   \"compilerOptions\": {\n//     \"baseUrl\": \".\",\n//     \"paths\": {\n//       \"@app/*\": [\"src/*\"],\n//       \"@shared/*\": [\"packages/shared/src/*\"],\n//       \"@ui/*\": [\"packages/ui/src/*\"]\n//     },\n//     \"typeRoots\": [\"./types\", \"./node_modules/@types\"],\n//     \"types\": [\"vite/client\", \"vitest/globals\"]\n//   }\n// }\n\n// Conditional exports in package.json for dual CJS/ESM packages\n// {\n//   \"name\": \"my-library\",\n//   \"types\": \"./dist/index.d.ts\",\n//   \"main\": \"./dist/cjs/index.js\",\n//   \"module\": \"./dist/esm/index.js\",\n//   \"exports\": {\n//     \".\": {\n//       \"types\": \"./dist/index.d.ts\",\n//       \"import\": \"./dist/esm/index.js\",\n//       \"require\": \"./dist/cjs/index.js\"\n//     },\n//     \"./utils\": {\n//       \"types\": \"./dist/utils.d.ts\",\n//       \"import\": \"./dist/esm/utils.js\",\n//       \"require\": \"./dist/cjs/utils.js\"\n//     }\n//   }\n// }\n\n// Publishing a library with proper type exports\n// src/index.ts - library entry point\nexport interface PluginConfig {\n  name: string;\n  version: string;\n  hooks: Partial<PluginHooks>;\n}\n\nexport interface PluginHooks {\n  onInit: () => void | Promise<void>;\n  onDestroy: () => void | Promise<void>;\n  onError: (error: Error) => void;\n}\n\nexport interface Plugin {\n  readonly name: string;\n  readonly version: string;\n  init(): Promise<void>;\n  destroy(): Promise<void>;\n}\n\nexport function createPlugin(config: PluginConfig): Plugin {\n  return {\n    name: config.name,\n    version: config.version,\n    async init() {\n      await config.hooks.onInit?.();\n    },\n    async destroy() {\n      await config.hooks.onDestroy?.();\n    },\n  };\n}\n\n// Re-export types for consumers\nexport type { PluginConfig, PluginHooks, Plugin };\n\n\n// isolatedModules considerations: what breaks without full program info\n// These patterns require full type information and break with isolatedModules:\n\n// 1. const enums (inlined at compile time, need cross-file info)\n// const enum Direction { Up, Down, Left, Right } // Error with isolatedModules\n\n// Use regular enums or union types instead:\nenum Direction { Up = 'UP', Down = 'DOWN', Left = 'LEFT', Right = 'RIGHT' }\n// Or preferably:\ntype DirectionType = 'up' | 'down' | 'left' | 'right';\n\n// 2. Re-exporting types without 'type' keyword\n// export { MyInterface } from './types'; // Ambiguous with isolatedModules\nexport type { PluginConfig } from './types'; // Explicit type-only re-export\n\n// 3. Namespace merging across files\n// Namespaces that span multiple files need full program context\n// Use modules instead of namespaces for isolatedModules compatibility",
+          "runnable": false
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Incorrect module resolution causing \"cannot find module\" errors: TypeScript has multiple resolution strategies (node, bundler, classic) that search different paths. The most common issue is mismatched moduleResolution settings: using \"node\" when the project uses ESM-style imports with package.json exports field requires \"bundler\" or \"node16\" resolution. Check that typeRoots, paths, and baseUrl are configured correctly, and verify that @types/ packages match the library version.",
+            "Declaration merging conflicts from multiple type sources: When both a library's bundled types and an @types/ package exist, TypeScript may merge them incorrectly or use the wrong version. Remove @types/ packages for libraries that ship their own types. Use \"types\" in tsconfig to explicitly control which global type packages are included rather than auto-discovering everything in node_modules/@types.",
+            "Forgetting to export from augmentation files: Module augmentation with declare module only works in files that are themselves modules (have at least one import or export statement). A file with only declare module \"express\" { ... } and no imports/exports is treated as a script, and the augmentation becomes a module declaration rather than an augmentation. Add export {} at the end if no other exports exist.",
+            "Global type pollution from ambient declarations: Declarations in .d.ts files without import/export statements are global and affect the entire project. This can cause unexpected type availability and conflicts. Prefer module-scoped declarations (files with imports/exports) and use declare global { } blocks explicitly when global augmentation is intended.",
+            "Type-only imports not being preserved by transpilers: When using isolatedModules with tools like esbuild or SWC, regular imports of types may be preserved in the output (causing runtime errors for non-existent modules). Always use import type { ... } for type-only imports to ensure they are erased by any transpiler, not just tsc.",
+            "Overly permissive ambient declarations hiding real type errors: Writing declare module \"*\" or declare module \"*.svg\" with broad return types (any or string) silences errors but removes type safety for those imports. Be as specific as possible in ambient declarations, and use proper module declaration patterns that reflect the actual runtime shape of the imported values."
+          ]
+        }
+      ],
+      "wordCount": 343,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Typing legacy JavaScript libraries in enterprise codebases: Large organizations often have internal JavaScript libraries built over years without types. Writing declaration files for these libraries enables gradual TypeScript adoption: new code gets full type safety when consuming the library, while the library source remains JavaScript. The declarations serve as living documentation of the API contract.",
+            "Express middleware type composition: Each Express middleware adds properties to the Request object (authentication adds req.userId, rate limiting adds req.rateLimit, request tracing adds req.requestId). Module augmentation lets each middleware package declare its additions, and downstream route handlers see the accumulated type with all middleware-added properties available and correctly typed.",
+            "Monorepo package type resolution: In monorepos with multiple packages that reference each other, TypeScript path mappings and project references ensure that importing @myorg/shared resolves to the source TypeScript files during development (for fast feedback) and to compiled declaration files in production builds. Proper configuration prevents \"cannot find module\" errors across package boundaries.",
+            "Build tool and bundler type integration: Vite, Webpack, and other bundlers handle non-JavaScript imports (CSS modules, SVG files, JSON, WASM) that TypeScript does not understand natively. Declaration files like vite/client provide types for these imports (import styles from './app.module.css' returns Record<string, string>), enabling type-safe usage of bundler-specific features.",
+            "SDK and API client library publishing: Libraries published to npm must include declaration files so TypeScript consumers get type safety without needing the library's source code. Proper exports configuration in package.json ensures that both ESM and CJS consumers resolve the correct declaration files, and typesVersions field supports different type definitions for different TypeScript versions."
+          ]
+        }
+      ],
+      "wordCount": 258,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between declare module for module declaration versus module augmentation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: In a script file (no imports/exports), declare module \"foo\" { ... } creates a new module declaration — it defines the types for a module that does not have its own types. In a module file (has imports/exports), declare module \"foo\" { ... } augments an existing module — it adds new declarations to a module that already has types. The distinction depends entirely on whether the file containing the declaration is itself a module. Augmentation merges with existing declarations; declaration replaces or creates them. This is why augmentation files need export {} if they have no other exports."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does TypeScript resolve types for a package, and what is the resolution order?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: TypeScript resolves types in this order: (1) Check if the package has a types or typings field in its package.json pointing to a .d.ts file. (2) Check for an index.d.ts in the package root. (3) Check for a matching @types/ package in node_modules (e.g., @types/express for the express package). (4) Check typeRoots configuration for custom type directories. (5) Check paths mappings in tsconfig for aliased modules. The moduleResolution setting (node, node16, bundler) affects which of these strategies are used and in what order. The exports field in package.json (with \"types\" condition) takes precedence in node16 and bundler resolution modes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is isolatedModules and why do modern build tools require it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: isolatedModules ensures each TypeScript file can be transpiled independently without knowledge of other files in the program. Tools like esbuild, SWC, and Babel process files one at a time for speed, unlike tsc which analyzes the entire program. With isolatedModules, patterns that require cross-file information are disallowed: const enums (values inlined from other files), namespace merging across files, and re-exports that might be types (ambiguous without program context). Using import type and export type explicitly marks type-only imports for safe erasure by any transpiler."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you type a plugin system where plugins can extend a base configuration interface?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use module augmentation combined with declaration merging on interfaces. Define a base PluginRegistry interface in the core package. Each plugin augments this interface with its own configuration: declare module '@core/plugins' { interface PluginRegistry { myPlugin: MyPluginConfig } }. The core system uses keyof PluginRegistry to enumerate available plugins and PluginRegistry[K] to access each plugin's typed configuration. This pattern is used by Fastify for route schemas, Pinia for store definitions, and Vue Router for route meta types."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are triple-slash directives and when are they still necessary?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Triple-slash directives (/// <reference types=\"...\" />) are special comments that include type definitions. They are largely replaced by types in tsconfig.json but remain necessary in specific cases: (1) In declaration files that need to reference other type packages without importing them. (2) For global type augmentation in files that are not modules. (3) In vite-env.d.ts to include Vite's client types (/// <reference types=\"vite/client\" />). (4) For test setup files that need global matchers (/// <reference types=\"vitest/globals\" />). They must appear at the top of the file before any code."
+        }
+      ],
+      "wordCount": 520,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use moduleResolution: \"bundler\" for modern Vite and webpack projects: The \"bundler\" resolution mode (TypeScript 5.0+) matches how modern bundlers actually resolve modules, supporting package.json exports field, extensionless imports, and conditional exports. This eliminates the mismatch between what TypeScript resolves and what the bundler resolves, preventing \"works in IDE but fails at build\" issues.",
+            "Publish libraries with proper exports and typesVersions configuration: Modern npm packages should use the exports field in package.json with explicit \"types\" conditions for each entry point. This ensures consumers using different module systems (ESM, CJS) and different TypeScript versions all resolve the correct type definitions. Test your published types with attw (Are The Types Wrong) to catch resolution issues before publishing.",
+            "Keep declaration files minimal and focused: When writing .d.ts files for untyped libraries, declare only the API surface your project actually uses rather than attempting to type the entire library. This reduces maintenance burden and avoids incorrect declarations for features you have not tested. Add declarations incrementally as you use more of the library's API."
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Type System Fundamentals — Understanding structural typing is essential for writing correct declaration files",
+            "Generics and Constraints — Generic declarations in .d.ts files enable type-safe library APIs",
+            "Patterns and Best Practices — Module organization patterns determine how declaration files are structured"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Writing declaration files for untyped JavaScript libraries\n// types/legacy-analytics.d.ts\n\ndeclare module \"legacy-analytics\" {\n  export interface AnalyticsConfig {\n    apiKey: string;\n    endpoint: string;\n    batchSize?: number;\n    flushInterval?: number;\n    debug?: boolean;\n    onError?: (error: Error) => void;\n  }\n\n  export interface TrackEvent {\n    name: string;\n    properties?: Record<string, string | number | boolean | null>;\n    timestamp?: Date;\n    userId?: string;\n  }\n\n  export interface IdentifyTraits {\n    email?: string;\n    name?: string;\n    plan?: string;\n    [key: string]: unknown;\n  }\n\n  export function initialize(config: AnalyticsConfig): void;\n  export function track(event: TrackEvent): Promise<void>;\n  export function identify(userId: string, traits?: IdentifyTraits): void;\n  export function page(name: string, properties?: Record<string, string>): void;\n  export function flush(): Promise<void>;\n  export function reset(): void;\n\n  // Default export for the analytics instance\n  const analytics: {\n    initialize: typeof initialize;\n    track: typeof track;\n    identify: typeof identify;\n    page: typeof page;\n    flush: typeof flush;\n    reset: typeof reset;\n  };\n  export default analytics;\n}\n\n// Typing a module that exports a class with static methods\ndeclare module \"connection-pool\" {\n  export interface PoolConfig {\n    min: number;\n    max: number;\n    idleTimeoutMs?: number;\n    acquireTimeoutMs?: number;\n  }\n\n  export interface PoolClient {\n    query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;\n    release(): void;\n  }\n\n  export default class Pool {\n    constructor(config: PoolConfig);\n    acquire(): Promise<PoolClient>;\n    release(client: PoolClient): void;\n    drain(): Promise<void>;\n    readonly size: number;\n    readonly available: number;\n    readonly pending: number;\n  }\n}\n\n\n// Global augmentation: extending Window, Process, and built-in types\n// types/global.d.ts\n\ndeclare global {\n  interface Window {\n    __APP_CONFIG__: {\n      apiUrl: string;\n      environment: 'development' | 'staging' | 'production';\n      version: string;\n      featureFlags: Record<string, boolean>;\n      sentryDsn?: string;\n    };\n    __INITIAL_STATE__?: Record<string, unknown>;\n    dataLayer: Array<Record<string, unknown>>; // Google Tag Manager\n  }\n\n  // Extend NodeJS namespace for custom environment variables\n  namespace NodeJS {\n    interface ProcessEnv {\n      NODE_ENV: 'development' | 'production' | 'test';\n      DATABASE_URL: string;\n      REDIS_URL: string;\n      JWT_SECRET: string;\n      PORT?: string;\n      LOG_LEVEL?: 'debug' | 'info' | 'warn' | 'error';\n    }\n  }\n\n  // Extend Array with a custom utility method\n  interface Array<T> {\n    groupBy<K extends string | number>(\n      keyFn: (item: T) => K\n    ): Record<K, T[]>;\n  }\n}\n\n// Must export something to make this a module (required for declare global)\nexport {};",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Module augmentation: extending third-party library types\n\n// Extending Express Request with middleware-added properties\n// types/express-augmentation.d.ts\nimport 'express';\n\ndeclare module 'express' {\n  interface Request {\n    // Added by authentication middleware\n    userId?: string;\n    userRole?: 'admin' | 'user' | 'moderator';\n    permissions?: string[];\n\n    // Added by request ID middleware\n    requestId: string;\n\n    // Added by rate limiting middleware\n    rateLimit?: {\n      remaining: number;\n      resetAt: Date;\n      limit: number;\n    };\n  }\n}\n\n// Extending React Router with typed route params\nimport 'react-router-dom';\n\ndeclare module 'react-router-dom' {\n  interface RouteParams {\n    categorySlug: string;\n    topicSlug: string;\n    subtopicSlug?: string;\n  }\n}\n\n// Extending Zustand store with custom middleware types\nimport 'zustand';\n\ndeclare module 'zustand' {\n  interface StoreMutators<S, A> {\n    'custom-logger': Write<Cast<S, object>, { logHistory: string[] }>;\n  }\n}\n\n\n// Ambient namespace declarations for global libraries loaded via CDN\n// types/vendor.d.ts\n\ndeclare namespace google.maps {\n  class Map {\n    constructor(element: HTMLElement, options: MapOptions);\n    setCenter(latLng: LatLngLiteral): void;\n    setZoom(zoom: number): void;\n    panTo(latLng: LatLngLiteral): void;\n    fitBounds(bounds: LatLngBounds): void;\n    addListener(event: string, handler: Function): MapsEventListener;\n  }\n\n  interface MapOptions {\n    center: LatLngLiteral;\n    zoom: number;\n    mapTypeId?: 'roadmap' | 'satellite' | 'hybrid' | 'terrain';\n    disableDefaultUI?: boolean;\n    styles?: MapTypeStyle[];\n  }\n\n  interface LatLngLiteral {\n    lat: number;\n    lng: number;\n  }\n\n  interface LatLngBounds {\n    extend(point: LatLngLiteral): void;\n    contains(point: LatLngLiteral): boolean;\n  }\n\n  interface MapsEventListener {\n    remove(): void;\n  }\n\n  interface MapTypeStyle {\n    featureType?: string;\n    elementType?: string;\n    stylers: Array<Record<string, string | number>>;\n  }\n\n  class Marker {\n    constructor(options: MarkerOptions);\n    setPosition(latLng: LatLngLiteral): void;\n    setMap(map: Map | null): void;\n    addListener(event: string, handler: Function): MapsEventListener;\n  }\n\n  interface MarkerOptions {\n    position: LatLngLiteral;\n    map?: Map;\n    title?: string;\n    icon?: string | Icon;\n    draggable?: boolean;\n  }\n\n  interface Icon {\n    url: string;\n    scaledSize?: Size;\n  }\n\n  class Size {\n    constructor(width: number, height: number);\n  }\n}\n\n// Stripe.js loaded via CDN\ndeclare namespace Stripe {\n  function create(publishableKey: string): StripeInstance;\n\n  interface StripeInstance {\n    elements(options?: ElementsOptions): Elements;\n    confirmPayment(options: ConfirmPaymentOptions): Promise<PaymentResult>;\n    createToken(element: Element): Promise<TokenResult>;\n  }\n\n  interface Elements {\n    create(type: 'card' | 'cardNumber' | 'cardExpiry' | 'cardCvc', options?: ElementOptions): Element;\n  }\n\n  interface Element {\n    mount(selector: string): void;\n    unmount(): void;\n    on(event: 'change' | 'ready' | 'focus' | 'blur', handler: Function): void;\n  }\n\n  interface ElementsOptions {\n    clientSecret?: string;\n    appearance?: { theme: 'stripe' | 'night' | 'flat' };\n  }\n\n  interface ElementOptions {\n    style?: Record<string, Record<string, string>>;\n    placeholder?: string;\n  }\n\n  interface ConfirmPaymentOptions {\n    elements: Elements;\n    confirmParams: { return_url: string };\n  }\n\n  interface PaymentResult {\n    error?: { message: string; type: string };\n    paymentIntent?: { id: string; status: string };\n  }\n\n  interface TokenResult {\n    error?: { message: string };\n    token?: { id: string; card: { last4: string; brand: string } };\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// TypeScript module resolution and project configuration\n\n// tsconfig.json paths for monorepo module resolution\n// {\n//   \"compilerOptions\": {\n//     \"baseUrl\": \".\",\n//     \"paths\": {\n//       \"@app/*\": [\"src/*\"],\n//       \"@shared/*\": [\"packages/shared/src/*\"],\n//       \"@ui/*\": [\"packages/ui/src/*\"]\n//     },\n//     \"typeRoots\": [\"./types\", \"./node_modules/@types\"],\n//     \"types\": [\"vite/client\", \"vitest/globals\"]\n//   }\n// }\n\n// Conditional exports in package.json for dual CJS/ESM packages\n// {\n//   \"name\": \"my-library\",\n//   \"types\": \"./dist/index.d.ts\",\n//   \"main\": \"./dist/cjs/index.js\",\n//   \"module\": \"./dist/esm/index.js\",\n//   \"exports\": {\n//     \".\": {\n//       \"types\": \"./dist/index.d.ts\",\n//       \"import\": \"./dist/esm/index.js\",\n//       \"require\": \"./dist/cjs/index.js\"\n//     },\n//     \"./utils\": {\n//       \"types\": \"./dist/utils.d.ts\",\n//       \"import\": \"./dist/esm/utils.js\",\n//       \"require\": \"./dist/cjs/utils.js\"\n//     }\n//   }\n// }\n\n// Publishing a library with proper type exports\n// src/index.ts - library entry point\nexport interface PluginConfig {\n  name: string;\n  version: string;\n  hooks: Partial<PluginHooks>;\n}\n\nexport interface PluginHooks {\n  onInit: () => void | Promise<void>;\n  onDestroy: () => void | Promise<void>;\n  onError: (error: Error) => void;\n}\n\nexport interface Plugin {\n  readonly name: string;\n  readonly version: string;\n  init(): Promise<void>;\n  destroy(): Promise<void>;\n}\n\nexport function createPlugin(config: PluginConfig): Plugin {\n  return {\n    name: config.name,\n    version: config.version,\n    async init() {\n      await config.hooks.onInit?.();\n    },\n    async destroy() {\n      await config.hooks.onDestroy?.();\n    },\n  };\n}\n\n// Re-export types for consumers\nexport type { PluginConfig, PluginHooks, Plugin };\n\n\n// isolatedModules considerations: what breaks without full program info\n// These patterns require full type information and break with isolatedModules:\n\n// 1. const enums (inlined at compile time, need cross-file info)\n// const enum Direction { Up, Down, Left, Right } // Error with isolatedModules\n\n// Use regular enums or union types instead:\nenum Direction { Up = 'UP', Down = 'DOWN', Left = 'LEFT', Right = 'RIGHT' }\n// Or preferably:\ntype DirectionType = 'up' | 'down' | 'left' | 'right';\n\n// 2. Re-exporting types without 'type' keyword\n// export { MyInterface } from './types'; // Ambiguous with isolatedModules\nexport type { PluginConfig } from './types'; // Explicit type-only re-export\n\n// 3. Namespace merging across files\n// Namespaces that span multiple files need full program context\n// Use modules instead of namespaces for isolatedModules compatibility",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/typescript/declaration-files.md",
+    "wordCount": 1581,
+    "sectionCount": 8
+  }
+}

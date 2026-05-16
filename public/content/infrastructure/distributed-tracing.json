@@ -1,0 +1,244 @@
+{
+  "id": "observability-distributed-tracing",
+  "slug": "distributed-tracing",
+  "title": "Distributed Tracing",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Distributed tracing follows a single request across service boundaries, showing latency breakdown and dependency relationships",
+            "A trace consists of spans: each span represents a unit of work (HTTP call, database query, message processing) with start time, duration, and metadata",
+            "Trace context propagation uses standardized headers (W3C Trace Context: traceparent, tracestate) passed between services",
+            "OpenTelemetry is the vendor-neutral standard for instrumentation, providing SDKs for trace generation and export to any backend",
+            "Sampling strategies: head-based (decide at entry point), tail-based (decide after trace completes based on characteristics), and always-on for errors",
+            "AWS X-Ray provides managed tracing for AWS services with automatic instrumentation for Lambda, API Gateway, ECS, and EKS",
+            "Trace backends: Jaeger (open-source), Zipkin (open-source), AWS X-Ray (managed), Datadog APM, Honeycomb, Grafana Tempo",
+            "Span attributes (tags) provide searchable metadata: HTTP status, database statement, user ID, error details"
+          ]
+        }
+      ],
+      "wordCount": 135,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Distributed tracing is essential when your application spans multiple services and you need to understand where time is spent during request processing. Use tracing when debugging latency issues that span service boundaries — metrics tell you a service is slow, but traces show you which downstream call within that service is the bottleneck. Tracing is critical for understanding dependency relationships in complex architectures, identifying which services are on the critical path for a given request type, and detecting cascading failures where one slow service causes timeouts in all upstream callers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement tracing when you need to answer questions like: \"Why did this specific request take 5 seconds when the p50 is 200ms?\", \"Which downstream service is causing our latency spike?\", \"What is the actual call graph for our checkout flow?\", and \"Are we making redundant calls to the same service within a single request?\" Tracing becomes indispensable as architectures grow beyond 10 services, where mental models of request flow become unreliable and manual log correlation becomes impractical."
+        }
+      ],
+      "wordCount": 167,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "opentelemetry-instrumentation-java-spring-boot",
+          "heading": "OpenTelemetry Instrumentation (Java Spring Boot)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import io.opentelemetry.api.OpenTelemetry;\nimport io.opentelemetry.api.trace.Span;\nimport io.opentelemetry.api.trace.SpanKind;\nimport io.opentelemetry.api.trace.StatusCode;\nimport io.opentelemetry.api.trace.Tracer;\nimport io.opentelemetry.context.Context;\nimport io.opentelemetry.context.Scope;\nimport io.opentelemetry.api.common.Attributes;\nimport io.opentelemetry.api.common.AttributeKey;\n\nimport org.springframework.stereotype.Service;\n\n@Service\npublic class OrderService {\n    private final Tracer tracer;\n    private final PaymentClient paymentClient;\n    private final InventoryClient inventoryClient;\n\n    public OrderService(OpenTelemetry openTelemetry,\n                        PaymentClient paymentClient,\n                        InventoryClient inventoryClient) {\n        this.tracer = openTelemetry.getTracer(\"order-service\", \"2.1.0\");\n        this.paymentClient = paymentClient;\n        this.inventoryClient = inventoryClient;\n    }\n\n    public OrderResult processOrder(Order order) {\n        // Create a span for the entire order processing operation\n        Span span = tracer.spanBuilder(\"processOrder\")\n            .setSpanKind(SpanKind.INTERNAL)\n            .setAttribute(\"order.id\", order.getId())\n            .setAttribute(\"order.item_count\", order.getItems().size())\n            .setAttribute(\"order.total_cents\", order.getTotalCents())\n            .setAttribute(\"customer.id\", order.getCustomerId())\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            // Step 1: Validate inventory (creates child span automatically via HTTP instrumentation)\n            InventoryResult inventory = validateInventory(order);\n            span.addEvent(\"inventory_validated\", Attributes.of(\n                AttributeKey.booleanKey(\"all_available\"), inventory.allAvailable()\n            ));\n\n            if (!inventory.allAvailable()) {\n                span.setStatus(StatusCode.ERROR, \"Insufficient inventory\");\n                span.setAttribute(\"order.failure_reason\", \"insufficient_inventory\");\n                return OrderResult.failed(\"Insufficient inventory\");\n            }\n\n            // Step 2: Process payment (creates child span)\n            PaymentResult payment = processPayment(order);\n            span.addEvent(\"payment_processed\", Attributes.of(\n                AttributeKey.stringKey(\"payment.method\"), payment.getMethod(),\n                AttributeKey.stringKey(\"payment.transaction_id\"), payment.getTransactionId()\n            ));\n\n            // Step 3: Reserve inventory (creates child span)\n            reserveInventory(order, inventory);\n            span.addEvent(\"inventory_reserved\");\n\n            span.setStatus(StatusCode.OK);\n            span.setAttribute(\"order.status\", \"completed\");\n            return OrderResult.success(payment.getTransactionId());\n\n        } catch (Exception e) {\n            span.setStatus(StatusCode.ERROR, e.getMessage());\n            span.recordException(e);\n            span.setAttribute(\"order.failure_reason\", e.getClass().getSimpleName());\n            throw e;\n        } finally {\n            span.end();\n        }\n    }\n\n    private InventoryResult validateInventory(Order order) {\n        Span span = tracer.spanBuilder(\"validateInventory\")\n            .setSpanKind(SpanKind.CLIENT)\n            .setAttribute(\"inventory.item_count\", order.getItems().size())\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            // HTTP client automatically propagates trace context via W3C headers\n            InventoryResult result = inventoryClient.checkAvailability(order.getItems());\n            span.setAttribute(\"inventory.all_available\", result.allAvailable());\n            return result;\n        } finally {\n            span.end();\n        }\n    }\n\n    private PaymentResult processPayment(Order order) {\n        Span span = tracer.spanBuilder(\"processPayment\")\n            .setSpanKind(SpanKind.CLIENT)\n            .setAttribute(\"payment.amount_cents\", order.getTotalCents())\n            .setAttribute(\"payment.currency\", \"USD\")\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            PaymentResult result = paymentClient.charge(order);\n            span.setAttribute(\"payment.success\", result.isSuccess());\n            return result;\n        } catch (Exception e) {\n            span.setStatus(StatusCode.ERROR, \"Payment failed\");\n            span.recordException(e);\n            throw e;\n        } finally {\n            span.end();\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "opentelemetry-configuration-and-export",
+          "heading": "OpenTelemetry Configuration and Export",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { NodeSDK } from '@opentelemetry/sdk-node';\nimport { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';\nimport { Resource } from '@opentelemetry/resources';\nimport { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';\nimport { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';\nimport { HttpInstrumentation } from '@opentelemetry/instrumentation-http';\nimport { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';\nimport { PgInstrumentation } from '@opentelemetry/instrumentation-pg';\nimport { RedisInstrumentation } from '@opentelemetry/instrumentation-redis-4';\nimport {\n  ParentBasedSampler,\n  TraceIdRatioBasedSampler,\n  AlwaysOnSampler,\n} from '@opentelemetry/sdk-trace-base';\n\n// Custom sampler: always trace errors, sample 10% of successful requests\nclass ProductionSampler {\n  private ratioSampler = new TraceIdRatioBasedSampler(0.1); // 10% sampling\n  private alwaysOn = new AlwaysOnSampler();\n\n  shouldSample(context, traceId, spanName, spanKind, attributes) {\n    // Always sample if parent was sampled (maintain trace completeness)\n    // Always sample errors\n    if (attributes?.['error'] === true || attributes?.['http.status_code'] >= 500) {\n      return this.alwaysOn.shouldSample(context, traceId, spanName, spanKind, attributes);\n    }\n    // Sample 10% of normal traffic\n    return this.ratioSampler.shouldSample(context, traceId, spanName, spanKind, attributes);\n  }\n}\n\nconst sdk = new NodeSDK({\n  resource: new Resource({\n    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',\n    [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',\n    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',\n    'service.team': 'platform',\n    'service.region': process.env.AWS_REGION,\n  }),\n  traceExporter: new OTLPTraceExporter({\n    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',\n    headers: { 'x-api-key': process.env.OTEL_API_KEY },\n  }),\n  spanProcessor: new BatchSpanProcessor(traceExporter, {\n    maxQueueSize: 2048,\n    maxExportBatchSize: 512,\n    scheduledDelayMillis: 5000,\n    exportTimeoutMillis: 30000,\n  }),\n  sampler: new ParentBasedSampler({ root: new ProductionSampler() }),\n  instrumentations: [\n    new HttpInstrumentation({\n      ignoreIncomingPaths: ['/health', '/ready', '/metrics'], // Don't trace health checks\n      requestHook: (span, request) => {\n        span.setAttribute('http.request.id', request.headers['x-request-id']);\n      },\n    }),\n    new ExpressInstrumentation(),\n    new PgInstrumentation({\n      enhancedDatabaseReporting: true, // Include query text in spans\n    }),\n    new RedisInstrumentation(),\n  ],\n});\n\nsdk.start();\n\n// Graceful shutdown\nprocess.on('SIGTERM', () => {\n  sdk.shutdown()\n    .then(() => console.log('Tracing terminated'))\n    .catch((error) => console.error('Error terminating tracing', error))\n    .finally(() => process.exit(0));\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "aws-x-ray-integration-with-ecs",
+          "heading": "AWS X-Ray Integration with ECS",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# ECS Task Definition with X-Ray sidecar\n{\n  \"family\": \"order-service\",\n  \"networkMode\": \"awsvpc\",\n  \"containerDefinitions\": [\n    {\n      \"name\": \"order-service\",\n      \"image\": \"123456789012.dkr.ecr.us-east-1.amazonaws.com/order-service:2.1.0\",\n      \"portMappings\": [{ \"containerPort\": 8080 }],\n      \"environment\": [\n        { \"name\": \"AWS_XRAY_DAEMON_ADDRESS\", \"value\": \"localhost:2000\" },\n        { \"name\": \"OTEL_EXPORTER_OTLP_ENDPOINT\", \"value\": \"http://localhost:4317\" }\n      ],\n      \"logConfiguration\": {\n        \"logDriver\": \"awslogs\",\n        \"options\": {\n          \"awslogs-group\": \"/ecs/order-service\",\n          \"awslogs-region\": \"us-east-1\",\n          \"awslogs-stream-prefix\": \"app\"\n        }\n      }\n    },\n    {\n      \"name\": \"otel-collector\",\n      \"image\": \"public.ecr.aws/aws-observability/aws-otel-collector:latest\",\n      \"portMappings\": [\n        { \"containerPort\": 4317, \"protocol\": \"tcp\" },\n        { \"containerPort\": 2000, \"protocol\": \"udp\" }\n      ],\n      \"environment\": [\n        { \"name\": \"AOT_CONFIG_CONTENT\", \"value\": \"receivers:\\n  otlp:\\n    protocols:\\n      grpc:\\n        endpoint: 0.0.0.0:4317\\nexporters:\\n  awsxray:\\n    region: us-east-1\\n  awsemf:\\n    region: us-east-1\\nservice:\\n  pipelines:\\n    traces:\\n      receivers: [otlp]\\n      exporters: [awsxray]\\n    metrics:\\n      receivers: [otlp]\\n      exporters: [awsemf]\" }\n      ],\n      \"logConfiguration\": {\n        \"logDriver\": \"awslogs\",\n        \"options\": {\n          \"awslogs-group\": \"/ecs/otel-collector\",\n          \"awslogs-region\": \"us-east-1\",\n          \"awslogs-stream-prefix\": \"collector\"\n        }\n      }\n    }\n  ]\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Not propagating trace context across async boundaries: HTTP instrumentation automatically propagates trace context for synchronous calls, but async operations (message queues, scheduled jobs, event-driven processing) require explicit context propagation. When publishing a message to SQS or Kafka, inject the trace context into message attributes. When consuming, extract the context and create a new span linked to the original trace. Without this, async processing appears as disconnected traces, making it impossible to follow a request through its complete lifecycle.",
+            "Over-instrumenting with too many spans creating performance overhead: Creating a span for every method call, loop iteration, or trivial operation generates enormous trace data and adds measurable latency (each span creation involves memory allocation, timestamp capture, and eventual export). Instrument at meaningful boundaries: service entry points, outbound HTTP/gRPC calls, database queries, cache operations, and significant business logic steps. A trace with 10-50 spans per request is informative; one with 500+ spans is noise that obscures the signal.",
+            "Using 100% sampling in production without understanding the cost: Full sampling generates trace data proportional to traffic volume. A service handling 10,000 requests per second produces 864 million spans per day, costing thousands of dollars in trace backend storage and processing. Implement head-based sampling (10% for normal traffic, 100% for errors) or tail-based sampling (collect all spans, decide which traces to keep based on characteristics like duration or error status). Always sample errors and slow requests at 100% since these are the traces you actually investigate.",
+            "Ignoring trace context in error responses and retries: When a downstream service returns an error, the trace should capture the error details (status code, error message, exception type) as span attributes. When retry logic re-attempts the call, each attempt should be a separate child span so the trace shows how many retries occurred and which attempt succeeded. Without this, traces show a single successful call with unexplained latency that is actually multiple failed attempts plus one success.",
+            "Not setting meaningful span names and attributes: Spans named HTTP GET or database query provide no useful information when investigating traces. Use descriptive names that identify the operation: GET /api/orders/{orderId}, SELECT orders WHERE customer_id = ?, publish order.created event. Add business-relevant attributes (order ID, customer ID, item count) that enable filtering traces by business context, not just technical properties."
+          ]
+        }
+      ],
+      "wordCount": 377,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Identifying the critical path in a checkout flow: A product team notices checkout takes 3.5 seconds on average but cannot determine why from service-level metrics alone. Distributed tracing reveals the critical path: API Gateway (50ms) → Order Service (100ms) → Inventory Service (200ms) → Payment Service (2800ms) → Notification Service (350ms, async). The Payment Service's 2.8-second latency dominates. Drilling into Payment Service traces shows it makes 3 sequential calls to the payment provider (authorization, fraud check, capture) that could be parallelized, reducing total payment time to 1.2 seconds.",
+            "Detecting N+1 query patterns across services: Tracing reveals that a product listing endpoint makes 1 call to the catalog service, which then makes N individual calls to the pricing service (one per product). The trace waterfall clearly shows 50 sequential spans to the pricing service, each taking 20ms, totaling 1 second of serialized latency. The fix: implement a batch pricing endpoint that accepts multiple product IDs in a single call, reducing 50 spans to 1 span taking 30ms.",
+            "Debugging intermittent timeout failures: A service experiences occasional 30-second timeouts that are impossible to reproduce locally. Tail-based sampling captures all traces exceeding 10 seconds. Analysis reveals these slow traces all share a common pattern: they hit a specific database replica that periodically falls behind on replication. The trace shows the database query span waiting 28 seconds for a response while other traces hitting different replicas complete in 5ms. The fix: implement read-replica health checking that removes lagging replicas from the connection pool.",
+            "Capacity planning with trace-based dependency mapping: A platform team uses trace data to automatically generate a service dependency graph showing which services call which, at what frequency, and with what latency. This reveals that the recommendation service is called by 15 different services (more than expected), making it a critical shared dependency. The team provisions additional capacity and implements circuit breakers in all callers to prevent cascading failures if the recommendation service degrades."
+          ]
+        }
+      ],
+      "wordCount": 321,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between head-based and tail-based sampling. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Head-based sampling makes the sampling decision at the trace entry point (first service) and propagates that decision to all downstream services. It is simple to implement, has low overhead, and ensures complete traces (all spans for a sampled trace are captured). The downside: you cannot sample based on trace characteristics (duration, error status) because those are unknown at the start. Tail-based sampling collects all spans from all services, assembles complete traces in a collector, then decides which traces to keep based on their characteristics (keep all traces with errors, keep traces exceeding 5 seconds, keep traces touching specific services). It captures interesting traces that head-based sampling might miss but requires a stateful collector that buffers spans and has higher infrastructure cost. Use head-based for most production workloads (simple, predictable cost). Use tail-based when you need guaranteed capture of error traces and slow traces regardless of sampling rate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does trace context propagation work in a microservices architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Trace context propagation passes trace identity (trace ID, span ID, sampling decision) between services so that spans from different services can be assembled into a single trace. The W3C Trace Context standard defines two headers: traceparent (contains trace ID, parent span ID, and trace flags) and tracestate (vendor-specific data). When Service A calls Service B via HTTP, the instrumentation library injects these headers into the outgoing request. Service B's instrumentation extracts the headers, creates a new span with the received trace ID and the received span ID as its parent, and continues propagation to any downstream calls. For non-HTTP communication (message queues, gRPC), the same context is injected into message metadata or gRPC headers. OpenTelemetry provides propagators for all common protocols and formats (W3C, B3, Jaeger, X-Ray)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement distributed tracing in an existing microservices architecture with minimal code changes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use OpenTelemetry auto-instrumentation which hooks into common libraries (HTTP clients, database drivers, message queue clients) without code changes. For Java, use the OpenTelemetry Java agent (-javaagent:opentelemetry-javaagent.jar) which instruments Spring, JDBC, Redis, Kafka, and gRPC automatically. For Node.js, use @opentelemetry/auto-instrumentations-node which patches HTTP, Express, pg, and Redis modules. Deploy an OpenTelemetry Collector as a sidecar or DaemonSet that receives spans and exports to your chosen backend (X-Ray, Jaeger, Datadog). The only code change needed is adding the agent/SDK initialization and configuring the exporter endpoint. Add custom spans for business logic only after auto-instrumentation is working and you need more granular visibility into specific operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What attributes should you add to spans to make traces useful for debugging?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Add attributes at multiple levels. For HTTP spans: method, URL path (parameterized, not with actual IDs), status code, request/response size, client IP. For database spans: database system, statement (parameterized), operation type, table name, rows affected. For business logic spans: entity IDs (order ID, customer ID), operation outcome, relevant counts (items processed, records updated). For error spans: exception type, message, stack trace (via recordException). Add resource attributes identifying the service: name, version, environment, region, instance ID. Avoid high-cardinality attributes that would explode storage (full request bodies, large arrays). The goal is enabling trace filtering by business context (\"show me all traces for customer X\") and quick identification of what went wrong without reading logs."
+        }
+      ],
+      "wordCount": 549,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Deploy OpenTelemetry Collector as infrastructure, not application responsibility: Run the OTel Collector as a DaemonSet in Kubernetes or a sidecar in ECS rather than having applications export directly to trace backends. The collector handles batching, retry, sampling decisions, and backend routing. This decouples applications from the trace backend — you can switch from Jaeger to Tempo without changing any application code or configuration. It also provides a buffer during backend outages, preventing span loss.",
+            "Implement trace-based SLOs for critical user journeys: Define Service Level Objectives based on trace data for end-to-end user journeys (not just individual service latency). For example: \"99% of checkout traces complete in under 3 seconds.\" Monitor this SLO using trace backend queries that measure end-to-end duration for traces matching the checkout flow. This catches issues that per-service SLOs miss — each service might meet its individual SLO while the aggregate user experience degrades due to sequential call chains.",
+            "Use span links to connect related traces across async boundaries: When a synchronous request triggers async processing (publishing to a queue, scheduling a job), use span links rather than parent-child relationships. The async processing creates a new trace linked to the original trace's span. This preserves the independence of async traces (they have their own sampling decisions and lifecycle) while maintaining the causal relationship. Trace backends display linked traces together during investigation."
+          ]
+        }
+      ],
+      "wordCount": 224,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CloudWatch and Metrics — Metrics that trigger trace-based investigation",
+            "Log Aggregation and Analysis — Logs correlated with traces via shared trace IDs",
+            "Alerting and Incident Response — Trace-driven debugging during incidents",
+            "Kubernetes & EKS — Service mesh tracing with Istio and Envoy sidecars"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import io.opentelemetry.api.OpenTelemetry;\nimport io.opentelemetry.api.trace.Span;\nimport io.opentelemetry.api.trace.SpanKind;\nimport io.opentelemetry.api.trace.StatusCode;\nimport io.opentelemetry.api.trace.Tracer;\nimport io.opentelemetry.context.Context;\nimport io.opentelemetry.context.Scope;\nimport io.opentelemetry.api.common.Attributes;\nimport io.opentelemetry.api.common.AttributeKey;\n\nimport org.springframework.stereotype.Service;\n\n@Service\npublic class OrderService {\n    private final Tracer tracer;\n    private final PaymentClient paymentClient;\n    private final InventoryClient inventoryClient;\n\n    public OrderService(OpenTelemetry openTelemetry,\n                        PaymentClient paymentClient,\n                        InventoryClient inventoryClient) {\n        this.tracer = openTelemetry.getTracer(\"order-service\", \"2.1.0\");\n        this.paymentClient = paymentClient;\n        this.inventoryClient = inventoryClient;\n    }\n\n    public OrderResult processOrder(Order order) {\n        // Create a span for the entire order processing operation\n        Span span = tracer.spanBuilder(\"processOrder\")\n            .setSpanKind(SpanKind.INTERNAL)\n            .setAttribute(\"order.id\", order.getId())\n            .setAttribute(\"order.item_count\", order.getItems().size())\n            .setAttribute(\"order.total_cents\", order.getTotalCents())\n            .setAttribute(\"customer.id\", order.getCustomerId())\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            // Step 1: Validate inventory (creates child span automatically via HTTP instrumentation)\n            InventoryResult inventory = validateInventory(order);\n            span.addEvent(\"inventory_validated\", Attributes.of(\n                AttributeKey.booleanKey(\"all_available\"), inventory.allAvailable()\n            ));\n\n            if (!inventory.allAvailable()) {\n                span.setStatus(StatusCode.ERROR, \"Insufficient inventory\");\n                span.setAttribute(\"order.failure_reason\", \"insufficient_inventory\");\n                return OrderResult.failed(\"Insufficient inventory\");\n            }\n\n            // Step 2: Process payment (creates child span)\n            PaymentResult payment = processPayment(order);\n            span.addEvent(\"payment_processed\", Attributes.of(\n                AttributeKey.stringKey(\"payment.method\"), payment.getMethod(),\n                AttributeKey.stringKey(\"payment.transaction_id\"), payment.getTransactionId()\n            ));\n\n            // Step 3: Reserve inventory (creates child span)\n            reserveInventory(order, inventory);\n            span.addEvent(\"inventory_reserved\");\n\n            span.setStatus(StatusCode.OK);\n            span.setAttribute(\"order.status\", \"completed\");\n            return OrderResult.success(payment.getTransactionId());\n\n        } catch (Exception e) {\n            span.setStatus(StatusCode.ERROR, e.getMessage());\n            span.recordException(e);\n            span.setAttribute(\"order.failure_reason\", e.getClass().getSimpleName());\n            throw e;\n        } finally {\n            span.end();\n        }\n    }\n\n    private InventoryResult validateInventory(Order order) {\n        Span span = tracer.spanBuilder(\"validateInventory\")\n            .setSpanKind(SpanKind.CLIENT)\n            .setAttribute(\"inventory.item_count\", order.getItems().size())\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            // HTTP client automatically propagates trace context via W3C headers\n            InventoryResult result = inventoryClient.checkAvailability(order.getItems());\n            span.setAttribute(\"inventory.all_available\", result.allAvailable());\n            return result;\n        } finally {\n            span.end();\n        }\n    }\n\n    private PaymentResult processPayment(Order order) {\n        Span span = tracer.spanBuilder(\"processPayment\")\n            .setSpanKind(SpanKind.CLIENT)\n            .setAttribute(\"payment.amount_cents\", order.getTotalCents())\n            .setAttribute(\"payment.currency\", \"USD\")\n            .startSpan();\n\n        try (Scope scope = span.makeCurrent()) {\n            PaymentResult result = paymentClient.charge(order);\n            span.setAttribute(\"payment.success\", result.isSuccess());\n            return result;\n        } catch (Exception e) {\n            span.setStatus(StatusCode.ERROR, \"Payment failed\");\n            span.recordException(e);\n            throw e;\n        } finally {\n            span.end();\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { NodeSDK } from '@opentelemetry/sdk-node';\nimport { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';\nimport { Resource } from '@opentelemetry/resources';\nimport { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';\nimport { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';\nimport { HttpInstrumentation } from '@opentelemetry/instrumentation-http';\nimport { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';\nimport { PgInstrumentation } from '@opentelemetry/instrumentation-pg';\nimport { RedisInstrumentation } from '@opentelemetry/instrumentation-redis-4';\nimport {\n  ParentBasedSampler,\n  TraceIdRatioBasedSampler,\n  AlwaysOnSampler,\n} from '@opentelemetry/sdk-trace-base';\n\n// Custom sampler: always trace errors, sample 10% of successful requests\nclass ProductionSampler {\n  private ratioSampler = new TraceIdRatioBasedSampler(0.1); // 10% sampling\n  private alwaysOn = new AlwaysOnSampler();\n\n  shouldSample(context, traceId, spanName, spanKind, attributes) {\n    // Always sample if parent was sampled (maintain trace completeness)\n    // Always sample errors\n    if (attributes?.['error'] === true || attributes?.['http.status_code'] >= 500) {\n      return this.alwaysOn.shouldSample(context, traceId, spanName, spanKind, attributes);\n    }\n    // Sample 10% of normal traffic\n    return this.ratioSampler.shouldSample(context, traceId, spanName, spanKind, attributes);\n  }\n}\n\nconst sdk = new NodeSDK({\n  resource: new Resource({\n    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',\n    [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',\n    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',\n    'service.team': 'platform',\n    'service.region': process.env.AWS_REGION,\n  }),\n  traceExporter: new OTLPTraceExporter({\n    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',\n    headers: { 'x-api-key': process.env.OTEL_API_KEY },\n  }),\n  spanProcessor: new BatchSpanProcessor(traceExporter, {\n    maxQueueSize: 2048,\n    maxExportBatchSize: 512,\n    scheduledDelayMillis: 5000,\n    exportTimeoutMillis: 30000,\n  }),\n  sampler: new ParentBasedSampler({ root: new ProductionSampler() }),\n  instrumentations: [\n    new HttpInstrumentation({\n      ignoreIncomingPaths: ['/health', '/ready', '/metrics'], // Don't trace health checks\n      requestHook: (span, request) => {\n        span.setAttribute('http.request.id', request.headers['x-request-id']);\n      },\n    }),\n    new ExpressInstrumentation(),\n    new PgInstrumentation({\n      enhancedDatabaseReporting: true, // Include query text in spans\n    }),\n    new RedisInstrumentation(),\n  ],\n});\n\nsdk.start();\n\n// Graceful shutdown\nprocess.on('SIGTERM', () => {\n  sdk.shutdown()\n    .then(() => console.log('Tracing terminated'))\n    .catch((error) => console.error('Error terminating tracing', error))\n    .finally(() => process.exit(0));\n});",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# ECS Task Definition with X-Ray sidecar\n{\n  \"family\": \"order-service\",\n  \"networkMode\": \"awsvpc\",\n  \"containerDefinitions\": [\n    {\n      \"name\": \"order-service\",\n      \"image\": \"123456789012.dkr.ecr.us-east-1.amazonaws.com/order-service:2.1.0\",\n      \"portMappings\": [{ \"containerPort\": 8080 }],\n      \"environment\": [\n        { \"name\": \"AWS_XRAY_DAEMON_ADDRESS\", \"value\": \"localhost:2000\" },\n        { \"name\": \"OTEL_EXPORTER_OTLP_ENDPOINT\", \"value\": \"http://localhost:4317\" }\n      ],\n      \"logConfiguration\": {\n        \"logDriver\": \"awslogs\",\n        \"options\": {\n          \"awslogs-group\": \"/ecs/order-service\",\n          \"awslogs-region\": \"us-east-1\",\n          \"awslogs-stream-prefix\": \"app\"\n        }\n      }\n    },\n    {\n      \"name\": \"otel-collector\",\n      \"image\": \"public.ecr.aws/aws-observability/aws-otel-collector:latest\",\n      \"portMappings\": [\n        { \"containerPort\": 4317, \"protocol\": \"tcp\" },\n        { \"containerPort\": 2000, \"protocol\": \"udp\" }\n      ],\n      \"environment\": [\n        { \"name\": \"AOT_CONFIG_CONTENT\", \"value\": \"receivers:\\n  otlp:\\n    protocols:\\n      grpc:\\n        endpoint: 0.0.0.0:4317\\nexporters:\\n  awsxray:\\n    region: us-east-1\\n  awsemf:\\n    region: us-east-1\\nservice:\\n  pipelines:\\n    traces:\\n      receivers: [otlp]\\n      exporters: [awsxray]\\n    metrics:\\n      receivers: [otlp]\\n      exporters: [awsemf]\" }\n      ],\n      \"logConfiguration\": {\n        \"logDriver\": \"awslogs\",\n        \"options\": {\n          \"awslogs-group\": \"/ecs/otel-collector\",\n          \"awslogs-region\": \"us-east-1\",\n          \"awslogs-stream-prefix\": \"collector\"\n        }\n      }\n    }\n  ]\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/observability/distributed-tracing.md",
+    "wordCount": 1816,
+    "sectionCount": 11
+  }
+}

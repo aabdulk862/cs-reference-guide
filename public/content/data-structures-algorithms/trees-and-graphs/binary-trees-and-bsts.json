@@ -1,0 +1,292 @@
+{
+  "id": "trees-and-graphs-binary-trees-and-bsts",
+  "slug": "binary-trees-and-bsts",
+  "title": "Binary Trees and BSTs",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Binary Search Tree search/insert/delete: O(log n) average, O(n) worst (unbalanced)",
+            "Tree traversal (any order): O(n) visits every node exactly once",
+            "Pre-order: Root → Left → Right (used for serialization, copying)",
+            "In-order: Left → Root → Right (produces sorted output for BST)",
+            "Post-order: Left → Right → Root (used for deletion, expression evaluation)",
+            "Level-order (BFS): O(n) time, O(w) space where w is maximum width",
+            "Height of balanced tree: O(log n)",
+            "Height of degenerate tree: O(n) — linked list behavior",
+            "Space for n nodes: O(n) for the tree, O(h) for recursive traversal stack",
+            "Binary tree max nodes at level k: 2^k",
+            "Complete binary tree height: floor(log₂ n)"
+          ]
+        }
+      ],
+      "wordCount": 105,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Binary trees and BSTs are the right choice when you need ordered data with efficient search, insertion, and deletion. They bridge the gap between O(1) hash-based structures (which provide no ordering) and O(n) linear structures (which maintain order but have slow operations)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose BSTs when you need sorted iteration over elements, range queries (find all elements between x and y), floor and ceiling operations (find the largest element less than or equal to x), or ordered statistics (find the kth smallest element). These operations are impossible or expensive with hash maps."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose binary trees as the underlying structure when implementing priority queues (heaps), expression parsers (expression trees), decision systems (decision trees), or hierarchical data models (DOM trees, file systems). The recursive structure of binary trees maps naturally to divide-and-conquer algorithms."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid plain BSTs when input may be sorted or nearly sorted, as this creates degenerate O(n) behavior. Use self-balancing variants (AVL, Red-Black) for guaranteed O(log n) performance. Avoid trees entirely when you only need O(1) lookup without ordering (use hash maps) or when data is flat with no hierarchical relationships (use arrays)."
+        },
+        {
+          "type": "paragraph",
+          "text": "In production systems, you rarely implement BSTs from scratch. Java provides TreeMap and TreeSet (Red-Black tree backed), C++ provides std::map and std::set (typically Red-Black tree), and Python provides sortedcontainers. Understanding the underlying tree mechanics helps you choose the right data structure and debug performance issues."
+        }
+      ],
+      "wordCount": 227,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "binary-search-tree-with-full-operations",
+          "heading": "Binary Search Tree with Full Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A complete BST implementation demonstrating insertion, search, deletion (including the complex three-case delete), and in-order traversal for sorted output."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class BinarySearchTree {\n    private TreeNode root;\n\n    static class TreeNode {\n        int val;\n        TreeNode left, right;\n        TreeNode(int val) { this.val = val; }\n    }\n\n    /**\n     * Insert a value maintaining BST property.\n     * Time: O(h) where h is tree height.\n     */\n    public void insert(int val) {\n        root = insertRec(root, val);\n    }\n\n    private TreeNode insertRec(TreeNode node, int val) {\n        if (node == null) return new TreeNode(val);\n        if (val < node.val) node.left = insertRec(node.left, val);\n        else if (val > node.val) node.right = insertRec(node.right, val);\n        // Duplicate values ignored\n        return node;\n    }\n\n    /**\n     * Search for a value. Returns true if found.\n     * Iterative version avoids stack overhead for deep trees.\n     */\n    public boolean search(int val) {\n        TreeNode current = root;\n        while (current != null) {\n            if (val == current.val) return true;\n            current = val < current.val ? current.left : current.right;\n        }\n        return false;\n    }\n\n    /**\n     * Delete a node handling three cases:\n     * 1. Leaf node: simply remove\n     * 2. One child: replace with child\n     * 3. Two children: replace with in-order successor\n     */\n    public void delete(int val) {\n        root = deleteRec(root, val);\n    }\n\n    private TreeNode deleteRec(TreeNode node, int val) {\n        if (node == null) return null;\n\n        if (val < node.val) {\n            node.left = deleteRec(node.left, val);\n        } else if (val > node.val) {\n            node.right = deleteRec(node.right, val);\n        } else {\n            // Found the node to delete\n            if (node.left == null) return node.right;\n            if (node.right == null) return node.left;\n\n            // Two children: find in-order successor (smallest in right subtree)\n            TreeNode successor = findMin(node.right);\n            node.val = successor.val;\n            node.right = deleteRec(node.right, successor.val);\n        }\n        return node;\n    }\n\n    private TreeNode findMin(TreeNode node) {\n        while (node.left != null) node = node.left;\n        return node;\n    }\n\n    /**\n     * In-order traversal produces sorted output for BST.\n     */\n    public List<Integer> inOrder() {\n        List<Integer> result = new ArrayList<>();\n        inOrderRec(root, result);\n        return result;\n    }\n\n    private void inOrderRec(TreeNode node, List<Integer> result) {\n        if (node == null) return;\n        inOrderRec(node.left, result);\n        result.add(node.val);\n        inOrderRec(node.right, result);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "class TreeNode {\n  val: number;\n  left: TreeNode | null = null;\n  right: TreeNode | null = null;\n\n  constructor(val: number) {\n    this.val = val;\n  }\n}\n\nclass BST {\n  private root: TreeNode | null = null;\n\n  insert(val: number): void {\n    this.root = this.insertRec(this.root, val);\n  }\n\n  private insertRec(node: TreeNode | null, val: number): TreeNode {\n    if (!node) return new TreeNode(val);\n    if (val < node.val) node.left = this.insertRec(node.left, val);\n    else if (val > node.val) node.right = this.insertRec(node.right, val);\n    return node;\n  }\n\n  search(val: number): boolean {\n    let current = this.root;\n    while (current) {\n      if (val === current.val) return true;\n      current = val < current.val ? current.left : current.right;\n    }\n    return false;\n  }\n\n  inOrder(): number[] {\n    const result: number[] = [];\n    const traverse = (node: TreeNode | null) => {\n      if (!node) return;\n      traverse(node.left);\n      result.push(node.val);\n      traverse(node.right);\n    };\n    traverse(this.root);\n    return result;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 19,
+          "subsections": []
+        },
+        {
+          "id": "classic-tree-interview-problems",
+          "heading": "Classic Tree Interview Problems",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Solutions to the most frequently asked tree problems in technical interviews, demonstrating recursive thinking and tree property validation."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class TreeProblems {\n    /**\n     * Validate BST using range-based approach.\n     * Each node must be within (min, max) exclusive bounds.\n     * Time: O(n), Space: O(h)\n     */\n    public static boolean isValidBST(TreeNode root) {\n        return validate(root, Long.MIN_VALUE, Long.MAX_VALUE);\n    }\n\n    private static boolean validate(TreeNode node, long min, long max) {\n        if (node == null) return true;\n        if (node.val <= min || node.val >= max) return false;\n        return validate(node.left, min, node.val) &&\n               validate(node.right, node.val, max);\n    }\n\n    /**\n     * Lowest Common Ancestor in a binary tree.\n     * Post-order traversal: if both sides return non-null, current is LCA.\n     * Time: O(n), Space: O(h)\n     */\n    public static TreeNode lowestCommonAncestor(TreeNode root, TreeNode p, TreeNode q) {\n        if (root == null || root == p || root == q) return root;\n        TreeNode left = lowestCommonAncestor(root.left, p, q);\n        TreeNode right = lowestCommonAncestor(root.right, p, q);\n        if (left != null && right != null) return root;\n        return left != null ? left : right;\n    }\n\n    /**\n     * Maximum depth (height) of binary tree.\n     * Time: O(n), Space: O(h)\n     */\n    public static int maxDepth(TreeNode root) {\n        if (root == null) return 0;\n        return 1 + Math.max(maxDepth(root.left), maxDepth(root.right));\n    }\n\n    /**\n     * Check if tree is height-balanced (height diff <= 1 at every node).\n     * Returns -1 for unbalanced, otherwise returns height.\n     * Time: O(n) — single pass bottom-up\n     */\n    public static boolean isBalanced(TreeNode root) {\n        return checkHeight(root) != -1;\n    }\n\n    private static int checkHeight(TreeNode node) {\n        if (node == null) return 0;\n        int left = checkHeight(node.left);\n        if (left == -1) return -1;\n        int right = checkHeight(node.right);\n        if (right == -1) return -1;\n        if (Math.abs(left - right) > 1) return -1;\n        return 1 + Math.max(left, right);\n    }\n\n    /**\n     * Serialize binary tree to string (pre-order with null markers).\n     * Deserialize reconstructs the tree from the string.\n     */\n    public static String serialize(TreeNode root) {\n        StringBuilder sb = new StringBuilder();\n        serializeHelper(root, sb);\n        return sb.toString();\n    }\n\n    private static void serializeHelper(TreeNode node, StringBuilder sb) {\n        if (node == null) {\n            sb.append(\"null,\");\n            return;\n        }\n        sb.append(node.val).append(\",\");\n        serializeHelper(node.left, sb);\n        serializeHelper(node.right, sb);\n    }\n\n    public static TreeNode deserialize(String data) {\n        Queue<String> tokens = new LinkedList<>(Arrays.asList(data.split(\",\")));\n        return deserializeHelper(tokens);\n    }\n\n    private static TreeNode deserializeHelper(Queue<String> tokens) {\n        String val = tokens.poll();\n        if (\"null\".equals(val)) return null;\n        TreeNode node = new TreeNode(Integer.parseInt(val));\n        node.left = deserializeHelper(tokens);\n        node.right = deserializeHelper(tokens);\n        return node;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "level-order-traversal-variants",
+          "heading": "Level-Order Traversal Variants",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "BFS-based traversal with level grouping enables solutions to zigzag traversal, right-side view, and level averages."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class LevelOrderVariants {\n    /**\n     * Standard level-order with level grouping.\n     * Time: O(n), Space: O(w) where w is max width\n     */\n    public static List<List<Integer>> levelOrder(TreeNode root) {\n        List<List<Integer>> result = new ArrayList<>();\n        if (root == null) return result;\n\n        Queue<TreeNode> queue = new ArrayDeque<>();\n        queue.offer(root);\n\n        while (!queue.isEmpty()) {\n            int levelSize = queue.size();\n            List<Integer> level = new ArrayList<>();\n            for (int i = 0; i < levelSize; i++) {\n                TreeNode node = queue.poll();\n                level.add(node.val);\n                if (node.left != null) queue.offer(node.left);\n                if (node.right != null) queue.offer(node.right);\n            }\n            result.add(level);\n        }\n        return result;\n    }\n\n    /**\n     * Right side view: last node at each level.\n     */\n    public static List<Integer> rightSideView(TreeNode root) {\n        List<Integer> result = new ArrayList<>();\n        if (root == null) return result;\n\n        Queue<TreeNode> queue = new ArrayDeque<>();\n        queue.offer(root);\n\n        while (!queue.isEmpty()) {\n            int levelSize = queue.size();\n            for (int i = 0; i < levelSize; i++) {\n                TreeNode node = queue.poll();\n                if (i == levelSize - 1) result.add(node.val);\n                if (node.left != null) queue.offer(node.left);\n                if (node.right != null) queue.offer(node.right);\n            }\n        }\n        return result;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 15,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Assuming BSTs are always balanced: Inserting sorted data into a plain BST creates a degenerate linked list with O(n) operations. If you insert [1, 2, 3, 4, 5] sequentially, every node has only a right child, and search becomes linear scan. Always use self-balancing trees (AVL, Red-Black) when input order is unpredictable. In interviews, state your assumption about balance explicitly.",
+            "Stack overflow with deep recursion on large trees: Recursive tree algorithms on trees with 100,000+ nodes can overflow the call stack (default stack size is typically 512KB-1MB). Convert to iterative approaches using an explicit stack for production code. Morris traversal achieves O(1) space by temporarily modifying tree pointers, but is complex and modifies the tree during traversal.",
+            "Confusing tree height and depth: Height is measured from a node downward to the deepest leaf (root has maximum height). Depth is measured from the root downward to a node (root has depth 0). Mixing these up leads to off-by-one errors in balanced tree checks and level calculations. Some sources define height as number of edges, others as number of nodes on the path — clarify the definition before coding.",
+            "Not handling null children in recursive algorithms: Every recursive tree function must handle the null base case explicitly. Forgetting this causes NullPointerException when accessing leaf nodes' children. The pattern is always: check null first, then process the node, then recurse on children. This applies to every tree problem without exception.",
+            "Using BST when HashMap suffices: If you only need O(1) lookup by key without ordering, a HashMap is simpler and faster than a BST. BSTs add O(log n) overhead for the ordering guarantee. Only use trees when you need sorted order, range queries, floor/ceiling operations, or ordered iteration. In interviews, justify your choice of data structure."
+          ]
+        }
+      ],
+      "wordCount": 293,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database indexing is the most impactful production use of tree structures. B-Trees and B+ Trees form the backbone of every major relational database (PostgreSQL, MySQL, Oracle). Each internal node contains hundreds of keys stored in a sorted array, and the high branching factor keeps the tree shallow (typically 3-4 levels for billions of rows). A single query traverses at most 4 disk pages to find any record, making indexed lookups nearly constant time regardless of table size."
+        },
+        {
+          "type": "paragraph",
+          "text": "Compiler abstract syntax trees (ASTs) represent the hierarchical structure of source code. When a compiler parses if (x > 0) { return x; }, it builds a tree with the if-statement as root, the condition as left child, and the body as right child. Every subsequent compiler phase (type checking, optimization, code generation) operates on this tree structure. Language servers in IDEs traverse ASTs to provide autocomplete, refactoring, and error detection."
+        },
+        {
+          "type": "paragraph",
+          "text": "File systems use tree structures to organize directories and files. The directory hierarchy is a tree where internal nodes are directories and leaves are files. Operations like find, ls -R, and path resolution are tree traversals. Modern file systems (ext4, NTFS, APFS) use B-Tree variants for directory entries and extent trees for file block mapping, enabling efficient lookup even in directories with millions of entries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Decision trees and random forests in machine learning use binary tree structures for classification and regression. Each internal node represents a feature test, and leaves represent predictions. Training builds the tree by selecting optimal split points, and inference traverses from root to leaf. Random forests aggregate hundreds of trees for robust predictions. XGBoost and LightGBM, the dominant algorithms for tabular data, build gradient-boosted decision trees."
+        },
+        {
+          "type": "paragraph",
+          "text": "DOM trees in web browsers represent HTML document structure. The browser parses HTML into a tree where elements are nodes and nesting creates parent-child relationships. CSS selector matching, event bubbling, and layout computation all traverse this tree. React's virtual DOM maintains a parallel tree structure and uses tree diffing algorithms to minimize actual DOM updates."
+        }
+      ],
+      "wordCount": 333,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you determine if a binary tree is balanced?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A tree is balanced if the height difference between left and right subtrees is at most 1 for every node. Use a bottom-up recursive approach that returns -1 for unbalanced subtrees, avoiding redundant height calculations. At each node, compute left and right heights recursively. If either returns -1 (unbalanced below), propagate -1 upward. If the absolute difference exceeds 1, return -1. Otherwise return 1 + max(left, right). This runs in O(n) time with a single pass, compared to the naive O(n log n) approach of computing height separately at each node."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you serialize and deserialize a binary tree?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use pre-order traversal with null markers. Serialize by visiting root, then left, then right, appending each value (or \"null\" for null nodes) to a string with delimiters. Deserialize by reading values sequentially and recursively building left then right subtrees, consuming \"null\" tokens as base cases. Both operations are O(n) time and space. Alternative approaches include level-order serialization (useful for complete trees) and in-order plus pre-order combination (requires distinct values)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Red-Black tree and an AVL tree?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Both are self-balancing BSTs with O(log n) operations. AVL trees maintain strict balance (height difference at most 1 at every node), providing faster lookups due to shorter height but slower insertions and deletions due to more rotations. Red-Black trees allow height difference up to 2x (longest path at most twice the shortest), requiring fewer rotations on modification but slightly deeper trees. In practice, AVL trees are better for read-heavy workloads, Red-Black trees for write-heavy workloads. Java's TreeMap uses Red-Black trees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you find the kth smallest element in a BST?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use in-order traversal (which visits BST nodes in sorted order) and count nodes visited. When the count reaches k, return that node's value. Time is O(h + k) where h is tree height. For frequent queries, augment each node with a subtree size field. To find kth smallest: if left subtree size equals k-1, return current node. If left size is greater than or equal to k, recurse left. Otherwise recurse right with k reduced by left size plus 1. This gives O(h) per query."
+        }
+      ],
+      "wordCount": 375,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use Java TreeMap/TreeSet for sorted operations in application code: These are backed by Red-Black trees providing guaranteed O(log n) for all operations. They support efficient range queries via subMap(), headMap(), tailMap(), and nearest-element queries via floorKey(), ceilingKey(). For concurrent access, use ConcurrentSkipListMap which provides similar sorted operations with lock-free reads.",
+            "Convert recursive tree algorithms to iterative for production: Recursive implementations are elegant but risk stack overflow on deep trees and make it harder to add early termination, timeout handling, and progress reporting. Use an explicit stack (ArrayDeque in Java) for DFS or a queue for BFS. This also enables processing trees in chunks for long-running operations without blocking the event loop.",
+            "Cache tree heights and subtree sizes for repeated queries: If your application frequently checks tree balance, computes ranks, or performs height-dependent operations, store these values as fields in each node and update them during modifications. This avoids O(n) recomputation and enables O(log n) order-statistic queries. The trade-off is increased memory per node and slightly more complex insert/delete logic."
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Balanced Trees and Self-Balancing — Guaranteed O(log n) through rotation-based balancing",
+            "Graph Representations and Traversal — Trees are special cases of graphs; traversal techniques generalize",
+            "Heap — Complete binary trees stored in arrays for priority queue operations",
+            "Trie — Specialized trees for string prefix operations"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class BinarySearchTree {\n    private TreeNode root;\n\n    static class TreeNode {\n        int val;\n        TreeNode left, right;\n        TreeNode(int val) { this.val = val; }\n    }\n\n    /**\n     * Insert a value maintaining BST property.\n     * Time: O(h) where h is tree height.\n     */\n    public void insert(int val) {\n        root = insertRec(root, val);\n    }\n\n    private TreeNode insertRec(TreeNode node, int val) {\n        if (node == null) return new TreeNode(val);\n        if (val < node.val) node.left = insertRec(node.left, val);\n        else if (val > node.val) node.right = insertRec(node.right, val);\n        // Duplicate values ignored\n        return node;\n    }\n\n    /**\n     * Search for a value. Returns true if found.\n     * Iterative version avoids stack overhead for deep trees.\n     */\n    public boolean search(int val) {\n        TreeNode current = root;\n        while (current != null) {\n            if (val == current.val) return true;\n            current = val < current.val ? current.left : current.right;\n        }\n        return false;\n    }\n\n    /**\n     * Delete a node handling three cases:\n     * 1. Leaf node: simply remove\n     * 2. One child: replace with child\n     * 3. Two children: replace with in-order successor\n     */\n    public void delete(int val) {\n        root = deleteRec(root, val);\n    }\n\n    private TreeNode deleteRec(TreeNode node, int val) {\n        if (node == null) return null;\n\n        if (val < node.val) {\n            node.left = deleteRec(node.left, val);\n        } else if (val > node.val) {\n            node.right = deleteRec(node.right, val);\n        } else {\n            // Found the node to delete\n            if (node.left == null) return node.right;\n            if (node.right == null) return node.left;\n\n            // Two children: find in-order successor (smallest in right subtree)\n            TreeNode successor = findMin(node.right);\n            node.val = successor.val;\n            node.right = deleteRec(node.right, successor.val);\n        }\n        return node;\n    }\n\n    private TreeNode findMin(TreeNode node) {\n        while (node.left != null) node = node.left;\n        return node;\n    }\n\n    /**\n     * In-order traversal produces sorted output for BST.\n     */\n    public List<Integer> inOrder() {\n        List<Integer> result = new ArrayList<>();\n        inOrderRec(root, result);\n        return result;\n    }\n\n    private void inOrderRec(TreeNode node, List<Integer> result) {\n        if (node == null) return;\n        inOrderRec(node.left, result);\n        result.add(node.val);\n        inOrderRec(node.right, result);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "class TreeNode {\n  val: number;\n  left: TreeNode | null = null;\n  right: TreeNode | null = null;\n\n  constructor(val: number) {\n    this.val = val;\n  }\n}\n\nclass BST {\n  private root: TreeNode | null = null;\n\n  insert(val: number): void {\n    this.root = this.insertRec(this.root, val);\n  }\n\n  private insertRec(node: TreeNode | null, val: number): TreeNode {\n    if (!node) return new TreeNode(val);\n    if (val < node.val) node.left = this.insertRec(node.left, val);\n    else if (val > node.val) node.right = this.insertRec(node.right, val);\n    return node;\n  }\n\n  search(val: number): boolean {\n    let current = this.root;\n    while (current) {\n      if (val === current.val) return true;\n      current = val < current.val ? current.left : current.right;\n    }\n    return false;\n  }\n\n  inOrder(): number[] {\n    const result: number[] = [];\n    const traverse = (node: TreeNode | null) => {\n      if (!node) return;\n      traverse(node.left);\n      result.push(node.val);\n      traverse(node.right);\n    };\n    traverse(this.root);\n    return result;\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class TreeProblems {\n    /**\n     * Validate BST using range-based approach.\n     * Each node must be within (min, max) exclusive bounds.\n     * Time: O(n), Space: O(h)\n     */\n    public static boolean isValidBST(TreeNode root) {\n        return validate(root, Long.MIN_VALUE, Long.MAX_VALUE);\n    }\n\n    private static boolean validate(TreeNode node, long min, long max) {\n        if (node == null) return true;\n        if (node.val <= min || node.val >= max) return false;\n        return validate(node.left, min, node.val) &&\n               validate(node.right, node.val, max);\n    }\n\n    /**\n     * Lowest Common Ancestor in a binary tree.\n     * Post-order traversal: if both sides return non-null, current is LCA.\n     * Time: O(n), Space: O(h)\n     */\n    public static TreeNode lowestCommonAncestor(TreeNode root, TreeNode p, TreeNode q) {\n        if (root == null || root == p || root == q) return root;\n        TreeNode left = lowestCommonAncestor(root.left, p, q);\n        TreeNode right = lowestCommonAncestor(root.right, p, q);\n        if (left != null && right != null) return root;\n        return left != null ? left : right;\n    }\n\n    /**\n     * Maximum depth (height) of binary tree.\n     * Time: O(n), Space: O(h)\n     */\n    public static int maxDepth(TreeNode root) {\n        if (root == null) return 0;\n        return 1 + Math.max(maxDepth(root.left), maxDepth(root.right));\n    }\n\n    /**\n     * Check if tree is height-balanced (height diff <= 1 at every node).\n     * Returns -1 for unbalanced, otherwise returns height.\n     * Time: O(n) — single pass bottom-up\n     */\n    public static boolean isBalanced(TreeNode root) {\n        return checkHeight(root) != -1;\n    }\n\n    private static int checkHeight(TreeNode node) {\n        if (node == null) return 0;\n        int left = checkHeight(node.left);\n        if (left == -1) return -1;\n        int right = checkHeight(node.right);\n        if (right == -1) return -1;\n        if (Math.abs(left - right) > 1) return -1;\n        return 1 + Math.max(left, right);\n    }\n\n    /**\n     * Serialize binary tree to string (pre-order with null markers).\n     * Deserialize reconstructs the tree from the string.\n     */\n    public static String serialize(TreeNode root) {\n        StringBuilder sb = new StringBuilder();\n        serializeHelper(root, sb);\n        return sb.toString();\n    }\n\n    private static void serializeHelper(TreeNode node, StringBuilder sb) {\n        if (node == null) {\n            sb.append(\"null,\");\n            return;\n        }\n        sb.append(node.val).append(\",\");\n        serializeHelper(node.left, sb);\n        serializeHelper(node.right, sb);\n    }\n\n    public static TreeNode deserialize(String data) {\n        Queue<String> tokens = new LinkedList<>(Arrays.asList(data.split(\",\")));\n        return deserializeHelper(tokens);\n    }\n\n    private static TreeNode deserializeHelper(Queue<String> tokens) {\n        String val = tokens.poll();\n        if (\"null\".equals(val)) return null;\n        TreeNode node = new TreeNode(Integer.parseInt(val));\n        node.left = deserializeHelper(tokens);\n        node.right = deserializeHelper(tokens);\n        return node;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class LevelOrderVariants {\n    /**\n     * Standard level-order with level grouping.\n     * Time: O(n), Space: O(w) where w is max width\n     */\n    public static List<List<Integer>> levelOrder(TreeNode root) {\n        List<List<Integer>> result = new ArrayList<>();\n        if (root == null) return result;\n\n        Queue<TreeNode> queue = new ArrayDeque<>();\n        queue.offer(root);\n\n        while (!queue.isEmpty()) {\n            int levelSize = queue.size();\n            List<Integer> level = new ArrayList<>();\n            for (int i = 0; i < levelSize; i++) {\n                TreeNode node = queue.poll();\n                level.add(node.val);\n                if (node.left != null) queue.offer(node.left);\n                if (node.right != null) queue.offer(node.right);\n            }\n            result.add(level);\n        }\n        return result;\n    }\n\n    /**\n     * Right side view: last node at each level.\n     */\n    public static List<Integer> rightSideView(TreeNode root) {\n        List<Integer> result = new ArrayList<>();\n        if (root == null) return result;\n\n        Queue<TreeNode> queue = new ArrayDeque<>();\n        queue.offer(root);\n\n        while (!queue.isEmpty()) {\n            int levelSize = queue.size();\n            for (int i = 0; i < levelSize; i++) {\n                TreeNode node = queue.poll();\n                if (i == levelSize - 1) result.add(node.val);\n                if (node.left != null) queue.offer(node.left);\n                if (node.right != null) queue.offer(node.right);\n            }\n        }\n        return result;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/trees-and-graphs/binary-trees-and-bsts.md",
+    "wordCount": 1599,
+    "sectionCount": 11
+  }
+}

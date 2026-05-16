@@ -1,0 +1,239 @@
+{
+  "id": "java-streams-and-lambdas",
+  "slug": "streams-and-lambdas",
+  "title": "Streams and Lambdas",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Lambda expressions provide concise syntax for implementing functional interfaces: (params) -> expression",
+            "Functional interfaces have exactly one abstract method, annotated with @FunctionalInterface",
+            "Key functional interfaces: Function<T,R>, Predicate<T>, Consumer<T>, Supplier<T>, BiFunction<T,U,R>",
+            "Stream API processes collections declaratively with lazy evaluation and short-circuit optimization",
+            "Terminal operations: collect(), forEach(), reduce(), count(), findFirst(), anyMatch()",
+            "Intermediate operations: filter(), map(), flatMap(), sorted(), distinct(), limit()",
+            "Optional<T> eliminates null returns with map(), flatMap(), orElse(), orElseThrow()",
+            "Method references: Class::staticMethod, instance::method, Class::instanceMethod, Class::new"
+          ]
+        }
+      ],
+      "wordCount": 72,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Streams and lambdas are the preferred approach for data transformation pipelines in modern Java. Use the Stream API when processing collections with filter-map-reduce patterns, when you need lazy evaluation to avoid processing unnecessary elements, or when parallel processing of large datasets can improve throughput. Lambdas replace verbose anonymous inner classes for event handlers, callbacks, comparators, and any single-method interface implementation. Optional should be used as a return type for methods that may not produce a result, replacing null returns that force callers to perform null checks. These features are essential for writing concise, readable code in Spring WebFlux reactive pipelines, CompletableFuture chains, and any functional-style data processing. Senior engineers should understand when streams improve readability versus when traditional loops are clearer, and when parallel streams actually provide performance benefits versus introducing overhead."
+        }
+      ],
+      "wordCount": 132,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "stream-pipeline-operations",
+          "heading": "Stream Pipeline Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Complex data transformation pipeline\npublic record OrderSummary(String customerId, BigDecimal totalSpent, long orderCount) {}\n\npublic List<OrderSummary> getTopCustomers(List<Order> orders, int limit) {\n    return orders.stream()\n        .filter(order -> order.getStatus() == OrderStatus.COMPLETED)\n        .filter(order -> order.getCreatedAt().isAfter(LocalDateTime.now().minusMonths(6)))\n        .collect(Collectors.groupingBy(\n            Order::getCustomerId,\n            Collectors.collectingAndThen(\n                Collectors.toList(),\n                orderList -> new OrderSummary(\n                    orderList.get(0).getCustomerId(),\n                    orderList.stream()\n                        .map(Order::getAmount)\n                        .reduce(BigDecimal.ZERO, BigDecimal::add),\n                    orderList.size()\n                )\n            )\n        ))\n        .values().stream()\n        .sorted(Comparator.comparing(OrderSummary::totalSpent).reversed())\n        .limit(limit)\n        .toList(); // Java 16+ immutable list\n}\n\n// FlatMap for nested structures\npublic List<LineItem> getAllLineItems(List<Order> orders) {\n    return orders.stream()\n        .flatMap(order -> order.getItems().stream())\n        .filter(item -> item.getQuantity() > 0)\n        .sorted(Comparator.comparing(LineItem::getProductName))\n        .toList();\n}\n\n// Collectors.toMap with merge function for handling duplicates\nMap<String, BigDecimal> revenueByProduct = orders.stream()\n    .flatMap(order -> order.getItems().stream())\n    .collect(Collectors.toMap(\n        LineItem::getProductId,\n        item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())),\n        BigDecimal::add  // Merge function for duplicate keys\n    ));",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "optional-patterns-and-anti-patterns",
+          "heading": "Optional Patterns and Anti-Patterns",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Proper Optional usage as return type\npublic Optional<Customer> findCustomerByEmail(String email) {\n    return customerRepository.findAll().stream()\n        .filter(c -> c.getEmail().equalsIgnoreCase(email))\n        .findFirst();\n}\n\n// Chaining Optional operations\npublic String getCustomerCity(UUID customerId) {\n    return findCustomerById(customerId)\n        .map(Customer::getAddress)\n        .map(Address::getCity)\n        .orElse(\"Unknown\");\n}\n\n// Optional with flatMap for nested Optionals\npublic Optional<String> getManagerEmail(UUID employeeId) {\n    return findEmployeeById(employeeId)\n        .flatMap(Employee::getManager)  // Returns Optional<Employee>\n        .map(Employee::getEmail);\n}\n\n// orElseThrow for required values\npublic Customer getCustomerOrFail(UUID customerId) {\n    return findCustomerById(customerId)\n        .orElseThrow(() -> new CustomerNotFoundException(customerId));\n}\n\n// Optional.stream() for integration with Stream API (Java 9+)\npublic List<String> getActiveCustomerEmails(List<UUID> customerIds) {\n    return customerIds.stream()\n        .map(this::findCustomerById)\n        .flatMap(Optional::stream)  // Filters empty Optionals\n        .filter(Customer::isActive)\n        .map(Customer::getEmail)\n        .toList();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-collectors-and-reduce-operations",
+          "heading": "Custom Collectors and Reduce Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom collector for building a report\npublic static Collector<Transaction, ?, TransactionReport> toReport() {\n    return Collector.of(\n        TransactionReport::new,                    // Supplier\n        TransactionReport::addTransaction,         // Accumulator\n        TransactionReport::merge,                  // Combiner (for parallel)\n        Collector.Characteristics.IDENTITY_FINISH\n    );\n}\n\nTransactionReport report = transactions.stream()\n    .filter(t -> t.getDate().isAfter(startDate))\n    .collect(toReport());\n\n// Reduce for aggregation with identity\nBigDecimal totalRevenue = orders.stream()\n    .map(Order::getAmount)\n    .reduce(BigDecimal.ZERO, BigDecimal::add);\n\n// Partitioning and grouping\nMap<Boolean, List<Order>> partitioned = orders.stream()\n    .collect(Collectors.partitioningBy(o -> o.getAmount().compareTo(threshold) > 0));\nList<Order> highValue = partitioned.get(true);\nList<Order> lowValue = partitioned.get(false);\n\n// Multi-level grouping\nMap<String, Map<OrderStatus, Long>> countByRegionAndStatus = orders.stream()\n    .collect(Collectors.groupingBy(\n        Order::getRegion,\n        Collectors.groupingBy(Order::getStatus, Collectors.counting())\n    ));\n\n// Teeing collector (Java 12+) for computing two results in one pass\nrecord Stats(long count, BigDecimal total) {}\nStats stats = orders.stream()\n    .collect(Collectors.teeing(\n        Collectors.counting(),\n        Collectors.reducing(BigDecimal.ZERO, Order::getAmount, BigDecimal::add),\n        Stats::new\n    ));",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Stream reuse: Streams can only be consumed once. Attempting to reuse a stream after a terminal operation throws IllegalStateException. If you need to process the same data multiple times, either create a new stream from the source each time, or collect intermediate results into a collection first. This is a fundamental design choice that enables lazy evaluation and resource management.",
+            "Side effects in stream operations: Using forEach() or peek() to modify external state breaks the functional contract of streams and produces unpredictable results with parallel streams. Stream operations should be stateless and side-effect-free. Use collect() or reduce() to produce results, and perform side effects only in terminal operations on sequential streams when absolutely necessary.",
+            "Parallel stream overhead: parallelStream() is not a free performance boost. It uses the common ForkJoinPool, adds thread coordination overhead, and can actually be slower for small collections, I/O-bound operations, or operations with shared mutable state. Parallel streams benefit CPU-bound operations on large datasets (typically 10,000+ elements) with independent processing per element. Always benchmark before using parallel streams in production.",
+            "Optional as method parameter or field: Optional was designed as a return type to signal \"may not have a value.\" Using it as a method parameter forces callers to wrap values in Optional, adding verbosity without benefit. Using it as a field wastes memory (Optional is an object with its own overhead) and complicates serialization. For parameters, use method overloading or nullable parameters with @Nullable annotation.",
+            "Infinite streams without limit: Stream.generate() and Stream.iterate() produce infinite streams. Without a limit() or short-circuit terminal operation (findFirst(), anyMatch()), these will run forever or until OutOfMemoryError. Always pair infinite stream sources with a bounding operation."
+          ]
+        }
+      ],
+      "wordCount": 274,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "ETL data transformation pipelines: Data processing services use Stream API to transform raw database records into API response DTOs through chains of map, filter, and collect operations. A typical pipeline reads entities from a repository, filters by business rules, maps to response objects with computed fields, groups by category, and collects into the final response structure — all expressed as a single readable pipeline.",
+            "Reactive programming foundations: Spring WebFlux's Mono and Flux types mirror the Stream API's functional composition model. Engineers comfortable with streams transition naturally to reactive programming, using the same map/flatMap/filter patterns for asynchronous, non-blocking data flows. Understanding lazy evaluation in streams directly translates to understanding backpressure in reactive streams.",
+            "Configuration validation and transformation: Application startup routines use streams to validate configuration properties, transform string values into typed objects, collect validation errors, and build configuration maps. The declarative style makes it easy to add new validation rules without restructuring the code, and the collect-errors pattern (using Collectors.toList on validation failures) provides comprehensive error reporting.",
+            "Report generation with custom collectors: Financial systems generate complex reports by streaming transaction data through custom collectors that accumulate running totals, compute percentiles, track min/max values, and build hierarchical summaries in a single pass through the data. Custom collectors encapsulate complex aggregation logic while maintaining the clean pipeline syntax.",
+            "Batch API response assembly: Microservices handling batch requests use streams to process each item independently, collect successes and failures separately using partitioning, and assemble a batch response with per-item status. FlatMap handles cases where one input produces multiple outputs, and Optional.stream() cleanly handles items that may not produce results."
+          ]
+        }
+      ],
+      "wordCount": 264,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between map() and flatMap() in streams?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: map() transforms each element to exactly one output element using a one-to-one function (Function<T, R>). flatMap() transforms each element to zero or more elements by mapping to a stream and flattening the results (Function<T, Stream<R>>). Use map() when each input produces exactly one output. Use flatMap() when each input may produce multiple outputs (like getting all items from multiple orders) or when you need to unwrap nested structures (like Optional<Optional<T>> or List<List<T>>). In Optional, flatMap() prevents nested Optionals when the mapping function itself returns an Optional."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain lazy evaluation in Java streams. Why does it matter?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Stream intermediate operations (filter, map, sorted) are lazy — they don't execute until a terminal operation (collect, forEach, count) is invoked. The stream pipeline builds a description of transformations, then executes them in a single pass when the terminal operation triggers evaluation. This matters for performance: stream.filter(expensive).findFirst() stops processing after finding the first match rather than filtering the entire collection. Lazy evaluation also enables working with infinite streams and avoids creating intermediate collections between pipeline stages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When should you use reduce() vs collect() in streams?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use reduce() for combining elements into a single value through an associative binary operation (sum, max, string concatenation). Use collect() for mutable reduction — building a result container (List, Map, StringBuilder) by accumulating elements into it. The key difference is that reduce() creates new intermediate values at each step (immutable reduction), while collect() mutates a single container (mutable reduction). For building collections, collect() is more efficient because it avoids creating intermediate objects. reduce() is appropriate for mathematical aggregations where the result type matches the element type."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are the risks of using parallel streams in production?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Parallel streams use the common ForkJoinPool (shared across the entire JVM), so a slow parallel stream operation can starve other parallel tasks. They add thread coordination overhead that outweighs benefits for small collections. They produce incorrect results if operations have side effects or depend on encounter order. They can cause deadlocks if stream operations block (I/O, synchronized blocks). They interact poorly with thread-local state and security contexts. In production, use parallel streams only for CPU-bound operations on large datasets after benchmarking, and consider using a custom ForkJoinPool to isolate the parallelism."
+        }
+      ],
+      "wordCount": 386,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prefer toList() over collect(Collectors.toList()): Java 16+ provides stream.toList() which returns an unmodifiable list and is more concise. Use collect(Collectors.toCollection(ArrayList::new)) only when you need a mutable result list. The shorter form also communicates intent more clearly — you want the result, not a mutable collection to further modify.",
+            "Use Collectors.toUnmodifiableMap() for safety: When collecting to a map that should not be modified after creation, use Collectors.toUnmodifiableMap() (Java 10+) instead of Collectors.toMap(). This prevents accidental mutation of collected results and makes the code's intent explicit. Always provide a merge function to handle duplicate keys gracefully rather than letting the stream throw IllegalStateException.",
+            "Profile before parallelizing: Use JMH (Java Microbenchmark Harness) to measure actual throughput improvement from parallel streams. In many real-world scenarios, the overhead of splitting work, coordinating threads, and merging results exceeds the benefit of parallel execution. Sequential streams with algorithmic improvements (better data structures, reduced allocations) often outperform naive parallelization."
+          ]
+        }
+      ],
+      "wordCount": 150,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Language Fundamentals — Interfaces and type system that enable functional programming",
+            "Concurrency and Multithreading — CompletableFuture chains use similar functional composition patterns"
+          ]
+        }
+      ],
+      "wordCount": 23,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Complex data transformation pipeline\npublic record OrderSummary(String customerId, BigDecimal totalSpent, long orderCount) {}\n\npublic List<OrderSummary> getTopCustomers(List<Order> orders, int limit) {\n    return orders.stream()\n        .filter(order -> order.getStatus() == OrderStatus.COMPLETED)\n        .filter(order -> order.getCreatedAt().isAfter(LocalDateTime.now().minusMonths(6)))\n        .collect(Collectors.groupingBy(\n            Order::getCustomerId,\n            Collectors.collectingAndThen(\n                Collectors.toList(),\n                orderList -> new OrderSummary(\n                    orderList.get(0).getCustomerId(),\n                    orderList.stream()\n                        .map(Order::getAmount)\n                        .reduce(BigDecimal.ZERO, BigDecimal::add),\n                    orderList.size()\n                )\n            )\n        ))\n        .values().stream()\n        .sorted(Comparator.comparing(OrderSummary::totalSpent).reversed())\n        .limit(limit)\n        .toList(); // Java 16+ immutable list\n}\n\n// FlatMap for nested structures\npublic List<LineItem> getAllLineItems(List<Order> orders) {\n    return orders.stream()\n        .flatMap(order -> order.getItems().stream())\n        .filter(item -> item.getQuantity() > 0)\n        .sorted(Comparator.comparing(LineItem::getProductName))\n        .toList();\n}\n\n// Collectors.toMap with merge function for handling duplicates\nMap<String, BigDecimal> revenueByProduct = orders.stream()\n    .flatMap(order -> order.getItems().stream())\n    .collect(Collectors.toMap(\n        LineItem::getProductId,\n        item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())),\n        BigDecimal::add  // Merge function for duplicate keys\n    ));",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Proper Optional usage as return type\npublic Optional<Customer> findCustomerByEmail(String email) {\n    return customerRepository.findAll().stream()\n        .filter(c -> c.getEmail().equalsIgnoreCase(email))\n        .findFirst();\n}\n\n// Chaining Optional operations\npublic String getCustomerCity(UUID customerId) {\n    return findCustomerById(customerId)\n        .map(Customer::getAddress)\n        .map(Address::getCity)\n        .orElse(\"Unknown\");\n}\n\n// Optional with flatMap for nested Optionals\npublic Optional<String> getManagerEmail(UUID employeeId) {\n    return findEmployeeById(employeeId)\n        .flatMap(Employee::getManager)  // Returns Optional<Employee>\n        .map(Employee::getEmail);\n}\n\n// orElseThrow for required values\npublic Customer getCustomerOrFail(UUID customerId) {\n    return findCustomerById(customerId)\n        .orElseThrow(() -> new CustomerNotFoundException(customerId));\n}\n\n// Optional.stream() for integration with Stream API (Java 9+)\npublic List<String> getActiveCustomerEmails(List<UUID> customerIds) {\n    return customerIds.stream()\n        .map(this::findCustomerById)\n        .flatMap(Optional::stream)  // Filters empty Optionals\n        .filter(Customer::isActive)\n        .map(Customer::getEmail)\n        .toList();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Custom collector for building a report\npublic static Collector<Transaction, ?, TransactionReport> toReport() {\n    return Collector.of(\n        TransactionReport::new,                    // Supplier\n        TransactionReport::addTransaction,         // Accumulator\n        TransactionReport::merge,                  // Combiner (for parallel)\n        Collector.Characteristics.IDENTITY_FINISH\n    );\n}\n\nTransactionReport report = transactions.stream()\n    .filter(t -> t.getDate().isAfter(startDate))\n    .collect(toReport());\n\n// Reduce for aggregation with identity\nBigDecimal totalRevenue = orders.stream()\n    .map(Order::getAmount)\n    .reduce(BigDecimal.ZERO, BigDecimal::add);\n\n// Partitioning and grouping\nMap<Boolean, List<Order>> partitioned = orders.stream()\n    .collect(Collectors.partitioningBy(o -> o.getAmount().compareTo(threshold) > 0));\nList<Order> highValue = partitioned.get(true);\nList<Order> lowValue = partitioned.get(false);\n\n// Multi-level grouping\nMap<String, Map<OrderStatus, Long>> countByRegionAndStatus = orders.stream()\n    .collect(Collectors.groupingBy(\n        Order::getRegion,\n        Collectors.groupingBy(Order::getStatus, Collectors.counting())\n    ));\n\n// Teeing collector (Java 12+) for computing two results in one pass\nrecord Stats(long count, BigDecimal total) {}\nStats stats = orders.stream()\n    .collect(Collectors.teeing(\n        Collectors.counting(),\n        Collectors.reducing(BigDecimal.ZERO, Order::getAmount, BigDecimal::add),\n        Stats::new\n    ));",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/java/streams-and-lambdas.md",
+    "wordCount": 1301,
+    "sectionCount": 11
+  }
+}

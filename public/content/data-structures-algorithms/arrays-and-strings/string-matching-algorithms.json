@@ -1,0 +1,304 @@
+{
+  "id": "arrays-and-strings-string-matching-algorithms",
+  "slug": "string-matching-algorithms",
+  "title": "String Matching Algorithms",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Brute force: O(n*m) time, O(1) space — check pattern at every position",
+            "KMP (Knuth-Morris-Pratt): O(n+m) time, O(m) space — failure function avoids re-scanning",
+            "Rabin-Karp: O(n+m) average, O(n*m) worst — rolling hash for multi-pattern matching",
+            "Boyer-Moore: O(n/m) best case, O(n*m) worst — skips characters using bad character rule",
+            "Aho-Corasick: O(n + m + z) time — automaton for simultaneous multi-pattern search",
+            "Suffix Array: O(n log n) build, O(m log n) query — sorted suffixes for repeated queries",
+            "Z-Algorithm: O(n+m) time, O(n+m) space — Z-array encodes match lengths from each position",
+            "Failure function (KMP): longest proper prefix that is also a suffix for each prefix of pattern"
+          ]
+        }
+      ],
+      "wordCount": 105,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "String matching algorithms are essential whenever you need to locate one or more patterns within a larger text. The naive approach of checking every position works for short patterns and small texts, but production systems processing megabytes or gigabytes of text require sublinear or linear-time algorithms."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use KMP when you need guaranteed linear-time single-pattern matching without hash collisions, when the pattern has repetitive structure that the failure function can exploit, or when you need to find all occurrences of a pattern in a stream where you cannot revisit characters. KMP is the standard choice for compiler lexers and protocol parsers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Rabin-Karp when you need to search for multiple patterns simultaneously (plagiarism detection, virus signature scanning), when you want a simple implementation with good average-case performance, or when the pattern matching is part of a larger rolling-hash computation (finding repeated substrings, longest duplicate substring)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Boyer-Moore when the alphabet is large relative to the pattern (natural language text, binary data) and you want sublinear average-case performance. Boyer-Moore excels in practice because it skips large portions of the text by examining characters from right to left within the pattern."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Aho-Corasick when you have a fixed dictionary of patterns to search simultaneously (network intrusion detection, content filtering, DNA motif finding). It builds a finite automaton from all patterns and processes the text in a single pass regardless of the number of patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use suffix arrays or suffix trees when you have a fixed text and many different query patterns (genome databases, full-text search indexes). The preprocessing cost is amortized over many queries."
+        }
+      ],
+      "wordCount": 261,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "kmp-algorithm-implementation",
+          "heading": "KMP Algorithm Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The KMP algorithm preprocesses the pattern to build a failure function (also called the partial match table or prefix function) that indicates how far back to reset the pattern pointer on a mismatch, avoiding redundant comparisons."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class KMP {\n    /**\n     * Builds the failure function (longest proper prefix-suffix array).\n     * failure[i] = length of longest proper prefix of pattern[0..i]\n     * that is also a suffix of pattern[0..i].\n     * Time: O(m), Space: O(m)\n     */\n    public static int[] buildFailureFunction(String pattern) {\n        int m = pattern.length();\n        int[] failure = new int[m];\n        failure[0] = 0;\n        int len = 0;  // Length of previous longest prefix-suffix\n        int i = 1;\n\n        while (i < m) {\n            if (pattern.charAt(i) == pattern.charAt(len)) {\n                len++;\n                failure[i] = len;\n                i++;\n            } else {\n                if (len != 0) {\n                    len = failure[len - 1];  // Fall back, don't increment i\n                } else {\n                    failure[i] = 0;\n                    i++;\n                }\n            }\n        }\n        return failure;\n    }\n\n    /**\n     * Finds all occurrences of pattern in text using KMP.\n     * Returns list of starting indices.\n     * Time: O(n + m), Space: O(m)\n     */\n    public static List<Integer> search(String text, String pattern) {\n        List<Integer> result = new ArrayList<>();\n        if (pattern.isEmpty()) return result;\n\n        int[] failure = buildFailureFunction(pattern);\n        int n = text.length(), m = pattern.length();\n        int i = 0, j = 0;  // i for text, j for pattern\n\n        while (i < n) {\n            if (text.charAt(i) == pattern.charAt(j)) {\n                i++;\n                j++;\n            }\n\n            if (j == m) {\n                result.add(i - j);  // Found match at index i - j\n                j = failure[j - 1];  // Continue searching for next occurrence\n            } else if (i < n && text.charAt(i) != pattern.charAt(j)) {\n                if (j != 0) {\n                    j = failure[j - 1];  // Use failure function to skip\n                } else {\n                    i++;\n                }\n            }\n        }\n        return result;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "function buildFailureFunction(pattern: string): number[] {\n  const m = pattern.length;\n  const failure = new Array(m).fill(0);\n  let len = 0;\n  let i = 1;\n\n  while (i < m) {\n    if (pattern[i] === pattern[len]) {\n      len++;\n      failure[i] = len;\n      i++;\n    } else {\n      if (len !== 0) {\n        len = failure[len - 1];\n      } else {\n        failure[i] = 0;\n        i++;\n      }\n    }\n  }\n  return failure;\n}\n\nfunction kmpSearch(text: string, pattern: string): number[] {\n  const result: number[] = [];\n  if (pattern.length === 0) return result;\n\n  const failure = buildFailureFunction(pattern);\n  const n = text.length;\n  const m = pattern.length;\n  let i = 0;\n  let j = 0;\n\n  while (i < n) {\n    if (text[i] === pattern[j]) {\n      i++;\n      j++;\n    }\n\n    if (j === m) {\n      result.push(i - j);\n      j = failure[j - 1];\n    } else if (i < n && text[i] !== pattern[j]) {\n      if (j !== 0) {\n        j = failure[j - 1];\n      } else {\n        i++;\n      }\n    }\n  }\n  return result;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 36,
+          "subsections": []
+        },
+        {
+          "id": "rabin-karp-with-rolling-hash",
+          "heading": "Rabin-Karp with Rolling Hash",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Rabin-Karp uses a rolling hash to compare the pattern hash with substring hashes in O(1) per position. Only when hashes match does it perform a character-by-character verification to handle collisions."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class RabinKarp {\n    private static final long MOD = 1_000_000_007L;\n    private static final long BASE = 31L;\n\n    /**\n     * Finds all occurrences of pattern in text using rolling hash.\n     * Average: O(n + m), Worst: O(n * m) due to hash collisions.\n     */\n    public static List<Integer> search(String text, String pattern) {\n        List<Integer> result = new ArrayList<>();\n        int n = text.length(), m = pattern.length();\n        if (m > n) return result;\n\n        // Compute hash of pattern and first window\n        long patternHash = 0, windowHash = 0;\n        long highPow = 1;  // BASE^(m-1) mod MOD\n\n        for (int i = 0; i < m; i++) {\n            patternHash = (patternHash * BASE + pattern.charAt(i)) % MOD;\n            windowHash = (windowHash * BASE + text.charAt(i)) % MOD;\n            if (i > 0) highPow = (highPow * BASE) % MOD;\n        }\n\n        for (int i = 0; i <= n - m; i++) {\n            if (windowHash == patternHash) {\n                // Verify character by character (handle collisions)\n                if (text.substring(i, i + m).equals(pattern)) {\n                    result.add(i);\n                }\n            }\n\n            // Roll the hash: remove leftmost char, add next char\n            if (i < n - m) {\n                windowHash = (windowHash - text.charAt(i) * highPow % MOD + MOD) % MOD;\n                windowHash = (windowHash * BASE + text.charAt(i + m)) % MOD;\n            }\n        }\n        return result;\n    }\n\n    /**\n     * Multi-pattern search: find any of the given patterns in text.\n     * Useful for dictionary matching, content filtering.\n     */\n    public static Map<String, List<Integer>> multiSearch(String text, Set<String> patterns) {\n        Map<String, List<Integer>> results = new HashMap<>();\n        for (String pattern : patterns) {\n            List<Integer> matches = search(text, pattern);\n            if (!matches.isEmpty()) {\n                results.put(pattern, matches);\n            }\n        }\n        return results;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "def rabin_karp(text: str, pattern: str, base: int = 31, mod: int = 10**9 + 7) -> list[int]:\n    \"\"\"Find all occurrences of pattern in text using rolling hash.\"\"\"\n    n, m = len(text), len(pattern)\n    if m > n:\n        return []\n\n    result = []\n    pattern_hash = 0\n    window_hash = 0\n    high_pow = 1  # base^(m-1) mod mod\n\n    for i in range(m):\n        pattern_hash = (pattern_hash * base + ord(pattern[i])) % mod\n        window_hash = (window_hash * base + ord(text[i])) % mod\n        if i > 0:\n            high_pow = (high_pow * base) % mod\n\n    for i in range(n - m + 1):\n        if window_hash == pattern_hash:\n            if text[i:i + m] == pattern:  # Verify on hash match\n                result.append(i)\n\n        if i < n - m:\n            window_hash = (window_hash - ord(text[i]) * high_pow) % mod\n            window_hash = (window_hash * base + ord(text[i + m])) % mod\n\n    return result",
+              "runnable": false
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        },
+        {
+          "id": "z-algorithm",
+          "heading": "Z-Algorithm",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The Z-algorithm computes the Z-array where Z[i] is the length of the longest substring starting at position i that matches a prefix of the string. Concatenating pattern + separator + text allows single-pattern matching."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class ZAlgorithm {\n    /**\n     * Computes Z-array: Z[i] = length of longest substring starting at i\n     * that is also a prefix of the string.\n     * Time: O(n), Space: O(n)\n     */\n    public static int[] computeZArray(String s) {\n        int n = s.length();\n        int[] z = new int[n];\n        int left = 0, right = 0;\n\n        for (int i = 1; i < n; i++) {\n            if (i < right) {\n                z[i] = Math.min(right - i, z[i - left]);\n            }\n            while (i + z[i] < n && s.charAt(z[i]) == s.charAt(i + z[i])) {\n                z[i]++;\n            }\n            if (i + z[i] > right) {\n                left = i;\n                right = i + z[i];\n            }\n        }\n        return z;\n    }\n\n    /**\n     * Find all occurrences of pattern in text using Z-algorithm.\n     * Concatenate: pattern + \"$\" + text, then find Z[i] == pattern.length\n     */\n    public static List<Integer> search(String text, String pattern) {\n        String combined = pattern + \"$\" + text;\n        int[] z = computeZArray(combined);\n        List<Integer> result = new ArrayList<>();\n        int m = pattern.length();\n\n        for (int i = m + 1; i < combined.length(); i++) {\n            if (z[i] == m) {\n                result.add(i - m - 1);\n            }\n        }\n        return result;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 34,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using modular arithmetic incorrectly in Rabin-Karp: When subtracting the contribution of the leftmost character in the rolling hash, the result can become negative. Always add MOD before taking the modulus to handle negative intermediate values. Forgetting this produces incorrect hash values that cause missed matches. Additionally, using a single hash function increases collision probability; production implementations often use double hashing (two different base-mod pairs) to reduce false positives to negligible levels.",
+            "Confusing the failure function semantics in KMP: The failure function value at index i represents the length of the longest proper prefix of the pattern substring ending at i that is also a suffix. A proper prefix excludes the entire string itself. Implementing this incorrectly (allowing the full string as a prefix) causes infinite loops or missed matches. The key insight is that when a mismatch occurs at position j in the pattern, you jump to failure[j-1], not failure[j].",
+            "Applying Boyer-Moore without the good suffix rule: The simplified Boyer-Moore using only the bad character heuristic has O(n*m) worst case on patterns with repeated characters. The full Boyer-Moore algorithm combines the bad character rule with the good suffix rule to achieve O(n) worst case for non-periodic patterns. In practice, the bad character rule alone works well for natural language text, but adversarial inputs (like searching for \"aaa\" in \"aaaa...a\") require the good suffix rule.",
+            "Not handling overlapping matches: Some algorithms naturally find overlapping matches (KMP continues searching after a match by using the failure function), while others require explicit handling. For example, searching for \"aba\" in \"ababa\" should find matches at positions 0 and 2. If your algorithm stops after the first match or advances by the full pattern length, it misses overlapping occurrences.",
+            "Building suffix arrays with naive O(n^2 log n) sorting: Sorting all suffixes using standard string comparison is O(n^2 log n) because each comparison takes O(n). Production suffix array construction uses the DC3/skew algorithm or SA-IS algorithm for O(n) construction. For interview purposes, the O(n log^2 n) approach using rank-based sorting with doubling is a good middle ground."
+          ]
+        }
+      ],
+      "wordCount": 341,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Network intrusion detection systems (Snort, Suricata) use Aho-Corasick to scan network packets against thousands of malware signatures simultaneously. Each packet payload is processed in a single pass through the automaton, matching against all known attack patterns. The automaton is rebuilt when signature databases are updated, typically containing 10,000-50,000 patterns. Without multi-pattern matching, scanning each pattern individually would make real-time packet inspection impossible at gigabit speeds."
+        },
+        {
+          "type": "paragraph",
+          "text": "Full-text search engines like Elasticsearch and Apache Lucene use suffix arrays and inverted indexes built on string matching primitives. When a user searches for a phrase, the engine must locate exact sequences of terms within documents. The indexing phase tokenizes documents using string matching to identify word boundaries, and the query phase uses positional indexes to verify phrase matches. Modern search engines process billions of documents with sub-second query latency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Bioinformatics and genome analysis relies heavily on string matching to align DNA sequences (strings over the alphabet {A, C, G, T}). Tools like BLAST use seed-and-extend approaches (find short exact matches, then extend with approximate matching), while BWA and Bowtie use the Burrows-Wheeler Transform for compressed full-text indexing. A human genome has 3 billion base pairs, making efficient string matching algorithms essential for practical analysis."
+        },
+        {
+          "type": "paragraph",
+          "text": "Plagiarism detection systems (Turnitin, MOSS) use Rabin-Karp fingerprinting to identify matching text segments across millions of documents. They compute rolling hashes over fixed-size windows (k-grams) and compare fingerprints across documents. The Winnowing algorithm selects a subset of fingerprints to reduce storage while guaranteeing detection of matches above a minimum length threshold."
+        },
+        {
+          "type": "paragraph",
+          "text": "Compiler lexical analysis uses string matching to tokenize source code. The lexer matches input characters against patterns for keywords, identifiers, operators, and literals. While simple lexers use hand-coded state machines, tools like Flex generate DFA-based lexers from regular expressions, which internally use string matching algorithms optimized for the specific pattern set."
+        }
+      ],
+      "wordCount": 302,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how the KMP failure function works and why it guarantees O(n+m) time."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The failure function for position i stores the length of the longest proper prefix of pattern[0..i] that is also a suffix. When a mismatch occurs at pattern position j after matching j characters, instead of restarting from the beginning, KMP jumps to position failure[j-1] because those characters are guaranteed to already match (they form both a prefix and suffix of what was matched). The O(n+m) guarantee comes from the observation that the text pointer never moves backward and advances at least once per iteration of the outer loop. The pattern pointer can move backward via the failure function, but the total number of backward moves is bounded by the total forward moves, giving amortized O(1) per text character."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose Rabin-Karp over KMP, and what are the trade-offs?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose Rabin-Karp when searching for multiple patterns of the same length simultaneously (compute one rolling hash over the text, compare against all pattern hashes), when you need a simpler implementation and can tolerate probabilistic behavior, or when the problem involves finding repeated substrings (the rolling hash naturally supports this). The trade-off is that Rabin-Karp has O(n*m) worst case due to hash collisions (though extremely rare with good hash functions), while KMP guarantees O(n+m). KMP is deterministic and better for single-pattern matching in adversarial settings. Rabin-Karp shines in multi-pattern scenarios where Aho-Corasick would be overkill."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you find the longest repeated substring in a string?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use binary search on the answer length combined with Rabin-Karp hashing. Binary search works because if a repeated substring of length k exists, then repeated substrings of all lengths less than k also exist. For each candidate length, compute rolling hashes of all substrings of that length and check for duplicates using a hash set. Total time is O(n log n) average. Alternatively, build a suffix array with LCP (Longest Common Prefix) array in O(n) time; the answer is the maximum value in the LCP array. The suffix array approach is deterministic and optimal but more complex to implement."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Describe the Aho-Corasick algorithm and its advantages over running KMP multiple times."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Aho-Corasick builds a trie from all patterns, then adds failure links (similar to KMP's failure function but across patterns) and dictionary links (pointing to shorter patterns that end at the same state). The text is processed character by character through the automaton in O(n) time, and all pattern matches are reported via dictionary links. Running KMP k times for k patterns takes O(k*n) time, while Aho-Corasick takes O(n + m + z) where m is total pattern length and z is number of matches. This makes it essential for applications with thousands of patterns like antivirus scanning and network intrusion detection."
+        }
+      ],
+      "wordCount": 468,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use SIMD-accelerated string search for short patterns: Modern CPUs provide SIMD instructions (SSE4.2 PCMPESTRI, AVX2) that can compare 16-32 bytes simultaneously. Libraries like Hyperscan (Intel) and the Rust memchr crate use these instructions to achieve throughput of several gigabytes per second for short pattern matching. For patterns under 16 bytes, SIMD search outperforms algorithmic approaches by 5-10x on modern hardware.",
+            "Choose the right algorithm based on pattern and text characteristics: For single short patterns in large texts, Boyer-Moore with its sublinear average case is fastest in practice. For patterns with repetitive structure, KMP avoids worst-case degradation. For multiple patterns, Aho-Corasick amortizes the setup cost. For repeated queries on the same text, suffix arrays provide O(m log n) per query after O(n) preprocessing. Profile with realistic data before committing to an algorithm.",
+            "Implement streaming-compatible matching for unbounded input: KMP and Aho-Corasick are naturally streaming-compatible because they process one character at a time and never look backward. This makes them suitable for matching patterns in network streams, log tails, and real-time data feeds where the full text is not available in memory. Rabin-Karp also works in streaming mode but requires careful handling of the rolling hash state across buffer boundaries."
+          ]
+        }
+      ],
+      "wordCount": 198,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "String Manipulation — Foundational string operations that matching algorithms build upon",
+            "Two Pointers and Sliding Window — Sliding window as a simplified matching pattern",
+            "Prefix Sums and Hashing — Rolling hash techniques used in Rabin-Karp",
+            "Trie — Trie structure forms the basis of Aho-Corasick automaton"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class KMP {\n    /**\n     * Builds the failure function (longest proper prefix-suffix array).\n     * failure[i] = length of longest proper prefix of pattern[0..i]\n     * that is also a suffix of pattern[0..i].\n     * Time: O(m), Space: O(m)\n     */\n    public static int[] buildFailureFunction(String pattern) {\n        int m = pattern.length();\n        int[] failure = new int[m];\n        failure[0] = 0;\n        int len = 0;  // Length of previous longest prefix-suffix\n        int i = 1;\n\n        while (i < m) {\n            if (pattern.charAt(i) == pattern.charAt(len)) {\n                len++;\n                failure[i] = len;\n                i++;\n            } else {\n                if (len != 0) {\n                    len = failure[len - 1];  // Fall back, don't increment i\n                } else {\n                    failure[i] = 0;\n                    i++;\n                }\n            }\n        }\n        return failure;\n    }\n\n    /**\n     * Finds all occurrences of pattern in text using KMP.\n     * Returns list of starting indices.\n     * Time: O(n + m), Space: O(m)\n     */\n    public static List<Integer> search(String text, String pattern) {\n        List<Integer> result = new ArrayList<>();\n        if (pattern.isEmpty()) return result;\n\n        int[] failure = buildFailureFunction(pattern);\n        int n = text.length(), m = pattern.length();\n        int i = 0, j = 0;  // i for text, j for pattern\n\n        while (i < n) {\n            if (text.charAt(i) == pattern.charAt(j)) {\n                i++;\n                j++;\n            }\n\n            if (j == m) {\n                result.add(i - j);  // Found match at index i - j\n                j = failure[j - 1];  // Continue searching for next occurrence\n            } else if (i < n && text.charAt(i) != pattern.charAt(j)) {\n                if (j != 0) {\n                    j = failure[j - 1];  // Use failure function to skip\n                } else {\n                    i++;\n                }\n            }\n        }\n        return result;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "function buildFailureFunction(pattern: string): number[] {\n  const m = pattern.length;\n  const failure = new Array(m).fill(0);\n  let len = 0;\n  let i = 1;\n\n  while (i < m) {\n    if (pattern[i] === pattern[len]) {\n      len++;\n      failure[i] = len;\n      i++;\n    } else {\n      if (len !== 0) {\n        len = failure[len - 1];\n      } else {\n        failure[i] = 0;\n        i++;\n      }\n    }\n  }\n  return failure;\n}\n\nfunction kmpSearch(text: string, pattern: string): number[] {\n  const result: number[] = [];\n  if (pattern.length === 0) return result;\n\n  const failure = buildFailureFunction(pattern);\n  const n = text.length;\n  const m = pattern.length;\n  let i = 0;\n  let j = 0;\n\n  while (i < n) {\n    if (text[i] === pattern[j]) {\n      i++;\n      j++;\n    }\n\n    if (j === m) {\n      result.push(i - j);\n      j = failure[j - 1];\n    } else if (i < n && text[i] !== pattern[j]) {\n      if (j !== 0) {\n        j = failure[j - 1];\n      } else {\n        i++;\n      }\n    }\n  }\n  return result;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class RabinKarp {\n    private static final long MOD = 1_000_000_007L;\n    private static final long BASE = 31L;\n\n    /**\n     * Finds all occurrences of pattern in text using rolling hash.\n     * Average: O(n + m), Worst: O(n * m) due to hash collisions.\n     */\n    public static List<Integer> search(String text, String pattern) {\n        List<Integer> result = new ArrayList<>();\n        int n = text.length(), m = pattern.length();\n        if (m > n) return result;\n\n        // Compute hash of pattern and first window\n        long patternHash = 0, windowHash = 0;\n        long highPow = 1;  // BASE^(m-1) mod MOD\n\n        for (int i = 0; i < m; i++) {\n            patternHash = (patternHash * BASE + pattern.charAt(i)) % MOD;\n            windowHash = (windowHash * BASE + text.charAt(i)) % MOD;\n            if (i > 0) highPow = (highPow * BASE) % MOD;\n        }\n\n        for (int i = 0; i <= n - m; i++) {\n            if (windowHash == patternHash) {\n                // Verify character by character (handle collisions)\n                if (text.substring(i, i + m).equals(pattern)) {\n                    result.add(i);\n                }\n            }\n\n            // Roll the hash: remove leftmost char, add next char\n            if (i < n - m) {\n                windowHash = (windowHash - text.charAt(i) * highPow % MOD + MOD) % MOD;\n                windowHash = (windowHash * BASE + text.charAt(i + m)) % MOD;\n            }\n        }\n        return result;\n    }\n\n    /**\n     * Multi-pattern search: find any of the given patterns in text.\n     * Useful for dictionary matching, content filtering.\n     */\n    public static Map<String, List<Integer>> multiSearch(String text, Set<String> patterns) {\n        Map<String, List<Integer>> results = new HashMap<>();\n        for (String pattern : patterns) {\n            List<Integer> matches = search(text, pattern);\n            if (!matches.isEmpty()) {\n                results.put(pattern, matches);\n            }\n        }\n        return results;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "def rabin_karp(text: str, pattern: str, base: int = 31, mod: int = 10**9 + 7) -> list[int]:\n    \"\"\"Find all occurrences of pattern in text using rolling hash.\"\"\"\n    n, m = len(text), len(pattern)\n    if m > n:\n        return []\n\n    result = []\n    pattern_hash = 0\n    window_hash = 0\n    high_pow = 1  # base^(m-1) mod mod\n\n    for i in range(m):\n        pattern_hash = (pattern_hash * base + ord(pattern[i])) % mod\n        window_hash = (window_hash * base + ord(text[i])) % mod\n        if i > 0:\n            high_pow = (high_pow * base) % mod\n\n    for i in range(n - m + 1):\n        if window_hash == pattern_hash:\n            if text[i:i + m] == pattern:  # Verify on hash match\n                result.append(i)\n\n        if i < n - m:\n            window_hash = (window_hash - ord(text[i]) * high_pow) % mod\n            window_hash = (window_hash * base + ord(text[i + m])) % mod\n\n    return result",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class ZAlgorithm {\n    /**\n     * Computes Z-array: Z[i] = length of longest substring starting at i\n     * that is also a prefix of the string.\n     * Time: O(n), Space: O(n)\n     */\n    public static int[] computeZArray(String s) {\n        int n = s.length();\n        int[] z = new int[n];\n        int left = 0, right = 0;\n\n        for (int i = 1; i < n; i++) {\n            if (i < right) {\n                z[i] = Math.min(right - i, z[i - left]);\n            }\n            while (i + z[i] < n && s.charAt(z[i]) == s.charAt(i + z[i])) {\n                z[i]++;\n            }\n            if (i + z[i] > right) {\n                left = i;\n                right = i + z[i];\n            }\n        }\n        return z;\n    }\n\n    /**\n     * Find all occurrences of pattern in text using Z-algorithm.\n     * Concatenate: pattern + \"$\" + text, then find Z[i] == pattern.length\n     */\n    public static List<Integer> search(String text, String pattern) {\n        String combined = pattern + \"$\" + text;\n        int[] z = computeZArray(combined);\n        List<Integer> result = new ArrayList<>();\n        int m = pattern.length();\n\n        for (int i = m + 1; i < combined.length(); i++) {\n            if (z[i] == m) {\n                result.add(i - m - 1);\n            }\n        }\n        return result;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/arrays-and-strings/string-matching-algorithms.md",
+    "wordCount": 1820,
+    "sectionCount": 11
+  }
+}

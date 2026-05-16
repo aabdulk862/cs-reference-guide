@@ -355,6 +355,6 @@ Three strategies: (1) Block the producer until space is available (blocking queu
 
 - [Queue](./queue.md) — Ring buffers implement queue semantics with fixed-size circular storage
 - [Array](./array.md) — Ring buffers use arrays as their underlying storage mechanism
-- [List](./list.md) — ArrayDeque is Java's resizable ring buffer implementation
+- [Linked Lists](./linked-lists.md) — ArrayDeque is Java's resizable ring buffer implementation
 - [Heap](./heap.md) — Both use array-based storage with index arithmetic for structure
 - [Big O Notation](./big-o-notation.md) — Ring buffer operations demonstrate true O(1) worst-case complexity

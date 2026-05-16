@@ -1,0 +1,222 @@
+{
+  "id": "javascript-prototypes-and-classes",
+  "slug": "prototypes-and-classes",
+  "title": "Prototypes and Classes",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Every JavaScript object has an internal [[Prototype]] link (accessible via Object.getPrototypeOf()) pointing to another object or null",
+            "Property lookup walks the prototype chain: own properties first, then prototype, then prototype's prototype, until null",
+            "ES6 class is syntactic sugar over prototypal inheritance — it creates constructor functions with prototype-based method sharing",
+            "new keyword: creates empty object, sets its [[Prototype]] to constructor's .prototype, calls constructor with this bound to new object",
+            "Private fields (#field) provide true encapsulation — inaccessible outside the class, not inherited, not visible via reflection",
+            "Object.create(proto) creates an object with a specified prototype without calling a constructor function",
+            "instanceof checks if an object's prototype chain includes a constructor's .prototype property",
+            "Static methods belong to the class itself (not instances) and are used for factory methods, utilities, and namespace organization"
+          ]
+        }
+      ],
+      "wordCount": 130,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use classes when modeling entities with shared behavior and internal state that benefit from inheritance hierarchies, when you need true private fields that are enforced by the language runtime, when working with frameworks that expect class-based components (Angular, NestJS, TypeORM), or when building libraries where instanceof checks are part of the public API. Use prototypal patterns (Object.create, factory functions) when you need flexible object composition without rigid hierarchies, when you want to avoid the new keyword ceremony, or when creating objects dynamically from configuration. Understanding prototypes is essential regardless of whether you use classes, because classes are built on prototypes — debugging inheritance issues, understanding method resolution, and working with built-in objects (Array, Error, Map) all require prototype chain knowledge."
+        }
+      ],
+      "wordCount": 120,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Prototypal inheritance: the foundation under ES6 classes\nfunction EventEmitter() {\n  this._listeners = new Map();\n  this._maxListeners = 10;\n}\n\nEventEmitter.prototype.on = function(event, handler) {\n  if (!this._listeners.has(event)) {\n    this._listeners.set(event, []);\n  }\n  const handlers = this._listeners.get(event);\n  if (handlers.length >= this._maxListeners) {\n    console.warn(`MaxListenersExceeded: ${event} has ${handlers.length} listeners`);\n  }\n  handlers.push(handler);\n  return this; // Enable chaining\n};\n\nEventEmitter.prototype.emit = function(event, ...args) {\n  const handlers = this._listeners.get(event);\n  if (!handlers) return false;\n  handlers.forEach(handler => handler.apply(this, args));\n  return true;\n};\n\nEventEmitter.prototype.off = function(event, handler) {\n  const handlers = this._listeners.get(event);\n  if (handlers) {\n    const index = handlers.indexOf(handler);\n    if (index > -1) handlers.splice(index, 1);\n  }\n  return this;\n};\n\n// Inheritance with prototype chain setup\nfunction TypedEmitter(eventSchema) {\n  EventEmitter.call(this); // Call parent constructor\n  this._schema = eventSchema;\n}\n\n// Set up prototype chain: TypedEmitter.prototype → EventEmitter.prototype\nTypedEmitter.prototype = Object.create(EventEmitter.prototype);\nTypedEmitter.prototype.constructor = TypedEmitter;\n\n// Override emit to validate against schema\nTypedEmitter.prototype.emit = function(event, ...args) {\n  if (this._schema && this._schema[event]) {\n    const validator = this._schema[event];\n    if (!validator(...args)) {\n      throw new Error(`Invalid payload for event: ${event}`);\n    }\n  }\n  return EventEmitter.prototype.emit.call(this, event, ...args);\n};\n\n// Prototype chain inspection\nconst emitter = new TypedEmitter({ click: (x, y) => typeof x === 'number' });\nObject.getPrototypeOf(emitter) === TypedEmitter.prototype;                    // true\nObject.getPrototypeOf(TypedEmitter.prototype) === EventEmitter.prototype;     // true\nemitter instanceof EventEmitter; // true\nemitter instanceof TypedEmitter; // true",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// ES6 classes with private fields, static methods, and inheritance\nclass HttpClient {\n  #baseUrl;\n  #headers;\n  #interceptors;\n  #timeout;\n\n  constructor(config = {}) {\n    this.#baseUrl = config.baseUrl ?? '';\n    this.#headers = new Map(Object.entries(config.headers ?? {}));\n    this.#interceptors = { request: [], response: [] };\n    this.#timeout = config.timeout ?? 30000;\n  }\n\n  // Static factory method\n  static create(config) {\n    return new HttpClient(config);\n  }\n\n  // Static utility\n  static isAbortError(error) {\n    return error instanceof DOMException && error.name === 'AbortError';\n  }\n\n  // Public method using private fields\n  async request(method, path, options = {}) {\n    const url = `${this.#baseUrl}${path}`;\n    const headers = this.#mergeHeaders(options.headers);\n\n    let config = { method, url, headers, body: options.body };\n\n    // Run request interceptors\n    for (const interceptor of this.#interceptors.request) {\n      config = await interceptor(config);\n    }\n\n    const controller = new AbortController();\n    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? this.#timeout);\n\n    try {\n      const response = await fetch(config.url, {\n        method: config.method,\n        headers: Object.fromEntries(config.headers),\n        body: config.body ? JSON.stringify(config.body) : undefined,\n        signal: controller.signal,\n      });\n\n      clearTimeout(timeoutId);\n\n      let result = { status: response.status, headers: response.headers, data: null };\n      const contentType = response.headers.get('content-type');\n      if (contentType?.includes('application/json')) {\n        result.data = await response.json();\n      }\n\n      // Run response interceptors\n      for (const interceptor of this.#interceptors.response) {\n        result = await interceptor(result);\n      }\n\n      if (!response.ok) {\n        throw new HttpError(response.status, result.data?.message ?? response.statusText, result);\n      }\n\n      return result;\n    } finally {\n      clearTimeout(timeoutId);\n    }\n  }\n\n  // Convenience methods\n  get(path, options) { return this.request('GET', path, options); }\n  post(path, body, options) { return this.request('POST', path, { ...options, body }); }\n  put(path, body, options) { return this.request('PUT', path, { ...options, body }); }\n  delete(path, options) { return this.request('DELETE', path, options); }\n\n  // Interceptor registration\n  addRequestInterceptor(fn) {\n    this.#interceptors.request.push(fn);\n    return this;\n  }\n\n  addResponseInterceptor(fn) {\n    this.#interceptors.response.push(fn);\n    return this;\n  }\n\n  // Private helper\n  #mergeHeaders(additional = {}) {\n    const merged = new Map(this.#headers);\n    Object.entries(additional).forEach(([key, value]) => merged.set(key, value));\n    if (!merged.has('Content-Type')) merged.set('Content-Type', 'application/json');\n    return merged;\n  }\n}\n\n// Custom error class extending built-in Error\nclass HttpError extends Error {\n  constructor(status, message, response) {\n    super(message);\n    this.name = 'HttpError';\n    this.status = status;\n    this.response = response;\n  }\n\n  get isClientError() { return this.status >= 400 && this.status < 500; }\n  get isServerError() { return this.status >= 500; }\n}\n\n// Usage\nconst api = HttpClient.create({\n  baseUrl: 'https://api.example.com',\n  headers: { 'Authorization': 'Bearer token123' },\n  timeout: 10000,\n});\n\napi.addResponseInterceptor(async (response) => {\n  if (response.status === 401) {\n    // Refresh token logic\n  }\n  return response;\n});",
+          "runnable": true
+        },
+        {
+          "type": "code",
+          "language": "javascript",
+          "code": "// Object.create for prototype-based composition without classes\nconst Serializable = {\n  toJSON() {\n    const result = {};\n    for (const key of Object.keys(this)) {\n      const value = this[key];\n      if (typeof value !== 'function') {\n        result[key] = value;\n      }\n    }\n    return result;\n  },\n\n  fromJSON(json) {\n    return Object.assign(Object.create(Object.getPrototypeOf(this)), json);\n  },\n};\n\nconst Validatable = {\n  validate() {\n    const errors = [];\n    if (this._validationRules) {\n      for (const [field, rules] of Object.entries(this._validationRules)) {\n        for (const rule of rules) {\n          const error = rule(this[field], field);\n          if (error) errors.push(error);\n        }\n      }\n    }\n    return errors.length === 0 ? { valid: true } : { valid: false, errors };\n  },\n};\n\nconst Observable = {\n  _observers: null,\n\n  observe(callback) {\n    if (!this._observers) this._observers = new Set();\n    this._observers.add(callback);\n    return () => this._observers.delete(callback);\n  },\n\n  notify(change) {\n    this._observers?.forEach(cb => cb(change));\n  },\n};\n\n// Compose behaviors using Object.create and Object.assign\nfunction createModel(data, validationRules) {\n  const proto = Object.assign(\n    Object.create(null),\n    Serializable,\n    Validatable,\n    Observable\n  );\n\n  const instance = Object.create(proto);\n  Object.assign(instance, data);\n  instance._validationRules = validationRules;\n\n  // Return a proxy that notifies observers on changes\n  return new Proxy(instance, {\n    set(target, prop, value) {\n      const oldValue = target[prop];\n      target[prop] = value;\n      if (prop !== '_observers' && prop !== '_validationRules') {\n        target.notify({ prop, oldValue, newValue: value });\n      }\n      return true;\n    },\n  });\n}\n\n// Usage: compose behaviors without class hierarchy\nconst user = createModel(\n  { name: 'Alice', email: 'alice@example.com', age: 30 },\n  {\n    name: [(v) => !v ? 'Name required' : null],\n    email: [(v) => !v?.includes('@') ? 'Invalid email' : null],\n    age: [(v) => v < 0 || v > 150 ? 'Invalid age' : null],\n  }\n);\n\nuser.observe((change) => console.log(`${change.prop}: ${change.oldValue} → ${change.newValue}`));\nuser.name = 'Bob'; // Logs: \"name: Alice → Bob\"\nuser.validate();   // { valid: true }\nuser.toJSON();     // { name: 'Bob', email: 'alice@example.com', age: 30 }",
+          "runnable": true
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Forgetting to call super() in derived class constructors: ES6 classes require super() to be called before accessing this in a derived class constructor. Omitting it throws a ReferenceError. The super call initializes the parent class's properties and sets up the prototype chain correctly. If you do not need custom constructor logic, omit the constructor entirely and the parent's constructor is called automatically.",
+            "Confusing prototype properties with instance properties: Methods defined in the class body (or on .prototype) are shared across all instances — there is one copy on the prototype. Properties assigned in the constructor (this.x = value) are per-instance — each instance has its own copy. Arrow function class fields (method = () => {}) create per-instance function copies (useful for stable this binding but wasteful if many instances exist).",
+            "Using instanceof across realms or module boundaries: instanceof checks the prototype chain against a specific constructor's .prototype object. If the same class is loaded from different modules (duplicate packages in node_modules) or across iframes, instanceof returns false even for logically identical types. Use duck typing (checking for specific methods/properties) or Symbol.hasInstance for cross-realm type checking.",
+            "Modifying built-in prototypes (monkey patching): Adding methods to Array.prototype, String.prototype, or Object.prototype affects all code in the application, including third-party libraries. This causes conflicts when multiple libraries patch the same method differently, and breaks for...in loops on objects. Use utility functions, subclasses, or Symbol-keyed methods instead.",
+            "Not understanding that private fields are per-class, not per-instance: Private fields (#field) are scoped to the class that defines them. A subclass cannot access its parent's private fields, even with this.#parentField. This is intentional encapsulation but surprises developers expecting protected-like access. Use regular (non-private) properties with naming conventions for fields that subclasses need to access.",
+            "Returning objects from constructors accidentally changing the instance type: If a constructor returns an object (not a primitive), new Constructor() returns that object instead of the newly created instance. This breaks instanceof checks and prototype chain expectations. Only return objects from constructors intentionally (for singleton patterns or proxy wrapping), never accidentally."
+          ]
+        }
+      ],
+      "wordCount": 338,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Framework component models: Angular uses classes extensively for components, services, and dependency injection. NestJS uses classes with decorators for controllers, providers, and middleware. These frameworks leverage TypeScript classes with metadata reflection to build dependency graphs, apply decorators for routing and validation, and use inheritance for shared behavior across components.",
+            "Error hierarchies in production applications: Custom error classes extending Error provide structured error handling with specific error types (ValidationError, NotFoundError, AuthenticationError) that carry domain-specific data (field names, status codes, retry information). Catch blocks can use instanceof to handle different error types differently, and error monitoring tools (Sentry) use the error class name for grouping.",
+            "ORM entity definitions: TypeORM, Sequelize, and Prisma use classes to define database entities with decorators for column types, relationships, and validation. The class hierarchy maps to table inheritance strategies (single table, joined table), and instance methods provide domain logic on entity objects.",
+            "State machine implementations: XState and custom state machines use classes to encapsulate state, transitions, and side effects. The class holds the current state and transition table, methods trigger transitions and execute actions, and inheritance enables specialized machines that extend base behavior.",
+            "Plugin and middleware architectures: Webpack plugins, Babel plugins, and Express middleware often use classes with lifecycle methods (apply, transform, handle) that the framework calls at appropriate times. The class encapsulates plugin configuration and state, while the prototype chain enables shared utility methods across plugin instances."
+          ]
+        }
+      ],
+      "wordCount": 231,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the prototype chain and how property lookup works in JavaScript."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Every object has an internal [[Prototype]] link to another object (or null). When accessing a property on an object, the engine first checks the object's own properties. If not found, it follows the [[Prototype]] link to the prototype object and checks there. This continues up the chain until the property is found or null is reached (returning undefined). For example, an array instance's chain is: instance → Array.prototype → Object.prototype → null. This is why arrays have access to both array methods (from Array.prototype) and object methods like toString (from Object.prototype)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do ES6 classes relate to prototypal inheritance? Are they fundamentally different?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: ES6 classes are syntactic sugar over the existing prototype-based system. A class Foo { method() {} } declaration creates a constructor function Foo with method defined on Foo.prototype. extends sets up the prototype chain between child and parent prototypes and ensures super() is called. The new keyword works identically. The differences are syntactic convenience, enforced new (classes throw without it), non-enumerable methods, and true private fields (#). Under the hood, the prototype chain, property lookup, and instanceof behavior are identical to pre-ES6 constructor functions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Object.create() and the new keyword?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Object.create(proto) creates a new object with its [[Prototype]] set to proto without calling any constructor function. It is pure prototype chain setup. new Constructor() does four things: creates an empty object, sets its [[Prototype]] to Constructor.prototype, calls Constructor with this bound to the new object (executing initialization logic), and returns the object (unless the constructor explicitly returns a different object). Use Object.create when you want prototype delegation without constructor side effects, and new when you need initialization logic to run."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do private fields (#) differ from closures for data privacy?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Private fields are enforced by the JavaScript engine at the language level — accessing obj.#field from outside the class throws a SyntaxError, and they are invisible to reflection (Object.keys, JSON.stringify, Proxy traps). Closures provide privacy through scope — variables are inaccessible because they are not properties of any object, but they require factory functions and cannot use inheritance. Private fields work with classes, support inheritance (though subclasses cannot access parent privates), and have better performance characteristics. Closures are more flexible (work without classes) but create per-instance function copies for methods that access private state."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you use composition over inheritance in JavaScript?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use composition when behaviors are orthogonal and can be mixed independently (serialization + validation + observation), when the \"is-a\" relationship does not hold (a Button is not a Logger, but it might use logging), when you need to combine behaviors from multiple sources (JavaScript has no multiple inheritance), or when the inheritance hierarchy would become deep and fragile. Composition via mixins, Object.assign, or delegation (holding references to collaborator objects) provides flexibility to add and remove behaviors without restructuring class hierarchies. Prefer inheritance only for genuine \"is-a\" relationships with shared state and behavior that naturally forms a hierarchy."
+        }
+      ],
+      "wordCount": 509,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use private fields (#) for encapsulation in library code: When publishing classes that others will consume, private fields prevent consumers from depending on internal implementation details. This gives you freedom to refactor internals without breaking changes. Public properties become your API contract; private fields are your implementation freedom.",
+            "Prefer composition and dependency injection over deep inheritance: Classes with more than 2-3 levels of inheritance become difficult to understand and modify. Each level adds implicit behavior that subclasses must account for. Instead, inject dependencies through constructor parameters and compose behavior through delegation. This makes classes testable (mock dependencies), flexible (swap implementations), and understandable (explicit dependencies).",
+            "Implement proper toJSON() for classes used in serialization: When class instances are passed to JSON.stringify(), only enumerable own properties are included by default. Private fields, prototype methods, and computed values are lost. Implement a toJSON() method that returns the serializable representation, and a static fromJSON() factory method for deserialization. This ensures round-trip fidelity for classes stored in localStorage, sent over APIs, or logged to monitoring systems."
+          ]
+        }
+      ],
+      "wordCount": 170,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Language and ES6+ — Classes, private fields, and static methods are ES6+ features built on the prototype system",
+            "Closures and Scope — Closures provide an alternative to classes for data privacy and encapsulation",
+            "TypeScript — TypeScript adds interfaces, abstract classes, and access modifiers on top of JavaScript's class system"
+          ]
+        }
+      ],
+      "wordCount": 50,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "javascript",
+      "code": "// Prototypal inheritance: the foundation under ES6 classes\nfunction EventEmitter() {\n  this._listeners = new Map();\n  this._maxListeners = 10;\n}\n\nEventEmitter.prototype.on = function(event, handler) {\n  if (!this._listeners.has(event)) {\n    this._listeners.set(event, []);\n  }\n  const handlers = this._listeners.get(event);\n  if (handlers.length >= this._maxListeners) {\n    console.warn(`MaxListenersExceeded: ${event} has ${handlers.length} listeners`);\n  }\n  handlers.push(handler);\n  return this; // Enable chaining\n};\n\nEventEmitter.prototype.emit = function(event, ...args) {\n  const handlers = this._listeners.get(event);\n  if (!handlers) return false;\n  handlers.forEach(handler => handler.apply(this, args));\n  return true;\n};\n\nEventEmitter.prototype.off = function(event, handler) {\n  const handlers = this._listeners.get(event);\n  if (handlers) {\n    const index = handlers.indexOf(handler);\n    if (index > -1) handlers.splice(index, 1);\n  }\n  return this;\n};\n\n// Inheritance with prototype chain setup\nfunction TypedEmitter(eventSchema) {\n  EventEmitter.call(this); // Call parent constructor\n  this._schema = eventSchema;\n}\n\n// Set up prototype chain: TypedEmitter.prototype → EventEmitter.prototype\nTypedEmitter.prototype = Object.create(EventEmitter.prototype);\nTypedEmitter.prototype.constructor = TypedEmitter;\n\n// Override emit to validate against schema\nTypedEmitter.prototype.emit = function(event, ...args) {\n  if (this._schema && this._schema[event]) {\n    const validator = this._schema[event];\n    if (!validator(...args)) {\n      throw new Error(`Invalid payload for event: ${event}`);\n    }\n  }\n  return EventEmitter.prototype.emit.call(this, event, ...args);\n};\n\n// Prototype chain inspection\nconst emitter = new TypedEmitter({ click: (x, y) => typeof x === 'number' });\nObject.getPrototypeOf(emitter) === TypedEmitter.prototype;                    // true\nObject.getPrototypeOf(TypedEmitter.prototype) === EventEmitter.prototype;     // true\nemitter instanceof EventEmitter; // true\nemitter instanceof TypedEmitter; // true",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// ES6 classes with private fields, static methods, and inheritance\nclass HttpClient {\n  #baseUrl;\n  #headers;\n  #interceptors;\n  #timeout;\n\n  constructor(config = {}) {\n    this.#baseUrl = config.baseUrl ?? '';\n    this.#headers = new Map(Object.entries(config.headers ?? {}));\n    this.#interceptors = { request: [], response: [] };\n    this.#timeout = config.timeout ?? 30000;\n  }\n\n  // Static factory method\n  static create(config) {\n    return new HttpClient(config);\n  }\n\n  // Static utility\n  static isAbortError(error) {\n    return error instanceof DOMException && error.name === 'AbortError';\n  }\n\n  // Public method using private fields\n  async request(method, path, options = {}) {\n    const url = `${this.#baseUrl}${path}`;\n    const headers = this.#mergeHeaders(options.headers);\n\n    let config = { method, url, headers, body: options.body };\n\n    // Run request interceptors\n    for (const interceptor of this.#interceptors.request) {\n      config = await interceptor(config);\n    }\n\n    const controller = new AbortController();\n    const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? this.#timeout);\n\n    try {\n      const response = await fetch(config.url, {\n        method: config.method,\n        headers: Object.fromEntries(config.headers),\n        body: config.body ? JSON.stringify(config.body) : undefined,\n        signal: controller.signal,\n      });\n\n      clearTimeout(timeoutId);\n\n      let result = { status: response.status, headers: response.headers, data: null };\n      const contentType = response.headers.get('content-type');\n      if (contentType?.includes('application/json')) {\n        result.data = await response.json();\n      }\n\n      // Run response interceptors\n      for (const interceptor of this.#interceptors.response) {\n        result = await interceptor(result);\n      }\n\n      if (!response.ok) {\n        throw new HttpError(response.status, result.data?.message ?? response.statusText, result);\n      }\n\n      return result;\n    } finally {\n      clearTimeout(timeoutId);\n    }\n  }\n\n  // Convenience methods\n  get(path, options) { return this.request('GET', path, options); }\n  post(path, body, options) { return this.request('POST', path, { ...options, body }); }\n  put(path, body, options) { return this.request('PUT', path, { ...options, body }); }\n  delete(path, options) { return this.request('DELETE', path, options); }\n\n  // Interceptor registration\n  addRequestInterceptor(fn) {\n    this.#interceptors.request.push(fn);\n    return this;\n  }\n\n  addResponseInterceptor(fn) {\n    this.#interceptors.response.push(fn);\n    return this;\n  }\n\n  // Private helper\n  #mergeHeaders(additional = {}) {\n    const merged = new Map(this.#headers);\n    Object.entries(additional).forEach(([key, value]) => merged.set(key, value));\n    if (!merged.has('Content-Type')) merged.set('Content-Type', 'application/json');\n    return merged;\n  }\n}\n\n// Custom error class extending built-in Error\nclass HttpError extends Error {\n  constructor(status, message, response) {\n    super(message);\n    this.name = 'HttpError';\n    this.status = status;\n    this.response = response;\n  }\n\n  get isClientError() { return this.status >= 400 && this.status < 500; }\n  get isServerError() { return this.status >= 500; }\n}\n\n// Usage\nconst api = HttpClient.create({\n  baseUrl: 'https://api.example.com',\n  headers: { 'Authorization': 'Bearer token123' },\n  timeout: 10000,\n});\n\napi.addResponseInterceptor(async (response) => {\n  if (response.status === 401) {\n    // Refresh token logic\n  }\n  return response;\n});",
+      "runnable": true
+    },
+    {
+      "language": "javascript",
+      "code": "// Object.create for prototype-based composition without classes\nconst Serializable = {\n  toJSON() {\n    const result = {};\n    for (const key of Object.keys(this)) {\n      const value = this[key];\n      if (typeof value !== 'function') {\n        result[key] = value;\n      }\n    }\n    return result;\n  },\n\n  fromJSON(json) {\n    return Object.assign(Object.create(Object.getPrototypeOf(this)), json);\n  },\n};\n\nconst Validatable = {\n  validate() {\n    const errors = [];\n    if (this._validationRules) {\n      for (const [field, rules] of Object.entries(this._validationRules)) {\n        for (const rule of rules) {\n          const error = rule(this[field], field);\n          if (error) errors.push(error);\n        }\n      }\n    }\n    return errors.length === 0 ? { valid: true } : { valid: false, errors };\n  },\n};\n\nconst Observable = {\n  _observers: null,\n\n  observe(callback) {\n    if (!this._observers) this._observers = new Set();\n    this._observers.add(callback);\n    return () => this._observers.delete(callback);\n  },\n\n  notify(change) {\n    this._observers?.forEach(cb => cb(change));\n  },\n};\n\n// Compose behaviors using Object.create and Object.assign\nfunction createModel(data, validationRules) {\n  const proto = Object.assign(\n    Object.create(null),\n    Serializable,\n    Validatable,\n    Observable\n  );\n\n  const instance = Object.create(proto);\n  Object.assign(instance, data);\n  instance._validationRules = validationRules;\n\n  // Return a proxy that notifies observers on changes\n  return new Proxy(instance, {\n    set(target, prop, value) {\n      const oldValue = target[prop];\n      target[prop] = value;\n      if (prop !== '_observers' && prop !== '_validationRules') {\n        target.notify({ prop, oldValue, newValue: value });\n      }\n      return true;\n    },\n  });\n}\n\n// Usage: compose behaviors without class hierarchy\nconst user = createModel(\n  { name: 'Alice', email: 'alice@example.com', age: 30 },\n  {\n    name: [(v) => !v ? 'Name required' : null],\n    email: [(v) => !v?.includes('@') ? 'Invalid email' : null],\n    age: [(v) => v < 0 || v > 150 ? 'Invalid age' : null],\n  }\n);\n\nuser.observe((change) => console.log(`${change.prop}: ${change.oldValue} → ${change.newValue}`));\nuser.name = 'Bob'; // Logs: \"name: Alice → Bob\"\nuser.validate();   // { valid: true }\nuser.toJSON();     // { name: 'Bob', email: 'alice@example.com', age: 30 }",
+      "runnable": true
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/javascript/prototypes-and-classes.md",
+    "wordCount": 1548,
+    "sectionCount": 8
+  }
+}

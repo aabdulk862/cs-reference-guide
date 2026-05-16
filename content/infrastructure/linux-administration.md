@@ -367,6 +367,6 @@ A: Check `/proc/meminfo` for total, free, available, and cached memory. Use `fre
 
 ## Related Topics
 
-- [Docker & Containerization](./docker-containerization.md) - Containers rely on Linux kernel features (namespaces, cgroups) that Linux administration covers
+- [Docker & Containerization](./docker/index.md) - Containers rely on Linux kernel features (namespaces, cgroups) that Linux administration covers
 - [CI/CD Pipelines](./ci-cd-pipelines.md) - Pipeline agents run on Linux and use shell scripts for build and deployment automation
-- [Observability](./observability.md) - Linux system metrics and logs feed into observability platforms for monitoring and alerting
+- [Observability](./observability/index.md) - Linux system metrics and logs feed into observability platforms for monitoring and alerting

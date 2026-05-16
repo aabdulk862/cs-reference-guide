@@ -1,0 +1,220 @@
+{
+  "id": "kubernetes-kubernetes-workload-management",
+  "slug": "kubernetes-workload-management",
+  "title": "Kubernetes Workload Management",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Deployments manage stateless applications with rolling updates, rollbacks, and declarative replica management",
+            "StatefulSets manage stateful applications with stable network identities, ordered deployment, and persistent storage per replica",
+            "DaemonSets ensure exactly one pod runs on every node (or a subset), used for logging agents, monitoring, and network plugins",
+            "Jobs run tasks to completion with configurable parallelism and retry policies; CronJobs schedule recurring Jobs",
+            "Horizontal Pod Autoscaler (HPA) scales replica count based on CPU, memory, or custom metrics",
+            "Vertical Pod Autoscaler (VPA) adjusts resource requests and limits based on observed usage patterns",
+            "ReplicaSets maintain a stable set of replica pods but are rarely managed directly — Deployments manage them"
+          ]
+        }
+      ],
+      "wordCount": 107,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Deployments for the vast majority of production workloads: web servers, API services, background workers, and any application where replicas are interchangeable and can be replaced without data loss. Choose StatefulSets when your application requires stable persistent storage per replica (databases, message brokers, distributed caches), ordered startup and shutdown sequences, or stable network identities that survive pod rescheduling. DaemonSets are appropriate for cluster-wide infrastructure concerns like log collection (Fluentd, Fluent Bit), metrics agents (Prometheus node-exporter), storage drivers (CSI plugins), and network overlays (Calico, Cilium). Jobs handle batch processing, data migrations, report generation, and any task that should run to completion rather than continuously. CronJobs schedule periodic maintenance tasks, cleanup operations, and recurring data processing pipelines."
+        }
+      ],
+      "wordCount": 115,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "production-deployment-with-rolling-update-strategy",
+          "heading": "Production Deployment with Rolling Update Strategy",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\n  labels:\n    app: order-service\n    team: commerce\nspec:\n  replicas: 5\n  revisionHistoryLimit: 10\n  selector:\n    matchLabels:\n      app: order-service\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 2\n  template:\n    metadata:\n      labels:\n        app: order-service\n        version: v2.3.0\n      annotations:\n        prometheus.io/scrape: \"true\"\n        prometheus.io/port: \"8080\"\n        prometheus.io/path: \"/actuator/prometheus\"\n    spec:\n      serviceAccountName: order-service\n      terminationGracePeriodSeconds: 60\n      topologySpreadConstraints:\n        - maxSkew: 1\n          topologyKey: topology.kubernetes.io/zone\n          whenUnsatisfiable: DoNotSchedule\n          labelSelector:\n            matchLabels:\n              app: order-service\n      containers:\n        - name: app\n          image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.3.0\n          ports:\n            - containerPort: 8080\n              name: http\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"1Gi\"\n            limits:\n              cpu: \"2000m\"\n              memory: \"2Gi\"\n          readinessProbe:\n            httpGet:\n              path: /actuator/health/readiness\n              port: 8080\n            initialDelaySeconds: 10\n            periodSeconds: 5\n            failureThreshold: 3\n          livenessProbe:\n            httpGet:\n              path: /actuator/health/liveness\n              port: 8080\n            initialDelaySeconds: 30\n            periodSeconds: 10\n            failureThreshold: 3\n          lifecycle:\n            preStop:\n              exec:\n                command: [\"sh\", \"-c\", \"sleep 10\"]\n---\napiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata:\n  name: order-service-pdb\n  namespace: production\nspec:\n  minAvailable: 3\n  selector:\n    matchLabels:\n      app: order-service",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "horizontal-pod-autoscaler-with-custom-metrics",
+          "heading": "Horizontal Pod Autoscaler with Custom Metrics",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nmetadata:\n  name: order-service-hpa\n  namespace: production\nspec:\n  scaleTargetRef:\n    apiVersion: apps/v1\n    kind: Deployment\n    name: order-service\n  minReplicas: 3\n  maxReplicas: 20\n  behavior:\n    scaleUp:\n      stabilizationWindowSeconds: 60\n      policies:\n        - type: Pods\n          value: 4\n          periodSeconds: 60\n        - type: Percent\n          value: 50\n          periodSeconds: 60\n      selectPolicy: Max\n    scaleDown:\n      stabilizationWindowSeconds: 300\n      policies:\n        - type: Pods\n          value: 2\n          periodSeconds: 120\n      selectPolicy: Min\n  metrics:\n    - type: Resource\n      resource:\n        name: cpu\n        target:\n          type: Utilization\n          averageUtilization: 70\n    - type: Resource\n      resource:\n        name: memory\n        target:\n          type: Utilization\n          averageUtilization: 80\n    - type: Pods\n      pods:\n        metric:\n          name: http_requests_per_second\n        target:\n          type: AverageValue\n          averageValue: \"1000\"\n---\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: redis-cluster\n  namespace: production\nspec:\n  serviceName: redis-cluster\n  replicas: 6\n  selector:\n    matchLabels:\n      app: redis-cluster\n  template:\n    metadata:\n      labels:\n        app: redis-cluster\n    spec:\n      containers:\n        - name: redis\n          image: redis:7-alpine\n          ports:\n            - containerPort: 6379\n              name: client\n            - containerPort: 16379\n              name: gossip\n          command: [\"redis-server\", \"/conf/redis.conf\"]\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"2Gi\"\n            limits:\n              cpu: \"1000m\"\n              memory: \"4Gi\"\n          volumeMounts:\n            - name: data\n              mountPath: /data\n            - name: conf\n              mountPath: /conf\n  volumeClaimTemplates:\n    - metadata:\n        name: data\n      spec:\n        accessModes: [\"ReadWriteOnce\"]\n        storageClassName: gp3-encrypted\n        resources:\n          requests:\n            storage: 50Gi",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using Deployments for stateful workloads: Deployments treat all replicas as interchangeable and can delete any pod during scaling or updates. Stateful applications like databases, message brokers, or distributed caches that require stable identities, ordered operations, or persistent storage per replica must use StatefulSets. Deploying PostgreSQL or Kafka with a Deployment leads to data corruption when pods are rescheduled.",
+            "Setting HPA target too aggressively: Setting CPU target utilization at 50% means the cluster maintains double the capacity needed for current load, wasting resources. Setting it at 95% leaves no headroom for traffic spikes, causing latency degradation before new pods become ready. Target 70-80% CPU utilization with appropriate scale-up behavior to balance cost and responsiveness.",
+            "Ignoring the stabilization window in HPA: Without stabilization windows, HPA oscillates rapidly between scaling up and down (thrashing) as metrics fluctuate around the threshold. Configure scaleDown.stabilizationWindowSeconds to at least 300 seconds to prevent premature scale-down after traffic spikes, and scaleUp.stabilizationWindowSeconds to 30-60 seconds to allow rapid response to load increases.",
+            "Not configuring preStop hooks for graceful shutdown: When Kubernetes terminates a pod, it sends SIGTERM and simultaneously removes the pod from service endpoints. Without a preStop hook adding a brief delay, in-flight requests may be routed to the terminating pod during the propagation window. A sleep 10 preStop hook gives load balancers time to stop sending traffic before the application begins shutdown.",
+            "Forgetting Pod Disruption Budgets: Without PDBs, cluster operations like node upgrades, autoscaler scale-downs, or spot instance interruptions can terminate all replicas simultaneously. Every production Deployment should have a corresponding PDB that guarantees minimum availability during voluntary disruptions."
+          ]
+        }
+      ],
+      "wordCount": 262,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A payment processing platform uses Deployments with strict rolling update constraints (maxUnavailable: 0, maxSurge: 1) to ensure zero-downtime releases. Each deployment triggers a canary analysis that monitors error rates and latency for 10 minutes before proceeding with the full rollout. If metrics degrade, an automated rollback reverts to the previous ReplicaSet within 30 seconds. Pod Disruption Budgets ensure that cluster maintenance never reduces payment processing capacity below the minimum required for SLA compliance."
+        },
+        {
+          "type": "paragraph",
+          "text": "A real-time analytics platform uses StatefulSets to manage a 12-node Apache Kafka cluster on Kubernetes. Each broker maintains a stable network identity (kafka-0, kafka-1, etc.) and persistent storage that survives pod rescheduling. Ordered deployment ensures brokers join the cluster sequentially, preventing split-brain scenarios during rolling updates. The platform team uses a custom controller that performs leader rebalancing after each broker restart to maintain even partition distribution."
+        },
+        {
+          "type": "paragraph",
+          "text": "A machine learning inference platform uses HPA with custom metrics from Prometheus to scale model-serving pods based on prediction request queue depth rather than CPU utilization. During peak hours, the system scales from 5 to 40 replicas within 2 minutes. Scale-down uses a 10-minute stabilization window to avoid thrashing during variable traffic patterns. GPU-intensive models run on dedicated node pools with Karpenter provisioning appropriate instance types on demand."
+        }
+      ],
+      "wordCount": 207,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Deployment and a StatefulSet?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Deployments manage stateless applications where pods are interchangeable — any pod can be created, deleted, or replaced without affecting application correctness. StatefulSets manage stateful applications requiring stable, unique network identities (pod-0, pod-1), persistent storage that follows the pod across rescheduling, and ordered, graceful deployment and scaling. Deployments use a single ReplicaSet and can update all pods in parallel, while StatefulSets update pods sequentially by ordinal index to maintain quorum in distributed systems."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Horizontal Pod Autoscaler determine when to scale?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: HPA queries the metrics API at a configurable interval (default 15 seconds) and calculates the desired replica count using the formula: desiredReplicas = ceil(currentReplicas * (currentMetricValue / targetMetricValue)). For multiple metrics, it calculates desired replicas for each metric independently and takes the maximum. The stabilization window prevents rapid oscillation by requiring the metric to remain above/below threshold for a sustained period before acting. Scale-up and scale-down can have different policies controlling the rate of change."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you use a DaemonSet versus a Deployment?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a DaemonSet when you need exactly one pod per node (or per matching node) for infrastructure concerns like log collection, metrics agents, storage drivers, or network plugins. DaemonSets automatically add pods to new nodes and remove them from deleted nodes. Use a Deployment when you need a specific number of replicas distributed across the cluster based on resource availability, regardless of node count. The key distinction is per-node versus per-cluster semantics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you perform a canary deployment in Kubernetes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Several approaches exist. The simplest uses two Deployments (stable and canary) behind the same Service, with the canary having fewer replicas to receive proportional traffic. More sophisticated approaches use Istio VirtualService for percentage-based traffic splitting, Argo Rollouts for automated canary analysis with metric-driven promotion/rollback, or Flagger for progressive delivery with automatic rollback on SLO violations. The key requirement is observability: you need metrics comparing canary versus stable performance to make promotion decisions."
+        }
+      ],
+      "wordCount": 336,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Configure deployment strategy based on application characteristics: Use maxSurge: 25%, maxUnavailable: 0 for latency-sensitive services that cannot tolerate reduced capacity. Use maxSurge: 50%, maxUnavailable: 25% for throughput-oriented services where faster rollouts are more important than maintaining full capacity. The recreate strategy (terminate all, then create all) is appropriate only for applications that cannot run multiple versions simultaneously, such as those with incompatible database schemas.",
+            "Implement pod topology spread constraints for high availability: Distribute pods across availability zones using topologySpreadConstraints with whenUnsatisfiable: DoNotSchedule for critical services. This ensures a single AZ failure never takes down more than one-third of your replicas. For less critical services, use whenUnsatisfiable: ScheduleAnyway to prefer spreading without blocking scheduling when zones are imbalanced.",
+            "Use lifecycle hooks and termination grace periods together: Set terminationGracePeriodSeconds to accommodate your application's shutdown time plus the preStop hook delay. A Java application needing 30 seconds to drain connections should have a 10-second preStop sleep plus 45-second grace period. If the grace period expires before shutdown completes, Kubernetes sends SIGKILL, potentially corrupting in-flight operations."
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Concepts and Architecture — Pod primitives and cluster architecture that workloads build upon",
+            "Networking and Services — How workloads expose endpoints and communicate",
+            "EKS and AWS Integration — AWS-specific autoscaling with Karpenter and managed node groups"
+          ]
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: order-service\n  namespace: production\n  labels:\n    app: order-service\n    team: commerce\nspec:\n  replicas: 5\n  revisionHistoryLimit: 10\n  selector:\n    matchLabels:\n      app: order-service\n  strategy:\n    type: RollingUpdate\n    rollingUpdate:\n      maxUnavailable: 1\n      maxSurge: 2\n  template:\n    metadata:\n      labels:\n        app: order-service\n        version: v2.3.0\n      annotations:\n        prometheus.io/scrape: \"true\"\n        prometheus.io/port: \"8080\"\n        prometheus.io/path: \"/actuator/prometheus\"\n    spec:\n      serviceAccountName: order-service\n      terminationGracePeriodSeconds: 60\n      topologySpreadConstraints:\n        - maxSkew: 1\n          topologyKey: topology.kubernetes.io/zone\n          whenUnsatisfiable: DoNotSchedule\n          labelSelector:\n            matchLabels:\n              app: order-service\n      containers:\n        - name: app\n          image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.3.0\n          ports:\n            - containerPort: 8080\n              name: http\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"1Gi\"\n            limits:\n              cpu: \"2000m\"\n              memory: \"2Gi\"\n          readinessProbe:\n            httpGet:\n              path: /actuator/health/readiness\n              port: 8080\n            initialDelaySeconds: 10\n            periodSeconds: 5\n            failureThreshold: 3\n          livenessProbe:\n            httpGet:\n              path: /actuator/health/liveness\n              port: 8080\n            initialDelaySeconds: 30\n            periodSeconds: 10\n            failureThreshold: 3\n          lifecycle:\n            preStop:\n              exec:\n                command: [\"sh\", \"-c\", \"sleep 10\"]\n---\napiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata:\n  name: order-service-pdb\n  namespace: production\nspec:\n  minAvailable: 3\n  selector:\n    matchLabels:\n      app: order-service",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nmetadata:\n  name: order-service-hpa\n  namespace: production\nspec:\n  scaleTargetRef:\n    apiVersion: apps/v1\n    kind: Deployment\n    name: order-service\n  minReplicas: 3\n  maxReplicas: 20\n  behavior:\n    scaleUp:\n      stabilizationWindowSeconds: 60\n      policies:\n        - type: Pods\n          value: 4\n          periodSeconds: 60\n        - type: Percent\n          value: 50\n          periodSeconds: 60\n      selectPolicy: Max\n    scaleDown:\n      stabilizationWindowSeconds: 300\n      policies:\n        - type: Pods\n          value: 2\n          periodSeconds: 120\n      selectPolicy: Min\n  metrics:\n    - type: Resource\n      resource:\n        name: cpu\n        target:\n          type: Utilization\n          averageUtilization: 70\n    - type: Resource\n      resource:\n        name: memory\n        target:\n          type: Utilization\n          averageUtilization: 80\n    - type: Pods\n      pods:\n        metric:\n          name: http_requests_per_second\n        target:\n          type: AverageValue\n          averageValue: \"1000\"\n---\napiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: redis-cluster\n  namespace: production\nspec:\n  serviceName: redis-cluster\n  replicas: 6\n  selector:\n    matchLabels:\n      app: redis-cluster\n  template:\n    metadata:\n      labels:\n        app: redis-cluster\n    spec:\n      containers:\n        - name: redis\n          image: redis:7-alpine\n          ports:\n            - containerPort: 6379\n              name: client\n            - containerPort: 16379\n              name: gossip\n          command: [\"redis-server\", \"/conf/redis.conf\"]\n          resources:\n            requests:\n              cpu: \"500m\"\n              memory: \"2Gi\"\n            limits:\n              cpu: \"1000m\"\n              memory: \"4Gi\"\n          volumeMounts:\n            - name: data\n              mountPath: /data\n            - name: conf\n              mountPath: /conf\n  volumeClaimTemplates:\n    - metadata:\n        name: data\n      spec:\n        accessModes: [\"ReadWriteOnce\"]\n        storageClassName: gp3-encrypted\n        resources:\n          requests:\n            storage: 50Gi",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/kubernetes/workload-management.md",
+    "wordCount": 1236,
+    "sectionCount": 10
+  }
+}

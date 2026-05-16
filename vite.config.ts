@@ -17,6 +17,7 @@ export default defineConfig({
       includeAssets: ['vite.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: false, // Use existing public/manifest.json
       workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB to accommodate large search index
         globPatterns: [
           '**/*.{js,css,html}',
           'content-manifest.json',

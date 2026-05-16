@@ -418,6 +418,6 @@ A circular queue uses modulo arithmetic to wrap indices around: `rear = (rear + 
 
 - [Ring Buffer](./ring-buffer.md) — Circular queues are a specialized form of ring buffer
 - [Heap](./heap.md) — Priority queues are implemented using heap data structures
-- [List](./list.md) — LinkedList implements the Queue and Deque interfaces
+- [Linked Lists](./linked-lists.md) — LinkedList implements the Queue and Deque interfaces
 - [Graph](./graph.md) — BFS traversal uses queues for level-order exploration
 - [Big O Notation](./big-o-notation.md) — Understanding amortized O(1) queue operations

@@ -1,263 +1,57 @@
 {
-  "id": "backend-spring-framework",
+  "id": "spring-framework",
   "slug": "spring-framework",
   "title": "Spring Framework",
   "category": "Backend",
   "sections": [
     {
-      "id": "quick-reference",
-      "heading": "Quick Reference",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Spring is a comprehensive Java framework built on Inversion of Control (IoC) and Dependency Injection (DI)",
-            "Spring Boot provides opinionated defaults, embedded servers, and auto-configuration for rapid development",
-            "Key modules: Core (IoC/DI), MVC (web), Data JPA (persistence), Security (auth), Cloud (distributed systems)",
-            "Bean scopes: singleton (default), prototype, request, session, application",
-            "Profiles enable environment-specific configuration (@Profile(\"dev\"), spring.profiles.active)",
-            "Spring Boot Actuator exposes health checks, metrics, and management endpoints",
-            "Spring Cloud provides service discovery, circuit breakers, config server, and API gateway patterns"
-          ]
-        }
-      ],
-      "wordCount": 79,
-      "subsections": []
-    },
-    {
-      "id": "when-to-use",
-      "heading": "When to Use",
+      "id": "content",
+      "heading": "Spring Framework",
       "level": 2,
       "content": [
         {
           "type": "paragraph",
-          "text": "Spring Framework is the standard choice for enterprise Java applications requiring dependency injection, declarative transaction management, and a modular architecture. Use Spring Boot when you need rapid application development with production-ready defaults including embedded Tomcat/Netty, health checks, and externalized configuration. Spring is ideal for microservice architectures where you need service discovery (Eureka/Consul), resilience patterns (Resilience4j), distributed tracing (Micrometer/Zipkin), and centralized configuration. Choose Spring when your team values convention over configuration, extensive documentation, and a mature ecosystem with solutions for nearly every enterprise integration pattern. Spring's annotation-driven programming model reduces boilerplate significantly compared to Java EE, while its comprehensive testing support (MockMvc, TestContainers integration, slice tests) enables confident refactoring and continuous delivery. The framework's modular design means you only include what you need, avoiding the bloat of monolithic application servers."
+          "text": "Spring Framework is the dominant application framework in the Java ecosystem, providing a comprehensive programming and configuration model for enterprise applications. Built on the principles of Inversion of Control (IoC) and Dependency Injection (DI), Spring eliminates boilerplate code while enabling modular, testable, and maintainable architectures. Spring Boot extends the core framework with opinionated defaults, embedded servers, and auto-configuration that dramatically accelerates development from prototype to production."
+        },
+        {
+          "type": "paragraph",
+          "text": "This guide covers Spring from core container concepts through production deployment patterns, targeting senior engineers building microservices, event-driven systems, and enterprise integrations. Each subtopic provides deep coverage of a specific Spring module with production-oriented examples, common pitfalls, and interview preparation material."
         }
       ],
-      "wordCount": 129,
+      "wordCount": 107,
       "subsections": []
     },
     {
-      "id": "code-examples",
-      "heading": "Code Examples",
-      "level": 2,
-      "content": [],
-      "wordCount": 0,
-      "subsections": [
-        {
-          "id": "spring-boot-application-with-rest-api",
-          "heading": "Spring Boot Application with REST API",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@SpringBootApplication\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}\n\n@RestController\n@RequestMapping(\"/api/v1/orders\")\n@RequiredArgsConstructor\npublic class OrderController {\n\n    private final OrderService orderService;\n\n    @PostMapping\n    @ResponseStatus(HttpStatus.CREATED)\n    public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest request) {\n        return orderService.createOrder(request);\n    }\n\n    @GetMapping(\"/{orderId}\")\n    public OrderResponse getOrder(@PathVariable UUID orderId) {\n        return orderService.findById(orderId)\n            .orElseThrow(() -> new OrderNotFoundException(orderId));\n    }\n\n    @GetMapping\n    public Page<OrderResponse> listOrders(\n            @RequestParam(defaultValue = \"0\") int page,\n            @RequestParam(defaultValue = \"20\") int size) {\n        return orderService.findAll(PageRequest.of(page, size));\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "dependency-injection-and-configuration",
-          "heading": "Dependency Injection and Configuration",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Configuration\npublic class AppConfig {\n\n    @Bean\n    @Profile(\"production\")\n    public DataSource productionDataSource(\n            @Value(\"${db.url}\") String url,\n            @Value(\"${db.username}\") String username,\n            @Value(\"${db.password}\") String password) {\n        HikariConfig config = new HikariConfig();\n        config.setJdbcUrl(url);\n        config.setUsername(username);\n        config.setPassword(password);\n        config.setMaximumPoolSize(20);\n        config.setConnectionTimeout(30000);\n        return new HikariDataSource(config);\n    }\n\n    @Bean\n    public RestTemplate restTemplate(RestTemplateBuilder builder) {\n        return builder\n            .setConnectTimeout(Duration.ofSeconds(5))\n            .setReadTimeout(Duration.ofSeconds(10))\n            .build();\n    }\n}\n\n@Service\n@Transactional\n@RequiredArgsConstructor\npublic class OrderService {\n\n    private final OrderRepository orderRepository;\n    private final PaymentClient paymentClient;\n    private final EventPublisher eventPublisher;\n\n    public OrderResponse createOrder(CreateOrderRequest request) {\n        Order order = Order.from(request);\n        order = orderRepository.save(order);\n        paymentClient.processPayment(order.getPaymentDetails());\n        eventPublisher.publish(new OrderCreatedEvent(order));\n        return OrderResponse.from(order);\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "spring-security-configuration",
-          "heading": "Spring Security Configuration",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        return http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\").permitAll()\n                .requestMatchers(\"/actuator/health\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 ->\n                oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter())))\n            .build();\n    }\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        },
-        {
-          "id": "spring-data-jpa-repository",
-          "heading": "Spring Data JPA Repository",
-          "level": 3,
-          "content": [
-            {
-              "type": "code",
-              "language": "java",
-              "code": "@Entity\n@Table(name = \"orders\")\npublic class Order {\n    @Id\n    @GeneratedValue(strategy = GenerationType.UUID)\n    private UUID id;\n\n    @Enumerated(EnumType.STRING)\n    private OrderStatus status;\n\n    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)\n    private List<OrderItem> items = new ArrayList<>();\n\n    @CreatedDate\n    private Instant createdAt;\n}\n\npublic interface OrderRepository extends JpaRepository<Order, UUID> {\n\n    @Query(\"SELECT o FROM Order o WHERE o.status = :status AND o.createdAt > :since\")\n    Page<Order> findRecentByStatus(\n        @Param(\"status\") OrderStatus status,\n        @Param(\"since\") Instant since,\n        Pageable pageable);\n\n    @Modifying\n    @Query(\"UPDATE Order o SET o.status = :status WHERE o.id = :id\")\n    int updateStatus(@Param(\"id\") UUID id, @Param(\"status\") OrderStatus status);\n}",
-              "runnable": false
-            }
-          ],
-          "wordCount": 0,
-          "subsections": []
-        }
-      ]
-    },
-    {
-      "id": "architecture-and-diagrams",
-      "heading": "Architecture and Diagrams",
-      "level": 2,
-      "content": [
-        {
-          "type": "mermaid",
-          "source": "graph TB\n    subgraph \"Spring Boot Application\"\n        CONTROLLER[Controller Layer<br/>@RestController]\n        SERVICE[Service Layer<br/>@Service @Transactional]\n        REPO[Repository Layer<br/>@Repository]\n        \n        CONTROLLER --> SERVICE\n        SERVICE --> REPO\n        REPO --> DB[(Database)]\n    end\n    \n    subgraph \"Spring IoC Container\"\n        CTX[ApplicationContext]\n        CTX --> BEANS[Bean Definitions]\n        CTX --> AOP[AOP Proxies]\n        CTX --> EVT[Event System]\n    end\n    \n    subgraph \"Cross-Cutting Concerns\"\n        SEC[Spring Security<br/>Filter Chain]\n        TX[Transaction Manager<br/>@Transactional]\n        CACHE[Cache Abstraction<br/>@Cacheable]\n        VALID[Validation<br/>@Valid]\n    end\n    \n    SEC --> CONTROLLER\n    TX --> SERVICE\n    CACHE --> SERVICE\n    VALID --> CONTROLLER"
-        },
-        {
-          "type": "mermaid",
-          "source": "graph LR\n    subgraph \"Spring Cloud Microservices\"\n        GW[API Gateway<br/>Spring Cloud Gateway]\n        \n        GW --> SVC1[Order Service]\n        GW --> SVC2[Payment Service]\n        GW --> SVC3[Inventory Service]\n        \n        SVC1 --> DISC[Service Discovery<br/>Eureka/Consul]\n        SVC2 --> DISC\n        SVC3 --> DISC\n        \n        CONFIG[Config Server] --> SVC1\n        CONFIG --> SVC2\n        CONFIG --> SVC3\n        \n        SVC1 --> MQ[Message Broker<br/>RabbitMQ/Kafka]\n        MQ --> SVC3\n    end"
-        }
-      ],
-      "wordCount": 0,
-      "subsections": []
-    },
-    {
-      "id": "common-pitfalls",
-      "heading": "Common Pitfalls",
+      "id": "learning-path",
+      "heading": "Learning Path",
       "level": 2,
       "content": [
         {
           "type": "list",
           "ordered": true,
           "items": [
-            "Circular dependencies: Two beans depending on each other causes startup failures. Resolve by using @Lazy, setter injection instead of constructor injection, or redesigning the dependency graph to eliminate cycles.",
-            "N+1 query problem: JPA lazy loading triggers individual queries for each related entity. Use @EntityGraph, JOIN FETCH in JPQL, or batch fetching (@BatchSize) to load associations efficiently.",
-            "Transaction propagation misunderstanding: Calling a @Transactional method from within the same class bypasses the proxy, so the transaction annotation has no effect. Extract the method to a separate bean or use self-injection patterns.",
-            "Bean scope mismatch: Injecting a prototype-scoped bean into a singleton results in the same prototype instance being reused. Use ObjectProvider<T> or @Scope(proxyMode = ScopedProxyMode.TARGET_CLASS) to get fresh instances.",
-            "Auto-configuration conflicts: Multiple auto-configurations can conflict when dependencies overlap. Use @ConditionalOnMissingBean, explicit exclusions (@SpringBootApplication(exclude = {...})), or property-based feature flags to control which configurations activate."
+            "Core Container and Dependency Injection — IoC container, bean lifecycle, scopes, profiles, and configuration patterns",
+            "Spring Boot — Auto-configuration, embedded servers, actuator, and production-ready application setup",
+            "Spring MVC and REST APIs — Web layer architecture, request handling, validation, error handling, and API design",
+            "Spring REST — RESTful API design, content negotiation, HATEOAS, and API versioning patterns",
+            "Spring Data and Persistence — JPA repositories, query methods, transactions, and database access patterns",
+            "Spring Security — Authentication, authorization, OAuth2, JWT, and security filter chain configuration",
+            "Spring Cloud and Microservices — Service discovery, circuit breakers, distributed configuration, and API gateway patterns",
+            "Spring Batch — Batch processing, chunk-oriented steps, job scheduling, and large-scale data operations"
           ]
         }
       ],
-      "wordCount": 142,
-      "subsections": []
-    },
-    {
-      "id": "real-world-use-cases",
-      "heading": "Real-World Use Cases",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Enterprise microservices: Spring Boot with Spring Cloud provides a complete platform for building distributed systems with service discovery, circuit breakers, distributed tracing, and centralized configuration management at scale. Companies like Netflix, Alibaba, and major banks run hundreds of Spring Boot microservices handling millions of transactions daily, relying on Spring's production-ready actuator endpoints for health monitoring and graceful degradation.",
-            "Event-driven architectures: Spring Integration and Spring Cloud Stream enable building event-driven systems that connect to Kafka, RabbitMQ, or AWS SNS/SQS with minimal boilerplate and declarative binding configuration. The programming model abstracts away broker-specific details, allowing teams to switch messaging infrastructure without changing application code.",
-            "Batch processing: Spring Batch handles large-scale data processing jobs with built-in support for chunked processing, retry/skip policies, job scheduling, and restartability for ETL pipelines and report generation. Its chunk-oriented processing model efficiently handles millions of records with configurable commit intervals and fault tolerance.",
-            "API gateways: Spring Cloud Gateway provides a reactive, non-blocking API gateway with route predicates, filters for rate limiting, authentication, and request/response transformation. It integrates natively with service discovery and circuit breakers for resilient routing across microservice deployments.",
-            "Reactive systems: Spring WebFlux with Project Reactor enables building non-blocking, backpressure-aware applications that handle thousands of concurrent connections with minimal thread usage, ideal for real-time streaming APIs, WebSocket servers, and high-concurrency proxy services."
-          ]
-        }
-      ],
-      "wordCount": 215,
-      "subsections": []
-    },
-    {
-      "id": "interview-questions",
-      "heading": "Interview Questions",
-      "level": 2,
-      "content": [
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between @Component, @Service, @Repository, and @Controller.\nA: All are specializations of @Component and trigger component scanning. @Service indicates business logic (no additional behavior). @Repository enables exception translation from persistence-specific exceptions to Spring's DataAccessException. @Controller marks MVC controllers for request mapping. The distinction is semantic for code clarity and enables targeted AOP advice."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Spring handle transactions with @Transactional?\nA: Spring creates a proxy around the bean that intercepts method calls. On entry, it begins a transaction (or joins an existing one based on propagation settings). On normal return, it commits. On unchecked exception, it rolls back (configurable via rollbackFor). The proxy uses either JDK dynamic proxies (interface-based) or CGLIB (class-based subclassing)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between Spring MVC and Spring WebFlux?\nA: Spring MVC uses a thread-per-request model with blocking I/O, suitable for traditional CRUD applications. Spring WebFlux uses a reactive, non-blocking model with Project Reactor (Mono/Flux), handling many concurrent connections with fewer threads. WebFlux is ideal for streaming, high-concurrency scenarios, and integration with reactive datastores."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Spring Boot auto-configuration work?\nA: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports for configuration classes. Each class uses @Conditional annotations (e.g., @ConditionalOnClass, @ConditionalOnMissingBean) to activate only when specific conditions are met. This allows libraries to provide sensible defaults that activate automatically when their dependencies are on the classpath."
-        }
-      ],
-      "wordCount": 221,
-      "subsections": []
-    },
-    {
-      "id": "production-tips",
-      "heading": "Production Tips",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Actuator security: Never expose all actuator endpoints publicly. Use management.endpoints.web.exposure.include=health,info,metrics and secure sensitive endpoints (heapdump, env, configprops) behind authentication. In Kubernetes deployments, expose health and readiness probes on a separate management port (management.server.port) that is not accessible through the ingress.",
-            "Connection pool monitoring: Configure HikariCP metrics export to Micrometer. Alert on hikaricp_connections_pending > 0 sustained for more than 30 seconds, which indicates pool exhaustion and potential thread starvation. Set hikaricp.connection-timeout to fail fast rather than blocking indefinitely when the pool is exhausted.",
-            "Graceful shutdown: Enable server.shutdown=graceful with spring.lifecycle.timeout-per-shutdown-phase=30s to allow in-flight requests to complete before the application stops, preventing 502 errors during deployments. Combine with Kubernetes preStop hooks to ensure the pod is removed from service discovery before shutdown begins.",
-            "Profile-based configuration: Use application-{profile}.yml files for environment-specific settings. Never store secrets in config files; use environment variables, Vault, or AWS Secrets Manager with Spring Cloud Config. Leverage @ConfigurationProperties with validation annotations to fail fast on misconfiguration at startup.",
-            "Performance tuning: Configure Tomcat thread pool size based on expected concurrency (server.tomcat.threads.max). Enable response compression (server.compression.enabled=true) for JSON APIs. Use @Async with custom executors for background tasks, and configure spring.task.execution.pool.* properties to control thread pool behavior for async operations."
-          ]
-        }
-      ],
-      "wordCount": 197,
-      "subsections": []
-    },
-    {
-      "id": "related-topics",
-      "heading": "Related Topics",
-      "level": 2,
-      "content": [
-        {
-          "type": "list",
-          "ordered": false,
-          "items": [
-            "Java - The language foundation for Spring Framework",
-            "Apache Kafka - Event streaming platform commonly integrated with Spring Cloud Stream",
-            "MongoDB - NoSQL database with Spring Data MongoDB support",
-            "Resilience4j - Fault tolerance library with native Spring Boot integration"
-          ]
-        }
-      ],
-      "wordCount": 39,
+      "wordCount": 110,
       "subsections": []
     }
   ],
   "images": [],
-  "codeBlocks": [
-    {
-      "language": "java",
-      "code": "@SpringBootApplication\npublic class OrderServiceApplication {\n    public static void main(String[] args) {\n        SpringApplication.run(OrderServiceApplication.class, args);\n    }\n}\n\n@RestController\n@RequestMapping(\"/api/v1/orders\")\n@RequiredArgsConstructor\npublic class OrderController {\n\n    private final OrderService orderService;\n\n    @PostMapping\n    @ResponseStatus(HttpStatus.CREATED)\n    public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest request) {\n        return orderService.createOrder(request);\n    }\n\n    @GetMapping(\"/{orderId}\")\n    public OrderResponse getOrder(@PathVariable UUID orderId) {\n        return orderService.findById(orderId)\n            .orElseThrow(() -> new OrderNotFoundException(orderId));\n    }\n\n    @GetMapping\n    public Page<OrderResponse> listOrders(\n            @RequestParam(defaultValue = \"0\") int page,\n            @RequestParam(defaultValue = \"20\") int size) {\n        return orderService.findAll(PageRequest.of(page, size));\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "@Configuration\npublic class AppConfig {\n\n    @Bean\n    @Profile(\"production\")\n    public DataSource productionDataSource(\n            @Value(\"${db.url}\") String url,\n            @Value(\"${db.username}\") String username,\n            @Value(\"${db.password}\") String password) {\n        HikariConfig config = new HikariConfig();\n        config.setJdbcUrl(url);\n        config.setUsername(username);\n        config.setPassword(password);\n        config.setMaximumPoolSize(20);\n        config.setConnectionTimeout(30000);\n        return new HikariDataSource(config);\n    }\n\n    @Bean\n    public RestTemplate restTemplate(RestTemplateBuilder builder) {\n        return builder\n            .setConnectTimeout(Duration.ofSeconds(5))\n            .setReadTimeout(Duration.ofSeconds(10))\n            .build();\n    }\n}\n\n@Service\n@Transactional\n@RequiredArgsConstructor\npublic class OrderService {\n\n    private final OrderRepository orderRepository;\n    private final PaymentClient paymentClient;\n    private final EventPublisher eventPublisher;\n\n    public OrderResponse createOrder(CreateOrderRequest request) {\n        Order order = Order.from(request);\n        order = orderRepository.save(order);\n        paymentClient.processPayment(order.getPaymentDetails());\n        eventPublisher.publish(new OrderCreatedEvent(order));\n        return OrderResponse.from(order);\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "@Configuration\n@EnableWebSecurity\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {\n        return http\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\").permitAll()\n                .requestMatchers(\"/actuator/health\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 ->\n                oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter())))\n            .build();\n    }\n}",
-      "runnable": false
-    },
-    {
-      "language": "java",
-      "code": "@Entity\n@Table(name = \"orders\")\npublic class Order {\n    @Id\n    @GeneratedValue(strategy = GenerationType.UUID)\n    private UUID id;\n\n    @Enumerated(EnumType.STRING)\n    private OrderStatus status;\n\n    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)\n    private List<OrderItem> items = new ArrayList<>();\n\n    @CreatedDate\n    private Instant createdAt;\n}\n\npublic interface OrderRepository extends JpaRepository<Order, UUID> {\n\n    @Query(\"SELECT o FROM Order o WHERE o.status = :status AND o.createdAt > :since\")\n    Page<Order> findRecentByStatus(\n        @Param(\"status\") OrderStatus status,\n        @Param(\"since\") Instant since,\n        Pageable pageable);\n\n    @Modifying\n    @Query(\"UPDATE Order o SET o.status = :status WHERE o.id = :id\")\n    int updateStatus(@Param(\"id\") UUID id, @Param(\"status\") OrderStatus status);\n}",
-      "runnable": false
-    }
-  ],
+  "codeBlocks": [],
   "mathExpressions": [],
   "metadata": {
     "source": "parsed",
-    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework.md",
-    "wordCount": 1022,
-    "sectionCount": 13
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/index.md",
+    "wordCount": 217,
+    "sectionCount": 2
   }
 }

@@ -1,0 +1,220 @@
+{
+  "id": "kubernetes-kubernetes-core-concepts-and-architecture",
+  "slug": "kubernetes-core-concepts-and-architecture",
+  "title": "Kubernetes Core Concepts and Architecture",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Kubernetes (K8s) is a container orchestration platform that automates deployment, scaling, and management of containerized applications across clusters",
+            "Control plane components: kube-apiserver (API gateway), etcd (distributed key-value store), kube-scheduler (pod placement), kube-controller-manager (reconciliation loops), cloud-controller-manager (cloud provider integration)",
+            "Node components: kubelet (pod lifecycle agent), kube-proxy (network rules), container runtime (containerd or CRI-O)",
+            "Pods are the smallest deployable unit — one or more containers sharing network namespace, storage, and lifecycle",
+            "The declarative model means you specify desired state in YAML manifests and controllers continuously reconcile actual state to match",
+            "Labels and selectors provide the primary mechanism for grouping, filtering, and targeting resources",
+            "Namespaces provide logical isolation for multi-tenant clusters with resource quotas and RBAC boundaries"
+          ]
+        }
+      ],
+      "wordCount": 114,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kubernetes is the right choice when you need to orchestrate containerized workloads at scale across multiple nodes with automated self-healing, rolling deployments, and service discovery. Use Kubernetes when your application consists of multiple microservices that need independent scaling, when you require zero-downtime deployments, or when you need consistent environments across development, staging, and production. Kubernetes provides value when teams need declarative infrastructure management, automated bin-packing of workloads across heterogeneous hardware, and a standardized API for deploying applications regardless of the underlying cloud provider. The platform excels in environments where multiple teams share cluster resources and need isolation through namespaces, resource quotas, and network policies. Kubernetes is overkill for simple single-container applications, small teams without dedicated platform engineering resources, or workloads that can run effectively on simpler platforms like AWS ECS Fargate or Google Cloud Run."
+        }
+      ],
+      "wordCount": 135,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "pod-specification-with-resource-management",
+          "heading": "Pod Specification with Resource Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: order-service\n  namespace: production\n  labels:\n    app: order-service\n    version: v2\n    team: commerce\n  annotations:\n    prometheus.io/scrape: \"true\"\n    prometheus.io/port: \"8080\"\nspec:\n  serviceAccountName: order-service-sa\n  terminationGracePeriodSeconds: 60\n  initContainers:\n    - name: db-migration\n      image: order-service:v2.1.0\n      command: [\"./migrate\", \"--target\", \"latest\"]\n      resources:\n        requests:\n          cpu: \"100m\"\n          memory: \"256Mi\"\n        limits:\n          cpu: \"500m\"\n          memory: \"512Mi\"\n  containers:\n    - name: app\n      image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.1.0\n      ports:\n        - containerPort: 8080\n          name: http\n          protocol: TCP\n      resources:\n        requests:\n          cpu: \"250m\"\n          memory: \"512Mi\"\n        limits:\n          cpu: \"1000m\"\n          memory: \"1Gi\"\n      livenessProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 30\n        periodSeconds: 10\n        failureThreshold: 3\n      readinessProbe:\n        httpGet:\n          path: /actuator/health/readiness\n          port: 8080\n        initialDelaySeconds: 5\n        periodSeconds: 5\n        successThreshold: 1\n      startupProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 10\n        periodSeconds: 5\n        failureThreshold: 30\n      env:\n        - name: SPRING_PROFILES_ACTIVE\n          value: \"production\"\n        - name: DB_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: db-credentials\n              key: password\n      volumeMounts:\n        - name: config-volume\n          mountPath: /app/config\n          readOnly: true\n    - name: envoy-sidecar\n      image: envoyproxy/envoy:v1.28\n      ports:\n        - containerPort: 9901\n          name: admin\n      resources:\n        requests:\n          cpu: \"100m\"\n          memory: \"128Mi\"\n        limits:\n          cpu: \"500m\"\n          memory: \"256Mi\"\n  volumes:\n    - name: config-volume\n      configMap:\n        name: order-service-config",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "namespace-with-resource-quotas-and-limit-ranges",
+          "heading": "Namespace with Resource Quotas and Limit Ranges",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: production\n  labels:\n    environment: production\n    team: platform\n---\napiVersion: v1\nkind: ResourceQuota\nmetadata:\n  name: production-quota\n  namespace: production\nspec:\n  hard:\n    requests.cpu: \"50\"\n    requests.memory: \"100Gi\"\n    limits.cpu: \"100\"\n    limits.memory: \"200Gi\"\n    pods: \"200\"\n    services: \"50\"\n    persistentvolumeclaims: \"30\"\n---\napiVersion: v1\nkind: LimitRange\nmetadata:\n  name: default-limits\n  namespace: production\nspec:\n  limits:\n    - type: Container\n      default:\n        cpu: \"500m\"\n        memory: \"512Mi\"\n      defaultRequest:\n        cpu: \"100m\"\n        memory: \"128Mi\"\n      max:\n        cpu: \"4\"\n        memory: \"8Gi\"\n      min:\n        cpu: \"50m\"\n        memory: \"64Mi\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Not setting resource requests and limits: Pods without resource constraints can starve other workloads or get OOMKilled unpredictably. The scheduler uses requests for placement decisions, so pods without requests may be scheduled on nodes that cannot support their actual resource consumption. Always set both requests for scheduling guarantees and limits for protection against runaway processes.",
+            "Confusing liveness and readiness probes: Liveness probes detect deadlocked containers and trigger restarts, while readiness probes control traffic routing. A common mistake is using the same endpoint for both with identical timing, which can cause cascading restarts during temporary load spikes. Readiness probes should be more sensitive (shorter intervals, lower thresholds) while liveness probes should be conservative to avoid unnecessary restarts.",
+            "Running everything in the default namespace: The default namespace provides no isolation, makes RBAC policies impossible to scope correctly, and prevents resource quota enforcement. Production workloads should always run in dedicated namespaces with appropriate quotas, limit ranges, and network policies applied at the namespace level.",
+            "Ignoring pod topology spread constraints: Without topology constraints, the scheduler may place all replicas on the same node or in the same availability zone. A single node failure or AZ outage then takes down the entire service. Use topologySpreadConstraints to distribute pods across failure domains.",
+            "Using imperative commands in production: Running kubectl run or kubectl create directly bypasses version control, audit trails, and reproducibility. All production resources should be defined in declarative YAML manifests stored in Git and applied through CI/CD pipelines or GitOps controllers like ArgoCD."
+          ]
+        }
+      ],
+      "wordCount": 248,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A large e-commerce platform runs 200+ microservices on Kubernetes across three availability zones. Each service team owns their namespace with resource quotas preventing any single team from consuming more than their allocated share of cluster resources. Init containers run database migrations before application containers start, ensuring schema compatibility on every deployment. Sidecar containers running Envoy proxies handle mTLS, circuit breaking, and observability without application code changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "A financial services company uses Kubernetes for real-time transaction processing with strict compliance requirements. Pod security standards enforce non-root execution, read-only filesystems, and dropped capabilities across all workloads. Network policies implement zero-trust networking where pods can only communicate with explicitly allowed destinations. Resource quotas and limit ranges prevent any single service from impacting platform stability during traffic spikes."
+        },
+        {
+          "type": "paragraph",
+          "text": "A machine learning platform uses Kubernetes to orchestrate training jobs and model serving. GPU-equipped nodes are tainted to ensure only ML workloads schedule on expensive hardware. Init containers download model artifacts from S3 before the serving container starts. Horizontal Pod Autoscaler scales inference pods based on custom metrics like request queue depth, while Karpenter provisions GPU nodes on-demand to minimize idle compute costs."
+        }
+      ],
+      "wordCount": 187,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Pod and a container in Kubernetes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A Pod is the smallest deployable unit in Kubernetes and represents one or more containers that share the same network namespace (same IP address and port space), storage volumes, and lifecycle. Containers within a pod communicate via localhost and are always co-scheduled on the same node. The pod abstraction exists because many real-world applications require tightly coupled helper processes (sidecars for logging, proxies for networking, init containers for setup) that must share resources and be managed as a single unit."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the Kubernetes scheduler decide where to place a pod?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The scheduler uses a two-phase process: filtering and scoring. Filtering eliminates nodes that cannot run the pod (insufficient resources, incompatible taints, unsatisfied node selectors or affinity rules). Scoring ranks remaining nodes based on factors like resource balance, topology spread, affinity preferences, and custom scheduler plugins. The pod is placed on the highest-scoring node. Resource requests (not limits) drive scheduling decisions, which is why setting accurate requests is critical for efficient cluster utilization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the reconciliation loop pattern in Kubernetes controllers."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Kubernetes controllers implement a continuous reconciliation loop that watches for changes to resources and drives actual state toward desired state. The controller reads the desired state from the API server (e.g., a Deployment specifying 3 replicas), observes the current state (e.g., only 2 pods running), and takes corrective action (creates 1 more pod). This pattern is level-triggered rather than edge-triggered, meaning controllers react to the current state difference rather than specific events, making them resilient to missed events or controller restarts."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens when a node becomes unreachable in a Kubernetes cluster?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When the kubelet stops sending heartbeats, the node controller waits for the node-monitor-grace-period (default 40 seconds) before marking the node as NotReady. After the pod-eviction-timeout (default 5 minutes), the controller evicts pods from the unreachable node by creating deletion markers. The scheduler then places replacement pods on healthy nodes, respecting topology constraints and resource availability. Pods with local storage or those managed by StatefulSets require special handling to avoid data loss."
+        }
+      ],
+      "wordCount": 354,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Right-size resource requests using historical data: Use tools like Vertical Pod Autoscaler (VPA) in recommendation mode or Kubecost to analyze actual resource consumption over time. Over-requesting wastes cluster capacity and increases costs, while under-requesting causes scheduling failures and performance degradation. Target requests at the 95th percentile of actual usage and limits at 2-3x requests for burst headroom.",
+            "Implement pod disruption budgets for all production workloads: PDBs guarantee minimum availability during voluntary disruptions like node drains, cluster upgrades, and autoscaler scale-downs. Without PDBs, a node drain can terminate all replicas simultaneously. Set minAvailable to at least N-1 for N replicas, or use maxUnavailable: 1 to ensure only one pod is disrupted at a time.",
+            "Use priority classes to protect critical workloads: Define PriorityClasses for system-critical, production, and development workloads. During resource pressure, the scheduler preempts lower-priority pods to make room for higher-priority ones. This ensures that monitoring agents, ingress controllers, and critical business services are never evicted in favor of batch jobs or development workloads."
+          ]
+        }
+      ],
+      "wordCount": 164,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Workload Management — Deployments, StatefulSets, and scaling strategies built on pod primitives",
+            "Networking and Services — How pods communicate within and outside the cluster",
+            "Docker & Containerization — Container fundamentals that Kubernetes orchestrates"
+          ]
+        }
+      ],
+      "wordCount": 33,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: order-service\n  namespace: production\n  labels:\n    app: order-service\n    version: v2\n    team: commerce\n  annotations:\n    prometheus.io/scrape: \"true\"\n    prometheus.io/port: \"8080\"\nspec:\n  serviceAccountName: order-service-sa\n  terminationGracePeriodSeconds: 60\n  initContainers:\n    - name: db-migration\n      image: order-service:v2.1.0\n      command: [\"./migrate\", \"--target\", \"latest\"]\n      resources:\n        requests:\n          cpu: \"100m\"\n          memory: \"256Mi\"\n        limits:\n          cpu: \"500m\"\n          memory: \"512Mi\"\n  containers:\n    - name: app\n      image: 123456789.dkr.ecr.us-east-1.amazonaws.com/order-service:v2.1.0\n      ports:\n        - containerPort: 8080\n          name: http\n          protocol: TCP\n      resources:\n        requests:\n          cpu: \"250m\"\n          memory: \"512Mi\"\n        limits:\n          cpu: \"1000m\"\n          memory: \"1Gi\"\n      livenessProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 30\n        periodSeconds: 10\n        failureThreshold: 3\n      readinessProbe:\n        httpGet:\n          path: /actuator/health/readiness\n          port: 8080\n        initialDelaySeconds: 5\n        periodSeconds: 5\n        successThreshold: 1\n      startupProbe:\n        httpGet:\n          path: /actuator/health/liveness\n          port: 8080\n        initialDelaySeconds: 10\n        periodSeconds: 5\n        failureThreshold: 30\n      env:\n        - name: SPRING_PROFILES_ACTIVE\n          value: \"production\"\n        - name: DB_PASSWORD\n          valueFrom:\n            secretKeyRef:\n              name: db-credentials\n              key: password\n      volumeMounts:\n        - name: config-volume\n          mountPath: /app/config\n          readOnly: true\n    - name: envoy-sidecar\n      image: envoyproxy/envoy:v1.28\n      ports:\n        - containerPort: 9901\n          name: admin\n      resources:\n        requests:\n          cpu: \"100m\"\n          memory: \"128Mi\"\n        limits:\n          cpu: \"500m\"\n          memory: \"256Mi\"\n  volumes:\n    - name: config-volume\n      configMap:\n        name: order-service-config",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: production\n  labels:\n    environment: production\n    team: platform\n---\napiVersion: v1\nkind: ResourceQuota\nmetadata:\n  name: production-quota\n  namespace: production\nspec:\n  hard:\n    requests.cpu: \"50\"\n    requests.memory: \"100Gi\"\n    limits.cpu: \"100\"\n    limits.memory: \"200Gi\"\n    pods: \"200\"\n    services: \"50\"\n    persistentvolumeclaims: \"30\"\n---\napiVersion: v1\nkind: LimitRange\nmetadata:\n  name: default-limits\n  namespace: production\nspec:\n  limits:\n    - type: Container\n      default:\n        cpu: \"500m\"\n        memory: \"512Mi\"\n      defaultRequest:\n        cpu: \"100m\"\n        memory: \"128Mi\"\n      max:\n        cpu: \"4\"\n        memory: \"8Gi\"\n      min:\n        cpu: \"50m\"\n        memory: \"64Mi\"",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/kubernetes/core-concepts.md",
+    "wordCount": 1235,
+    "sectionCount": 10
+  }
+}

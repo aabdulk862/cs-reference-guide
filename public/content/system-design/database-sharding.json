@@ -1,0 +1,256 @@
+{
+  "id": "system-design-database-sharding",
+  "slug": "database-sharding",
+  "title": "Database Sharding",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Database sharding horizontally partitions data across multiple database instances (shards), where each shard holds a subset of the total data and operates independently",
+            "The shard key determines data distribution; a good shard key distributes data evenly, aligns with query patterns, and avoids hot spots",
+            "Hash-based sharding uses consistent hashing for uniform distribution; range-based sharding maps contiguous key ranges to shards for range query support",
+            "Cross-shard queries require scatter-gather across multiple shards and result merging, making them significantly more expensive than single-shard queries",
+            "Resharding (adding or removing shards) requires online data migration using techniques like dual-writes, virtual sharding, or shadow traffic",
+            "Virtual sharding maps many logical shards to fewer physical shards, enabling resharding by reassigning logical shards without data movement within a shard",
+            "Two-phase commit or saga patterns handle cross-shard transactions at the cost of performance and complexity",
+            "NewSQL databases (CockroachDB, TiDB, Spanner) provide automatic sharding with distributed transactions, trading operational simplicity for some performance overhead"
+          ]
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database sharding becomes necessary when a single database instance cannot handle the write throughput required by your application, when the dataset exceeds the storage capacity of a single machine, or when write latency is unacceptable due to lock contention on a single instance. Sharding is appropriate for applications with clear partition boundaries in their data model (multi-tenant SaaS sharded by tenant, social networks sharded by user, e-commerce sharded by merchant), where most queries can be satisfied by a single shard, and where the operational complexity of managing multiple database instances is justified by the scale requirements. Sharding is not appropriate when read replicas can solve your scaling problem (read-heavy workloads with acceptable replication lag), when your dataset fits comfortably on a single machine with room to grow, or when your query patterns require frequent cross-shard joins. Consider sharding as a last resort after exhausting vertical scaling, read replicas, caching, and query optimization, because it introduces significant operational complexity that persists for the lifetime of the system."
+        }
+      ],
+      "wordCount": 166,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "shard-router-with-virtual-sharding",
+          "heading": "Shard Router with Virtual Sharding",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "/**\n * Shard router using virtual sharding for flexible resharding.\n * Maps logical shards (many) to physical shards (few), enabling\n * resharding by reassigning logical shards without moving data within a shard.\n */\npublic class VirtualShardRouter {\n    private final int virtualShardCount; // e.g., 1024 logical shards\n    private volatile Map<Integer, PhysicalShard> shardMapping; // logical -> physical\n    private final ConsistentHasher hasher;\n\n    public VirtualShardRouter(int virtualShardCount, List<PhysicalShard> physicalShards) {\n        this.virtualShardCount = virtualShardCount;\n        this.hasher = new ConsistentHasher();\n        this.shardMapping = buildInitialMapping(virtualShardCount, physicalShards);\n    }\n\n    /**\n     * Route a key to its physical shard.\n     * Two-level mapping: key -> virtual shard -> physical shard\n     */\n    public PhysicalShard route(String shardKey) {\n        int virtualShard = getVirtualShard(shardKey);\n        PhysicalShard physical = shardMapping.get(virtualShard);\n        if (physical == null) {\n            throw new ShardRoutingException(\n                \"No physical shard mapped for virtual shard \" + virtualShard\n            );\n        }\n        return physical;\n    }\n\n    /**\n     * Get the virtual shard for a key using consistent hashing.\n     * The virtual shard count never changes, providing stable key-to-logical-shard mapping.\n     */\n    private int getVirtualShard(String shardKey) {\n        long hash = hasher.hash(shardKey);\n        return (int) (Math.abs(hash) % virtualShardCount);\n    }\n\n    /**\n     * Scatter-gather query across all physical shards.\n     * Used for queries that cannot be routed to a single shard.\n     */\n    public <T> List<T> scatterGather(\n            Function<PhysicalShard, List<T>> queryExecutor,\n            Comparator<T> resultOrdering,\n            int limit) {\n\n        Set<PhysicalShard> uniqueShards = new HashSet<>(shardMapping.values());\n\n        List<CompletableFuture<List<T>>> futures = uniqueShards.stream()\n            .map(shard -> CompletableFuture.supplyAsync(() -> queryExecutor.apply(shard)))\n            .collect(Collectors.toList());\n\n        // Wait for all shards to respond (with timeout)\n        List<T> allResults = futures.stream()\n            .map(f -> {\n                try {\n                    return f.get(5, TimeUnit.SECONDS);\n                } catch (Exception e) {\n                    throw new ShardQueryException(\"Shard query failed\", e);\n                }\n            })\n            .flatMap(List::stream)\n            .sorted(resultOrdering)\n            .limit(limit)\n            .collect(Collectors.toList());\n\n        return allResults;\n    }\n\n    /**\n     * Resharding: move virtual shards from one physical shard to another.\n     * This is the atomic switch after data migration is complete.\n     */\n    public void reassignVirtualShards(\n            List<Integer> virtualShards,\n            PhysicalShard newPhysicalShard) {\n\n        Map<Integer, PhysicalShard> newMapping = new HashMap<>(shardMapping);\n        for (int vs : virtualShards) {\n            newMapping.put(vs, newPhysicalShard);\n        }\n        // Atomic swap of the mapping (volatile write)\n        this.shardMapping = Collections.unmodifiableMap(newMapping);\n    }\n\n    private Map<Integer, PhysicalShard> buildInitialMapping(\n            int virtualCount, List<PhysicalShard> physical) {\n        Map<Integer, PhysicalShard> mapping = new HashMap<>();\n        for (int i = 0; i < virtualCount; i++) {\n            // Distribute virtual shards evenly across physical shards\n            PhysicalShard target = physical.get(i % physical.size());\n            mapping.put(i, target);\n        }\n        return Collections.unmodifiableMap(mapping);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "online-resharding-with-dual-write-strategy",
+          "heading": "Online Resharding with Dual-Write Strategy",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "/**\n * Online resharding manager that migrates data between shards\n * without downtime using a dual-write strategy.\n *\n * Phases:\n * 1. DUAL_WRITE: Write to both old and new shard\n * 2. BACKFILL: Copy historical data from old to new shard\n * 3. VERIFY: Compare data between shards for consistency\n * 4. CUTOVER: Switch reads to new shard, stop writing to old\n * 5. CLEANUP: Remove data from old shard\n */\nenum ReshardPhase {\n  IDLE = 'IDLE',\n  DUAL_WRITE = 'DUAL_WRITE',\n  BACKFILL = 'BACKFILL',\n  VERIFY = 'VERIFY',\n  CUTOVER = 'CUTOVER',\n  CLEANUP = 'CLEANUP'\n}\n\nclass OnlineResharder {\n  private phase: ReshardPhase = ReshardPhase.IDLE;\n  private readonly sourceShards: Map<string, DatabaseClient>;\n  private readonly targetShards: Map<string, DatabaseClient>;\n  private readonly router: ShardRouter;\n  private readonly metrics: ReshardMetrics;\n\n  constructor(\n    sourceShards: Map<string, DatabaseClient>,\n    targetShards: Map<string, DatabaseClient>,\n    router: ShardRouter\n  ) {\n    this.sourceShards = sourceShards;\n    this.targetShards = targetShards;\n    this.router = router;\n    this.metrics = new ReshardMetrics();\n  }\n\n  /**\n   * Write operation during resharding.\n   * In DUAL_WRITE phase, writes go to both source and target.\n   */\n  async write(key: string, data: Record<string, unknown>): Promise<void> {\n    const sourceShard = this.router.routeSource(key);\n    const targetShard = this.router.routeTarget(key);\n\n    switch (this.phase) {\n      case ReshardPhase.IDLE:\n        // Normal operation: write to source only\n        await this.sourceShards.get(sourceShard)!.write(key, data);\n        break;\n\n      case ReshardPhase.DUAL_WRITE:\n      case ReshardPhase.BACKFILL:\n      case ReshardPhase.VERIFY:\n        // Dual-write: write to both source and target\n        await Promise.all([\n          this.sourceShards.get(sourceShard)!.write(key, data),\n          this.targetShards.get(targetShard)!.write(key, data)\n        ]);\n        this.metrics.dualWrites++;\n        break;\n\n      case ReshardPhase.CUTOVER:\n      case ReshardPhase.CLEANUP:\n        // Post-cutover: write to target only\n        await this.targetShards.get(targetShard)!.write(key, data);\n        break;\n    }\n  }\n\n  /**\n   * Read operation during resharding.\n   * Reads from source until cutover, then from target.\n   */\n  async read(key: string): Promise<Record<string, unknown> | null> {\n    if (this.phase === ReshardPhase.CUTOVER || this.phase === ReshardPhase.CLEANUP) {\n      const targetShard = this.router.routeTarget(key);\n      return this.targetShards.get(targetShard)!.read(key);\n    }\n\n    const sourceShard = this.router.routeSource(key);\n    return this.sourceShards.get(sourceShard)!.read(key);\n  }\n\n  /**\n   * Backfill historical data from source to target shards.\n   * Processes in batches with rate limiting to avoid overloading.\n   */\n  async backfill(batchSize: number = 1000, rateLimit: number = 5000): Promise<void> {\n    this.phase = ReshardPhase.BACKFILL;\n    let cursor: string | null = null;\n    let totalMigrated = 0;\n\n    for (const [shardId, client] of this.sourceShards) {\n      do {\n        const batch = await client.scan(cursor, batchSize);\n        cursor = batch.nextCursor;\n\n        for (const record of batch.records) {\n          const targetShard = this.router.routeTarget(record.key);\n          const targetClient = this.targetShards.get(targetShard)!;\n\n          // Only copy if not already present (dual-write may have written it)\n          const existing = await targetClient.read(record.key);\n          if (!existing || existing.version < record.version) {\n            await targetClient.write(record.key, record.data);\n            totalMigrated++;\n          }\n\n          // Rate limiting\n          if (totalMigrated % rateLimit === 0) {\n            await this.sleep(1000); // 1 second pause every rateLimit records\n          }\n        }\n\n        this.metrics.backfilledRecords = totalMigrated;\n      } while (cursor !== null);\n    }\n  }\n\n  /**\n   * Verify data consistency between source and target shards.\n   * Samples records and compares values.\n   */\n  async verify(sampleRate: number = 0.01): Promise<VerificationResult> {\n    this.phase = ReshardPhase.VERIFY;\n    let checked = 0;\n    let mismatches = 0;\n\n    for (const [shardId, client] of this.sourceShards) {\n      let cursor: string | null = null;\n      do {\n        const batch = await client.scan(cursor, 1000);\n        cursor = batch.nextCursor;\n\n        for (const record of batch.records) {\n          if (Math.random() > sampleRate) continue;\n\n          const targetShard = this.router.routeTarget(record.key);\n          const targetRecord = await this.targetShards.get(targetShard)!.read(record.key);\n\n          checked++;\n          if (!targetRecord || !this.deepEqual(record.data, targetRecord)) {\n            mismatches++;\n          }\n        }\n      } while (cursor !== null);\n    }\n\n    return {\n      checked,\n      mismatches,\n      mismatchRate: checked > 0 ? mismatches / checked : 0,\n      passed: mismatches === 0\n    };\n  }\n\n  async cutover(): Promise<void> {\n    this.phase = ReshardPhase.CUTOVER;\n    // Update router to use new shard mapping for reads\n    this.router.activateTargetMapping();\n    this.metrics.cutoverTimestamp = Date.now();\n  }\n\n  private sleep(ms: number): Promise<void> {\n    return new Promise(resolve => setTimeout(resolve, ms));\n  }\n\n  private deepEqual(a: unknown, b: unknown): boolean {\n    return JSON.stringify(a) === JSON.stringify(b);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "shard-aware-repository-pattern",
+          "heading": "Shard-Aware Repository Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "/**\n * Repository that transparently routes queries to the correct shard\n * based on the entity's shard key.\n */\n@Repository\npublic class ShardedOrderRepository {\n    private final VirtualShardRouter router;\n    private final JdbcTemplateFactory templateFactory;\n\n    public ShardedOrderRepository(VirtualShardRouter router,\n                                   JdbcTemplateFactory templateFactory) {\n        this.router = router;\n        this.templateFactory = templateFactory;\n    }\n\n    /**\n     * Single-shard query: route by customer ID (shard key).\n     * Most efficient — hits exactly one shard.\n     */\n    public List<Order> findByCustomerId(String customerId) {\n        PhysicalShard shard = router.route(customerId);\n        JdbcTemplate template = templateFactory.getTemplate(shard);\n\n        return template.query(\n            \"SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC\",\n            new OrderRowMapper(),\n            customerId\n        );\n    }\n\n    /**\n     * Single-shard write: route by customer ID.\n     */\n    public Order save(Order order) {\n        PhysicalShard shard = router.route(order.getCustomerId());\n        JdbcTemplate template = templateFactory.getTemplate(shard);\n\n        template.update(\n            \"INSERT INTO orders (id, customer_id, total, status, created_at) \" +\n            \"VALUES (?, ?, ?, ?, ?)\",\n            order.getId(),\n            order.getCustomerId(),\n            order.getTotal(),\n            order.getStatus().name(),\n            order.getCreatedAt()\n        );\n\n        return order;\n    }\n\n    /**\n     * Cross-shard query: scatter-gather across all shards.\n     * Used for admin queries or analytics that span all customers.\n     * Significantly more expensive than single-shard queries.\n     */\n    public List<Order> findRecentOrders(Instant since, int limit) {\n        return router.scatterGather(\n            shard -> {\n                JdbcTemplate template = templateFactory.getTemplate(shard);\n                return template.query(\n                    \"SELECT * FROM orders WHERE created_at > ? \" +\n                    \"ORDER BY created_at DESC LIMIT ?\",\n                    new OrderRowMapper(),\n                    since,\n                    limit\n                );\n            },\n            Comparator.comparing(Order::getCreatedAt).reversed(),\n            limit\n        );\n    }\n\n    /**\n     * Cross-shard aggregation: compute total revenue across all shards.\n     * Each shard computes its partial aggregate, then results are combined.\n     */\n    public BigDecimal getTotalRevenue(Instant from, Instant to) {\n        List<BigDecimal> partialSums = router.scatterGather(\n            shard -> {\n                JdbcTemplate template = templateFactory.getTemplate(shard);\n                BigDecimal sum = template.queryForObject(\n                    \"SELECT COALESCE(SUM(total), 0) FROM orders \" +\n                    \"WHERE created_at BETWEEN ? AND ? AND status = 'COMPLETED'\",\n                    BigDecimal.class,\n                    from, to\n                );\n                return List.of(sum);\n            },\n            Comparator.naturalOrder(),\n            Integer.MAX_VALUE\n        );\n\n        return partialSums.stream()\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n\n    /**\n     * Paginated cross-shard query using cursor-based pagination.\n     * Each shard maintains its own cursor; the router merges results.\n     */\n    public PagedResult<Order> findAllPaginated(\n            Map<String, String> shardCursors, int pageSize) {\n\n        Map<String, String> newCursors = new HashMap<>();\n        List<Order> allResults = new ArrayList<>();\n\n        Set<PhysicalShard> shards = new HashSet<>(\n            router.getAllPhysicalShards()\n        );\n\n        for (PhysicalShard shard : shards) {\n            String cursor = shardCursors.getOrDefault(shard.getId(), \"\");\n            JdbcTemplate template = templateFactory.getTemplate(shard);\n\n            List<Order> shardResults = template.query(\n                \"SELECT * FROM orders WHERE id > ? ORDER BY id LIMIT ?\",\n                new OrderRowMapper(),\n                cursor,\n                pageSize\n            );\n\n            allResults.addAll(shardResults);\n            if (!shardResults.isEmpty()) {\n                newCursors.put(shard.getId(),\n                    shardResults.get(shardResults.size() - 1).getId());\n            }\n        }\n\n        // Sort merged results and take page size\n        allResults.sort(Comparator.comparing(Order::getId));\n        List<Order> page = allResults.subList(0, Math.min(pageSize, allResults.size()));\n\n        return new PagedResult<>(page, newCursors, allResults.size() >= pageSize);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Choosing a shard key that creates hot spots: sharding by a monotonically increasing value (auto-increment ID, timestamp) sends all recent writes to a single shard while older shards sit idle. This defeats the purpose of sharding for write scaling. Choose keys with high cardinality and uniform distribution, or use hash-based sharding to randomize distribution.",
+            "Not planning for resharding from the start: starting with a fixed number of shards without virtual sharding or a migration strategy means painful, often downtime-requiring resharding when capacity limits are reached. Design with virtual shards (1024+ logical shards mapped to fewer physical shards) from day one, enabling resharding by reassigning logical shards rather than moving individual records.",
+            "Underestimating cross-shard query complexity: queries that span multiple shards require scatter-gather, which is O(N) in the number of shards for both latency (parallel) and throughput (total work). Pagination across shards is particularly complex because each shard has its own ordering. Design your shard key to align with your most common query patterns so that 90%+ of queries hit a single shard.",
+            "Implementing cross-shard transactions naively: distributed transactions using two-phase commit block all participating shards until the coordinator decides commit or abort. A slow or failed coordinator can lock shards indefinitely. Use saga patterns (compensating transactions) for cross-shard operations, accepting eventual consistency in exchange for availability and performance.",
+            "Ignoring shard size imbalance over time: even with a good initial distribution, data growth patterns can cause some shards to grow much larger than others (e.g., power-law distributions where some tenants generate far more data). Monitor shard sizes and implement automatic rebalancing or split large shards when they exceed thresholds.",
+            "Sharding too early: sharding adds significant operational complexity (backup coordination, schema migrations across shards, monitoring per-shard health, cross-shard query support). If your database can handle the load with vertical scaling, read replicas, and query optimization, those approaches are simpler and cheaper to operate. Shard only when you have exhausted simpler alternatives.",
+            "Not considering the impact on secondary indexes: global secondary indexes across shards require either maintaining a separate index service (adding latency and consistency challenges) or scatter-gather queries on every indexed lookup. Local secondary indexes (per-shard) only work for queries that include the shard key. Design your data model and access patterns before choosing a sharding strategy."
+          ]
+        }
+      ],
+      "wordCount": 375,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Vitess (YouTube/PlanetScale): Vitess is a database clustering system for horizontal scaling of MySQL, originally built at YouTube to handle their massive write throughput. It introduces a vtgate proxy layer that routes queries to the correct shard based on a vindex (virtual index) that maps shard keys to shards. Vitess handles cross-shard queries by rewriting them into per-shard queries and merging results. It supports online schema changes across hundreds of shards, automated resharding with minimal downtime, and connection pooling that multiplexes thousands of application connections over fewer MySQL connections. PlanetScale offers Vitess as a managed service."
+        },
+        {
+          "type": "paragraph",
+          "text": "Instagram's Sharded PostgreSQL: Instagram shards their PostgreSQL databases by user ID, with each logical shard containing data for a range of user IDs. They use thousands of logical shards mapped to dozens of physical PostgreSQL instances. The shard mapping is stored in a configuration service, enabling resharding by updating the mapping and migrating data. Their approach demonstrates that traditional RDBMS can scale horizontally with application-level sharding, preserving SQL capabilities and ACID transactions within each shard while accepting eventual consistency for cross-shard operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Discord's Message Storage: Discord shards message data by channel ID, ensuring all messages in a channel reside on the same shard for efficient retrieval. They migrated from MongoDB to Cassandra for message storage, using channel_id as the partition key. This design enables fast message history retrieval (single-partition query) while distributing write load across the cluster. For channels with extremely high message volume (large servers), they implement per-channel rate limiting and archival to prevent individual partitions from growing unbounded."
+        },
+        {
+          "type": "paragraph",
+          "text": "Stripe's Payment Processing: Stripe shards their payment data by merchant ID, keeping all of a merchant's transactions, customers, and payment methods on the same shard. This enables efficient per-merchant queries (the most common access pattern) while distributing write load across shards. Cross-merchant queries (platform-level analytics, compliance reporting) use dedicated analytics replicas that aggregate data from all shards. Their online migration system supports resharding without downtime using dual-writes and gradual traffic shifting."
+        },
+        {
+          "type": "paragraph",
+          "text": "Slack's Workspace Sharding: Slack shards data by workspace (organization), with each workspace's messages, channels, and files stored on the same shard. This natural partition boundary means most operations (sending messages, searching within a workspace) hit a single shard. Cross-workspace operations (Slack Connect channels shared between organizations) require cross-shard coordination using an event-driven architecture. When a workspace grows too large for its shard, Slack migrates it to a dedicated shard using their online migration tooling."
+        }
+      ],
+      "wordCount": 400,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you choose a shard key for a multi-tenant SaaS application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Tenant ID is the natural shard key for multi-tenant applications because: (1) Most queries are scoped to a single tenant (user sees only their organization's data). (2) It provides good distribution if tenants are numerous. (3) It aligns with data isolation requirements. The main risk is tenant size imbalance: a few large tenants may overwhelm their shard while small tenants leave their shards underutilized. Mitigate with: virtual sharding (large tenants span multiple virtual shards), dedicated shards for the largest tenants, and monitoring shard utilization with automated alerts when imbalance exceeds thresholds. For queries that span tenants (admin dashboards, billing aggregation), maintain separate analytics replicas or use a CQRS pattern with a denormalized read model."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose range-based sharding over hash-based sharding?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Range-based sharding maps contiguous key ranges to shards (e.g., users A-H on shard 1, I-P on shard 2). Choose it when your primary access pattern involves range queries (time-series data queried by date range, alphabetical listings, sequential ID ranges). The tradeoff is potential hot spots: if recent data is accessed most frequently and new data always goes to the latest range, one shard handles disproportionate load. Hash-based sharding distributes keys uniformly regardless of their natural ordering, eliminating hot spots but making range queries impossible without scatter-gather. Choose hash-based when distribution uniformity matters more than range query efficiency, which is the common case for most OLTP workloads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle database migrations (schema changes) across a sharded database?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Schema changes across shards must be coordinated carefully: (1) Use online DDL tools (pt-online-schema-change for MySQL, pg_repack for PostgreSQL) that create a new table, copy data, and swap atomically without locking. (2) Roll out changes shard-by-shard rather than simultaneously, monitoring for issues after each shard. (3) Make changes backward-compatible: add columns as nullable first, deploy application code that handles both schemas, then make columns non-nullable in a subsequent migration. (4) For Vitess/similar systems, use their built-in online DDL that coordinates across shards automatically. (5) Never run ALTER TABLE directly on production shards; always use tooling that avoids long-running locks."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the tradeoffs between application-level sharding and using a NewSQL database like CockroachDB."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Application-level sharding gives you full control over data placement, query routing, and shard management. You can optimize for your specific access patterns and use any database engine. The cost is significant engineering effort for the sharding layer, cross-shard queries, resharding tooling, and operational complexity. NewSQL databases (CockroachDB, TiDB, Spanner) handle sharding transparently with automatic data distribution, rebalancing, and distributed transactions. The tradeoffs are: higher per-query latency (distributed transaction coordination), less control over data placement, vendor lock-in to the NewSQL engine, and potentially higher infrastructure cost. Choose application-level sharding when you need maximum performance, have well-defined access patterns, and can invest in the engineering. Choose NewSQL when you need distributed transactions, want operational simplicity, and can accept the latency overhead."
+        }
+      ],
+      "wordCount": 492,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor per-shard metrics independently: query latency, connection count, disk usage, replication lag, and lock contention. A single overloaded shard degrades the experience for all users on that shard. Set up alerts for shard-level metrics that trigger before user impact (e.g., alert when any shard exceeds 70% disk capacity or P99 latency exceeds 100ms).",
+            "Implement a shard health dashboard that shows the distribution of data and traffic across shards. Visualize shard sizes, query rates, and latency percentiles side-by-side to quickly identify imbalances. Include the virtual-to-physical shard mapping so operators can plan resharding operations.",
+            "Use connection pooling between the application tier and each shard. As you scale application instances, the total connection count to each shard grows multiplicatively. PgBouncer (PostgreSQL) or ProxySQL (MySQL) between the application and database multiplexes many application connections over fewer database connections, preventing connection exhaustion.",
+            "Test resharding procedures regularly in staging environments. Online resharding is complex and error-prone; discovering issues during a production resharding event is extremely costly. Run resharding drills quarterly, measuring data consistency, migration throughput, and application impact during the process.",
+            "Design your shard key to be immutable. If the shard key can change (e.g., a user changes their username and you shard by username), you must move their data between shards atomically. Shard by immutable identifiers (UUIDs, auto-increment IDs) and maintain lookup indexes for mutable attributes.",
+            "Implement automated shard health scoring that combines multiple signals (disk usage percentage, query latency percentiles, replication lag, connection saturation, and error rates) into a single health score per shard. Use this score to trigger automated alerts at different severity levels and to inform resharding priority decisions. A shard scoring below threshold for sustained periods should automatically page the on-call engineer with context about which metrics are degraded.",
+            "Plan for shard-level disaster recovery independently. Each shard should have its own backup schedule, point-in-time recovery capability, and failover procedure. Test shard-level recovery regularly because restoring a single shard from backup while other shards continue serving traffic is operationally different from restoring an entire database. Document the procedure for rebuilding a shard from its replicas and validate that the process completes within your recovery time objective."
+          ]
+        }
+      ],
+      "wordCount": 354,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Scalability — Sharding is the primary strategy for scaling write throughput beyond a single database instance",
+            "Consistency Models — Cross-shard operations involve consistency tradeoffs between shards",
+            "Caching — Caching reduces database load, potentially deferring the need for sharding",
+            "Distributed Systems — Sharded databases are distributed systems subject to the same failure modes and coordination challenges"
+          ]
+        }
+      ],
+      "wordCount": 55,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "/**\n * Shard router using virtual sharding for flexible resharding.\n * Maps logical shards (many) to physical shards (few), enabling\n * resharding by reassigning logical shards without moving data within a shard.\n */\npublic class VirtualShardRouter {\n    private final int virtualShardCount; // e.g., 1024 logical shards\n    private volatile Map<Integer, PhysicalShard> shardMapping; // logical -> physical\n    private final ConsistentHasher hasher;\n\n    public VirtualShardRouter(int virtualShardCount, List<PhysicalShard> physicalShards) {\n        this.virtualShardCount = virtualShardCount;\n        this.hasher = new ConsistentHasher();\n        this.shardMapping = buildInitialMapping(virtualShardCount, physicalShards);\n    }\n\n    /**\n     * Route a key to its physical shard.\n     * Two-level mapping: key -> virtual shard -> physical shard\n     */\n    public PhysicalShard route(String shardKey) {\n        int virtualShard = getVirtualShard(shardKey);\n        PhysicalShard physical = shardMapping.get(virtualShard);\n        if (physical == null) {\n            throw new ShardRoutingException(\n                \"No physical shard mapped for virtual shard \" + virtualShard\n            );\n        }\n        return physical;\n    }\n\n    /**\n     * Get the virtual shard for a key using consistent hashing.\n     * The virtual shard count never changes, providing stable key-to-logical-shard mapping.\n     */\n    private int getVirtualShard(String shardKey) {\n        long hash = hasher.hash(shardKey);\n        return (int) (Math.abs(hash) % virtualShardCount);\n    }\n\n    /**\n     * Scatter-gather query across all physical shards.\n     * Used for queries that cannot be routed to a single shard.\n     */\n    public <T> List<T> scatterGather(\n            Function<PhysicalShard, List<T>> queryExecutor,\n            Comparator<T> resultOrdering,\n            int limit) {\n\n        Set<PhysicalShard> uniqueShards = new HashSet<>(shardMapping.values());\n\n        List<CompletableFuture<List<T>>> futures = uniqueShards.stream()\n            .map(shard -> CompletableFuture.supplyAsync(() -> queryExecutor.apply(shard)))\n            .collect(Collectors.toList());\n\n        // Wait for all shards to respond (with timeout)\n        List<T> allResults = futures.stream()\n            .map(f -> {\n                try {\n                    return f.get(5, TimeUnit.SECONDS);\n                } catch (Exception e) {\n                    throw new ShardQueryException(\"Shard query failed\", e);\n                }\n            })\n            .flatMap(List::stream)\n            .sorted(resultOrdering)\n            .limit(limit)\n            .collect(Collectors.toList());\n\n        return allResults;\n    }\n\n    /**\n     * Resharding: move virtual shards from one physical shard to another.\n     * This is the atomic switch after data migration is complete.\n     */\n    public void reassignVirtualShards(\n            List<Integer> virtualShards,\n            PhysicalShard newPhysicalShard) {\n\n        Map<Integer, PhysicalShard> newMapping = new HashMap<>(shardMapping);\n        for (int vs : virtualShards) {\n            newMapping.put(vs, newPhysicalShard);\n        }\n        // Atomic swap of the mapping (volatile write)\n        this.shardMapping = Collections.unmodifiableMap(newMapping);\n    }\n\n    private Map<Integer, PhysicalShard> buildInitialMapping(\n            int virtualCount, List<PhysicalShard> physical) {\n        Map<Integer, PhysicalShard> mapping = new HashMap<>();\n        for (int i = 0; i < virtualCount; i++) {\n            // Distribute virtual shards evenly across physical shards\n            PhysicalShard target = physical.get(i % physical.size());\n            mapping.put(i, target);\n        }\n        return Collections.unmodifiableMap(mapping);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "/**\n * Online resharding manager that migrates data between shards\n * without downtime using a dual-write strategy.\n *\n * Phases:\n * 1. DUAL_WRITE: Write to both old and new shard\n * 2. BACKFILL: Copy historical data from old to new shard\n * 3. VERIFY: Compare data between shards for consistency\n * 4. CUTOVER: Switch reads to new shard, stop writing to old\n * 5. CLEANUP: Remove data from old shard\n */\nenum ReshardPhase {\n  IDLE = 'IDLE',\n  DUAL_WRITE = 'DUAL_WRITE',\n  BACKFILL = 'BACKFILL',\n  VERIFY = 'VERIFY',\n  CUTOVER = 'CUTOVER',\n  CLEANUP = 'CLEANUP'\n}\n\nclass OnlineResharder {\n  private phase: ReshardPhase = ReshardPhase.IDLE;\n  private readonly sourceShards: Map<string, DatabaseClient>;\n  private readonly targetShards: Map<string, DatabaseClient>;\n  private readonly router: ShardRouter;\n  private readonly metrics: ReshardMetrics;\n\n  constructor(\n    sourceShards: Map<string, DatabaseClient>,\n    targetShards: Map<string, DatabaseClient>,\n    router: ShardRouter\n  ) {\n    this.sourceShards = sourceShards;\n    this.targetShards = targetShards;\n    this.router = router;\n    this.metrics = new ReshardMetrics();\n  }\n\n  /**\n   * Write operation during resharding.\n   * In DUAL_WRITE phase, writes go to both source and target.\n   */\n  async write(key: string, data: Record<string, unknown>): Promise<void> {\n    const sourceShard = this.router.routeSource(key);\n    const targetShard = this.router.routeTarget(key);\n\n    switch (this.phase) {\n      case ReshardPhase.IDLE:\n        // Normal operation: write to source only\n        await this.sourceShards.get(sourceShard)!.write(key, data);\n        break;\n\n      case ReshardPhase.DUAL_WRITE:\n      case ReshardPhase.BACKFILL:\n      case ReshardPhase.VERIFY:\n        // Dual-write: write to both source and target\n        await Promise.all([\n          this.sourceShards.get(sourceShard)!.write(key, data),\n          this.targetShards.get(targetShard)!.write(key, data)\n        ]);\n        this.metrics.dualWrites++;\n        break;\n\n      case ReshardPhase.CUTOVER:\n      case ReshardPhase.CLEANUP:\n        // Post-cutover: write to target only\n        await this.targetShards.get(targetShard)!.write(key, data);\n        break;\n    }\n  }\n\n  /**\n   * Read operation during resharding.\n   * Reads from source until cutover, then from target.\n   */\n  async read(key: string): Promise<Record<string, unknown> | null> {\n    if (this.phase === ReshardPhase.CUTOVER || this.phase === ReshardPhase.CLEANUP) {\n      const targetShard = this.router.routeTarget(key);\n      return this.targetShards.get(targetShard)!.read(key);\n    }\n\n    const sourceShard = this.router.routeSource(key);\n    return this.sourceShards.get(sourceShard)!.read(key);\n  }\n\n  /**\n   * Backfill historical data from source to target shards.\n   * Processes in batches with rate limiting to avoid overloading.\n   */\n  async backfill(batchSize: number = 1000, rateLimit: number = 5000): Promise<void> {\n    this.phase = ReshardPhase.BACKFILL;\n    let cursor: string | null = null;\n    let totalMigrated = 0;\n\n    for (const [shardId, client] of this.sourceShards) {\n      do {\n        const batch = await client.scan(cursor, batchSize);\n        cursor = batch.nextCursor;\n\n        for (const record of batch.records) {\n          const targetShard = this.router.routeTarget(record.key);\n          const targetClient = this.targetShards.get(targetShard)!;\n\n          // Only copy if not already present (dual-write may have written it)\n          const existing = await targetClient.read(record.key);\n          if (!existing || existing.version < record.version) {\n            await targetClient.write(record.key, record.data);\n            totalMigrated++;\n          }\n\n          // Rate limiting\n          if (totalMigrated % rateLimit === 0) {\n            await this.sleep(1000); // 1 second pause every rateLimit records\n          }\n        }\n\n        this.metrics.backfilledRecords = totalMigrated;\n      } while (cursor !== null);\n    }\n  }\n\n  /**\n   * Verify data consistency between source and target shards.\n   * Samples records and compares values.\n   */\n  async verify(sampleRate: number = 0.01): Promise<VerificationResult> {\n    this.phase = ReshardPhase.VERIFY;\n    let checked = 0;\n    let mismatches = 0;\n\n    for (const [shardId, client] of this.sourceShards) {\n      let cursor: string | null = null;\n      do {\n        const batch = await client.scan(cursor, 1000);\n        cursor = batch.nextCursor;\n\n        for (const record of batch.records) {\n          if (Math.random() > sampleRate) continue;\n\n          const targetShard = this.router.routeTarget(record.key);\n          const targetRecord = await this.targetShards.get(targetShard)!.read(record.key);\n\n          checked++;\n          if (!targetRecord || !this.deepEqual(record.data, targetRecord)) {\n            mismatches++;\n          }\n        }\n      } while (cursor !== null);\n    }\n\n    return {\n      checked,\n      mismatches,\n      mismatchRate: checked > 0 ? mismatches / checked : 0,\n      passed: mismatches === 0\n    };\n  }\n\n  async cutover(): Promise<void> {\n    this.phase = ReshardPhase.CUTOVER;\n    // Update router to use new shard mapping for reads\n    this.router.activateTargetMapping();\n    this.metrics.cutoverTimestamp = Date.now();\n  }\n\n  private sleep(ms: number): Promise<void> {\n    return new Promise(resolve => setTimeout(resolve, ms));\n  }\n\n  private deepEqual(a: unknown, b: unknown): boolean {\n    return JSON.stringify(a) === JSON.stringify(b);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "/**\n * Repository that transparently routes queries to the correct shard\n * based on the entity's shard key.\n */\n@Repository\npublic class ShardedOrderRepository {\n    private final VirtualShardRouter router;\n    private final JdbcTemplateFactory templateFactory;\n\n    public ShardedOrderRepository(VirtualShardRouter router,\n                                   JdbcTemplateFactory templateFactory) {\n        this.router = router;\n        this.templateFactory = templateFactory;\n    }\n\n    /**\n     * Single-shard query: route by customer ID (shard key).\n     * Most efficient — hits exactly one shard.\n     */\n    public List<Order> findByCustomerId(String customerId) {\n        PhysicalShard shard = router.route(customerId);\n        JdbcTemplate template = templateFactory.getTemplate(shard);\n\n        return template.query(\n            \"SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC\",\n            new OrderRowMapper(),\n            customerId\n        );\n    }\n\n    /**\n     * Single-shard write: route by customer ID.\n     */\n    public Order save(Order order) {\n        PhysicalShard shard = router.route(order.getCustomerId());\n        JdbcTemplate template = templateFactory.getTemplate(shard);\n\n        template.update(\n            \"INSERT INTO orders (id, customer_id, total, status, created_at) \" +\n            \"VALUES (?, ?, ?, ?, ?)\",\n            order.getId(),\n            order.getCustomerId(),\n            order.getTotal(),\n            order.getStatus().name(),\n            order.getCreatedAt()\n        );\n\n        return order;\n    }\n\n    /**\n     * Cross-shard query: scatter-gather across all shards.\n     * Used for admin queries or analytics that span all customers.\n     * Significantly more expensive than single-shard queries.\n     */\n    public List<Order> findRecentOrders(Instant since, int limit) {\n        return router.scatterGather(\n            shard -> {\n                JdbcTemplate template = templateFactory.getTemplate(shard);\n                return template.query(\n                    \"SELECT * FROM orders WHERE created_at > ? \" +\n                    \"ORDER BY created_at DESC LIMIT ?\",\n                    new OrderRowMapper(),\n                    since,\n                    limit\n                );\n            },\n            Comparator.comparing(Order::getCreatedAt).reversed(),\n            limit\n        );\n    }\n\n    /**\n     * Cross-shard aggregation: compute total revenue across all shards.\n     * Each shard computes its partial aggregate, then results are combined.\n     */\n    public BigDecimal getTotalRevenue(Instant from, Instant to) {\n        List<BigDecimal> partialSums = router.scatterGather(\n            shard -> {\n                JdbcTemplate template = templateFactory.getTemplate(shard);\n                BigDecimal sum = template.queryForObject(\n                    \"SELECT COALESCE(SUM(total), 0) FROM orders \" +\n                    \"WHERE created_at BETWEEN ? AND ? AND status = 'COMPLETED'\",\n                    BigDecimal.class,\n                    from, to\n                );\n                return List.of(sum);\n            },\n            Comparator.naturalOrder(),\n            Integer.MAX_VALUE\n        );\n\n        return partialSums.stream()\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n\n    /**\n     * Paginated cross-shard query using cursor-based pagination.\n     * Each shard maintains its own cursor; the router merges results.\n     */\n    public PagedResult<Order> findAllPaginated(\n            Map<String, String> shardCursors, int pageSize) {\n\n        Map<String, String> newCursors = new HashMap<>();\n        List<Order> allResults = new ArrayList<>();\n\n        Set<PhysicalShard> shards = new HashSet<>(\n            router.getAllPhysicalShards()\n        );\n\n        for (PhysicalShard shard : shards) {\n            String cursor = shardCursors.getOrDefault(shard.getId(), \"\");\n            JdbcTemplate template = templateFactory.getTemplate(shard);\n\n            List<Order> shardResults = template.query(\n                \"SELECT * FROM orders WHERE id > ? ORDER BY id LIMIT ?\",\n                new OrderRowMapper(),\n                cursor,\n                pageSize\n            );\n\n            allResults.addAll(shardResults);\n            if (!shardResults.isEmpty()) {\n                newCursors.put(shard.getId(),\n                    shardResults.get(shardResults.size() - 1).getId());\n            }\n        }\n\n        // Sort merged results and take page size\n        allResults.sort(Comparator.comparing(Order::getId));\n        List<Order> page = allResults.subList(0, Math.min(pageSize, allResults.size()));\n\n        return new PagedResult<>(page, newCursors, allResults.size() >= pageSize);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/system-design/database-sharding.md",
+    "wordCount": 1997,
+    "sectionCount": 11
+  }
+}

@@ -1,0 +1,300 @@
+{
+  "id": "arrays-and-strings-two-pointers-and-sliding-window",
+  "slug": "two-pointers-and-sliding-window",
+  "title": "Two Pointers and Sliding Window",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Two pointers (sorted array): O(n) time, O(1) space — converging from both ends",
+            "Two pointers (fast/slow): O(n) time, O(1) space — cycle detection, middle finding",
+            "Fixed-size sliding window: O(n) time, O(1) space — max/min/sum of k-element subarrays",
+            "Variable-size sliding window: O(n) time, O(k) space — longest/shortest subarray with constraint",
+            "Shrinkable window pattern: expand right, shrink left until constraint satisfied",
+            "Two pointers on two arrays: O(n + m) merge pattern for sorted arrays",
+            "Key insight: both patterns avoid nested loops by maintaining state incrementally",
+            "Common constraint types: sum, count, distinct elements, character frequency"
+          ]
+        }
+      ],
+      "wordCount": 92,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The two-pointer and sliding window techniques transform brute-force O(n squared) solutions into O(n) linear-time algorithms by exploiting monotonic properties of the problem. They are applicable whenever you can define a valid window or pair condition that changes predictably as pointers move."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use two pointers when the array is sorted and you need to find pairs satisfying a condition (two-sum, three-sum, container with most water), when you need to partition or rearrange elements in-place (remove duplicates, move zeros, Dutch National Flag), or when you need to detect cycles in linked structures (Floyd's algorithm)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use sliding window when you need to find the longest or shortest subarray satisfying a constraint (maximum sum subarray of size k, longest substring without repeating characters), when the constraint involves a running aggregate (sum, product, frequency count) that can be updated incrementally as the window moves, or when you need to count subarrays satisfying a condition."
+        },
+        {
+          "type": "paragraph",
+          "text": "The key insight is that both techniques maintain a state that changes by a constant amount as pointers advance, avoiding the need to recompute from scratch. This incremental update is what provides the linear time guarantee."
+        },
+        {
+          "type": "paragraph",
+          "text": "These patterns appear in production systems for stream processing (maintaining rolling statistics over a window of events), network protocols (TCP sliding window for flow control), and real-time analytics (computing moving averages over time-series data)."
+        }
+      ],
+      "wordCount": 219,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "two-sum-on-sorted-array",
+          "heading": "Two Sum on Sorted Array",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The classic two-pointer pattern for finding a pair that sums to a target. Pointers converge from both ends based on whether the current sum is too small or too large."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class TwoPointers {\n    /**\n     * Finds indices of two numbers in a sorted array that sum to target.\n     * Returns [-1, -1] if no such pair exists.\n     * Time: O(n), Space: O(1)\n     */\n    public static int[] twoSum(int[] sorted, int target) {\n        int left = 0, right = sorted.length - 1;\n\n        while (left < right) {\n            int sum = sorted[left] + sorted[right];\n            if (sum == target) {\n                return new int[]{left, right};\n            } else if (sum < target) {\n                left++;   // Need larger sum, move left pointer right\n            } else {\n                right--;  // Need smaller sum, move right pointer left\n            }\n        }\n\n        return new int[]{-1, -1};\n    }\n\n    /**\n     * Three-sum: find all unique triplets that sum to zero.\n     * Fix one element, then use two-pointer on the remainder.\n     * Time: O(n^2), Space: O(1) excluding output\n     */\n    public static List<List<Integer>> threeSum(int[] nums) {\n        Arrays.sort(nums);\n        List<List<Integer>> result = new ArrayList<>();\n\n        for (int i = 0; i < nums.length - 2; i++) {\n            if (i > 0 && nums[i] == nums[i - 1]) continue; // Skip duplicates\n\n            int left = i + 1, right = nums.length - 1;\n            while (left < right) {\n                int sum = nums[i] + nums[left] + nums[right];\n                if (sum == 0) {\n                    result.add(Arrays.asList(nums[i], nums[left], nums[right]));\n                    while (left < right && nums[left] == nums[left + 1]) left++;\n                    while (left < right && nums[right] == nums[right - 1]) right--;\n                    left++;\n                    right--;\n                } else if (sum < 0) {\n                    left++;\n                } else {\n                    right--;\n                }\n            }\n        }\n        return result;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "function twoSum(sorted: number[], target: number): [number, number] | null {\n  let left = 0;\n  let right = sorted.length - 1;\n\n  while (left < right) {\n    const sum = sorted[left] + sorted[right];\n    if (sum === target) return [left, right];\n    if (sum < target) left++;\n    else right--;\n  }\n\n  return null;\n}\n\nfunction threeSum(nums: number[]): number[][] {\n  nums.sort((a, b) => a - b);\n  const result: number[][] = [];\n\n  for (let i = 0; i < nums.length - 2; i++) {\n    if (i > 0 && nums[i] === nums[i - 1]) continue;\n\n    let left = i + 1;\n    let right = nums.length - 1;\n\n    while (left < right) {\n      const sum = nums[i] + nums[left] + nums[right];\n      if (sum === 0) {\n        result.push([nums[i], nums[left], nums[right]]);\n        while (left < right && nums[left] === nums[left + 1]) left++;\n        while (left < right && nums[right] === nums[right - 1]) right--;\n        left++;\n        right--;\n      } else if (sum < 0) left++;\n      else right--;\n    }\n  }\n\n  return result;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 30,
+          "subsections": []
+        },
+        {
+          "id": "fixed-size-sliding-window",
+          "heading": "Fixed-Size Sliding Window",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Compute the maximum sum of any contiguous subarray of size k. The window slides one position at a time, adding the new element and removing the old one."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class SlidingWindow {\n    /**\n     * Maximum sum of any subarray of exactly size k.\n     * Time: O(n), Space: O(1)\n     */\n    public static int maxSumSubarray(int[] arr, int k) {\n        if (arr.length < k) throw new IllegalArgumentException(\"Array smaller than window\");\n\n        int windowSum = 0;\n        for (int i = 0; i < k; i++) {\n            windowSum += arr[i];\n        }\n\n        int maxSum = windowSum;\n        for (int i = k; i < arr.length; i++) {\n            windowSum += arr[i] - arr[i - k];  // Slide: add new, remove old\n            maxSum = Math.max(maxSum, windowSum);\n        }\n\n        return maxSum;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 28,
+          "subsections": []
+        },
+        {
+          "id": "variable-size-sliding-window",
+          "heading": "Variable-Size Sliding Window",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Find the length of the longest substring without repeating characters. The window expands right and shrinks left when a duplicate is found."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class VariableWindow {\n    /**\n     * Longest substring without repeating characters.\n     * Time: O(n), Space: O(min(n, alphabet_size))\n     */\n    public static int lengthOfLongestSubstring(String s) {\n        Map<Character, Integer> lastSeen = new HashMap<>();\n        int maxLen = 0;\n        int left = 0;\n\n        for (int right = 0; right < s.length(); right++) {\n            char c = s.charAt(right);\n            if (lastSeen.containsKey(c) && lastSeen.get(c) >= left) {\n                left = lastSeen.get(c) + 1;  // Shrink window past duplicate\n            }\n            lastSeen.put(c, right);\n            maxLen = Math.max(maxLen, right - left + 1);\n        }\n\n        return maxLen;\n    }\n\n    /**\n     * Minimum window substring: smallest window in s containing all chars of t.\n     * Time: O(n), Space: O(t.length)\n     */\n    public static String minWindow(String s, String t) {\n        Map<Character, Integer> need = new HashMap<>();\n        for (char c : t.toCharArray()) need.merge(c, 1, Integer::sum);\n\n        int have = 0, required = need.size();\n        int left = 0, minLen = Integer.MAX_VALUE, minStart = 0;\n        Map<Character, Integer> window = new HashMap<>();\n\n        for (int right = 0; right < s.length(); right++) {\n            char c = s.charAt(right);\n            window.merge(c, 1, Integer::sum);\n\n            if (need.containsKey(c) && window.get(c).equals(need.get(c))) {\n                have++;\n            }\n\n            while (have == required) {\n                if (right - left + 1 < minLen) {\n                    minLen = right - left + 1;\n                    minStart = left;\n                }\n                char leftChar = s.charAt(left);\n                window.merge(leftChar, -1, Integer::sum);\n                if (need.containsKey(leftChar) && window.get(leftChar) < need.get(leftChar)) {\n                    have--;\n                }\n                left++;\n            }\n        }\n\n        return minLen == Integer.MAX_VALUE ? \"\" : s.substring(minStart, minStart + minLen);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "def length_of_longest_substring(s: str) -> int:\n    \"\"\"Longest substring without repeating characters. O(n) time.\"\"\"\n    last_seen: dict[str, int] = {}\n    max_len = 0\n    left = 0\n\n    for right, char in enumerate(s):\n        if char in last_seen and last_seen[char] >= left:\n            left = last_seen[char] + 1\n        last_seen[char] = right\n        max_len = max(max_len, right - left + 1)\n\n    return max_len\n\n\ndef min_window(s: str, t: str) -> str:\n    \"\"\"Minimum window substring containing all characters of t.\"\"\"\n    from collections import Counter\n\n    need = Counter(t)\n    have, required = 0, len(need)\n    window: dict[str, int] = {}\n    result = \"\"\n    min_len = float(\"inf\")\n    left = 0\n\n    for right, char in enumerate(s):\n        window[char] = window.get(char, 0) + 1\n        if char in need and window[char] == need[char]:\n            have += 1\n\n        while have == required:\n            if right - left + 1 < min_len:\n                min_len = right - left + 1\n                result = s[left:right + 1]\n            left_char = s[left]\n            window[left_char] -= 1\n            if left_char in need and window[left_char] < need[left_char]:\n                have -= 1\n            left += 1\n\n    return result",
+              "runnable": false
+            }
+          ],
+          "wordCount": 22,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Moving both pointers in the same direction when convergence is needed: In the two-sum pattern on sorted arrays, the left pointer must only move right and the right pointer must only move left. Moving both in the same direction breaks the invariant that all pairs between the pointers have been implicitly considered. The convergence property guarantees that no valid pair is skipped.",
+            "Not handling the window initialization phase correctly: For a fixed-size window of size k, the first k-1 iterations are building the initial window and should not produce results. A common bug is checking for maximum or minimum before the window is fully formed, leading to incorrect answers for arrays shorter than k or wrong initial comparisons.",
+            "Forgetting to shrink the window when the constraint is violated: In variable-size window problems, the left pointer must advance when the window violates the constraint. Failing to shrink means the window grows indefinitely, producing incorrect longest or shortest results. The shrinking loop should be a while loop (not if), as multiple shrinks may be needed after a single expansion.",
+            "Off-by-one in window size calculation: The size of a window from index left to right inclusive is right - left + 1, not right - left. This error appears frequently in minimum window substring and longest subarray problems, causing results to be one element too short.",
+            "Using the wrong data structure for window state: Tracking character frequencies with an array of size 26 works for lowercase English letters but fails for Unicode strings. Using a HashMap handles arbitrary character sets but adds overhead. Choose the state structure based on the actual input constraints, and document the assumption."
+          ]
+        }
+      ],
+      "wordCount": 274,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The sliding window pattern is fundamental to TCP flow control, where the sender maintains a window of unacknowledged packets. The window size adjusts dynamically based on network congestion (congestion window) and receiver capacity (receive window). This is literally called the \"sliding window protocol\" in networking literature, and understanding the algorithmic pattern helps debug network performance issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "In stream processing systems like Apache Kafka Streams and Apache Flink, windowed aggregations compute rolling statistics (count, sum, average, percentiles) over time-based or count-based windows. Tumbling windows (fixed, non-overlapping), sliding windows (fixed, overlapping), and session windows (variable, gap-based) all derive from the sliding window pattern. Production systems process millions of events per second using these patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Rate limiting in API gateways uses sliding window counters to enforce request quotas. A fixed window counter (reset every minute) allows burst traffic at window boundaries. A sliding window log (tracking each request timestamp) is precise but memory-intensive. The sliding window counter approximation combines both approaches, using the previous window's count weighted by overlap percentage."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-time analytics dashboards compute moving averages, rolling percentiles, and trend detection using sliding windows over time-series data. Financial trading systems compute VWAP (Volume Weighted Average Price) and Bollinger Bands using fixed-size windows over price data, where the window slides with each new tick."
+        },
+        {
+          "type": "paragraph",
+          "text": "DNA sequence analysis uses sliding windows to compute GC content (percentage of G and C nucleotides) across a genome, identify CpG islands, and find open reading frames. The window size is typically 100-1000 base pairs, and the algorithm must process genomes with billions of positions efficiently."
+        }
+      ],
+      "wordCount": 256,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How would you find the longest substring with at most k distinct characters?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a variable-size sliding window with a HashMap tracking character frequencies. Expand the right pointer, adding characters to the map. When the map size exceeds k, shrink from the left by decrementing frequencies and removing characters with zero count. Track the maximum window size throughout. Time is O(n) because each character is added and removed at most once. Space is O(k) for the frequency map."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Given an array of positive integers, find the minimum length subarray with sum greater than or equal to a target. What if the array contains negative numbers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: For positive integers, use a variable-size sliding window. Expand right to increase the sum, shrink left when sum meets the target while tracking minimum length. Time is O(n) because both pointers move at most n times total. For negative numbers, the sliding window breaks because shrinking does not guarantee sum decrease. Instead, use prefix sums with binary search (O(n log n)) or a deque-based approach maintaining a monotonic prefix sum queue."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the container with most water problem use two pointers?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with pointers at both ends of the height array. The area between two lines is min(height[left], height[right]) times (right minus left). Always move the pointer pointing to the shorter line inward, because moving the taller line can only decrease the width without possibility of increasing the height constraint. This greedy choice is correct because the shorter line is the bottleneck, and keeping it while reducing width can never improve the answer. Time is O(n), space is O(1)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how you would count the number of subarrays with sum equal to k (array may contain negatives)."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: This is not a pure sliding window problem due to negative numbers. Use prefix sums with a HashMap. For each index, compute the running prefix sum. The number of subarrays ending at the current index with sum k equals the number of previous prefix sums equal to (current prefix sum minus k). Store prefix sum frequencies in a HashMap. Time is O(n), space is O(n). This technique is called the \"prefix sum + hash map\" pattern."
+        }
+      ],
+      "wordCount": 367,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use ring buffers for fixed-size sliding windows in streaming systems: When computing rolling statistics over the last N events, a ring buffer (circular array) provides O(1) insertion and removal without memory allocation. Pre-allocate the buffer at startup and overwrite the oldest entry on each new event. This eliminates garbage collection pauses in latency-sensitive systems like trading platforms and real-time monitoring.",
+            "Batch window updates for throughput: In high-throughput stream processing, updating window state for every single event creates CPU overhead from function call and cache invalidation. Batch multiple events (micro-batching) and update the window state once per batch. Apache Spark Structured Streaming uses this approach, trading latency for throughput. Choose batch size based on your latency SLA.",
+            "Consider approximate algorithms for large windows: When the window contains millions of elements and you need percentiles or distinct counts, exact computation requires O(window_size) memory. Approximate data structures like Count-Min Sketch (frequency estimation), HyperLogLog (cardinality), and t-digest (percentiles) provide bounded-error answers with O(1) or O(log n) memory regardless of window size."
+          ]
+        }
+      ],
+      "wordCount": 167,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Array Fundamentals — Core array operations that two-pointer patterns build upon",
+            "String Manipulation — Sliding window applied to substring problems",
+            "Prefix Sums and Hashing — Complementary technique for range queries",
+            "Sorting and Searching — Two pointers often require sorted input"
+          ]
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class TwoPointers {\n    /**\n     * Finds indices of two numbers in a sorted array that sum to target.\n     * Returns [-1, -1] if no such pair exists.\n     * Time: O(n), Space: O(1)\n     */\n    public static int[] twoSum(int[] sorted, int target) {\n        int left = 0, right = sorted.length - 1;\n\n        while (left < right) {\n            int sum = sorted[left] + sorted[right];\n            if (sum == target) {\n                return new int[]{left, right};\n            } else if (sum < target) {\n                left++;   // Need larger sum, move left pointer right\n            } else {\n                right--;  // Need smaller sum, move right pointer left\n            }\n        }\n\n        return new int[]{-1, -1};\n    }\n\n    /**\n     * Three-sum: find all unique triplets that sum to zero.\n     * Fix one element, then use two-pointer on the remainder.\n     * Time: O(n^2), Space: O(1) excluding output\n     */\n    public static List<List<Integer>> threeSum(int[] nums) {\n        Arrays.sort(nums);\n        List<List<Integer>> result = new ArrayList<>();\n\n        for (int i = 0; i < nums.length - 2; i++) {\n            if (i > 0 && nums[i] == nums[i - 1]) continue; // Skip duplicates\n\n            int left = i + 1, right = nums.length - 1;\n            while (left < right) {\n                int sum = nums[i] + nums[left] + nums[right];\n                if (sum == 0) {\n                    result.add(Arrays.asList(nums[i], nums[left], nums[right]));\n                    while (left < right && nums[left] == nums[left + 1]) left++;\n                    while (left < right && nums[right] == nums[right - 1]) right--;\n                    left++;\n                    right--;\n                } else if (sum < 0) {\n                    left++;\n                } else {\n                    right--;\n                }\n            }\n        }\n        return result;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "function twoSum(sorted: number[], target: number): [number, number] | null {\n  let left = 0;\n  let right = sorted.length - 1;\n\n  while (left < right) {\n    const sum = sorted[left] + sorted[right];\n    if (sum === target) return [left, right];\n    if (sum < target) left++;\n    else right--;\n  }\n\n  return null;\n}\n\nfunction threeSum(nums: number[]): number[][] {\n  nums.sort((a, b) => a - b);\n  const result: number[][] = [];\n\n  for (let i = 0; i < nums.length - 2; i++) {\n    if (i > 0 && nums[i] === nums[i - 1]) continue;\n\n    let left = i + 1;\n    let right = nums.length - 1;\n\n    while (left < right) {\n      const sum = nums[i] + nums[left] + nums[right];\n      if (sum === 0) {\n        result.push([nums[i], nums[left], nums[right]]);\n        while (left < right && nums[left] === nums[left + 1]) left++;\n        while (left < right && nums[right] === nums[right - 1]) right--;\n        left++;\n        right--;\n      } else if (sum < 0) left++;\n      else right--;\n    }\n  }\n\n  return result;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class SlidingWindow {\n    /**\n     * Maximum sum of any subarray of exactly size k.\n     * Time: O(n), Space: O(1)\n     */\n    public static int maxSumSubarray(int[] arr, int k) {\n        if (arr.length < k) throw new IllegalArgumentException(\"Array smaller than window\");\n\n        int windowSum = 0;\n        for (int i = 0; i < k; i++) {\n            windowSum += arr[i];\n        }\n\n        int maxSum = windowSum;\n        for (int i = k; i < arr.length; i++) {\n            windowSum += arr[i] - arr[i - k];  // Slide: add new, remove old\n            maxSum = Math.max(maxSum, windowSum);\n        }\n\n        return maxSum;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class VariableWindow {\n    /**\n     * Longest substring without repeating characters.\n     * Time: O(n), Space: O(min(n, alphabet_size))\n     */\n    public static int lengthOfLongestSubstring(String s) {\n        Map<Character, Integer> lastSeen = new HashMap<>();\n        int maxLen = 0;\n        int left = 0;\n\n        for (int right = 0; right < s.length(); right++) {\n            char c = s.charAt(right);\n            if (lastSeen.containsKey(c) && lastSeen.get(c) >= left) {\n                left = lastSeen.get(c) + 1;  // Shrink window past duplicate\n            }\n            lastSeen.put(c, right);\n            maxLen = Math.max(maxLen, right - left + 1);\n        }\n\n        return maxLen;\n    }\n\n    /**\n     * Minimum window substring: smallest window in s containing all chars of t.\n     * Time: O(n), Space: O(t.length)\n     */\n    public static String minWindow(String s, String t) {\n        Map<Character, Integer> need = new HashMap<>();\n        for (char c : t.toCharArray()) need.merge(c, 1, Integer::sum);\n\n        int have = 0, required = need.size();\n        int left = 0, minLen = Integer.MAX_VALUE, minStart = 0;\n        Map<Character, Integer> window = new HashMap<>();\n\n        for (int right = 0; right < s.length(); right++) {\n            char c = s.charAt(right);\n            window.merge(c, 1, Integer::sum);\n\n            if (need.containsKey(c) && window.get(c).equals(need.get(c))) {\n                have++;\n            }\n\n            while (have == required) {\n                if (right - left + 1 < minLen) {\n                    minLen = right - left + 1;\n                    minStart = left;\n                }\n                char leftChar = s.charAt(left);\n                window.merge(leftChar, -1, Integer::sum);\n                if (need.containsKey(leftChar) && window.get(leftChar) < need.get(leftChar)) {\n                    have--;\n                }\n                left++;\n            }\n        }\n\n        return minLen == Integer.MAX_VALUE ? \"\" : s.substring(minStart, minStart + minLen);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "def length_of_longest_substring(s: str) -> int:\n    \"\"\"Longest substring without repeating characters. O(n) time.\"\"\"\n    last_seen: dict[str, int] = {}\n    max_len = 0\n    left = 0\n\n    for right, char in enumerate(s):\n        if char in last_seen and last_seen[char] >= left:\n            left = last_seen[char] + 1\n        last_seen[char] = right\n        max_len = max(max_len, right - left + 1)\n\n    return max_len\n\n\ndef min_window(s: str, t: str) -> str:\n    \"\"\"Minimum window substring containing all characters of t.\"\"\"\n    from collections import Counter\n\n    need = Counter(t)\n    have, required = 0, len(need)\n    window: dict[str, int] = {}\n    result = \"\"\n    min_len = float(\"inf\")\n    left = 0\n\n    for right, char in enumerate(s):\n        window[char] = window.get(char, 0) + 1\n        if char in need and window[char] == need[char]:\n            have += 1\n\n        while have == required:\n            if right - left + 1 < min_len:\n                min_len = right - left + 1\n                result = s[left:right + 1]\n            left_char = s[left]\n            window[left_char] -= 1\n            if left_char in need and window[left_char] < need[left_char]:\n                have -= 1\n            left += 1\n\n    return result",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/arrays-and-strings/two-pointers-and-sliding-window.md",
+    "wordCount": 1495,
+    "sectionCount": 11
+  }
+}

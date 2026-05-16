@@ -1,0 +1,298 @@
+{
+  "id": "dynamic-programming-fundamentals-and-1d-problems",
+  "slug": "fundamentals-and-1d-problems",
+  "title": "Fundamentals and 1D Problems",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Memoization (top-down): Recursive with cache, O(n) time for n unique subproblems",
+            "Tabulation (bottom-up): Iterative with table, O(n) time, often better cache behavior",
+            "Space optimization: Many 1D DP problems reduce from O(n) to O(1) space using rolling variables",
+            "Fibonacci: O(n) time, O(1) space with two variables",
+            "Climbing stairs (k steps): O(n*k) time, O(n) space — generalized Fibonacci",
+            "House robber: O(n) time, O(1) space — max sum of non-adjacent elements",
+            "Maximum subarray (Kadane's): O(n) time, O(1) space — local vs global optimum",
+            "Longest increasing subsequence: O(n log n) with patience sorting, O(n²) with basic DP",
+            "Decode ways: O(n) time, O(1) space — counting valid decodings",
+            "Key insight: define state clearly, then derive transition from smaller states"
+          ]
+        }
+      ],
+      "wordCount": 114,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "One-dimensional dynamic programming applies when the problem has a linear structure where each position's optimal solution depends on solutions at previous positions. The state is typically a single index (position in array, step number, remaining capacity) and transitions look backward to previously computed states."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use 1D DP when you need to find the maximum or minimum value achievable by making sequential choices (house robber, stock trading), when counting the number of ways to reach a target through sequential steps (climbing stairs, decode ways), when finding the longest subsequence satisfying a property (longest increasing subsequence, longest valid parentheses), or when the problem has a natural left-to-right processing order where each decision depends only on previous decisions."
+        },
+        {
+          "type": "paragraph",
+          "text": "The key to solving 1D DP problems is defining the state precisely. Ask yourself: \"What does dp[i] represent?\" Common state definitions include \"the optimal answer considering elements 0 through i,\" \"the optimal answer ending at position i,\" and \"the number of ways to reach state i.\" The transition relation then follows from how you can arrive at state i from previous states."
+        },
+        {
+          "type": "paragraph",
+          "text": "Recognize DP opportunities by looking for problems where greedy fails (local optimal choices do not guarantee global optimum), where brute force involves exponential enumeration of choices, and where the problem has the \"optimal substructure\" property (you can build the optimal solution from optimal solutions to subproblems)."
+        }
+      ],
+      "wordCount": 223,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "memoization-vs-tabulation-comparison",
+          "heading": "Memoization vs Tabulation Comparison",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Demonstrating both approaches on the classic Fibonacci problem, showing the trade-offs between recursive elegance and iterative efficiency."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class DPFundamentals {\n    /**\n     * Top-down (memoization): natural recursive structure with caching.\n     * Pros: only computes needed subproblems, natural problem decomposition.\n     * Cons: recursion overhead, potential stack overflow for large n.\n     */\n    public static long fibMemo(int n) {\n        return fibMemoHelper(n, new HashMap<>());\n    }\n\n    private static long fibMemoHelper(int n, Map<Integer, Long> memo) {\n        if (n <= 1) return n;\n        if (memo.containsKey(n)) return memo.get(n);\n        long result = fibMemoHelper(n - 1, memo) + fibMemoHelper(n - 2, memo);\n        memo.put(n, result);\n        return result;\n    }\n\n    /**\n     * Bottom-up (tabulation): iterative, fills table from base cases.\n     * Pros: no recursion overhead, better cache locality, easy to optimize space.\n     * Cons: computes all subproblems even if not all needed.\n     */\n    public static long fibTabulation(int n) {\n        if (n <= 1) return n;\n        long[] dp = new long[n + 1];\n        dp[0] = 0;\n        dp[1] = 1;\n        for (int i = 2; i <= n; i++) {\n            dp[i] = dp[i - 1] + dp[i - 2];\n        }\n        return dp[n];\n    }\n\n    /**\n     * Space-optimized: only need previous two values.\n     * O(n) time, O(1) space.\n     */\n    public static long fibOptimized(int n) {\n        if (n <= 1) return n;\n        long prev2 = 0, prev1 = 1;\n        for (int i = 2; i <= n; i++) {\n            long curr = prev1 + prev2;\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Top-down with memoization\nfunction fibMemo(n: number, memo: Map<number, number> = new Map()): number {\n  if (n <= 1) return n;\n  if (memo.has(n)) return memo.get(n)!;\n  const result = fibMemo(n - 1, memo) + fibMemo(n - 2, memo);\n  memo.set(n, result);\n  return result;\n}\n\n// Bottom-up with tabulation\nfunction fibTab(n: number): number {\n  if (n <= 1) return n;\n  const dp = new Array(n + 1);\n  dp[0] = 0;\n  dp[1] = 1;\n  for (let i = 2; i <= n; i++) {\n    dp[i] = dp[i - 1] + dp[i - 2];\n  }\n  return dp[n];\n}\n\n// Space-optimized\nfunction fibOptimal(n: number): number {\n  if (n <= 1) return n;\n  let prev2 = 0, prev1 = 1;\n  for (let i = 2; i <= n; i++) {\n    const curr = prev1 + prev2;\n    prev2 = prev1;\n    prev1 = curr;\n  }\n  return prev1;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "house-robber-pattern-non-adjacent-selection",
+          "heading": "House Robber Pattern (Non-Adjacent Selection)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The house robber pattern appears whenever you must select elements from a sequence with the constraint that no two selected elements are adjacent."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class HouseRobber {\n    /**\n     * Maximum sum of non-adjacent elements.\n     * dp[i] = max(dp[i-1], dp[i-2] + nums[i])\n     * Either skip current house (take dp[i-1]) or rob it (dp[i-2] + nums[i]).\n     * Time: O(n), Space: O(1)\n     */\n    public static int rob(int[] nums) {\n        if (nums.length == 0) return 0;\n        if (nums.length == 1) return nums[0];\n\n        int prev2 = 0;  // dp[i-2]\n        int prev1 = 0;  // dp[i-1]\n\n        for (int num : nums) {\n            int curr = Math.max(prev1, prev2 + num);\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n\n    /**\n     * House Robber II: houses arranged in a circle.\n     * Cannot rob both first and last house.\n     * Solution: max(rob(0..n-2), rob(1..n-1))\n     */\n    public static int robCircular(int[] nums) {\n        if (nums.length == 1) return nums[0];\n        return Math.max(\n            robRange(nums, 0, nums.length - 2),\n            robRange(nums, 1, nums.length - 1)\n        );\n    }\n\n    private static int robRange(int[] nums, int start, int end) {\n        int prev2 = 0, prev1 = 0;\n        for (int i = start; i <= end; i++) {\n            int curr = Math.max(prev1, prev2 + nums[i]);\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "longest-increasing-subsequence",
+          "heading": "Longest Increasing Subsequence",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Two approaches: O(n²) basic DP and O(n log n) patience sorting with binary search."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class LIS {\n    /**\n     * O(n^2) DP approach.\n     * dp[i] = length of longest increasing subsequence ending at index i.\n     * For each i, check all j < i where nums[j] < nums[i].\n     */\n    public static int lisQuadratic(int[] nums) {\n        int n = nums.length;\n        int[] dp = new int[n];\n        Arrays.fill(dp, 1);  // Each element is a subsequence of length 1\n        int maxLen = 1;\n\n        for (int i = 1; i < n; i++) {\n            for (int j = 0; j < i; j++) {\n                if (nums[j] < nums[i]) {\n                    dp[i] = Math.max(dp[i], dp[j] + 1);\n                }\n            }\n            maxLen = Math.max(maxLen, dp[i]);\n        }\n        return maxLen;\n    }\n\n    /**\n     * O(n log n) patience sorting approach.\n     * Maintain array 'tails' where tails[i] = smallest tail element\n     * for increasing subsequence of length i+1.\n     * Use binary search to find position for each new element.\n     */\n    public static int lisOptimal(int[] nums) {\n        List<Integer> tails = new ArrayList<>();\n\n        for (int num : nums) {\n            int pos = Collections.binarySearch(tails, num);\n            if (pos < 0) pos = -(pos + 1);  // Insertion point\n\n            if (pos == tails.size()) {\n                tails.add(num);  // Extend longest subsequence\n            } else {\n                tails.set(pos, num);  // Replace with smaller tail\n            }\n        }\n        return tails.size();\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "from bisect import bisect_left\n\ndef lis_optimal(nums: list[int]) -> int:\n    \"\"\"Longest increasing subsequence in O(n log n) time.\"\"\"\n    tails: list[int] = []\n\n    for num in nums:\n        pos = bisect_left(tails, num)\n        if pos == len(tails):\n            tails.append(num)\n        else:\n            tails[pos] = num\n\n    return len(tails)\n\ndef lis_with_reconstruction(nums: list[int]) -> list[int]:\n    \"\"\"LIS with actual subsequence reconstruction.\"\"\"\n    n = len(nums)\n    dp = [1] * n\n    parent = [-1] * n\n\n    for i in range(1, n):\n        for j in range(i):\n            if nums[j] < nums[i] and dp[j] + 1 > dp[i]:\n                dp[i] = dp[j] + 1\n                parent[i] = j\n\n    # Find the index of maximum length\n    max_idx = max(range(n), key=lambda i: dp[i])\n\n    # Reconstruct\n    result = []\n    while max_idx != -1:\n        result.append(nums[max_idx])\n        max_idx = parent[max_idx]\n\n    return result[::-1]",
+              "runnable": false
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Incorrect state definition leading to wrong transitions: The most critical step in DP is defining what dp[i] represents. If dp[i] means \"best answer for elements 0 to i\" versus \"best answer ending at i,\" the transitions are completely different. For LIS, dp[i] must be \"longest increasing subsequence ending at i\" (not \"longest in first i elements\") because the transition needs to know the last element to check the increasing property. Always write out the state definition explicitly before coding transitions.",
+            "Forgetting base cases or initializing incorrectly: Every DP solution needs correct base cases. For house robber, dp[0] = nums[0] and dp[1] = max(nums[0], nums[1]). Initializing dp[1] = nums[1] (forgetting to consider skipping house 1 and taking house 0) produces wrong answers. For LIS, every element forms a subsequence of length 1, so dp[i] must be initialized to 1, not 0.",
+            "Not recognizing when space can be optimized: Many 1D DP problems only look back a fixed number of positions (Fibonacci looks back 2, house robber looks back 2). In these cases, you can replace the full dp array with a constant number of variables, reducing space from O(n) to O(1). Failing to optimize space is not incorrect but wastes memory and may cause issues for very large inputs.",
+            "Confusing subsequence with subarray: A subsequence maintains relative order but elements need not be contiguous. A subarray (or substring) requires contiguous elements. LIS is a subsequence problem (elements can be non-adjacent), while maximum subarray sum (Kadane's) is a subarray problem. Using the wrong definition leads to incorrect transitions.",
+            "Integer overflow in counting problems: DP problems that count the number of ways (climbing stairs, decode ways) can produce astronomically large numbers. In Java, use long instead of int. In competitive programming, results are often computed modulo 10^9 + 7. Forgetting the modulo operation causes overflow and wrong answers. Apply modulo at each addition, not just at the end."
+          ]
+        }
+      ],
+      "wordCount": 315,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Text editors and version control use the longest common subsequence (LCS) algorithm to compute diffs between file versions. The diff command, Git's merge algorithm, and code review tools all rely on DP to find the minimum edit script that transforms one file into another. The standard LCS algorithm runs in O(nm) time and space, with Myers' diff algorithm providing O(nd) performance where d is the edit distance (fast for similar files)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Speech recognition and natural language processing use dynamic programming for sequence alignment and decoding. The Viterbi algorithm (a DP algorithm) finds the most likely sequence of hidden states in a Hidden Markov Model, used for speech-to-text, part-of-speech tagging, and gene finding. CTC (Connectionist Temporal Classification) decoding in modern neural speech recognition also uses DP to find the most likely text given acoustic model outputs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial portfolio optimization uses DP to determine optimal asset allocation over time. The problem of maximizing returns subject to risk constraints over multiple time periods has optimal substructure: the best strategy from period t onward depends only on the current portfolio state, not how you arrived there. Stochastic DP handles uncertainty in returns, and approximate DP handles the curse of dimensionality for high-dimensional state spaces."
+        },
+        {
+          "type": "paragraph",
+          "text": "Network packet scheduling in routers uses DP-based algorithms to optimize Quality of Service (QoS). The problem of scheduling packets across multiple queues with different priorities and deadlines reduces to variants of the weighted job scheduling problem, solvable with DP. Real-time systems use these algorithms to guarantee latency bounds for high-priority traffic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Game AI and reinforcement learning use dynamic programming as the foundation for computing optimal policies. Value iteration and policy iteration (both DP algorithms) compute optimal strategies for Markov Decision Processes. While modern RL uses approximations (deep Q-networks, policy gradients) for large state spaces, the underlying theory is DP, and small-state problems are still solved exactly with tabular DP."
+        }
+      ],
+      "wordCount": 309,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between memoization and tabulation. When would you prefer one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Memoization (top-down) uses recursion with a cache, computing only subproblems reachable from the original problem. Tabulation (bottom-up) iteratively fills a table from base cases to the target. Prefer memoization when not all subproblems are needed (sparse dependency graph), when the recursive structure is natural and hard to linearize, or when the problem has complex state transitions. Prefer tabulation when all subproblems are needed, when you want to avoid recursion overhead and stack overflow risk, when space optimization is important (easier to identify which previous values to keep), or when cache behavior matters (sequential array access is cache-friendly)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you solve the maximum subarray sum problem? What is Kadane's algorithm?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Kadane's algorithm maintains two values: maxEndingHere (best subarray ending at current position) and maxSoFar (global best). At each position, maxEndingHere = max(nums[i], maxEndingHere + nums[i]) — either start a new subarray at i or extend the previous one. Update maxSoFar = max(maxSoFar, maxEndingHere). Time is O(n), space is O(1). The DP insight is that dp[i] (max subarray ending at i) only depends on dp[i-1], enabling the space optimization. This is equivalent to finding the maximum difference in the prefix sum array."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you determine if a problem can be solved with dynamic programming?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Look for two properties. First, optimal substructure: the optimal solution to the problem contains optimal solutions to subproblems (you can express the answer in terms of answers to smaller instances). Second, overlapping subproblems: a naive recursive solution recomputes the same subproblems many times (the recursion tree has repeated nodes). If only optimal substructure exists without overlap, use divide-and-conquer instead. If the problem asks for \"minimum cost,\" \"maximum value,\" \"number of ways,\" or \"is it possible,\" and choices at each step affect future options, DP is likely applicable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Solve the coin change problem: given coins of different denominations, find the minimum number of coins to make a target amount."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Define dp[amount] = minimum coins needed to make that amount. Base case: dp[0] = 0. Transition: dp[i] = min(dp[i - coin] + 1) for each coin denomination where i - coin >= 0. Initialize dp[1..target] to infinity. Iterate amounts from 1 to target, trying each coin. If dp[target] remains infinity, the amount cannot be made. Time is O(amount * numCoins), space is O(amount). This is an unbounded knapsack variant where each coin can be used unlimited times."
+        }
+      ],
+      "wordCount": 412,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use iterative DP with space optimization for production code: Recursive memoization risks stack overflow on large inputs and has higher constant factors due to function call overhead and hash map lookups. Convert to iterative tabulation and identify the minimum state needed. Most 1D problems need only O(1) extra space (previous 1-2 values). This makes the code more predictable in terms of memory usage and execution time.",
+            "Consider the problem size when choosing between exact DP and approximation: Exact DP solutions have polynomial time but the polynomial degree matters. A O(n³) DP on n=10,000 takes 10^12 operations (infeasible). For large instances, consider approximation algorithms (FPTAS for knapsack), heuristics (greedy with bounded error), or problem-specific optimizations (Knuth's optimization, divide-and-conquer optimization) that reduce the polynomial degree.",
+            "Profile memory allocation patterns in DP implementations: In garbage-collected languages, creating new arrays or maps for each subproblem generates GC pressure. Pre-allocate the DP table at the start and reuse it. For 2D DP with space optimization (using only two rows), alternate between rows using modular indexing rather than creating new arrays each iteration."
+          ]
+        }
+      ],
+      "wordCount": 177,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Sequence and String DP — DP patterns for string and sequence problems",
+            "Knapsack and Subset Problems — Selection problems with constraints",
+            "Grid and Path DP — 2D DP on matrices and grids",
+            "Sorting and Searching — Binary search optimization for LIS"
+          ]
+        }
+      ],
+      "wordCount": 41,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class DPFundamentals {\n    /**\n     * Top-down (memoization): natural recursive structure with caching.\n     * Pros: only computes needed subproblems, natural problem decomposition.\n     * Cons: recursion overhead, potential stack overflow for large n.\n     */\n    public static long fibMemo(int n) {\n        return fibMemoHelper(n, new HashMap<>());\n    }\n\n    private static long fibMemoHelper(int n, Map<Integer, Long> memo) {\n        if (n <= 1) return n;\n        if (memo.containsKey(n)) return memo.get(n);\n        long result = fibMemoHelper(n - 1, memo) + fibMemoHelper(n - 2, memo);\n        memo.put(n, result);\n        return result;\n    }\n\n    /**\n     * Bottom-up (tabulation): iterative, fills table from base cases.\n     * Pros: no recursion overhead, better cache locality, easy to optimize space.\n     * Cons: computes all subproblems even if not all needed.\n     */\n    public static long fibTabulation(int n) {\n        if (n <= 1) return n;\n        long[] dp = new long[n + 1];\n        dp[0] = 0;\n        dp[1] = 1;\n        for (int i = 2; i <= n; i++) {\n            dp[i] = dp[i - 1] + dp[i - 2];\n        }\n        return dp[n];\n    }\n\n    /**\n     * Space-optimized: only need previous two values.\n     * O(n) time, O(1) space.\n     */\n    public static long fibOptimized(int n) {\n        if (n <= 1) return n;\n        long prev2 = 0, prev1 = 1;\n        for (int i = 2; i <= n; i++) {\n            long curr = prev1 + prev2;\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Top-down with memoization\nfunction fibMemo(n: number, memo: Map<number, number> = new Map()): number {\n  if (n <= 1) return n;\n  if (memo.has(n)) return memo.get(n)!;\n  const result = fibMemo(n - 1, memo) + fibMemo(n - 2, memo);\n  memo.set(n, result);\n  return result;\n}\n\n// Bottom-up with tabulation\nfunction fibTab(n: number): number {\n  if (n <= 1) return n;\n  const dp = new Array(n + 1);\n  dp[0] = 0;\n  dp[1] = 1;\n  for (let i = 2; i <= n; i++) {\n    dp[i] = dp[i - 1] + dp[i - 2];\n  }\n  return dp[n];\n}\n\n// Space-optimized\nfunction fibOptimal(n: number): number {\n  if (n <= 1) return n;\n  let prev2 = 0, prev1 = 1;\n  for (let i = 2; i <= n; i++) {\n    const curr = prev1 + prev2;\n    prev2 = prev1;\n    prev1 = curr;\n  }\n  return prev1;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class HouseRobber {\n    /**\n     * Maximum sum of non-adjacent elements.\n     * dp[i] = max(dp[i-1], dp[i-2] + nums[i])\n     * Either skip current house (take dp[i-1]) or rob it (dp[i-2] + nums[i]).\n     * Time: O(n), Space: O(1)\n     */\n    public static int rob(int[] nums) {\n        if (nums.length == 0) return 0;\n        if (nums.length == 1) return nums[0];\n\n        int prev2 = 0;  // dp[i-2]\n        int prev1 = 0;  // dp[i-1]\n\n        for (int num : nums) {\n            int curr = Math.max(prev1, prev2 + num);\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n\n    /**\n     * House Robber II: houses arranged in a circle.\n     * Cannot rob both first and last house.\n     * Solution: max(rob(0..n-2), rob(1..n-1))\n     */\n    public static int robCircular(int[] nums) {\n        if (nums.length == 1) return nums[0];\n        return Math.max(\n            robRange(nums, 0, nums.length - 2),\n            robRange(nums, 1, nums.length - 1)\n        );\n    }\n\n    private static int robRange(int[] nums, int start, int end) {\n        int prev2 = 0, prev1 = 0;\n        for (int i = start; i <= end; i++) {\n            int curr = Math.max(prev1, prev2 + nums[i]);\n            prev2 = prev1;\n            prev1 = curr;\n        }\n        return prev1;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class LIS {\n    /**\n     * O(n^2) DP approach.\n     * dp[i] = length of longest increasing subsequence ending at index i.\n     * For each i, check all j < i where nums[j] < nums[i].\n     */\n    public static int lisQuadratic(int[] nums) {\n        int n = nums.length;\n        int[] dp = new int[n];\n        Arrays.fill(dp, 1);  // Each element is a subsequence of length 1\n        int maxLen = 1;\n\n        for (int i = 1; i < n; i++) {\n            for (int j = 0; j < i; j++) {\n                if (nums[j] < nums[i]) {\n                    dp[i] = Math.max(dp[i], dp[j] + 1);\n                }\n            }\n            maxLen = Math.max(maxLen, dp[i]);\n        }\n        return maxLen;\n    }\n\n    /**\n     * O(n log n) patience sorting approach.\n     * Maintain array 'tails' where tails[i] = smallest tail element\n     * for increasing subsequence of length i+1.\n     * Use binary search to find position for each new element.\n     */\n    public static int lisOptimal(int[] nums) {\n        List<Integer> tails = new ArrayList<>();\n\n        for (int num : nums) {\n            int pos = Collections.binarySearch(tails, num);\n            if (pos < 0) pos = -(pos + 1);  // Insertion point\n\n            if (pos == tails.size()) {\n                tails.add(num);  // Extend longest subsequence\n            } else {\n                tails.set(pos, num);  // Replace with smaller tail\n            }\n        }\n        return tails.size();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "from bisect import bisect_left\n\ndef lis_optimal(nums: list[int]) -> int:\n    \"\"\"Longest increasing subsequence in O(n log n) time.\"\"\"\n    tails: list[int] = []\n\n    for num in nums:\n        pos = bisect_left(tails, num)\n        if pos == len(tails):\n            tails.append(num)\n        else:\n            tails[pos] = num\n\n    return len(tails)\n\ndef lis_with_reconstruction(nums: list[int]) -> list[int]:\n    \"\"\"LIS with actual subsequence reconstruction.\"\"\"\n    n = len(nums)\n    dp = [1] * n\n    parent = [-1] * n\n\n    for i in range(1, n):\n        for j in range(i):\n            if nums[j] < nums[i] and dp[j] + 1 > dp[i]:\n                dp[i] = dp[j] + 1\n                parent[i] = j\n\n    # Find the index of maximum length\n    max_idx = max(range(n), key=lambda i: dp[i])\n\n    # Reconstruct\n    result = []\n    while max_idx != -1:\n        result.append(nums[max_idx])\n        max_idx = parent[max_idx]\n\n    return result[::-1]",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/dynamic-programming/fundamentals-and-1d-problems.md",
+    "wordCount": 1645,
+    "sectionCount": 11
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "id": "java-java-se-8-features",
+  "slug": "java-8-features",
+  "title": "Java SE 8 Features",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Lambda expressions: (params) -> expression enables functional-style programming with concise anonymous function syntax",
+            "Functional interfaces: single abstract method interfaces (@FunctionalInterface) — Predicate<T>, Function<T,R>, Consumer<T>, Supplier<T>",
+            "Stream API: collection.stream().filter().map().collect() for declarative data processing pipelines",
+            "Optional: Optional<T> container eliminates null checks — use orElse(), map(), flatMap(), ifPresent()",
+            "Default methods: default void method() {} in interfaces enables API evolution without breaking implementations",
+            "Date/Time API: java.time package — LocalDate, LocalTime, LocalDateTime, ZonedDateTime, Period, Duration",
+            "Method references: Class::method shorthand for lambdas — static (Integer::parseInt), instance (String::length), constructor (ArrayList::new)"
+          ]
+        }
+      ],
+      "wordCount": 83,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Java 8 features are essential for modern Java development and should be used in any codebase targeting Java 8+. Lambda expressions and the Stream API replace verbose anonymous inner classes and imperative loops with declarative, composable operations that are easier to read, test, and parallelize. Use streams when processing collections with filter/map/reduce patterns, especially when the pipeline involves multiple transformations. Optional should be used as return types for methods that may not produce a result, replacing null returns and eliminating NullPointerException at call sites. The Date/Time API replaces the broken java.util.Date and Calendar classes with immutable, thread-safe alternatives that correctly model dates, times, and durations. Default methods enable library authors to evolve interfaces without breaking existing implementations — this is how the Collections API added stream(), forEach(), and sort() without requiring changes to every List implementation. These features are not optional modernizations; they are the standard idiom expected in production Java code and interview settings."
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "lambda-expressions-and-functional-interfaces",
+          "heading": "Lambda Expressions and Functional Interfaces",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Lambda with Comparator\nList<Employee> employees = getEmployees();\nemployees.sort((e1, e2) -> e1.getSalary().compareTo(e2.getSalary()));\n\n// Predicate for filtering\nPredicate<Employee> seniorFilter = emp -> emp.getYearsOfService() > 5;\nPredicate<Employee> highEarner = emp -> emp.getSalary() > 100_000;\n\nList<Employee> seniorHighEarners = employees.stream()\n        .filter(seniorFilter.and(highEarner))\n        .collect(Collectors.toList());\n\n// Function for transformation\nFunction<Employee, String> toDisplayName = emp ->\n        emp.getLastName() + \", \" + emp.getFirstName();\n\n// Consumer for side effects\nConsumer<Employee> sendWelcomeEmail = emp ->\n        emailService.send(emp.getEmail(), \"Welcome aboard!\");\n\n// Supplier for lazy creation\nSupplier<List<Employee>> employeeSupplier = () ->\n        employeeRepository.findAll();\n\n// BiFunction for combining\nBiFunction<Double, Double, Double> calculateBonus =\n        (salary, multiplier) -> salary * multiplier;\n\n// Method references\nemployees.sort(Comparator.comparing(Employee::getLastName));\nemployees.forEach(System.out::println);\nList<String> names = employees.stream()\n        .map(Employee::getName)\n        .collect(Collectors.toList());",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "stream-api-operations",
+          "heading": "Stream API Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Complete pipeline: filter, transform, collect\nList<OrderDTO> recentHighValueOrders = orders.stream()\n        .filter(order -> order.getTotal().compareTo(BigDecimal.valueOf(1000)) > 0)\n        .filter(order -> order.getDate().isAfter(LocalDate.now().minusDays(30)))\n        .sorted(Comparator.comparing(Order::getDate).reversed())\n        .map(order -> new OrderDTO(order.getId(), order.getTotal(), order.getStatus()))\n        .collect(Collectors.toList());\n\n// Grouping and aggregation\nMap<Department, DoubleSummaryStatistics> salaryStats = employees.stream()\n        .collect(Collectors.groupingBy(\n                Employee::getDepartment,\n                Collectors.summarizingDouble(Employee::getSalary)));\n\n// Partitioning\nMap<Boolean, List<Employee>> partitioned = employees.stream()\n        .collect(Collectors.partitioningBy(emp -> emp.getSalary() > 75_000));\n\n// FlatMap for nested collections\nList<String> allSkills = employees.stream()\n        .flatMap(emp -> emp.getSkills().stream())\n        .distinct()\n        .sorted()\n        .collect(Collectors.toList());\n\n// Reduce for aggregation\nOptional<BigDecimal> totalRevenue = orders.stream()\n        .map(Order::getTotal)\n        .reduce(BigDecimal::add);\n\n// Collectors.toMap with merge function\nMap<String, Employee> employeeByEmail = employees.stream()\n        .collect(Collectors.toMap(\n                Employee::getEmail,\n                Function.identity(),\n                (existing, replacement) -> existing));\n\n// Parallel stream for CPU-intensive work\nlong count = largeDataset.parallelStream()\n        .filter(record -> complexValidation(record))\n        .count();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "optional-usage-patterns",
+          "heading": "Optional Usage Patterns",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Creating Optional values\nOptional<Customer> customer = customerRepository.findById(id);\nOptional<String> empty = Optional.empty();\nOptional<String> present = Optional.of(\"value\");\nOptional<String> nullable = Optional.ofNullable(possiblyNull);\n\n// Chaining with map and flatMap\nString cityName = customer\n        .flatMap(Customer::getAddress)    // Address is Optional<Address>\n        .map(Address::getCity)            // getCity returns String\n        .orElse(\"Unknown\");\n\n// orElseGet for expensive defaults (lazy evaluation)\nCustomer defaultCustomer = customer\n        .orElseGet(() -> customerService.createDefault());\n\n// orElseThrow for required values\nCustomer required = customer\n        .orElseThrow(() -> new ResourceNotFoundException(\"Customer \" + id));\n\n// ifPresent for side effects\ncustomer.ifPresent(c -> auditService.logAccess(c.getId()));\n\n// filter within Optional\nOptional<Customer> premiumCustomer = customer\n        .filter(c -> c.getTier() == Tier.PREMIUM);\n\n// Avoid: Optional as field or parameter\n// Avoid: optional.get() without isPresent() check\n// Avoid: Optional.of(null) — throws NPE",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "datetime-api",
+          "heading": "Date/Time API",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// LocalDate — date without time\nLocalDate today = LocalDate.now();\nLocalDate birthday = LocalDate.of(1990, Month.MARCH, 15);\nLocalDate nextWeek = today.plusWeeks(1);\nPeriod age = Period.between(birthday, today);\n\n// LocalTime — time without date\nLocalTime meetingTime = LocalTime.of(14, 30);\nLocalTime endTime = meetingTime.plusHours(1).plusMinutes(30);\n\n// LocalDateTime — date and time without zone\nLocalDateTime appointment = LocalDateTime.of(today, meetingTime);\n\n// ZonedDateTime — full date/time with timezone\nZonedDateTime flightDeparture = ZonedDateTime.of(\n        LocalDateTime.of(2024, 6, 15, 10, 30),\n        ZoneId.of(\"America/New_York\"));\nZonedDateTime arrivalLocal = flightDeparture\n        .withZoneSameInstant(ZoneId.of(\"Europe/London\"));\n\n// Duration and Period for calculations\nDuration between = Duration.between(startTime, endTime);\nlong hours = ChronoUnit.HOURS.between(startTime, endTime);\n\n// Formatting and parsing\nDateTimeFormatter formatter = DateTimeFormatter.ofPattern(\"dd-MMM-yyyy HH:mm\");\nString formatted = appointment.format(formatter);\nLocalDateTime parsed = LocalDateTime.parse(\"15-Mar-2024 14:30\", formatter);\n\n// Temporal adjusters\nLocalDate firstMonday = today.with(TemporalAdjusters.firstInMonth(DayOfWeek.MONDAY));\nLocalDate lastDayOfMonth = today.with(TemporalAdjusters.lastDayOfMonth());",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "default-and-static-methods-in-interfaces",
+          "heading": "Default and Static Methods in Interfaces",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public interface PaymentProcessor {\n    // Abstract method — must be implemented\n    PaymentResult process(Payment payment);\n\n    // Default method — provides common behavior, can be overridden\n    default PaymentResult processWithRetry(Payment payment, int maxRetries) {\n        for (int attempt = 1; attempt <= maxRetries; attempt++) {\n            PaymentResult result = process(payment);\n            if (result.isSuccess()) return result;\n            if (attempt < maxRetries) {\n                try { Thread.sleep(1000L * attempt); }\n                catch (InterruptedException e) { Thread.currentThread().interrupt(); }\n            }\n        }\n        return PaymentResult.failed(\"Max retries exceeded\");\n    }\n\n    // Static method — utility grouped with the interface\n    static PaymentProcessor noOp() {\n        return payment -> PaymentResult.success(\"No-op\");\n    }\n}\n\n// Implementation only needs to provide process()\npublic class StripePaymentProcessor implements PaymentProcessor {\n    @Override\n    public PaymentResult process(Payment payment) {\n        return stripeClient.charge(payment.getAmount(), payment.getToken());\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Stream Pipeline Execution\"\n        SOURCE[Data Source<br/>Collection / Array / File] --> INTERMEDIATE[Intermediate Operations<br/>filter, map, sorted, distinct<br/>LAZY - not executed yet]\n        INTERMEDIATE --> TERMINAL[Terminal Operation<br/>collect, forEach, reduce, count<br/>TRIGGERS pipeline execution]\n        TERMINAL --> RESULT[Result<br/>Collection / Value / Side Effect]\n    end\n\n    subgraph \"Functional Interface Hierarchy\"\n        FI[Functional Interface<br/>Single Abstract Method]\n        FI --> PRED[Predicate T→boolean]\n        FI --> FUNC[Function T→R]\n        FI --> CONS[Consumer T→void]\n        FI --> SUPP[Supplier →T]\n        FUNC --> UNARY[UnaryOperator T→T]\n        FUNC --> BINARY[BinaryOperator T,T→T]\n    end"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Reusing streams after terminal operation: A stream can only be consumed once. Calling a terminal operation (collect, forEach, count) closes the stream. Attempting to reuse it throws IllegalStateException. If you need multiple passes over the data, collect to a list first or create a new stream each time.",
+            "Parallel streams on small collections or I/O-bound work: Parallel streams use the common ForkJoinPool and add overhead for thread coordination. For collections under 10,000 elements or I/O-bound operations (database calls, HTTP requests), sequential streams are faster. Benchmark before parallelizing, and never use parallel streams with shared mutable state.",
+            "Optional.get() without checking presence: Calling get() on an empty Optional throws NoSuchElementException, which is worse than the NPE you were trying to avoid. Always use orElse(), orElseGet(), orElseThrow(), or ifPresent(). Treat get() as a code smell in production code.",
+            "Mutating state inside stream operations: Stream operations should be stateless and side-effect-free. Modifying external variables inside map() or filter() leads to race conditions with parallel streams and makes code harder to reason about. Use collect() with proper collectors instead of accumulating into external collections.",
+            "Using orElse() with expensive default computation: orElse(expensiveCall()) evaluates the default eagerly even when the Optional has a value. Use orElseGet(() -> expensiveCall()) for lazy evaluation. This matters when the default involves database queries, network calls, or object creation."
+          ]
+        }
+      ],
+      "wordCount": 217,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Data transformation pipelines: Stream API replaces nested loops and temporary collections when transforming API responses, database results, or file contents. A typical service method chains filter/map/collect to convert entities to DTOs, apply business rules, and produce the final response in a single readable pipeline.",
+            "Event processing and filtering: Lambda expressions with Predicate composition enable dynamic filtering rules that can be configured at runtime. Combine predicates with and(), or(), negate() to build complex filter chains for event routing, notification rules, or access control decisions without if-else cascades.",
+            "Null-safe service layer design: Optional as return type from repository and service methods forces callers to handle the absence case explicitly. This eliminates entire categories of NullPointerException bugs and makes the API contract self-documenting — if a method returns Optional<T>, the caller knows the value might not exist.",
+            "Immutable date/time handling in financial systems: The java.time API's immutability guarantees thread safety for date calculations in concurrent systems. Financial applications use LocalDate for settlement dates, Duration for SLA calculations, and ZonedDateTime for cross-timezone scheduling without the bugs that plagued java.util.Date."
+          ]
+        }
+      ],
+      "wordCount": 175,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between map() and flatMap() in streams?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: map() applies a function to each element and wraps the result in the stream — if the function returns a collection, you get a Stream<List<T>>. flatMap() applies a function that returns a stream for each element, then flattens all resulting streams into a single stream. Use flatMap() when each input element maps to zero or more output elements (one-to-many), like extracting all order items from a list of orders: orders.stream().flatMap(o -> o.getItems().stream())."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Why is the Stream API lazy, and what are the performance implications?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Intermediate operations (filter, map, sorted) are lazy — they build a pipeline description but don't process data until a terminal operation triggers execution. This enables short-circuiting optimizations: findFirst() stops processing after finding one match, limit(n) stops after n elements. It also allows the runtime to fuse operations (applying filter+map in a single pass) and avoid creating intermediate collections, reducing memory allocation and GC pressure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When should you use Optional.orElse() vs Optional.orElseGet()?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: orElse(value) always evaluates the default value, even when the Optional contains a value. orElseGet(supplier) only evaluates the supplier when the Optional is empty. Use orElse() for cheap constants or pre-computed values. Use orElseGet() when the default involves computation, database access, or object creation. In production code, orElseGet() is almost always the correct choice because it avoids unnecessary work."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do default methods in interfaces solve the diamond problem?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Java resolves conflicts with three rules: (1) class methods always win over interface defaults, (2) more specific interfaces win over less specific ones (sub-interface overrides parent), (3) if ambiguity remains, the implementing class must explicitly override and choose which default to call using InterfaceName.super.method(). This is different from multiple inheritance of state (which Java doesn't allow) — default methods only provide behavior inheritance."
+        }
+      ],
+      "wordCount": 304,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Prefer Collectors.toUnmodifiableList() in Java 10+: When collecting stream results that shouldn't be modified downstream, use unmodifiable collectors to prevent accidental mutation. In Java 8, wrap with Collections.unmodifiableList(). This catches bugs where downstream code accidentally adds to or removes from a result set that should be treated as immutable.",
+            "Use Stream.of() and Optional.stream() for null-safe flattening: In Java 9+, Optional.stream() converts an Optional to a zero-or-one element stream, enabling clean integration with stream pipelines. For Java 8, use optional.map(Stream::of).orElseGet(Stream::empty) to achieve the same pattern when flatMapping over collections of Optionals.",
+            "Configure parallel stream thread pool for isolation: Parallel streams share the common ForkJoinPool by default, meaning a slow parallel stream in one request can starve others. For production workloads, submit parallel stream operations to a custom ForkJoinPool: customPool.submit(() -> stream.parallel().forEach(...)).get(). This isolates batch processing from request-handling threads."
+          ]
+        }
+      ],
+      "wordCount": 136,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Java — Core Java language fundamentals and OOP concepts",
+            "Spring Framework — Heavily uses lambdas and functional interfaces in configuration and reactive programming",
+            "Spring Boot — Stream API used extensively in service layer data transformations"
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Lambda with Comparator\nList<Employee> employees = getEmployees();\nemployees.sort((e1, e2) -> e1.getSalary().compareTo(e2.getSalary()));\n\n// Predicate for filtering\nPredicate<Employee> seniorFilter = emp -> emp.getYearsOfService() > 5;\nPredicate<Employee> highEarner = emp -> emp.getSalary() > 100_000;\n\nList<Employee> seniorHighEarners = employees.stream()\n        .filter(seniorFilter.and(highEarner))\n        .collect(Collectors.toList());\n\n// Function for transformation\nFunction<Employee, String> toDisplayName = emp ->\n        emp.getLastName() + \", \" + emp.getFirstName();\n\n// Consumer for side effects\nConsumer<Employee> sendWelcomeEmail = emp ->\n        emailService.send(emp.getEmail(), \"Welcome aboard!\");\n\n// Supplier for lazy creation\nSupplier<List<Employee>> employeeSupplier = () ->\n        employeeRepository.findAll();\n\n// BiFunction for combining\nBiFunction<Double, Double, Double> calculateBonus =\n        (salary, multiplier) -> salary * multiplier;\n\n// Method references\nemployees.sort(Comparator.comparing(Employee::getLastName));\nemployees.forEach(System.out::println);\nList<String> names = employees.stream()\n        .map(Employee::getName)\n        .collect(Collectors.toList());",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Complete pipeline: filter, transform, collect\nList<OrderDTO> recentHighValueOrders = orders.stream()\n        .filter(order -> order.getTotal().compareTo(BigDecimal.valueOf(1000)) > 0)\n        .filter(order -> order.getDate().isAfter(LocalDate.now().minusDays(30)))\n        .sorted(Comparator.comparing(Order::getDate).reversed())\n        .map(order -> new OrderDTO(order.getId(), order.getTotal(), order.getStatus()))\n        .collect(Collectors.toList());\n\n// Grouping and aggregation\nMap<Department, DoubleSummaryStatistics> salaryStats = employees.stream()\n        .collect(Collectors.groupingBy(\n                Employee::getDepartment,\n                Collectors.summarizingDouble(Employee::getSalary)));\n\n// Partitioning\nMap<Boolean, List<Employee>> partitioned = employees.stream()\n        .collect(Collectors.partitioningBy(emp -> emp.getSalary() > 75_000));\n\n// FlatMap for nested collections\nList<String> allSkills = employees.stream()\n        .flatMap(emp -> emp.getSkills().stream())\n        .distinct()\n        .sorted()\n        .collect(Collectors.toList());\n\n// Reduce for aggregation\nOptional<BigDecimal> totalRevenue = orders.stream()\n        .map(Order::getTotal)\n        .reduce(BigDecimal::add);\n\n// Collectors.toMap with merge function\nMap<String, Employee> employeeByEmail = employees.stream()\n        .collect(Collectors.toMap(\n                Employee::getEmail,\n                Function.identity(),\n                (existing, replacement) -> existing));\n\n// Parallel stream for CPU-intensive work\nlong count = largeDataset.parallelStream()\n        .filter(record -> complexValidation(record))\n        .count();",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Creating Optional values\nOptional<Customer> customer = customerRepository.findById(id);\nOptional<String> empty = Optional.empty();\nOptional<String> present = Optional.of(\"value\");\nOptional<String> nullable = Optional.ofNullable(possiblyNull);\n\n// Chaining with map and flatMap\nString cityName = customer\n        .flatMap(Customer::getAddress)    // Address is Optional<Address>\n        .map(Address::getCity)            // getCity returns String\n        .orElse(\"Unknown\");\n\n// orElseGet for expensive defaults (lazy evaluation)\nCustomer defaultCustomer = customer\n        .orElseGet(() -> customerService.createDefault());\n\n// orElseThrow for required values\nCustomer required = customer\n        .orElseThrow(() -> new ResourceNotFoundException(\"Customer \" + id));\n\n// ifPresent for side effects\ncustomer.ifPresent(c -> auditService.logAccess(c.getId()));\n\n// filter within Optional\nOptional<Customer> premiumCustomer = customer\n        .filter(c -> c.getTier() == Tier.PREMIUM);\n\n// Avoid: Optional as field or parameter\n// Avoid: optional.get() without isPresent() check\n// Avoid: Optional.of(null) — throws NPE",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// LocalDate — date without time\nLocalDate today = LocalDate.now();\nLocalDate birthday = LocalDate.of(1990, Month.MARCH, 15);\nLocalDate nextWeek = today.plusWeeks(1);\nPeriod age = Period.between(birthday, today);\n\n// LocalTime — time without date\nLocalTime meetingTime = LocalTime.of(14, 30);\nLocalTime endTime = meetingTime.plusHours(1).plusMinutes(30);\n\n// LocalDateTime — date and time without zone\nLocalDateTime appointment = LocalDateTime.of(today, meetingTime);\n\n// ZonedDateTime — full date/time with timezone\nZonedDateTime flightDeparture = ZonedDateTime.of(\n        LocalDateTime.of(2024, 6, 15, 10, 30),\n        ZoneId.of(\"America/New_York\"));\nZonedDateTime arrivalLocal = flightDeparture\n        .withZoneSameInstant(ZoneId.of(\"Europe/London\"));\n\n// Duration and Period for calculations\nDuration between = Duration.between(startTime, endTime);\nlong hours = ChronoUnit.HOURS.between(startTime, endTime);\n\n// Formatting and parsing\nDateTimeFormatter formatter = DateTimeFormatter.ofPattern(\"dd-MMM-yyyy HH:mm\");\nString formatted = appointment.format(formatter);\nLocalDateTime parsed = LocalDateTime.parse(\"15-Mar-2024 14:30\", formatter);\n\n// Temporal adjusters\nLocalDate firstMonday = today.with(TemporalAdjusters.firstInMonth(DayOfWeek.MONDAY));\nLocalDate lastDayOfMonth = today.with(TemporalAdjusters.lastDayOfMonth());",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public interface PaymentProcessor {\n    // Abstract method — must be implemented\n    PaymentResult process(Payment payment);\n\n    // Default method — provides common behavior, can be overridden\n    default PaymentResult processWithRetry(Payment payment, int maxRetries) {\n        for (int attempt = 1; attempt <= maxRetries; attempt++) {\n            PaymentResult result = process(payment);\n            if (result.isSuccess()) return result;\n            if (attempt < maxRetries) {\n                try { Thread.sleep(1000L * attempt); }\n                catch (InterruptedException e) { Thread.currentThread().interrupt(); }\n            }\n        }\n        return PaymentResult.failed(\"Max retries exceeded\");\n    }\n\n    // Static method — utility grouped with the interface\n    static PaymentProcessor noOp() {\n        return payment -> PaymentResult.success(\"No-op\");\n    }\n}\n\n// Implementation only needs to provide process()\npublic class StripePaymentProcessor implements PaymentProcessor {\n    @Override\n    public PaymentResult process(Payment payment) {\n        return stripeClient.charge(payment.getAmount(), payment.getToken());\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/java/java-8-features.md",
+    "wordCount": 1105,
+    "sectionCount": 14
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "id": "kubernetes-eks-and-aws-integration",
+  "slug": "eks-and-aws-integration",
+  "title": "EKS and AWS Integration",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Amazon EKS provides a managed Kubernetes control plane running across multiple Availability Zones with automatic upgrades and etcd management",
+            "IAM Roles for Service Accounts (IRSA) maps Kubernetes service accounts to IAM roles for pod-level AWS permissions via OIDC federation",
+            "VPC CNI assigns real VPC IP addresses to pods, enabling direct communication with AWS services without NAT",
+            "Managed node groups automate EC2 provisioning, AMI updates, and graceful draining during upgrades",
+            "Karpenter provides just-in-time node provisioning with sub-minute scaling and intelligent instance type selection",
+            "Fargate profiles run pods on serverless compute without managing EC2 instances",
+            "AWS Load Balancer Controller provisions ALBs and NLBs from Kubernetes Ingress and Service resources",
+            "EKS Add-ons manage cluster components (VPC CNI, CoreDNS, kube-proxy, EBS CSI) with automatic version compatibility"
+          ]
+        }
+      ],
+      "wordCount": 122,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Choose EKS when your infrastructure is AWS-native and you want to avoid managing the Kubernetes control plane yourself. EKS is appropriate when you need deep integration with AWS services like IAM for fine-grained pod permissions, VPC for native networking, ALB/NLB for load balancing, EBS/EFS for persistent storage, and CloudWatch for observability. Use managed node groups when you want AWS to handle node provisioning, OS patching, and graceful upgrades with minimal operational overhead. Choose Karpenter over Cluster Autoscaler when you need faster scaling (seconds versus minutes), diverse instance type selection for cost optimization, and consolidation of underutilized nodes. Use Fargate profiles for batch jobs, low-traffic services, or workloads where you want to eliminate node management entirely and pay only for actual pod resource consumption."
+        }
+      ],
+      "wordCount": 123,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "eks-cluster-configuration-with-eksctl",
+          "heading": "EKS Cluster Configuration with eksctl",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: eksctl.io/v1alpha5\nkind: ClusterConfig\nmetadata:\n  name: production-cluster\n  region: us-east-1\n  version: \"1.29\"\n\nvpc:\n  cidr: \"10.0.0.0/16\"\n  nat:\n    gateway: HighlyAvailable\n  clusterEndpoints:\n    publicAccess: true\n    privateAccess: true\n\niam:\n  withOIDC: true\n  serviceAccounts:\n    - metadata:\n        name: order-service\n        namespace: production\n      attachPolicyARNs:\n        - \"arn:aws:iam::123456789:policy/OrderServicePolicy\"\n    - metadata:\n        name: aws-load-balancer-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        awsLoadBalancerController: true\n    - metadata:\n        name: external-dns\n        namespace: kube-system\n      wellKnownPolicies:\n        externalDNS: true\n    - metadata:\n        name: ebs-csi-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        ebsCSIController: true\n\nmanagedNodeGroups:\n  - name: system\n    instanceType: m5.large\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 5\n    labels:\n      role: system\n      lifecycle: on-demand\n    taints:\n      - key: CriticalAddonsOnly\n        value: \"true\"\n        effect: PreferNoSchedule\n    iam:\n      withAddonPolicies:\n        albIngress: true\n        cloudWatch: true\n        ebs: true\n\n  - name: application-spot\n    instanceTypes:\n      - m5.xlarge\n      - m5a.xlarge\n      - m5n.xlarge\n      - c5.xlarge\n      - c5a.xlarge\n    desiredCapacity: 5\n    minSize: 3\n    maxSize: 30\n    spot: true\n    labels:\n      role: application\n      lifecycle: spot\n    taints:\n      - key: spot\n        value: \"true\"\n        effect: PreferNoSchedule\n    privateNetworking: true\n\n  - name: application-ondemand\n    instanceType: m5.xlarge\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 10\n    labels:\n      role: application\n      lifecycle: on-demand\n    privateNetworking: true\n\naddons:\n  - name: vpc-cni\n    version: latest\n    configurationValues: '{\"env\":{\"ENABLE_PREFIX_DELEGATION\":\"true\",\"WARM_PREFIX_TARGET\":\"1\"}}'\n  - name: coredns\n    version: latest\n  - name: kube-proxy\n    version: latest\n  - name: aws-ebs-csi-driver\n    version: latest\n    serviceAccountRoleARN: \"arn:aws:iam::123456789:role/EBSCSIDriverRole\"\n\nfargateProfiles:\n  - name: batch-jobs\n    selectors:\n      - namespace: batch\n        labels:\n          compute: fargate\n  - name: ci-runners\n    selectors:\n      - namespace: ci\n        labels:\n          compute: fargate",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "karpenter-nodepool-and-ec2nodeclass",
+          "heading": "Karpenter NodePool and EC2NodeClass",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Karpenter NodePool for dynamic node provisioning\napiVersion: karpenter.sh/v1beta1\nkind: NodePool\nmetadata:\n  name: default\nspec:\n  template:\n    metadata:\n      labels:\n        managed-by: karpenter\n    spec:\n      requirements:\n        - key: kubernetes.io/arch\n          operator: In\n          values: [\"amd64\"]\n        - key: kubernetes.io/os\n          operator: In\n          values: [\"linux\"]\n        - key: karpenter.sh/capacity-type\n          operator: In\n          values: [\"on-demand\", \"spot\"]\n        - key: karpenter.k8s.aws/instance-category\n          operator: In\n          values: [\"m\", \"c\", \"r\"]\n        - key: karpenter.k8s.aws/instance-generation\n          operator: Gt\n          values: [\"4\"]\n        - key: karpenter.k8s.aws/instance-size\n          operator: In\n          values: [\"large\", \"xlarge\", \"2xlarge\"]\n      nodeClassRef:\n        name: default\n  limits:\n    cpu: \"1000\"\n    memory: 2000Gi\n  disruption:\n    consolidationPolicy: WhenUnderutilized\n    consolidateAfter: 30s\n    expireAfter: 720h\n  weight: 10\n---\napiVersion: karpenter.k8s.aws/v1beta1\nkind: EC2NodeClass\nmetadata:\n  name: default\nspec:\n  amiFamily: AL2\n  subnetSelectorTerms:\n    - tags:\n        karpenter.sh/discovery: production-cluster\n        network: private\n  securityGroupSelectorTerms:\n    - tags:\n        karpenter.sh/discovery: production-cluster\n  instanceProfile: KarpenterNodeInstanceProfile\n  blockDeviceMappings:\n    - deviceName: /dev/xvda\n      ebs:\n        volumeSize: 100Gi\n        volumeType: gp3\n        iops: 3000\n        throughput: 125\n        encrypted: true\n        kmsKeyID: \"arn:aws:kms:us-east-1:123456789:key/abc-123\"\n  tags:\n    Environment: production\n    ManagedBy: karpenter\n  metadataOptions:\n    httpEndpoint: enabled\n    httpProtocolIPv6: disabled\n    httpPutResponseHopLimit: 2\n    httpTokens: required\n---\n# IRSA - Pod-level AWS permissions\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/OrderServiceRole\n---\n# IAM Policy for the service (referenced by role)\n# {\n#   \"Version\": \"2012-10-17\",\n#   \"Statement\": [\n#     {\n#       \"Effect\": \"Allow\",\n#       \"Action\": [\"s3:GetObject\", \"s3:PutObject\"],\n#       \"Resource\": \"arn:aws:s3:::order-documents/*\"\n#     },\n#     {\n#       \"Effect\": \"Allow\",\n#       \"Action\": [\"sqs:SendMessage\", \"sqs:ReceiveMessage\"],\n#       \"Resource\": \"arn:aws:sqs:us-east-1:123456789:order-events\"\n#     }\n#   ]\n# }",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using node-level IAM roles instead of IRSA: Attaching IAM policies to the node instance profile grants every pod on that node the same AWS permissions. This violates least-privilege and creates a massive blast radius if any pod is compromised. Always use IRSA to assign fine-grained permissions to individual service accounts, ensuring each microservice can only access the specific AWS resources it needs.",
+            "Not enabling prefix delegation for VPC CNI: Without prefix delegation, each pod consumes one secondary IP from the node's ENI, limiting pod density to approximately 30 pods per m5.large. Enabling prefix delegation assigns /28 prefixes instead of individual IPs, increasing capacity to approximately 110 pods per node. This is critical for clusters running many small pods or using node types with limited ENI capacity.",
+            "Ignoring EKS version support windows: EKS supports three Kubernetes minor versions simultaneously, with each version receiving approximately 14 months of standard support. Running an unsupported version means no security patches and eventual forced upgrades. Plan upgrades every 3-4 months, test in staging first, and use kubectl convert and pluto to detect deprecated API resources before upgrading.",
+            "Over-relying on Cluster Autoscaler instead of Karpenter: Cluster Autoscaler scales node groups based on pending pods but is limited to pre-defined instance types and takes 3-5 minutes to provision nodes. Karpenter makes scheduling decisions in seconds, selects optimal instance types from a broad pool based on actual pod requirements, and consolidates underutilized nodes automatically. For most EKS workloads, Karpenter provides faster scaling and lower costs.",
+            "Not configuring pod identity webhook timeout: The IRSA mutating webhook injects AWS credentials into pods at creation time. If the webhook is slow or unavailable, pod creation fails or times out. Configure appropriate failure policies (Ignore for non-critical workloads, Fail for security-sensitive ones) and ensure the webhook pods have sufficient resources and are spread across availability zones."
+          ]
+        }
+      ],
+      "wordCount": 304,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A large SaaS platform runs 200+ microservices on EKS across three availability zones. Karpenter manages node provisioning with a mix of on-demand instances for baseline capacity and spot instances for burst workloads, achieving 40% cost savings compared to fixed-size on-demand node groups. Each service uses IRSA with narrowly scoped IAM policies — the order service can only access its specific S3 bucket and SQS queue, while the analytics service can only read from Kinesis streams. The AWS Load Balancer Controller provisions a shared ALB with path-based routing to all services, integrated with WAF for DDoS protection and ACM for automatic TLS certificate renewal."
+        },
+        {
+          "type": "paragraph",
+          "text": "A financial services company uses EKS with strict compliance controls. All nodes run in private subnets with no internet access; container images are pulled from a private ECR registry via VPC endpoints. Pod Security Standards enforce non-root execution and read-only filesystems. IRSA policies include condition keys that restrict access based on the source VPC and require MFA for sensitive operations. EKS audit logs stream to CloudWatch Logs and are retained for 7 years for regulatory compliance. Fargate profiles run compliance scanning jobs that need temporary compute without leaving persistent infrastructure."
+        },
+        {
+          "type": "paragraph",
+          "text": "A machine learning platform uses EKS with GPU-equipped nodes for model training and inference. Karpenter provisions p3.2xlarge instances on-demand when training jobs are submitted and terminates them when jobs complete, avoiding idle GPU costs. Inference workloads run on g4dn instances with HPA scaling based on prediction request queue depth. The EBS CSI driver provides high-performance gp3 volumes for model checkpointing, while EFS CSI provides shared storage for training datasets accessible by multiple pods simultaneously."
+        }
+      ],
+      "wordCount": 267,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does IAM Roles for Service Accounts (IRSA) work in EKS?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: IRSA uses an OIDC identity provider associated with the EKS cluster. When a pod with an annotated service account starts, the EKS pod identity webhook mutates the pod spec to inject a projected service account token volume and AWS environment variables. The AWS SDK in the pod exchanges this OIDC token with AWS STS for temporary IAM credentials scoped to the role specified in the service account annotation. Credentials are automatically refreshed before expiration. This eliminates the need for long-lived credentials or node-level IAM roles."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Cluster Autoscaler and Karpenter?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Cluster Autoscaler scales pre-defined node groups up and down based on pending pods, taking 3-5 minutes to provision new nodes and limited to the instance types configured in each node group. Karpenter is a more flexible node provisioner that evaluates pending pod requirements directly, selects optimal instance types from a broad pool (considering CPU, memory, GPU, architecture), provisions nodes in under 60 seconds, and automatically consolidates underutilized nodes. Karpenter eliminates the need to pre-define node groups and provides better bin-packing and cost optimization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design an EKS cluster for high availability?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Deploy the cluster across at least three availability zones with managed node groups or Karpenter configured to spread nodes across all AZs. Use topology spread constraints on critical workloads to ensure pods are distributed evenly across zones. Configure Pod Disruption Budgets to prevent voluntary disruptions from reducing availability below thresholds. Use the AWS Load Balancer Controller with cross-zone load balancing enabled. Store persistent data on multi-AZ services (RDS Multi-AZ, ElastiCache with replicas) rather than single-AZ EBS volumes. Ensure CoreDNS, the AWS Load Balancer Controller, and other critical add-ons have anti-affinity rules preventing co-location on a single node."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you use Fargate profiles versus managed node groups?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use Fargate for workloads where you want zero node management overhead: batch jobs, CI/CD runners, low-traffic services, or security-sensitive workloads that benefit from per-pod isolation (each Fargate pod runs in its own micro-VM). Use managed node groups for workloads requiring DaemonSets (Fargate does not support them), GPU access, high network throughput, local storage, or when you need fine-grained control over instance types and placement. Fargate has higher per-vCPU cost but eliminates node management overhead and idle capacity waste."
+        }
+      ],
+      "wordCount": 391,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use EKS managed add-ons for critical cluster components: Managed add-ons (VPC CNI, CoreDNS, kube-proxy, EBS CSI) are tested for compatibility with each EKS version and can be upgraded independently of the cluster. This prevents version skew issues and ensures security patches are applied promptly. Configure add-ons with resolveConflicts: OVERWRITE to prevent manual modifications from blocking upgrades.",
+            "Implement cost allocation with Kubernetes labels and AWS tags: Tag all Karpenter-provisioned nodes and EKS resources with team, environment, and service labels. Use Kubecost or AWS Cost Explorer with EKS cost allocation tags to attribute cluster costs to individual teams and services. This visibility drives accountability and identifies optimization opportunities like oversized resource requests or idle workloads.",
+            "Plan subnet sizing for pod density: With VPC CNI, each pod consumes a VPC IP address. A /24 subnet provides only 251 usable IPs, limiting the number of pods that can run in that subnet. Use /19 or larger subnets for production clusters, and enable prefix delegation to maximize pod density per node. Monitor aws-node metrics for IP address exhaustion warnings."
+          ]
+        }
+      ],
+      "wordCount": 174,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Concepts and Architecture — Kubernetes fundamentals that EKS manages",
+            "Workload Management — Deployments and autoscaling on EKS",
+            "AWS Services — IAM, VPC, and other AWS services that integrate with EKS"
+          ]
+        }
+      ],
+      "wordCount": 31,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "apiVersion: eksctl.io/v1alpha5\nkind: ClusterConfig\nmetadata:\n  name: production-cluster\n  region: us-east-1\n  version: \"1.29\"\n\nvpc:\n  cidr: \"10.0.0.0/16\"\n  nat:\n    gateway: HighlyAvailable\n  clusterEndpoints:\n    publicAccess: true\n    privateAccess: true\n\niam:\n  withOIDC: true\n  serviceAccounts:\n    - metadata:\n        name: order-service\n        namespace: production\n      attachPolicyARNs:\n        - \"arn:aws:iam::123456789:policy/OrderServicePolicy\"\n    - metadata:\n        name: aws-load-balancer-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        awsLoadBalancerController: true\n    - metadata:\n        name: external-dns\n        namespace: kube-system\n      wellKnownPolicies:\n        externalDNS: true\n    - metadata:\n        name: ebs-csi-controller\n        namespace: kube-system\n      wellKnownPolicies:\n        ebsCSIController: true\n\nmanagedNodeGroups:\n  - name: system\n    instanceType: m5.large\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 5\n    labels:\n      role: system\n      lifecycle: on-demand\n    taints:\n      - key: CriticalAddonsOnly\n        value: \"true\"\n        effect: PreferNoSchedule\n    iam:\n      withAddonPolicies:\n        albIngress: true\n        cloudWatch: true\n        ebs: true\n\n  - name: application-spot\n    instanceTypes:\n      - m5.xlarge\n      - m5a.xlarge\n      - m5n.xlarge\n      - c5.xlarge\n      - c5a.xlarge\n    desiredCapacity: 5\n    minSize: 3\n    maxSize: 30\n    spot: true\n    labels:\n      role: application\n      lifecycle: spot\n    taints:\n      - key: spot\n        value: \"true\"\n        effect: PreferNoSchedule\n    privateNetworking: true\n\n  - name: application-ondemand\n    instanceType: m5.xlarge\n    desiredCapacity: 3\n    minSize: 3\n    maxSize: 10\n    labels:\n      role: application\n      lifecycle: on-demand\n    privateNetworking: true\n\naddons:\n  - name: vpc-cni\n    version: latest\n    configurationValues: '{\"env\":{\"ENABLE_PREFIX_DELEGATION\":\"true\",\"WARM_PREFIX_TARGET\":\"1\"}}'\n  - name: coredns\n    version: latest\n  - name: kube-proxy\n    version: latest\n  - name: aws-ebs-csi-driver\n    version: latest\n    serviceAccountRoleARN: \"arn:aws:iam::123456789:role/EBSCSIDriverRole\"\n\nfargateProfiles:\n  - name: batch-jobs\n    selectors:\n      - namespace: batch\n        labels:\n          compute: fargate\n  - name: ci-runners\n    selectors:\n      - namespace: ci\n        labels:\n          compute: fargate",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Karpenter NodePool for dynamic node provisioning\napiVersion: karpenter.sh/v1beta1\nkind: NodePool\nmetadata:\n  name: default\nspec:\n  template:\n    metadata:\n      labels:\n        managed-by: karpenter\n    spec:\n      requirements:\n        - key: kubernetes.io/arch\n          operator: In\n          values: [\"amd64\"]\n        - key: kubernetes.io/os\n          operator: In\n          values: [\"linux\"]\n        - key: karpenter.sh/capacity-type\n          operator: In\n          values: [\"on-demand\", \"spot\"]\n        - key: karpenter.k8s.aws/instance-category\n          operator: In\n          values: [\"m\", \"c\", \"r\"]\n        - key: karpenter.k8s.aws/instance-generation\n          operator: Gt\n          values: [\"4\"]\n        - key: karpenter.k8s.aws/instance-size\n          operator: In\n          values: [\"large\", \"xlarge\", \"2xlarge\"]\n      nodeClassRef:\n        name: default\n  limits:\n    cpu: \"1000\"\n    memory: 2000Gi\n  disruption:\n    consolidationPolicy: WhenUnderutilized\n    consolidateAfter: 30s\n    expireAfter: 720h\n  weight: 10\n---\napiVersion: karpenter.k8s.aws/v1beta1\nkind: EC2NodeClass\nmetadata:\n  name: default\nspec:\n  amiFamily: AL2\n  subnetSelectorTerms:\n    - tags:\n        karpenter.sh/discovery: production-cluster\n        network: private\n  securityGroupSelectorTerms:\n    - tags:\n        karpenter.sh/discovery: production-cluster\n  instanceProfile: KarpenterNodeInstanceProfile\n  blockDeviceMappings:\n    - deviceName: /dev/xvda\n      ebs:\n        volumeSize: 100Gi\n        volumeType: gp3\n        iops: 3000\n        throughput: 125\n        encrypted: true\n        kmsKeyID: \"arn:aws:kms:us-east-1:123456789:key/abc-123\"\n  tags:\n    Environment: production\n    ManagedBy: karpenter\n  metadataOptions:\n    httpEndpoint: enabled\n    httpProtocolIPv6: disabled\n    httpPutResponseHopLimit: 2\n    httpTokens: required\n---\n# IRSA - Pod-level AWS permissions\napiVersion: v1\nkind: ServiceAccount\nmetadata:\n  name: order-service\n  namespace: production\n  annotations:\n    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/OrderServiceRole\n---\n# IAM Policy for the service (referenced by role)\n# {\n#   \"Version\": \"2012-10-17\",\n#   \"Statement\": [\n#     {\n#       \"Effect\": \"Allow\",\n#       \"Action\": [\"s3:GetObject\", \"s3:PutObject\"],\n#       \"Resource\": \"arn:aws:s3:::order-documents/*\"\n#     },\n#     {\n#       \"Effect\": \"Allow\",\n#       \"Action\": [\"sqs:SendMessage\", \"sqs:ReceiveMessage\"],\n#       \"Resource\": \"arn:aws:sqs:us-east-1:123456789:order-events\"\n#     }\n#   ]\n# }",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/kubernetes/eks-aws-integration.md",
+    "wordCount": 1412,
+    "sectionCount": 10
+  }
+}

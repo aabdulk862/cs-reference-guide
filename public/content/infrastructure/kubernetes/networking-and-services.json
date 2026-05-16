@@ -1,0 +1,220 @@
+{
+  "id": "kubernetes-kubernetes-networking-and-services",
+  "slug": "networking-and-services",
+  "title": "Kubernetes Networking and Services",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Every pod gets a unique cluster-wide IP address; containers within a pod share the network namespace and communicate via localhost",
+            "Services provide stable virtual IPs (ClusterIP) and DNS names that abstract away ephemeral pod IPs",
+            "Four Service types: ClusterIP (internal), NodePort (static port on every node), LoadBalancer (cloud LB), ExternalName (DNS CNAME)",
+            "Ingress manages L7 HTTP/HTTPS routing with host-based and path-based rules, TLS termination, and rate limiting",
+            "Network Policies implement firewall rules at the pod level, controlling ingress and egress traffic by label selectors, namespaces, and CIDR blocks",
+            "CoreDNS provides cluster DNS: services resolve as <service>.<namespace>.svc.cluster.local",
+            "kube-proxy maintains iptables or IPVS rules on each node to route ClusterIP traffic to backend pods"
+          ]
+        }
+      ],
+      "wordCount": 112,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Kubernetes networking primitives address different communication patterns in distributed systems. Use ClusterIP Services for internal service-to-service communication where only pods within the cluster need access. Use LoadBalancer Services when you need to expose a single service directly to external traffic with cloud-provider load balancing. Use Ingress when multiple services share a single external endpoint with HTTP routing rules, reducing the number of load balancers and enabling centralized TLS management. Implement Network Policies in any multi-tenant cluster or environment with compliance requirements that mandate network segmentation between services. Use headless Services (ClusterIP: None) when clients need to discover individual pod IPs directly, common for StatefulSet workloads like databases and message brokers that require direct peer-to-peer communication."
+        }
+      ],
+      "wordCount": 115,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "service-types-and-dns-resolution",
+          "heading": "Service Types and DNS Resolution",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# ClusterIP Service - internal communication\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  type: ClusterIP\n  selector:\n    app: order-service\n  ports:\n    - name: http\n      port: 80\n      targetPort: 8080\n      protocol: TCP\n    - name: grpc\n      port: 9090\n      targetPort: 9090\n      protocol: TCP\n---\n# Headless Service for StatefulSet peer discovery\napiVersion: v1\nkind: Service\nmetadata:\n  name: kafka-headless\n  namespace: production\nspec:\n  type: ClusterIP\n  clusterIP: None\n  selector:\n    app: kafka\n  ports:\n    - name: broker\n      port: 9092\n      targetPort: 9092\n    - name: controller\n      port: 9093\n      targetPort: 9093\n---\n# LoadBalancer Service with AWS NLB annotations\napiVersion: v1\nkind: Service\nmetadata:\n  name: api-gateway-external\n  namespace: production\n  annotations:\n    service.beta.kubernetes.io/aws-load-balancer-type: \"nlb\"\n    service.beta.kubernetes.io/aws-load-balancer-scheme: \"internet-facing\"\n    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: \"true\"\n    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: \"deregistration_delay.timeout_seconds=30\"\nspec:\n  type: LoadBalancer\n  selector:\n    app: api-gateway\n  ports:\n    - name: https\n      port: 443\n      targetPort: 8080\n      protocol: TCP\n  externalTrafficPolicy: Local",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "ingress-with-aws-alb-controller",
+          "heading": "Ingress with AWS ALB Controller",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: api-ingress\n  namespace: production\n  annotations:\n    kubernetes.io/ingress.class: alb\n    alb.ingress.kubernetes.io/scheme: internet-facing\n    alb.ingress.kubernetes.io/target-type: ip\n    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123\n    alb.ingress.kubernetes.io/listen-ports: '[{\"HTTPS\":443}]'\n    alb.ingress.kubernetes.io/ssl-redirect: \"443\"\n    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health\n    alb.ingress.kubernetes.io/healthcheck-interval-seconds: \"15\"\n    alb.ingress.kubernetes.io/healthy-threshold-count: \"2\"\n    alb.ingress.kubernetes.io/group.name: production-api\n    alb.ingress.kubernetes.io/group.order: \"10\"\n    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:123456789:regional/webacl/production/abc\nspec:\n  rules:\n    - host: api.example.com\n      http:\n        paths:\n          - path: /orders\n            pathType: Prefix\n            backend:\n              service:\n                name: order-service\n                port:\n                  number: 80\n          - path: /users\n            pathType: Prefix\n            backend:\n              service:\n                name: user-service\n                port:\n                  number: 80\n          - path: /payments\n            pathType: Prefix\n            backend:\n              service:\n                name: payment-service\n                port:\n                  number: 80\n  tls:\n    - hosts:\n        - api.example.com\n      secretName: api-tls-cert\n---\n# Network Policy - restrict order-service ingress\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: order-service-ingress\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: order-service\n  policyTypes:\n    - Ingress\n    - Egress\n  ingress:\n    - from:\n        - podSelector:\n            matchLabels:\n              app: api-gateway\n        - podSelector:\n            matchLabels:\n              app: payment-service\n      ports:\n        - protocol: TCP\n          port: 8080\n  egress:\n    - to:\n        - podSelector:\n            matchLabels:\n              app: postgres\n      ports:\n        - protocol: TCP\n          port: 5432\n    - to:\n        - podSelector:\n            matchLabels:\n              app: kafka\n      ports:\n        - protocol: TCP\n          port: 9092\n    - to:  # Allow DNS resolution\n        - namespaceSelector: {}\n          podSelector:\n            matchLabels:\n              k8s-app: kube-dns\n      ports:\n        - protocol: UDP\n          port: 53",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Forgetting to allow DNS egress in Network Policies: When you apply an egress Network Policy, all outbound traffic is denied by default, including DNS resolution. Pods cannot resolve service names without an explicit egress rule allowing UDP port 53 to CoreDNS pods. This is the most common cause of mysterious connectivity failures after applying Network Policies.",
+            "Using NodePort in production without understanding security implications: NodePort opens a port on every node in the cluster, including nodes that do not run the target pods. This expands the attack surface and bypasses cloud load balancer security features. Use LoadBalancer or Ingress for external access in production, reserving NodePort for development or specific on-premises scenarios.",
+            "Not setting externalTrafficPolicy on LoadBalancer Services: The default externalTrafficPolicy: Cluster causes an extra network hop and loses the client's source IP because kube-proxy performs SNAT. Setting externalTrafficPolicy: Local preserves the client IP and eliminates the extra hop, but requires that load balancer health checks target only nodes running the service pods to avoid blackholing traffic.",
+            "Ignoring Ingress path type semantics: The Prefix path type matches URL prefixes, so /api matches both /api and /api/v2/users. The Exact type requires an exact match. Misconfiguring path types leads to unexpected routing where requests reach the wrong backend service. Always test routing rules with actual request paths before deploying to production.",
+            "Creating one LoadBalancer per service: Each LoadBalancer Service provisions a separate cloud load balancer, which is expensive ($15-20/month each on AWS) and creates management overhead. Consolidate external services behind a single Ingress resource that routes based on host and path rules, reducing costs and centralizing TLS certificate management."
+          ]
+        }
+      ],
+      "wordCount": 267,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A microservices platform serving 50,000 requests per second uses a single AWS Application Load Balancer provisioned by the ALB Ingress Controller. Path-based routing directs traffic to 15 different backend services, each running as a ClusterIP Service. Weighted target groups enable canary deployments where 5% of traffic routes to the new version while 95% continues to the stable release. The ALB integrates with AWS WAF for DDoS protection and rate limiting at the edge."
+        },
+        {
+          "type": "paragraph",
+          "text": "A financial services company implements zero-trust networking using Kubernetes Network Policies. Every namespace has a default-deny policy that blocks all ingress and egress traffic. Service teams must explicitly declare which other services can communicate with their pods, creating a documented and auditable network topology. The security team reviews Network Policy changes as part of the deployment pipeline, ensuring compliance with regulatory requirements for network segmentation."
+        },
+        {
+          "type": "paragraph",
+          "text": "A multi-tenant SaaS platform uses headless Services with StatefulSets for its distributed database layer. Each database replica has a stable DNS name (db-0.db-headless.production.svc.cluster.local) that clients use for direct connections. Read replicas register with a standard ClusterIP Service for load-balanced read traffic, while writes always target the primary replica by its stable hostname. This architecture supports automatic failover without client-side configuration changes."
+        }
+      ],
+      "wordCount": 199,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a Service and an Ingress in Kubernetes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A Service provides L4 (TCP/UDP) load balancing to a set of pods using a stable ClusterIP and DNS name. It operates at the transport layer and routes based on IP and port. An Ingress provides L7 (HTTP/HTTPS) routing with host-based and path-based rules, TLS termination, and consolidates multiple services behind a single external endpoint. Services are the building blocks that Ingress routes traffic to. You need a Service for every backend, but a single Ingress can route to many Services based on URL patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does kube-proxy implement Service routing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: kube-proxy runs on every node and watches the API server for Service and Endpoint changes. In iptables mode (default), it programs iptables rules that intercept traffic destined for ClusterIP addresses and DNAT it to a randomly selected backend pod IP. In IPVS mode, it uses Linux IPVS (IP Virtual Server) for more efficient load balancing with support for round-robin, least-connections, and other algorithms. IPVS mode performs better at scale because rule lookup is O(1) versus O(n) for iptables chains."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do Network Policies work and what are their limitations?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Network Policies are namespace-scoped resources that define allowed ingress and egress traffic for pods matching a selector. They are additive — multiple policies combine with OR logic for the same pod. Policies are enforced by the CNI plugin (Calico, Cilium, etc.), not by Kubernetes itself. Limitations include: no deny rules (only allow), no logging of blocked traffic by default, no application-layer filtering (L7), and the default CNI (kubenet) does not support them. You must use a CNI that implements the NetworkPolicy API."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the DNS resolution hierarchy in a Kubernetes cluster."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CoreDNS serves as the cluster DNS. Pods resolve names in this order: <service>.<namespace>.svc.cluster.local for services in any namespace, <pod-ip-dashed>.<namespace>.pod.cluster.local for individual pods, and external DNS for non-cluster names. The pod's /etc/resolv.conf is configured with the cluster DNS IP and search domains based on the pod's namespace. This allows short names like order-service to resolve within the same namespace without specifying the full FQDN."
+        }
+      ],
+      "wordCount": 353,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use Ingress group annotations to share ALBs across namespaces: The AWS Load Balancer Controller supports alb.ingress.kubernetes.io/group.name to consolidate multiple Ingress resources into a single ALB. This reduces costs (one ALB instead of many) while allowing each team to manage their own Ingress rules independently. Use group.order to control rule evaluation priority.",
+            "Implement graduated Network Policies: Start with a default-deny policy in each namespace, then add allow rules incrementally. Use labels consistently across all workloads so policies can target logical groups rather than individual pods. Test policies in a staging environment using tools like kubectl-np-viewer or Cilium's policy verdict logs before applying to production.",
+            "Monitor Service endpoint health proactively: A Service with zero ready endpoints silently drops all traffic. Set up alerts on the kube_endpoint_address_available metric to detect services with no healthy backends before users report failures. This catches scenarios where all pods fail readiness checks simultaneously due to a shared dependency outage."
+          ]
+        }
+      ],
+      "wordCount": 152,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Concepts and Architecture — Pod networking fundamentals and cluster architecture",
+            "Workload Management — Deployments and StatefulSets that Services route traffic to",
+            "EKS and AWS Integration — VPC CNI, ALB Controller, and AWS-specific networking"
+          ]
+        }
+      ],
+      "wordCount": 34,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "# ClusterIP Service - internal communication\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  namespace: production\nspec:\n  type: ClusterIP\n  selector:\n    app: order-service\n  ports:\n    - name: http\n      port: 80\n      targetPort: 8080\n      protocol: TCP\n    - name: grpc\n      port: 9090\n      targetPort: 9090\n      protocol: TCP\n---\n# Headless Service for StatefulSet peer discovery\napiVersion: v1\nkind: Service\nmetadata:\n  name: kafka-headless\n  namespace: production\nspec:\n  type: ClusterIP\n  clusterIP: None\n  selector:\n    app: kafka\n  ports:\n    - name: broker\n      port: 9092\n      targetPort: 9092\n    - name: controller\n      port: 9093\n      targetPort: 9093\n---\n# LoadBalancer Service with AWS NLB annotations\napiVersion: v1\nkind: Service\nmetadata:\n  name: api-gateway-external\n  namespace: production\n  annotations:\n    service.beta.kubernetes.io/aws-load-balancer-type: \"nlb\"\n    service.beta.kubernetes.io/aws-load-balancer-scheme: \"internet-facing\"\n    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: \"true\"\n    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: \"deregistration_delay.timeout_seconds=30\"\nspec:\n  type: LoadBalancer\n  selector:\n    app: api-gateway\n  ports:\n    - name: https\n      port: 443\n      targetPort: 8080\n      protocol: TCP\n  externalTrafficPolicy: Local",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: api-ingress\n  namespace: production\n  annotations:\n    kubernetes.io/ingress.class: alb\n    alb.ingress.kubernetes.io/scheme: internet-facing\n    alb.ingress.kubernetes.io/target-type: ip\n    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123\n    alb.ingress.kubernetes.io/listen-ports: '[{\"HTTPS\":443}]'\n    alb.ingress.kubernetes.io/ssl-redirect: \"443\"\n    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health\n    alb.ingress.kubernetes.io/healthcheck-interval-seconds: \"15\"\n    alb.ingress.kubernetes.io/healthy-threshold-count: \"2\"\n    alb.ingress.kubernetes.io/group.name: production-api\n    alb.ingress.kubernetes.io/group.order: \"10\"\n    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-east-1:123456789:regional/webacl/production/abc\nspec:\n  rules:\n    - host: api.example.com\n      http:\n        paths:\n          - path: /orders\n            pathType: Prefix\n            backend:\n              service:\n                name: order-service\n                port:\n                  number: 80\n          - path: /users\n            pathType: Prefix\n            backend:\n              service:\n                name: user-service\n                port:\n                  number: 80\n          - path: /payments\n            pathType: Prefix\n            backend:\n              service:\n                name: payment-service\n                port:\n                  number: 80\n  tls:\n    - hosts:\n        - api.example.com\n      secretName: api-tls-cert\n---\n# Network Policy - restrict order-service ingress\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: order-service-ingress\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: order-service\n  policyTypes:\n    - Ingress\n    - Egress\n  ingress:\n    - from:\n        - podSelector:\n            matchLabels:\n              app: api-gateway\n        - podSelector:\n            matchLabels:\n              app: payment-service\n      ports:\n        - protocol: TCP\n          port: 8080\n  egress:\n    - to:\n        - podSelector:\n            matchLabels:\n              app: postgres\n      ports:\n        - protocol: TCP\n          port: 5432\n    - to:\n        - podSelector:\n            matchLabels:\n              app: kafka\n      ports:\n        - protocol: TCP\n          port: 9092\n    - to:  # Allow DNS resolution\n        - namespaceSelector: {}\n          podSelector:\n            matchLabels:\n              k8s-app: kube-dns\n      ports:\n        - protocol: UDP\n          port: 53",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/kubernetes/networking-and-services.md",
+    "wordCount": 1232,
+    "sectionCount": 10
+  }
+}

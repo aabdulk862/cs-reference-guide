@@ -1,0 +1,261 @@
+{
+  "id": "spring-framework-spring-security",
+  "slug": "spring-security",
+  "title": "Spring Security",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Security is a powerful authentication and authorization framework for Java applications built on servlet filters",
+            "The security filter chain processes every HTTP request through an ordered list of security filters before reaching the controller",
+            "Authentication verifies identity (who you are); authorization verifies permissions (what you can do)",
+            "Supports multiple authentication mechanisms: form login, HTTP Basic, OAuth2, JWT, SAML, LDAP, and custom providers",
+            "SecurityContext holds the authenticated principal and is stored in ThreadLocal via SecurityContextHolder",
+            "Method-level security with @PreAuthorize, @PostAuthorize, @Secured, and @RolesAllowed annotations",
+            "CSRF protection enabled by default for stateful applications; typically disabled for stateless REST APIs",
+            "Password encoding with BCryptPasswordEncoder (recommended), Argon2PasswordEncoder, or SCryptPasswordEncoder"
+          ]
+        }
+      ],
+      "wordCount": 106,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Spring Security is essential for any Spring-based application that requires authentication, authorization, or protection against common security exploits. Use Spring Security when building REST APIs that need JWT or OAuth2 token validation, web applications requiring form-based login with session management, microservices needing service-to-service authentication, or applications integrating with enterprise identity providers via SAML or LDAP. Spring Security provides comprehensive protection against CSRF, session fixation, clickjacking, and other web vulnerabilities out of the box. It integrates seamlessly with Spring Boot auto-configuration, requiring minimal setup for common scenarios while offering deep customization for complex enterprise requirements. The framework's filter-based architecture allows you to intercept and modify security behavior at any point in the request processing pipeline, making it suitable for implementing custom authentication schemes, multi-tenancy security, and fine-grained access control policies that go beyond simple role-based checks."
+        }
+      ],
+      "wordCount": 135,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "security-filter-chain-configuration",
+          "heading": "Security Filter Chain Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Configuration\n@EnableWebSecurity\n@EnableMethodSecurity(prePostEnabled = true)\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain apiFilterChain(HttpSecurity http) throws Exception {\n        return http\n            .securityMatcher(\"/api/**\")\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .requestMatchers(HttpMethod.GET, \"/api/products/**\").hasAuthority(\"PRODUCT_READ\")\n                .requestMatchers(HttpMethod.POST, \"/api/products/**\").hasAuthority(\"PRODUCT_WRITE\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2\n                .jwt(jwt -> jwt\n                    .jwtAuthenticationConverter(jwtAuthenticationConverter())))\n            .exceptionHandling(ex -> ex\n                .authenticationEntryPoint(new CustomAuthenticationEntryPoint())\n                .accessDeniedHandler(new CustomAccessDeniedHandler()))\n            .build();\n    }\n\n    @Bean\n    public SecurityFilterChain webFilterChain(HttpSecurity http) throws Exception {\n        return http\n            .securityMatcher(\"/**\")\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/login\", \"/register\", \"/css/**\", \"/js/**\").permitAll()\n                .anyRequest().authenticated())\n            .formLogin(form -> form\n                .loginPage(\"/login\")\n                .defaultSuccessUrl(\"/dashboard\")\n                .failureUrl(\"/login?error=true\"))\n            .logout(logout -> logout\n                .logoutSuccessUrl(\"/login?logout=true\")\n                .invalidateHttpSession(true)\n                .deleteCookies(\"JSESSIONID\"))\n            .rememberMe(remember -> remember\n                .tokenValiditySeconds(86400)\n                .key(\"uniqueAndSecretKey\"))\n            .build();\n    }\n\n    @Bean\n    public JwtAuthenticationConverter jwtAuthenticationConverter() {\n        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =\n            new JwtGrantedAuthoritiesConverter();\n        grantedAuthoritiesConverter.setAuthoritiesClaimName(\"permissions\");\n        grantedAuthoritiesConverter.setAuthorityPrefix(\"\");\n\n        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();\n        converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);\n        return converter;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-authentication-provider",
+          "heading": "Custom Authentication Provider",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Component\n@RequiredArgsConstructor\npublic class CustomAuthenticationProvider implements AuthenticationProvider {\n\n    private final UserRepository userRepository;\n    private final PasswordEncoder passwordEncoder;\n    private final MfaService mfaService;\n\n    @Override\n    public Authentication authenticate(Authentication authentication)\n            throws AuthenticationException {\n        String username = authentication.getName();\n        String password = authentication.getCredentials().toString();\n        String mfaCode = ((CustomAuthenticationToken) authentication).getMfaCode();\n\n        User user = userRepository.findByUsername(username)\n            .orElseThrow(() -> new BadCredentialsException(\"Invalid credentials\"));\n\n        if (!passwordEncoder.matches(password, user.getPasswordHash())) {\n            throw new BadCredentialsException(\"Invalid credentials\");\n        }\n\n        if (user.isMfaEnabled() && !mfaService.verifyCode(user, mfaCode)) {\n            throw new BadCredentialsException(\"Invalid MFA code\");\n        }\n\n        if (!user.isEnabled()) {\n            throw new DisabledException(\"Account is disabled\");\n        }\n\n        if (user.isAccountLocked()) {\n            throw new LockedException(\"Account is locked\");\n        }\n\n        List<GrantedAuthority> authorities = user.getRoles().stream()\n            .flatMap(role -> role.getPermissions().stream())\n            .map(permission -> new SimpleGrantedAuthority(permission.getName()))\n            .collect(Collectors.toList());\n\n        return new UsernamePasswordAuthenticationToken(user, null, authorities);\n    }\n\n    @Override\n    public boolean supports(Class<?> authentication) {\n        return CustomAuthenticationToken.class.isAssignableFrom(authentication);\n    }\n}\n\n@Service\n@RequiredArgsConstructor\npublic class UserDetailsServiceImpl implements UserDetailsService {\n\n    private final UserRepository userRepository;\n\n    @Override\n    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {\n        User user = userRepository.findByUsername(username)\n            .orElseThrow(() -> new UsernameNotFoundException(\"User not found: \" + username));\n\n        return org.springframework.security.core.userdetails.User.builder()\n            .username(user.getUsername())\n            .password(user.getPasswordHash())\n            .authorities(user.getAuthorities())\n            .accountLocked(user.isAccountLocked())\n            .disabled(!user.isEnabled())\n            .build();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "jwt-token-generation-and-validation",
+          "heading": "JWT Token Generation and Validation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\n@RequiredArgsConstructor\npublic class JwtTokenService {\n\n    private final JwtProperties jwtProperties;\n\n    public String generateAccessToken(UserDetails userDetails) {\n        Map<String, Object> claims = new HashMap<>();\n        claims.put(\"permissions\", userDetails.getAuthorities().stream()\n            .map(GrantedAuthority::getAuthority)\n            .collect(Collectors.toList()));\n        claims.put(\"type\", \"access\");\n\n        return Jwts.builder()\n            .setClaims(claims)\n            .setSubject(userDetails.getUsername())\n            .setIssuedAt(new Date())\n            .setExpiration(new Date(System.currentTimeMillis() +\n                jwtProperties.getAccessTokenExpiration()))\n            .signWith(getSigningKey(), SignatureAlgorithm.HS512)\n            .compact();\n    }\n\n    public String generateRefreshToken(UserDetails userDetails) {\n        return Jwts.builder()\n            .setSubject(userDetails.getUsername())\n            .claim(\"type\", \"refresh\")\n            .setIssuedAt(new Date())\n            .setExpiration(new Date(System.currentTimeMillis() +\n                jwtProperties.getRefreshTokenExpiration()))\n            .signWith(getSigningKey(), SignatureAlgorithm.HS512)\n            .compact();\n    }\n\n    public boolean validateToken(String token) {\n        try {\n            Jwts.parserBuilder()\n                .setSigningKey(getSigningKey())\n                .build()\n                .parseClaimsJws(token);\n            return true;\n        } catch (JwtException | IllegalArgumentException e) {\n            return false;\n        }\n    }\n\n    private Key getSigningKey() {\n        byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.getSecret());\n        return Keys.hmacShaKeyFor(keyBytes);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "method-level-security",
+          "heading": "Method-Level Security",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@Service\n@RequiredArgsConstructor\npublic class DocumentService {\n\n    private final DocumentRepository documentRepository;\n\n    @PreAuthorize(\"hasAuthority('DOCUMENT_CREATE')\")\n    public Document createDocument(CreateDocumentRequest request) {\n        Document doc = Document.from(request);\n        doc.setOwnerId(getCurrentUserId());\n        return documentRepository.save(doc);\n    }\n\n    @PreAuthorize(\"hasAuthority('DOCUMENT_READ') and @documentSecurity.canAccess(#id)\")\n    public Document getDocument(UUID id) {\n        return documentRepository.findById(id)\n            .orElseThrow(() -> new DocumentNotFoundException(id));\n    }\n\n    @PostAuthorize(\"returnObject.ownerId == authentication.principal.id or hasRole('ADMIN')\")\n    public Document getDocumentWithOwnerCheck(UUID id) {\n        return documentRepository.findById(id)\n            .orElseThrow(() -> new DocumentNotFoundException(id));\n    }\n\n    @PreAuthorize(\"#document.ownerId == authentication.principal.id or hasRole('ADMIN')\")\n    public void deleteDocument(Document document) {\n        documentRepository.delete(document);\n    }\n}\n\n@Component(\"documentSecurity\")\n@RequiredArgsConstructor\npublic class DocumentSecurityEvaluator {\n\n    private final DocumentRepository documentRepository;\n    private final TeamMembershipService teamService;\n\n    public boolean canAccess(UUID documentId) {\n        Authentication auth = SecurityContextHolder.getContext().getAuthentication();\n        String userId = ((CustomUserDetails) auth.getPrincipal()).getId();\n\n        Document doc = documentRepository.findById(documentId).orElse(null);\n        if (doc == null) return false;\n\n        return doc.getOwnerId().equals(userId)\n            || doc.getSharedWith().contains(userId)\n            || teamService.isTeamMember(doc.getTeamId(), userId);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Self-invocation bypasses security proxies: Calling a @PreAuthorize-annotated method from within the same class bypasses the security proxy, so the authorization check never executes. Extract secured methods to a separate bean or use AopContext.currentProxy() to invoke through the proxy. This is the same proxy limitation that affects @Transactional and @Cacheable.",
+            "Order of filter chain matchers matters: Spring Security evaluates SecurityFilterChain beans in order. If a permissive chain matches before a restrictive one, requests bypass intended security. Use @Order annotations or define more specific securityMatcher patterns on restrictive chains first. The first matching chain wins.",
+            "CORS misconfiguration with security: When Spring Security is active, CORS preflight OPTIONS requests are rejected unless explicitly allowed. Configure CORS in the security filter chain using .cors(cors -> cors.configurationSource(...)) rather than relying solely on @CrossOrigin annotations, which are processed after security filters.",
+            "Storing plain-text passwords: Never store passwords without hashing. Always use PasswordEncoder (BCrypt with strength 10-12 is the standard). Migrating from legacy hashing requires DelegatingPasswordEncoder which detects the encoding scheme from a prefix like {bcrypt} or {sha256} and delegates to the appropriate encoder.",
+            "Overly permissive token expiration: Setting JWT access tokens with long expiration (hours or days) means compromised tokens remain valid for extended periods with no way to revoke them. Use short-lived access tokens (5-15 minutes) with refresh tokens for session continuity. Implement a token blacklist or use opaque tokens with server-side validation for immediate revocation capability.",
+            "Ignoring security context propagation in async code: SecurityContext is stored in ThreadLocal and is not automatically propagated to new threads. When using @Async, CompletableFuture, or reactive streams, configure DelegatingSecurityContextExecutorService or SecurityContextDelegatingExecutor to propagate the security context to child threads."
+          ]
+        }
+      ],
+      "wordCount": 271,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Multi-tenant SaaS authorization: Enterprise SaaS platforms use Spring Security with custom PermissionEvaluator implementations to enforce tenant isolation. Each request is validated against the tenant context extracted from the JWT, ensuring users can only access resources belonging to their organization. Row-level security is enforced through Hibernate filters that automatically append tenant predicates to all queries, with Spring Security providing the tenant context from the authenticated principal.",
+            "OAuth2 resource server for microservices: In microservice architectures, each service acts as an OAuth2 resource server validating JWT tokens issued by a central authorization server (Keycloak, Auth0, or Okta). Spring Security's oauth2ResourceServer configuration handles token validation, claim extraction, and authority mapping with minimal code. Services communicate using machine-to-machine tokens obtained through the client credentials grant, with Spring Security's OAuth2AuthorizedClientManager handling token acquisition and refresh automatically.",
+            "API rate limiting and abuse prevention: Spring Security filters are extended with custom filters that implement rate limiting per API key or user principal. A OncePerRequestFilter checks Redis-backed counters before allowing requests through, returning 429 responses when limits are exceeded. This integrates naturally with the security filter chain, applying rate limits after authentication but before authorization.",
+            "Graduated authentication for sensitive operations: Banking applications implement step-up authentication where viewing account balances requires standard authentication, but initiating transfers requires re-authentication or MFA verification. Spring Security's AuthenticationTrustResolver and custom AccessDecisionVoter implementations evaluate the authentication strength level, prompting for additional verification when the current authentication level is insufficient for the requested operation."
+          ]
+        }
+      ],
+      "wordCount": 238,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does the Spring Security filter chain work?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Security inserts a DelegatingFilterProxy into the servlet filter chain, which delegates to a FilterChainProxy managing one or more SecurityFilterChain instances. Each chain has a request matcher and an ordered list of security filters (typically 15-20 filters including SecurityContextPersistenceFilter, UsernamePasswordAuthenticationFilter, ExceptionTranslationFilter, and FilterSecurityInterceptor). The first chain whose matcher matches the request processes it. Filters execute in order, each performing a specific security function like CSRF validation, authentication, or authorization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between @Secured, @PreAuthorize, and @RolesAllowed?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: @Secured accepts role names as strings and supports only role-based checks (no SpEL expressions). @RolesAllowed is the JSR-250 equivalent of @Secured with identical functionality. @PreAuthorize uses Spring Expression Language (SpEL) and supports complex expressions including method parameters, custom beans, and boolean logic. @PreAuthorize is the most flexible and is the recommended approach for method-level security in modern Spring applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement token refresh in a stateless API?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Issue a short-lived access token (5-15 minutes) and a longer-lived refresh token (7-30 days) at login. Store the refresh token securely (HTTP-only cookie or encrypted storage). When the access token expires, the client sends the refresh token to a dedicated /auth/refresh endpoint. The server validates the refresh token, checks it has not been revoked (against a blacklist or database), and issues a new access token. Implement refresh token rotation where each use invalidates the old refresh token and issues a new one, detecting token theft if a revoked token is reused."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Spring Security handle CSRF protection?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Spring Security generates a unique CSRF token per session and expects it in every state-changing request (POST, PUT, DELETE). For server-rendered forms, the token is included as a hidden field. For SPAs, the CookieCsrfTokenRepository.withHttpOnlyFalse() stores the token in a cookie readable by JavaScript, which the client includes in a custom header (X-XSRF-TOKEN). Stateless APIs using JWT typically disable CSRF because the token itself serves as proof of authentication and is not automatically sent by browsers like cookies are."
+        }
+      ],
+      "wordCount": 339,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Secure actuator endpoints separately: Create a dedicated SecurityFilterChain for /actuator/** endpoints with stricter authentication. Expose only health and info publicly; require authentication for env, heapdump, and configprops. In Kubernetes, run actuator on a separate management port not exposed through the ingress to prevent external access entirely.",
+            "Implement security event auditing: Register an ApplicationEventPublisher listener for AuthenticationSuccessEvent, AuthenticationFailureBadCredentialsEvent, and AuthorizationDeniedEvent. Log these events with contextual information (IP address, user agent, requested resource) to a security audit log for compliance and incident investigation. Rate-limit failed authentication attempts per IP and per account to prevent brute-force attacks.",
+            "Use security headers: Configure headers() in the security filter chain to add X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Strict-Transport-Security, and Content-Security-Policy headers. These prevent clickjacking, MIME-type sniffing, and XSS attacks at the browser level with zero application code changes.",
+            "Token storage and rotation: For refresh tokens, store a hashed version in the database with metadata (device, IP, creation time). Implement token family tracking so that if a refresh token is reused after rotation, all tokens in that family are revoked (indicating potential theft). Set absolute expiration on refresh tokens regardless of activity to limit the window of compromise."
+          ]
+        }
+      ],
+      "wordCount": 190,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Spring Framework Core Container — Security beans are managed by the IoC container and leverage AOP proxies",
+            "Spring MVC and REST APIs — Security filter chain integrates with the MVC request processing pipeline",
+            "Java Concurrency — SecurityContext propagation in multi-threaded applications requires understanding ThreadLocal behavior"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@Configuration\n@EnableWebSecurity\n@EnableMethodSecurity(prePostEnabled = true)\npublic class SecurityConfig {\n\n    @Bean\n    public SecurityFilterChain apiFilterChain(HttpSecurity http) throws Exception {\n        return http\n            .securityMatcher(\"/api/**\")\n            .csrf(csrf -> csrf.disable())\n            .sessionManagement(session ->\n                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/api/public/**\").permitAll()\n                .requestMatchers(\"/api/admin/**\").hasRole(\"ADMIN\")\n                .requestMatchers(HttpMethod.GET, \"/api/products/**\").hasAuthority(\"PRODUCT_READ\")\n                .requestMatchers(HttpMethod.POST, \"/api/products/**\").hasAuthority(\"PRODUCT_WRITE\")\n                .anyRequest().authenticated())\n            .oauth2ResourceServer(oauth2 -> oauth2\n                .jwt(jwt -> jwt\n                    .jwtAuthenticationConverter(jwtAuthenticationConverter())))\n            .exceptionHandling(ex -> ex\n                .authenticationEntryPoint(new CustomAuthenticationEntryPoint())\n                .accessDeniedHandler(new CustomAccessDeniedHandler()))\n            .build();\n    }\n\n    @Bean\n    public SecurityFilterChain webFilterChain(HttpSecurity http) throws Exception {\n        return http\n            .securityMatcher(\"/**\")\n            .authorizeHttpRequests(auth -> auth\n                .requestMatchers(\"/login\", \"/register\", \"/css/**\", \"/js/**\").permitAll()\n                .anyRequest().authenticated())\n            .formLogin(form -> form\n                .loginPage(\"/login\")\n                .defaultSuccessUrl(\"/dashboard\")\n                .failureUrl(\"/login?error=true\"))\n            .logout(logout -> logout\n                .logoutSuccessUrl(\"/login?logout=true\")\n                .invalidateHttpSession(true)\n                .deleteCookies(\"JSESSIONID\"))\n            .rememberMe(remember -> remember\n                .tokenValiditySeconds(86400)\n                .key(\"uniqueAndSecretKey\"))\n            .build();\n    }\n\n    @Bean\n    public JwtAuthenticationConverter jwtAuthenticationConverter() {\n        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter =\n            new JwtGrantedAuthoritiesConverter();\n        grantedAuthoritiesConverter.setAuthoritiesClaimName(\"permissions\");\n        grantedAuthoritiesConverter.setAuthorityPrefix(\"\");\n\n        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();\n        converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);\n        return converter;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Component\n@RequiredArgsConstructor\npublic class CustomAuthenticationProvider implements AuthenticationProvider {\n\n    private final UserRepository userRepository;\n    private final PasswordEncoder passwordEncoder;\n    private final MfaService mfaService;\n\n    @Override\n    public Authentication authenticate(Authentication authentication)\n            throws AuthenticationException {\n        String username = authentication.getName();\n        String password = authentication.getCredentials().toString();\n        String mfaCode = ((CustomAuthenticationToken) authentication).getMfaCode();\n\n        User user = userRepository.findByUsername(username)\n            .orElseThrow(() -> new BadCredentialsException(\"Invalid credentials\"));\n\n        if (!passwordEncoder.matches(password, user.getPasswordHash())) {\n            throw new BadCredentialsException(\"Invalid credentials\");\n        }\n\n        if (user.isMfaEnabled() && !mfaService.verifyCode(user, mfaCode)) {\n            throw new BadCredentialsException(\"Invalid MFA code\");\n        }\n\n        if (!user.isEnabled()) {\n            throw new DisabledException(\"Account is disabled\");\n        }\n\n        if (user.isAccountLocked()) {\n            throw new LockedException(\"Account is locked\");\n        }\n\n        List<GrantedAuthority> authorities = user.getRoles().stream()\n            .flatMap(role -> role.getPermissions().stream())\n            .map(permission -> new SimpleGrantedAuthority(permission.getName()))\n            .collect(Collectors.toList());\n\n        return new UsernamePasswordAuthenticationToken(user, null, authorities);\n    }\n\n    @Override\n    public boolean supports(Class<?> authentication) {\n        return CustomAuthenticationToken.class.isAssignableFrom(authentication);\n    }\n}\n\n@Service\n@RequiredArgsConstructor\npublic class UserDetailsServiceImpl implements UserDetailsService {\n\n    private final UserRepository userRepository;\n\n    @Override\n    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {\n        User user = userRepository.findByUsername(username)\n            .orElseThrow(() -> new UsernameNotFoundException(\"User not found: \" + username));\n\n        return org.springframework.security.core.userdetails.User.builder()\n            .username(user.getUsername())\n            .password(user.getPasswordHash())\n            .authorities(user.getAuthorities())\n            .accountLocked(user.isAccountLocked())\n            .disabled(!user.isEnabled())\n            .build();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\n@RequiredArgsConstructor\npublic class JwtTokenService {\n\n    private final JwtProperties jwtProperties;\n\n    public String generateAccessToken(UserDetails userDetails) {\n        Map<String, Object> claims = new HashMap<>();\n        claims.put(\"permissions\", userDetails.getAuthorities().stream()\n            .map(GrantedAuthority::getAuthority)\n            .collect(Collectors.toList()));\n        claims.put(\"type\", \"access\");\n\n        return Jwts.builder()\n            .setClaims(claims)\n            .setSubject(userDetails.getUsername())\n            .setIssuedAt(new Date())\n            .setExpiration(new Date(System.currentTimeMillis() +\n                jwtProperties.getAccessTokenExpiration()))\n            .signWith(getSigningKey(), SignatureAlgorithm.HS512)\n            .compact();\n    }\n\n    public String generateRefreshToken(UserDetails userDetails) {\n        return Jwts.builder()\n            .setSubject(userDetails.getUsername())\n            .claim(\"type\", \"refresh\")\n            .setIssuedAt(new Date())\n            .setExpiration(new Date(System.currentTimeMillis() +\n                jwtProperties.getRefreshTokenExpiration()))\n            .signWith(getSigningKey(), SignatureAlgorithm.HS512)\n            .compact();\n    }\n\n    public boolean validateToken(String token) {\n        try {\n            Jwts.parserBuilder()\n                .setSigningKey(getSigningKey())\n                .build()\n                .parseClaimsJws(token);\n            return true;\n        } catch (JwtException | IllegalArgumentException e) {\n            return false;\n        }\n    }\n\n    private Key getSigningKey() {\n        byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.getSecret());\n        return Keys.hmacShaKeyFor(keyBytes);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@Service\n@RequiredArgsConstructor\npublic class DocumentService {\n\n    private final DocumentRepository documentRepository;\n\n    @PreAuthorize(\"hasAuthority('DOCUMENT_CREATE')\")\n    public Document createDocument(CreateDocumentRequest request) {\n        Document doc = Document.from(request);\n        doc.setOwnerId(getCurrentUserId());\n        return documentRepository.save(doc);\n    }\n\n    @PreAuthorize(\"hasAuthority('DOCUMENT_READ') and @documentSecurity.canAccess(#id)\")\n    public Document getDocument(UUID id) {\n        return documentRepository.findById(id)\n            .orElseThrow(() -> new DocumentNotFoundException(id));\n    }\n\n    @PostAuthorize(\"returnObject.ownerId == authentication.principal.id or hasRole('ADMIN')\")\n    public Document getDocumentWithOwnerCheck(UUID id) {\n        return documentRepository.findById(id)\n            .orElseThrow(() -> new DocumentNotFoundException(id));\n    }\n\n    @PreAuthorize(\"#document.ownerId == authentication.principal.id or hasRole('ADMIN')\")\n    public void deleteDocument(Document document) {\n        documentRepository.delete(document);\n    }\n}\n\n@Component(\"documentSecurity\")\n@RequiredArgsConstructor\npublic class DocumentSecurityEvaluator {\n\n    private final DocumentRepository documentRepository;\n    private final TeamMembershipService teamService;\n\n    public boolean canAccess(UUID documentId) {\n        Authentication auth = SecurityContextHolder.getContext().getAuthentication();\n        String userId = ((CustomUserDetails) auth.getPrincipal()).getId();\n\n        Document doc = documentRepository.findById(documentId).orElse(null);\n        if (doc == null) return false;\n\n        return doc.getOwnerId().equals(userId)\n            || doc.getSharedWith().contains(userId)\n            || teamService.isTeamMember(doc.getTeamId(), userId);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-security.md",
+    "wordCount": 1324,
+    "sectionCount": 12
+  }
+}

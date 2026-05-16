@@ -379,7 +379,7 @@ Insert all dictionary words into a trie. For a misspelled word, generate candida
 ## Related Topics
 
 - [Tree](./tree.md) — Tries are specialized tree structures optimized for string operations
-- [Map](./map.md) — HashMap provides O(1) exact lookup but cannot do prefix search
+- [Hash Tables](./hash-tables.md) — HashMap provides O(1) exact lookup but cannot do prefix search
 - [Sets](./sets.md) — TreeSet provides sorted string storage but O(log n) prefix operations
 - [Graph](./graph.md) — Trie traversal uses DFS patterns similar to graph exploration
 - [Big O Notation](./big-o-notation.md) — Trie operations are O(m) where m is string length, independent of collection size

@@ -1,0 +1,291 @@
+{
+  "id": "sorting-and-searching-comparison-based-sorting",
+  "slug": "comparison-based-sorting",
+  "title": "Comparison-Based Sorting",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Merge Sort: O(n log n) guaranteed, O(n) space, stable — divide-and-conquer",
+            "Quick Sort: O(n log n) average, O(n²) worst, O(log n) space, unstable — partition-based",
+            "Heap Sort: O(n log n) guaranteed, O(1) space, unstable — selection-based",
+            "Tim Sort: O(n log n) worst, O(n) space, stable, adaptive — hybrid merge+insertion",
+            "Insertion Sort: O(n²) worst, O(n) best (nearly sorted), O(1) space, stable",
+            "Comparison lower bound: Ω(n log n) — no comparison sort can do better",
+            "Java Arrays.sort (primitives): Dual-pivot quicksort, unstable",
+            "Java Arrays.sort (objects): TimSort, stable",
+            "Python sorted(): TimSort, stable",
+            "C++ std::sort: Introsort (quicksort + heapsort fallback), unstable"
+          ]
+        }
+      ],
+      "wordCount": 96,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Comparison-based sorting algorithms work on any data type that supports a total ordering (comparisons). They are the default choice when you cannot make assumptions about the data distribution or value range."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use merge sort when stability is required (equal elements must maintain their relative order), when sorting linked lists (merge sort is naturally suited to linked structures with O(1) merge), when external sorting is needed (data exceeds memory, must sort on disk), or when worst-case O(n log n) guarantee is critical (real-time systems, SLA-bound operations)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use quicksort when average-case performance matters more than worst-case guarantees, when in-place sorting is preferred (O(log n) stack space versus O(n) for merge sort), or when cache performance is important (quicksort has better locality than merge sort due to in-place partitioning). Randomized pivot selection makes worst-case extremely unlikely."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use heapsort when you need guaranteed O(n log n) with O(1) extra space (the only comparison sort achieving both), when memory is severely constrained, or when you need a partial sort (find k largest elements in O(n + k log n))."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use insertion sort for small arrays (under 20-50 elements) where its low overhead beats the recursive overhead of merge/quick sort, for nearly-sorted data where it achieves O(n) time, or as the base case in hybrid algorithms (TimSort uses insertion sort for small runs)."
+        }
+      ],
+      "wordCount": 217,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "merge-sort-with-optimization",
+          "heading": "Merge Sort with Optimization",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A production-quality merge sort with small-array optimization and in-place merge for reduced allocation."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class MergeSort {\n    private static final int INSERTION_THRESHOLD = 32;\n\n    /**\n     * Merge sort with insertion sort for small subarrays.\n     * Stable, O(n log n) guaranteed, O(n) auxiliary space.\n     */\n    public static void sort(int[] arr) {\n        int[] aux = new int[arr.length];\n        mergeSort(arr, aux, 0, arr.length - 1);\n    }\n\n    private static void mergeSort(int[] arr, int[] aux, int lo, int hi) {\n        if (hi - lo < INSERTION_THRESHOLD) {\n            insertionSort(arr, lo, hi);\n            return;\n        }\n\n        int mid = lo + (hi - lo) / 2;\n        mergeSort(arr, aux, lo, mid);\n        mergeSort(arr, aux, mid + 1, hi);\n\n        // Skip merge if already sorted (optimization for partially sorted data)\n        if (arr[mid] <= arr[mid + 1]) return;\n\n        merge(arr, aux, lo, mid, hi);\n    }\n\n    private static void merge(int[] arr, int[] aux, int lo, int mid, int hi) {\n        System.arraycopy(arr, lo, aux, lo, hi - lo + 1);\n\n        int i = lo, j = mid + 1;\n        for (int k = lo; k <= hi; k++) {\n            if (i > mid) arr[k] = aux[j++];\n            else if (j > hi) arr[k] = aux[i++];\n            else if (aux[j] < aux[i]) arr[k] = aux[j++];\n            else arr[k] = aux[i++];  // Stable: take from left on equality\n        }\n    }\n\n    private static void insertionSort(int[] arr, int lo, int hi) {\n        for (int i = lo + 1; i <= hi; i++) {\n            int key = arr[i];\n            int j = i - 1;\n            while (j >= lo && arr[j] > key) {\n                arr[j + 1] = arr[j];\n                j--;\n            }\n            arr[j + 1] = key;\n        }\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "function mergeSort(arr: number[]): number[] {\n  if (arr.length <= 1) return arr;\n\n  const mid = Math.floor(arr.length / 2);\n  const left = mergeSort(arr.slice(0, mid));\n  const right = mergeSort(arr.slice(mid));\n\n  return merge(left, right);\n}\n\nfunction merge(left: number[], right: number[]): number[] {\n  const result: number[] = [];\n  let i = 0, j = 0;\n\n  while (i < left.length && j < right.length) {\n    if (left[i] <= right[j]) {\n      result.push(left[i++]);\n    } else {\n      result.push(right[j++]);\n    }\n  }\n\n  return [...result, ...left.slice(i), ...right.slice(j)];\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        },
+        {
+          "id": "quicksort-with-randomized-pivot-and-three-way-partition",
+          "heading": "Quicksort with Randomized Pivot and Three-Way Partition",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Production quicksort using randomized pivot selection to avoid worst-case and three-way partitioning for arrays with many duplicates."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class QuickSort {\n    private static final Random random = new Random();\n\n    /**\n     * Quicksort with randomized pivot and three-way partition.\n     * Handles duplicates efficiently (O(n) for all-equal arrays).\n     * Average: O(n log n), Worst: O(n²) extremely unlikely with random pivot.\n     */\n    public static void sort(int[] arr) {\n        quickSort(arr, 0, arr.length - 1);\n    }\n\n    private static void quickSort(int[] arr, int lo, int hi) {\n        if (lo >= hi) return;\n\n        // Randomized pivot selection\n        int pivotIdx = lo + random.nextInt(hi - lo + 1);\n        swap(arr, pivotIdx, hi);\n        int pivot = arr[hi];\n\n        // Three-way partition: [< pivot | == pivot | > pivot]\n        int lt = lo, gt = hi, i = lo;\n        while (i <= gt) {\n            if (arr[i] < pivot) {\n                swap(arr, lt++, i++);\n            } else if (arr[i] > pivot) {\n                swap(arr, i, gt--);\n            } else {\n                i++;\n            }\n        }\n\n        // Recurse on partitions excluding equal elements\n        quickSort(arr, lo, lt - 1);\n        quickSort(arr, gt + 1, hi);\n    }\n\n    private static void swap(int[] arr, int i, int j) {\n        int temp = arr[i];\n        arr[i] = arr[j];\n        arr[j] = temp;\n    }\n\n    /**\n     * Quickselect: find kth smallest element in O(n) average time.\n     * Same partition logic but only recurse into one side.\n     */\n    public static int quickSelect(int[] arr, int k) {\n        return quickSelect(arr, 0, arr.length - 1, k - 1);\n    }\n\n    private static int quickSelect(int[] arr, int lo, int hi, int k) {\n        if (lo == hi) return arr[lo];\n\n        int pivotIdx = lo + random.nextInt(hi - lo + 1);\n        swap(arr, pivotIdx, hi);\n        int pivot = arr[hi];\n\n        int lt = lo, gt = hi, i = lo;\n        while (i <= gt) {\n            if (arr[i] < pivot) swap(arr, lt++, i++);\n            else if (arr[i] > pivot) swap(arr, i, gt--);\n            else i++;\n        }\n\n        if (k < lt) return quickSelect(arr, lo, lt - 1, k);\n        if (k > gt) return quickSelect(arr, gt + 1, hi, k);\n        return arr[k];  // k is in the equal partition\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "heapsort-implementation",
+          "heading": "Heapsort Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In-place O(n log n) sort using a max-heap built in the array itself."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class HeapSort {\n    /**\n     * Heapsort: build max-heap, then repeatedly extract maximum.\n     * O(n log n) guaranteed, O(1) extra space, unstable.\n     */\n    public static void sort(int[] arr) {\n        int n = arr.length;\n\n        // Build max-heap (bottom-up, O(n))\n        for (int i = n / 2 - 1; i >= 0; i--) {\n            heapify(arr, n, i);\n        }\n\n        // Extract elements from heap one by one\n        for (int i = n - 1; i > 0; i--) {\n            swap(arr, 0, i);      // Move max to end\n            heapify(arr, i, 0);   // Restore heap property\n        }\n    }\n\n    private static void heapify(int[] arr, int size, int root) {\n        int largest = root;\n        int left = 2 * root + 1;\n        int right = 2 * root + 2;\n\n        if (left < size && arr[left] > arr[largest]) largest = left;\n        if (right < size && arr[right] > arr[largest]) largest = right;\n\n        if (largest != root) {\n            swap(arr, root, largest);\n            heapify(arr, size, largest);\n        }\n    }\n\n    private static void swap(int[] arr, int i, int j) {\n        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 13,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using quicksort without randomized pivot on adversarial input: Deterministic pivot selection (always first, last, or middle element) is vulnerable to adversarial inputs that force O(n²) behavior. Sorted arrays cause worst-case for first/last pivot. Median-of-three can be defeated with specific patterns. Always use randomized pivot selection in production code, or use introsort (quicksort with heapsort fallback after recursion depth exceeds 2*log(n)).",
+            "Assuming stability when the algorithm is unstable: Quicksort and heapsort are unstable (equal elements may be reordered). If you sort records by last name and then by first name, an unstable sort on first name may scramble the last-name ordering among people with the same first name. Use merge sort or TimSort when stability matters, or include a tiebreaker in the comparison.",
+            "Stack overflow from quicksort on large sorted arrays: Without tail-call optimization, quicksort on a sorted array with first-element pivot creates O(n) recursion depth. Even with random pivot, worst-case depth is O(n). Limit recursion depth and switch to heapsort when exceeded (introsort pattern). Alternatively, always recurse into the smaller partition first and iterate on the larger one (tail-call elimination).",
+            "Allocating auxiliary arrays inside recursive merge sort calls: Creating a new auxiliary array at each recursive level of merge sort wastes memory and time on allocation. Allocate a single auxiliary array at the top level and pass it through all recursive calls. This reduces memory usage from O(n log n) to O(n) and eliminates GC pressure from repeated allocations.",
+            "Ignoring the constant factors for small arrays: For arrays under 20-50 elements, insertion sort outperforms merge sort and quicksort due to lower overhead (no recursion, no auxiliary arrays, simple inner loop). Production sorting algorithms (TimSort, introsort) switch to insertion sort for small subarrays. Failing to do this leaves 10-20% performance on the table."
+          ]
+        }
+      ],
+      "wordCount": 292,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database query execution relies on sorting for ORDER BY clauses, merge joins, duplicate elimination (DISTINCT), and grouping (GROUP BY). PostgreSQL uses external merge sort for large result sets that exceed work_mem, writing sorted runs to temporary files and merging them. The sort operation is often the most expensive step in query execution, and databases invest heavily in sort optimization (sort key compression, abbreviated keys, parallel sort)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Search engine indexing sorts posting lists (document IDs containing each term) to enable efficient intersection and union operations during query processing. Building an inverted index requires sorting billions of (term, document_id) pairs. External merge sort handles this at scale, with MapReduce frameworks (Hadoop) providing distributed sorting for web-scale indexes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Operating system process scheduling uses priority queues (heap-based) to select the next process to run. The Linux CFS (Completely Fair Scheduler) maintains processes in a Red-Black tree sorted by virtual runtime. When a process's time slice expires, it is reinserted at its new position, and the leftmost (minimum virtual runtime) process runs next."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial trading systems sort order books by price to match buyers with sellers. The order book is a sorted structure where buy orders are sorted descending by price and sell orders ascending. When a new order arrives, binary search finds the matching price level. High-frequency trading systems use specialized sorting networks and SIMD-optimized sorts to process millions of orders per second."
+        },
+        {
+          "type": "paragraph",
+          "text": "Machine learning data pipelines sort training examples for curriculum learning (presenting easy examples first), shuffle data for stochastic gradient descent (random permutation is a special case of sorting), and sort predictions for evaluation metrics (AUC-ROC requires sorting by predicted probability). Large-scale ML systems sort terabytes of training data using distributed sorting frameworks."
+        }
+      ],
+      "wordCount": 281,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare merge sort and quicksort. When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Merge sort guarantees O(n log n) worst case and is stable, but requires O(n) extra space. Quicksort averages O(n log n) with O(log n) space (in-place) but has O(n²) worst case (mitigated by random pivot). Choose merge sort when stability is required, when sorting linked lists (O(1) merge without extra space), or when worst-case guarantee is needed. Choose quicksort when average-case performance and memory efficiency matter, when sorting arrays in-place, or when cache performance is important (quicksort has better locality)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Why is the lower bound for comparison-based sorting Ω(n log n)?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Any comparison-based sort must distinguish between all n! possible permutations of the input. Each comparison has two outcomes (less/greater), creating a binary decision tree. A binary tree with n! leaves has height at least log₂(n!) = Ω(n log n) by Stirling's approximation. Therefore, any comparison sort must make at least Ω(n log n) comparisons in the worst case. This does not apply to non-comparison sorts (counting sort, radix sort) that use element values directly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how TimSort works and why it is used in Java and Python."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: TimSort is a hybrid stable sort that combines merge sort with insertion sort. It identifies existing sorted runs in the data (ascending or descending sequences), extends short runs to a minimum length using insertion sort, then merges runs using a merge strategy that maintains balance (similar to merge sort but adaptive). It achieves O(n) on already-sorted data, O(n log n) worst case, and is stable. It is used because real-world data often has existing order (partially sorted, concatenated sorted sequences) that TimSort exploits for better-than-n-log-n performance."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does quickselect find the kth element in O(n) average time?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Quickselect uses the same partition step as quicksort but only recurses into the partition containing the kth element. After partitioning around a random pivot, if k falls in the left partition, recurse left; if in the right partition, recurse right; if in the equal partition, return the pivot. Expected time is O(n) because each level processes a geometrically decreasing fraction of elements: n + n/2 + n/4 + ... = 2n. Worst case is O(n²) but extremely unlikely with random pivot. Median-of-medians guarantees O(n) worst case but has large constants."
+        }
+      ],
+      "wordCount": 386,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use the language's built-in sort for general-purpose sorting: Java's Arrays.sort, Python's sorted(), and C++'s std::sort are highly optimized with decades of engineering. They use hybrid algorithms (TimSort, introsort, dual-pivot quicksort) that adapt to input characteristics. Rolling your own sort is only justified for specialized requirements (external sort, parallel sort, sort with custom memory allocation).",
+            "Consider parallel sort for large arrays on multi-core systems: Java's Arrays.parallelSort uses a parallel merge sort that splits work across available cores, providing 2-4x speedup on arrays larger than 8192 elements. C++ has std::execution::par policy for parallel algorithms. The threshold for parallel sort benefit depends on element size and comparison cost — profile with realistic data.",
+            "Use partial sorting when you only need the top-k elements: If you need the k largest elements from n total, use a min-heap of size k (O(n log k)) or quickselect (O(n) average). Full sorting (O(n log n)) is wasteful when k is much smaller than n. Java's PriorityQueue and Python's heapq.nlargest implement this pattern efficiently."
+          ]
+        }
+      ],
+      "wordCount": 166,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Non-Comparison and Linear Sorting — Breaking the Ω(n log n) barrier with value-based sorting",
+            "Binary Search Patterns — Searching in sorted arrays produced by these algorithms",
+            "Arrays and Strings — Array manipulation techniques used in sorting",
+            "Heap — Heap data structure underlying heapsort and partial sort"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class MergeSort {\n    private static final int INSERTION_THRESHOLD = 32;\n\n    /**\n     * Merge sort with insertion sort for small subarrays.\n     * Stable, O(n log n) guaranteed, O(n) auxiliary space.\n     */\n    public static void sort(int[] arr) {\n        int[] aux = new int[arr.length];\n        mergeSort(arr, aux, 0, arr.length - 1);\n    }\n\n    private static void mergeSort(int[] arr, int[] aux, int lo, int hi) {\n        if (hi - lo < INSERTION_THRESHOLD) {\n            insertionSort(arr, lo, hi);\n            return;\n        }\n\n        int mid = lo + (hi - lo) / 2;\n        mergeSort(arr, aux, lo, mid);\n        mergeSort(arr, aux, mid + 1, hi);\n\n        // Skip merge if already sorted (optimization for partially sorted data)\n        if (arr[mid] <= arr[mid + 1]) return;\n\n        merge(arr, aux, lo, mid, hi);\n    }\n\n    private static void merge(int[] arr, int[] aux, int lo, int mid, int hi) {\n        System.arraycopy(arr, lo, aux, lo, hi - lo + 1);\n\n        int i = lo, j = mid + 1;\n        for (int k = lo; k <= hi; k++) {\n            if (i > mid) arr[k] = aux[j++];\n            else if (j > hi) arr[k] = aux[i++];\n            else if (aux[j] < aux[i]) arr[k] = aux[j++];\n            else arr[k] = aux[i++];  // Stable: take from left on equality\n        }\n    }\n\n    private static void insertionSort(int[] arr, int lo, int hi) {\n        for (int i = lo + 1; i <= hi; i++) {\n            int key = arr[i];\n            int j = i - 1;\n            while (j >= lo && arr[j] > key) {\n                arr[j + 1] = arr[j];\n                j--;\n            }\n            arr[j + 1] = key;\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "function mergeSort(arr: number[]): number[] {\n  if (arr.length <= 1) return arr;\n\n  const mid = Math.floor(arr.length / 2);\n  const left = mergeSort(arr.slice(0, mid));\n  const right = mergeSort(arr.slice(mid));\n\n  return merge(left, right);\n}\n\nfunction merge(left: number[], right: number[]): number[] {\n  const result: number[] = [];\n  let i = 0, j = 0;\n\n  while (i < left.length && j < right.length) {\n    if (left[i] <= right[j]) {\n      result.push(left[i++]);\n    } else {\n      result.push(right[j++]);\n    }\n  }\n\n  return [...result, ...left.slice(i), ...right.slice(j)];\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class QuickSort {\n    private static final Random random = new Random();\n\n    /**\n     * Quicksort with randomized pivot and three-way partition.\n     * Handles duplicates efficiently (O(n) for all-equal arrays).\n     * Average: O(n log n), Worst: O(n²) extremely unlikely with random pivot.\n     */\n    public static void sort(int[] arr) {\n        quickSort(arr, 0, arr.length - 1);\n    }\n\n    private static void quickSort(int[] arr, int lo, int hi) {\n        if (lo >= hi) return;\n\n        // Randomized pivot selection\n        int pivotIdx = lo + random.nextInt(hi - lo + 1);\n        swap(arr, pivotIdx, hi);\n        int pivot = arr[hi];\n\n        // Three-way partition: [< pivot | == pivot | > pivot]\n        int lt = lo, gt = hi, i = lo;\n        while (i <= gt) {\n            if (arr[i] < pivot) {\n                swap(arr, lt++, i++);\n            } else if (arr[i] > pivot) {\n                swap(arr, i, gt--);\n            } else {\n                i++;\n            }\n        }\n\n        // Recurse on partitions excluding equal elements\n        quickSort(arr, lo, lt - 1);\n        quickSort(arr, gt + 1, hi);\n    }\n\n    private static void swap(int[] arr, int i, int j) {\n        int temp = arr[i];\n        arr[i] = arr[j];\n        arr[j] = temp;\n    }\n\n    /**\n     * Quickselect: find kth smallest element in O(n) average time.\n     * Same partition logic but only recurse into one side.\n     */\n    public static int quickSelect(int[] arr, int k) {\n        return quickSelect(arr, 0, arr.length - 1, k - 1);\n    }\n\n    private static int quickSelect(int[] arr, int lo, int hi, int k) {\n        if (lo == hi) return arr[lo];\n\n        int pivotIdx = lo + random.nextInt(hi - lo + 1);\n        swap(arr, pivotIdx, hi);\n        int pivot = arr[hi];\n\n        int lt = lo, gt = hi, i = lo;\n        while (i <= gt) {\n            if (arr[i] < pivot) swap(arr, lt++, i++);\n            else if (arr[i] > pivot) swap(arr, i, gt--);\n            else i++;\n        }\n\n        if (k < lt) return quickSelect(arr, lo, lt - 1, k);\n        if (k > gt) return quickSelect(arr, gt + 1, hi, k);\n        return arr[k];  // k is in the equal partition\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class HeapSort {\n    /**\n     * Heapsort: build max-heap, then repeatedly extract maximum.\n     * O(n log n) guaranteed, O(1) extra space, unstable.\n     */\n    public static void sort(int[] arr) {\n        int n = arr.length;\n\n        // Build max-heap (bottom-up, O(n))\n        for (int i = n / 2 - 1; i >= 0; i--) {\n            heapify(arr, n, i);\n        }\n\n        // Extract elements from heap one by one\n        for (int i = n - 1; i > 0; i--) {\n            swap(arr, 0, i);      // Move max to end\n            heapify(arr, i, 0);   // Restore heap property\n        }\n    }\n\n    private static void heapify(int[] arr, int size, int root) {\n        int largest = root;\n        int left = 2 * root + 1;\n        int right = 2 * root + 2;\n\n        if (left < size && arr[left] > arr[largest]) largest = left;\n        if (right < size && arr[right] > arr[largest]) largest = right;\n\n        if (largest != root) {\n            swap(arr, root, largest);\n            heapify(arr, size, largest);\n        }\n    }\n\n    private static void swap(int[] arr, int i, int j) {\n        int temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/sorting-and-searching/comparison-based-sorting.md",
+    "wordCount": 1527,
+    "sectionCount": 11
+  }
+}

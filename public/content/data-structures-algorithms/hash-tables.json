@@ -1,0 +1,375 @@
+{
+  "id": "data-structures-and-algorithms-hash-tables",
+  "slug": "hash-tables",
+  "title": "Hash Tables",
+  "category": "Data Structures & Algorithms",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Hash Tables",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "A hash table is a data structure that implements an associative array, mapping keys to values through a deterministic hash function. The hash function computes an index into an array of buckets or slots, from which the desired value can be found. Hash tables provide average-case O(1) time complexity for insertions, deletions, and lookups, making them one of the most practically important data structures in computer science. They underpin implementations of sets, caches, symbol tables, database indexes, and countless other systems where fast key-based access is critical."
+        },
+        {
+          "type": "paragraph",
+          "text": "The fundamental insight behind hash tables is that by converting a key into a numeric index through a hash function, you can achieve near-constant-time access to stored values without needing to search through the entire collection. This contrasts sharply with linear data structures like arrays or linked lists, where searching for a specific element requires O(n) time in the worst case. The trade-off is that hash tables sacrifice ordering guarantees and require careful management of collisions — situations where two distinct keys map to the same index."
+        }
+      ],
+      "wordCount": 174,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Average-case complexity: O(1) for insert, lookup, and delete operations",
+            "Worst-case complexity: O(n) when all keys collide into a single bucket (degenerate case)",
+            "Space complexity: O(n) where n is the number of stored key-value pairs",
+            "Load factor: ratio of stored entries to total bucket count; typical threshold is 0.75 before resizing",
+            "Hash function requirements: deterministic, uniform distribution, fast computation",
+            "Collision resolution: separate chaining (linked lists per bucket) or open addressing (probing)",
+            "Java 8+ optimization: HashMap converts chains of 8+ entries to red-black trees for O(log n) worst-case per bucket",
+            "Resizing cost: O(n) rehash when load factor threshold is exceeded; amortized O(1) per insertion",
+            "Not ordered: standard hash tables provide no guarantees about iteration order",
+            "Key immutability: keys must not be mutated after insertion, or the entry becomes unreachable"
+          ]
+        }
+      ],
+      "wordCount": 127,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Hash tables are the right choice whenever you need fast key-based access and do not require ordering. They are the most frequently used data structure in application-level code for lookups, deduplication, and caching."
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose a hash table when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need O(1) average-case lookup by key",
+            "You are building a cache, index, or symbol table",
+            "You need to count frequencies or detect duplicates",
+            "You are implementing a set (membership testing)",
+            "Key ordering is not required"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose a tree-based map (e.g., TreeMap, red-black tree) instead when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need keys in sorted order",
+            "You need range queries (all keys between A and B)",
+            "You need floor/ceiling operations (nearest key lookup)",
+            "Worst-case O(log n) guarantees are required regardless of hash quality"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Choose a direct-address table (array) instead when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Keys are small integers in a known range",
+            "You can afford O(max_key) space for O(1) guaranteed access"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid hash tables when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "You need ordered iteration over keys",
+            "Your hash function produces many collisions (poor distribution)",
+            "Memory is extremely constrained and the load factor overhead is unacceptable"
+          ]
+        }
+      ],
+      "wordCount": 170,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "basic-hash-table-implementation-separate-chaining",
+          "heading": "Basic Hash Table Implementation (Separate Chaining)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "This implementation demonstrates the core mechanics of a hash table: hashing keys to bucket indices, handling collisions with linked lists, and resizing when the load factor is exceeded."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class HashTable<K, V> {\n    private static final int INITIAL_CAPACITY = 16;\n    private static final double LOAD_FACTOR = 0.75;\n\n    private LinkedList<Entry<K, V>>[] buckets;\n    private int size;\n\n    @SuppressWarnings(\"unchecked\")\n    public HashTable() {\n        buckets = new LinkedList[INITIAL_CAPACITY];\n        for (int i = 0; i < INITIAL_CAPACITY; i++) {\n            buckets[i] = new LinkedList<>();\n        }\n        size = 0;\n    }\n\n    public void put(K key, V value) {\n        if ((double) size / buckets.length >= LOAD_FACTOR) {\n            resize();\n        }\n        int index = getBucketIndex(key);\n        for (Entry<K, V> entry : buckets[index]) {\n            if (entry.key.equals(key)) {\n                entry.value = value;\n                return;\n            }\n        }\n        buckets[index].add(new Entry<>(key, value));\n        size++;\n    }\n\n    public V get(K key) {\n        int index = getBucketIndex(key);\n        for (Entry<K, V> entry : buckets[index]) {\n            if (entry.key.equals(key)) {\n                return entry.value;\n            }\n        }\n        return null;\n    }\n\n    private int getBucketIndex(K key) {\n        return Math.abs(key.hashCode() % buckets.length);\n    }\n\n    @SuppressWarnings(\"unchecked\")\n    private void resize() {\n        LinkedList<Entry<K, V>>[] oldBuckets = buckets;\n        buckets = new LinkedList[oldBuckets.length * 2];\n        for (int i = 0; i < buckets.length; i++) {\n            buckets[i] = new LinkedList<>();\n        }\n        size = 0;\n        for (LinkedList<Entry<K, V>> bucket : oldBuckets) {\n            for (Entry<K, V> entry : bucket) {\n                put(entry.key, entry.value);\n            }\n        }\n    }\n\n    private static class Entry<K, V> {\n        K key;\n        V value;\n        Entry(K key, V value) {\n            this.key = key;\n            this.value = value;\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 28,
+          "subsections": []
+        },
+        {
+          "id": "open-addressing-with-linear-probing-python",
+          "heading": "Open Addressing with Linear Probing (Python)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Open addressing stores all entries directly in the bucket array. When a collision occurs, the algorithm probes subsequent slots until an empty one is found. This approach has better cache locality than chaining but is more sensitive to clustering."
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "class LinearProbingHashTable:\n    def __init__(self, capacity=16):\n        self.capacity = capacity\n        self.size = 0\n        self.keys = [None] * capacity\n        self.values = [None] * capacity\n        self.DELETED = object()  # Tombstone marker\n\n    def _hash(self, key):\n        return hash(key) % self.capacity\n\n    def put(self, key, value):\n        if self.size >= self.capacity * 0.7:\n            self._resize()\n        index = self._hash(key)\n        while self.keys[index] is not None and self.keys[index] is not self.DELETED:\n            if self.keys[index] == key:\n                self.values[index] = value\n                return\n            index = (index + 1) % self.capacity\n        self.keys[index] = key\n        self.values[index] = value\n        self.size += 1\n\n    def get(self, key):\n        index = self._hash(key)\n        while self.keys[index] is not None:\n            if self.keys[index] == key:\n                return self.values[index]\n            index = (index + 1) % self.capacity\n        return None\n\n    def delete(self, key):\n        index = self._hash(key)\n        while self.keys[index] is not None:\n            if self.keys[index] == key:\n                self.keys[index] = self.DELETED\n                self.values[index] = None\n                self.size -= 1\n                return True\n            index = (index + 1) % self.capacity\n        return False\n\n    def _resize(self):\n        old_keys, old_values = self.keys, self.values\n        self.capacity *= 2\n        self.keys = [None] * self.capacity\n        self.values = [None] * self.capacity\n        self.size = 0\n        for i in range(len(old_keys)):\n            if old_keys[i] is not None and old_keys[i] is not self.DELETED:\n                self.put(old_keys[i], old_values[i])",
+              "runnable": false
+            }
+          ],
+          "wordCount": 39,
+          "subsections": []
+        },
+        {
+          "id": "two-sum-problem-using-hash-table",
+          "heading": "Two-Sum Problem Using Hash Table",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The classic interview problem demonstrating how hash tables convert an O(n²) brute-force search into O(n) by storing complements."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public int[] twoSum(int[] nums, int target) {\n    Map<Integer, Integer> seen = new HashMap<>();\n    for (int i = 0; i < nums.length; i++) {\n        int complement = target - nums[i];\n        if (seen.containsKey(complement)) {\n            return new int[]{seen.get(complement), i};\n        }\n        seen.put(nums[i], i);\n    }\n    return new int[]{-1, -1};\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 18,
+          "subsections": []
+        },
+        {
+          "id": "consistent-hashing-distributed-systems",
+          "heading": "Consistent Hashing (Distributed Systems)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Consistent hashing distributes keys across nodes in a ring, minimizing redistribution when nodes are added or removed. This is foundational to distributed caches like Memcached and databases like DynamoDB."
+            },
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import hashlib\nimport bisect\n\nclass ConsistentHashRing:\n    def __init__(self, nodes=None, virtual_nodes=150):\n        self.virtual_nodes = virtual_nodes\n        self.ring = {}\n        self.sorted_keys = []\n        if nodes:\n            for node in nodes:\n                self.add_node(node)\n\n    def _hash(self, key):\n        return int(hashlib.md5(key.encode()).hexdigest(), 16)\n\n    def add_node(self, node):\n        for i in range(self.virtual_nodes):\n            virtual_key = f\"{node}:{i}\"\n            hash_val = self._hash(virtual_key)\n            self.ring[hash_val] = node\n            bisect.insort(self.sorted_keys, hash_val)\n\n    def get_node(self, key):\n        if not self.ring:\n            return None\n        hash_val = self._hash(key)\n        idx = bisect.bisect_right(self.sorted_keys, hash_val)\n        if idx == len(self.sorted_keys):\n            idx = 0\n        return self.ring[self.sorted_keys[idx]]",
+              "runnable": false
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Mutable keys causing lost entries: If you use a mutable object as a hash table key and modify it after insertion, the hash code changes and the entry becomes unreachable through normal lookup. The entry still occupies memory but cannot be found or removed. Always use immutable objects (strings, numbers, frozen sets, or custom immutable classes) as keys. In Java, override hashCode() and equals() on immutable fields only.",
+            "Forgetting to override both hashCode() and equals(): In Java, if you override equals() without hashCode(), objects that are logically equal may hash to different buckets. This causes duplicate keys, lookup failures, and subtle bugs that are extremely difficult to diagnose. The contract requires that equal objects must have equal hash codes. Always override both methods together, and use Objects.hash() for consistent implementation.",
+            "Poor hash function causing clustering: A hash function that produces non-uniform distribution leads to many collisions, degrading performance from O(1) to O(n). Common mistakes include using only part of the key (e.g., hashing only the first character of a string) or using modulo with a non-prime table size. Use well-tested hash functions like MurmurHash3, xxHash, or the built-in implementations in your language's standard library.",
+            "Unbounded growth without eviction: Hash tables used as caches that grow without bounds are one of the most common sources of memory leaks in production services. Every cache needs a size limit and an eviction policy (LRU, LFU, TTL-based). Use bounded implementations like Caffeine, Guava Cache, or LinkedHashMap with removeEldestEntry.",
+            "Assuming iteration order: Standard hash tables (HashMap in Java, dict in Python 3.6 and earlier semantics, unordered_map in C++) do not guarantee iteration order. Code that depends on insertion order will break unpredictably. If you need ordered iteration, use LinkedHashMap (Java), OrderedDict (Python), or a tree-based map.",
+            "Thread-safety assumptions: HashMap and most hash table implementations are not thread-safe. Concurrent reads and writes without synchronization cause infinite loops (during resize), lost updates, and corrupted state. Use ConcurrentHashMap (Java), concurrent.futures (Python), or explicit locking for multi-threaded access.",
+            "Resizing latency spikes: When a hash table exceeds its load factor, it must allocate a new array and rehash all entries. For a table with millions of entries, this pause can be hundreds of milliseconds. In latency-sensitive systems, pre-size your tables or use incremental resizing strategies (e.g., linear hashing, extendible hashing)."
+          ]
+        }
+      ],
+      "wordCount": 380,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Database indexing: Most relational databases use hash indexes for equality lookups on primary keys. PostgreSQL's hash index type provides O(1) point queries, while B-tree indexes handle range queries. Hash indexes are ideal for columns queried exclusively with equality predicates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Distributed caching (Memcached, Redis): Distributed caches use consistent hashing to partition keys across nodes. Each cache node is essentially a large hash table in memory. Memcached stores key-value pairs in a slab allocator with hash-based lookup, serving millions of requests per second with sub-millisecond latency."
+        },
+        {
+          "type": "paragraph",
+          "text": "DNS resolution: DNS resolvers maintain hash tables mapping domain names to IP addresses. The resolver cache uses TTL-based expiration to evict stale entries. At scale, DNS caches handle hundreds of thousands of lookups per second using hash tables optimized for string keys."
+        },
+        {
+          "type": "paragraph",
+          "text": "Compiler symbol tables: Compilers use hash tables to store variable names, function signatures, and type information during parsing and semantic analysis. The symbol table must support fast insertion during declaration and fast lookup during reference resolution, making hash tables the natural choice."
+        },
+        {
+          "type": "paragraph",
+          "text": "Load balancer session affinity: Application load balancers use hash tables to map session IDs to backend servers, ensuring that requests from the same client are routed to the same server. This enables stateful applications to work behind a load balancer without shared session storage."
+        },
+        {
+          "type": "paragraph",
+          "text": "Deduplication in data pipelines: Stream processing systems like Apache Kafka Streams and Apache Flink use hash-based state stores to detect and eliminate duplicate events. A hash set of recently seen event IDs provides O(1) duplicate detection with bounded memory through windowed expiration."
+        }
+      ],
+      "wordCount": 254,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How does a hash table handle collisions, and what are the trade-offs between chaining and open addressing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Collisions occur when two keys hash to the same bucket index. Separate chaining stores colliding entries in a linked list (or tree) at each bucket, allowing unlimited entries per bucket at the cost of pointer overhead and cache misses. Open addressing stores all entries in the array itself, probing subsequent slots on collision (linear, quadratic, or double hashing). Open addressing has better cache locality and lower memory overhead but degrades rapidly as load factor approaches 1.0 and requires tombstone markers for deletion. In practice, chaining is simpler to implement correctly and handles high load factors gracefully, while open addressing (used by Python's dict and Rust's HashMap) offers better performance at moderate load factors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What happens when a HashMap exceeds its load factor, and how does this affect performance?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When the number of entries exceeds capacity multiplied by the load factor (default 0.75 in Java), the HashMap allocates a new internal array of double the size and rehashes every existing entry into the new array. This resize operation is O(n) but occurs infrequently enough that the amortized cost per insertion remains O(1). The resize causes a latency spike proportional to the table size. To avoid this in latency-sensitive code, pre-size the HashMap with new HashMap<>((int)(expectedSize / 0.75) + 1). Java 8+ also converts long chains (8+ entries) to red-black trees during resize, improving worst-case lookup from O(n) to O(log n) per bucket."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a hash table that supports O(1) worst-case lookups?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use cuckoo hashing, which maintains two hash tables with independent hash functions. Each key has exactly two possible positions (one in each table). On insertion, if both positions are occupied, the new key displaces an existing key, which is then re-inserted into its alternate position. This cascading displacement guarantees that lookup always checks exactly two positions — O(1) worst case. The trade-off is that insertion can trigger a chain of displacements and may require table rebuilding if a cycle is detected. Cuckoo hashing works well at load factors below 0.5 and is used in network hardware (TCAM alternatives) and high-performance systems where predictable latency matters more than space efficiency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain consistent hashing and why it matters for distributed systems."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Consistent hashing maps both keys and nodes onto a circular hash space (ring). Each key is assigned to the first node encountered clockwise from its hash position. When a node is added or removed, only keys that map to the affected arc of the ring need redistribution — approximately 1/n of total keys for n nodes. This contrasts with naive modular hashing where adding a node redistributes nearly all keys. Virtual nodes (multiple hash positions per physical node) improve load balance. Consistent hashing is used in DynamoDB, Cassandra, Memcached, and content delivery networks to minimize data movement during scaling events."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between HashMap and ConcurrentHashMap in Java?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: HashMap is not thread-safe; concurrent modification causes infinite loops, lost updates, and corrupted state. ConcurrentHashMap uses fine-grained locking (lock striping in Java 7, CAS operations with synchronized blocks on individual bins in Java 8+) to allow concurrent reads and writes without blocking the entire map. ConcurrentHashMap does not allow null keys or values (to disambiguate \"key not found\" from \"value is null\" without locking). It provides atomic compound operations like putIfAbsent, compute, and merge that are impossible to implement safely with external synchronization on HashMap."
+        }
+      ],
+      "wordCount": 584,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Pre-size hash tables for known workloads: In high-throughput services, the O(n) resize operation causes latency spikes that violate SLOs. If you know the approximate number of entries, initialize with sufficient capacity to avoid resizing entirely. For Java HashMap, use new HashMap<>((int)(expectedEntries / 0.75) + 1). For Python dicts, pre-population with dict.fromkeys() can help the interpreter allocate appropriately.",
+            "Use bounded caches with eviction policies: Every hash table used as a cache in a long-running service must have a maximum size and eviction strategy. Unbounded caches are the number one cause of memory leaks in production Java services. Use Caffeine (Java) with maximumSize and expireAfterWrite, or implement LRU eviction with LinkedHashMap's removeEldestEntry. Monitor cache hit rates and eviction counts to tune sizing.",
+            "Monitor hash distribution in production: Poor hash distribution causes hot buckets that degrade to O(n) lookup. Instrument your hash tables to track maximum chain length and bucket utilization. In Java, you can use JMX or custom metrics to expose HashMap internals. If you observe chains longer than 8 entries frequently, investigate your key distribution or hash function quality.",
+            "Choose ConcurrentHashMap over synchronized wrappers: Collections.synchronizedMap() acquires a global lock for every operation, serializing all access. ConcurrentHashMap allows concurrent reads without locking and uses fine-grained locks for writes, providing 10-100x higher throughput under contention. The only reason to use synchronizedMap is when you need to synchronize compound operations that span multiple method calls.",
+            "Use specialized hash maps for primitive types: Standard HashMap in Java boxes primitives into objects (Integer, Long), consuming 16+ bytes per entry in overhead. For large maps with primitive keys or values, use Eclipse Collections (IntObjectHashMap, LongIntHashMap) or Koloboke, which store primitives directly and reduce memory usage by 50-70% while improving cache performance."
+          ]
+        }
+      ],
+      "wordCount": 284,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Arrays and Strings — Hash tables use arrays internally for bucket storage and are essential for string-based problems",
+            "Linked Lists — Separate chaining collision resolution uses linked lists within each bucket",
+            "Big O Notation — Understanding amortized O(1) analysis and worst-case degradation in hash tables",
+            "Sets — Sets are implemented as hash tables where only keys matter (HashSet wraps HashMap)"
+          ]
+        }
+      ],
+      "wordCount": 60,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class HashTable<K, V> {\n    private static final int INITIAL_CAPACITY = 16;\n    private static final double LOAD_FACTOR = 0.75;\n\n    private LinkedList<Entry<K, V>>[] buckets;\n    private int size;\n\n    @SuppressWarnings(\"unchecked\")\n    public HashTable() {\n        buckets = new LinkedList[INITIAL_CAPACITY];\n        for (int i = 0; i < INITIAL_CAPACITY; i++) {\n            buckets[i] = new LinkedList<>();\n        }\n        size = 0;\n    }\n\n    public void put(K key, V value) {\n        if ((double) size / buckets.length >= LOAD_FACTOR) {\n            resize();\n        }\n        int index = getBucketIndex(key);\n        for (Entry<K, V> entry : buckets[index]) {\n            if (entry.key.equals(key)) {\n                entry.value = value;\n                return;\n            }\n        }\n        buckets[index].add(new Entry<>(key, value));\n        size++;\n    }\n\n    public V get(K key) {\n        int index = getBucketIndex(key);\n        for (Entry<K, V> entry : buckets[index]) {\n            if (entry.key.equals(key)) {\n                return entry.value;\n            }\n        }\n        return null;\n    }\n\n    private int getBucketIndex(K key) {\n        return Math.abs(key.hashCode() % buckets.length);\n    }\n\n    @SuppressWarnings(\"unchecked\")\n    private void resize() {\n        LinkedList<Entry<K, V>>[] oldBuckets = buckets;\n        buckets = new LinkedList[oldBuckets.length * 2];\n        for (int i = 0; i < buckets.length; i++) {\n            buckets[i] = new LinkedList<>();\n        }\n        size = 0;\n        for (LinkedList<Entry<K, V>> bucket : oldBuckets) {\n            for (Entry<K, V> entry : bucket) {\n                put(entry.key, entry.value);\n            }\n        }\n    }\n\n    private static class Entry<K, V> {\n        K key;\n        V value;\n        Entry(K key, V value) {\n            this.key = key;\n            this.value = value;\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "class LinearProbingHashTable:\n    def __init__(self, capacity=16):\n        self.capacity = capacity\n        self.size = 0\n        self.keys = [None] * capacity\n        self.values = [None] * capacity\n        self.DELETED = object()  # Tombstone marker\n\n    def _hash(self, key):\n        return hash(key) % self.capacity\n\n    def put(self, key, value):\n        if self.size >= self.capacity * 0.7:\n            self._resize()\n        index = self._hash(key)\n        while self.keys[index] is not None and self.keys[index] is not self.DELETED:\n            if self.keys[index] == key:\n                self.values[index] = value\n                return\n            index = (index + 1) % self.capacity\n        self.keys[index] = key\n        self.values[index] = value\n        self.size += 1\n\n    def get(self, key):\n        index = self._hash(key)\n        while self.keys[index] is not None:\n            if self.keys[index] == key:\n                return self.values[index]\n            index = (index + 1) % self.capacity\n        return None\n\n    def delete(self, key):\n        index = self._hash(key)\n        while self.keys[index] is not None:\n            if self.keys[index] == key:\n                self.keys[index] = self.DELETED\n                self.values[index] = None\n                self.size -= 1\n                return True\n            index = (index + 1) % self.capacity\n        return False\n\n    def _resize(self):\n        old_keys, old_values = self.keys, self.values\n        self.capacity *= 2\n        self.keys = [None] * self.capacity\n        self.values = [None] * self.capacity\n        self.size = 0\n        for i in range(len(old_keys)):\n            if old_keys[i] is not None and old_keys[i] is not self.DELETED:\n                self.put(old_keys[i], old_values[i])",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public int[] twoSum(int[] nums, int target) {\n    Map<Integer, Integer> seen = new HashMap<>();\n    for (int i = 0; i < nums.length; i++) {\n        int complement = target - nums[i];\n        if (seen.containsKey(complement)) {\n            return new int[]{seen.get(complement), i};\n        }\n        seen.put(nums[i], i);\n    }\n    return new int[]{-1, -1};\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import hashlib\nimport bisect\n\nclass ConsistentHashRing:\n    def __init__(self, nodes=None, virtual_nodes=150):\n        self.virtual_nodes = virtual_nodes\n        self.ring = {}\n        self.sorted_keys = []\n        if nodes:\n            for node in nodes:\n                self.add_node(node)\n\n    def _hash(self, key):\n        return int(hashlib.md5(key.encode()).hexdigest(), 16)\n\n    def add_node(self, node):\n        for i in range(self.virtual_nodes):\n            virtual_key = f\"{node}:{i}\"\n            hash_val = self._hash(virtual_key)\n            self.ring[hash_val] = node\n            bisect.insort(self.sorted_keys, hash_val)\n\n    def get_node(self, key):\n        if not self.ring:\n            return None\n        hash_val = self._hash(key)\n        idx = bisect.bisect_right(self.sorted_keys, hash_val)\n        if idx == len(self.sorted_keys):\n            idx = 0\n        return self.ring[self.sorted_keys[idx]]",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/hash-tables.md",
+    "wordCount": 2147,
+    "sectionCount": 13
+  }
+}
