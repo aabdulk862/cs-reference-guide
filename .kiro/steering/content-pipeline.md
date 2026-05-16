@@ -9,16 +9,21 @@ This steering file documents the content pipeline architecture for the CS Refere
 ## Pipeline Overview
 
 ```
-content/*.md → exclusion filter → markdown parser → category resolver → JSON output
-                                                                      → manifest
-                                                                      → search index
+content/{category}/{topic-dir}/index.md + subtopics.md
+    → exclusion filter
+    → multi-page topic detection (directories with index.md)
+    → markdown parser
+    → category resolver
+    → JSON output (per-topic with subtopics)
+    → content-manifest.json
+    → search-index.json
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/plugins/vite-content-plugin.ts` | Orchestrator: scans, filters, parses, generates output |
+| `src/plugins/vite-content-plugin.ts` | Orchestrator: scans, filters, detects multi-page topics, parses, generates output |
 | `src/plugins/markdown-parser.ts` | Converts markdown AST to structured `ParsedContent` |
 | `src/plugins/exclusion-filter.ts` | Determines which files to skip |
 | `src/plugins/image-resolver.ts` | Resolves relative image paths |
@@ -27,26 +32,78 @@ content/*.md → exclusion filter → markdown parser → category resolver → 
 
 The pipeline scans ONLY from `cs-reference-guide/content/`. It does NOT scan workspace root directories.
 
+## Content Architecture
+
+ALL content is organized as **multi-page topics**. Each category contains one or more topic directories, each with an `index.md` and subtopic `.md` files:
+
+```
+content/{category}/{topic-name}/
+├── index.md           # Topic overview with Learning Path links
+├── subtopic-1.md      # Individual subtopic content
+├── subtopic-2.md
+└── ...
+```
+
+There are NO single-page (flat `.md` file) topics. Every topic is a directory with an `index.md`.
+
 ## CATEGORY_MAPPINGS
 
 Maps directory patterns to sidebar categories:
 
 ```typescript
-const CATEGORY_MAPPINGS = [
-  { pattern: 'content/backend', category: 'Backend' },
-  { pattern: 'content/frontend', category: 'Frontend' },
-  { pattern: 'content/infrastructure', category: 'Infrastructure' },
-  { pattern: 'content/data-structures-and-algorithms', category: 'Data Structures & Algorithms' },
-  { pattern: 'content/system-design', category: 'System Design' },
-  { pattern: 'content/interview-prep', category: 'Interview Prep' },
-  { pattern: 'content/git', category: 'Git' },
+const CATEGORY_MAPPINGS: CategoryMapping[] = [
+  { pattern: 'backend', category: 'Backend' },
+  { pattern: 'frontend', category: 'Frontend' },
+  { pattern: 'databases', category: 'Databases' },
+  { pattern: 'infrastructure', category: 'Infrastructure' },
+  { pattern: 'data-structures-and-algorithms', category: 'Data Structures & Algorithms' },
+  { pattern: 'system-design', category: 'System Design' },
+  { pattern: 'networking', category: 'Networking' },
+  { pattern: 'operating-systems', category: 'Operating Systems' },
+  { pattern: 'interview-prep', category: 'Interview Prep' },
+  { pattern: 'git', category: 'Git' },
+  { pattern: 'security', category: 'Security' },
+  { pattern: 'testing', category: 'Testing' },
+  { pattern: 'software-engineering', category: 'Software Engineering' },
 ];
 ```
 
 When adding a new category:
 1. Create the directory under `content/`
 2. Add a mapping entry to `CATEGORY_MAPPINGS`
-3. The pipeline auto-discovers all .md files in mapped directories
+3. Create at least one topic subdirectory with `index.md`
+4. The pipeline auto-discovers all multi-page topics in mapped directories
+
+## Sidebar Organization
+
+Categories are grouped in the sidebar via `CATEGORY_GROUPS` in `src/components/navigation/Sidebar.tsx`:
+
+```typescript
+const CATEGORY_GROUPS = [
+  { label: 'Core CS', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
+  { label: 'Server', icon: '⚙️', categoryIds: ['backend', 'databases', 'system-design'] },
+  { label: 'Client', icon: '🎨', categoryIds: ['frontend'] },
+  { label: 'DevOps', icon: '🚀', categoryIds: ['infrastructure'] },
+  { label: 'Quality', icon: '✅', categoryIds: ['testing', 'security', 'software-engineering'] },
+  { label: 'Career', icon: '📚', categoryIds: ['interview-prep', 'git'] },
+];
+```
+
+Note: `categoryIds` use the manifest IDs (slugified category names), not the directory names.
+
+## Multi-Page Topic Detection
+
+The `detectMultiPageTopics()` function:
+1. Iterates each category directory
+2. Finds subdirectories (not files) within each category
+3. Checks if the subdirectory contains an `index.md`
+4. If yes → treats it as a multi-page topic with subtopics
+5. Collects all `.md` files in the directory (excluding `index.md`) as subtopics
+6. Orders subtopics based on the Learning Path in `index.md` via `extractLearningPathOrder()`
+
+## Subtopic Ordering
+
+The `extractLearningPathOrder()` function parses the `index.md` for a numbered list under `## Learning Path` and extracts filenames from markdown links. Subtopics are displayed in this order in the sidebar.
 
 ## Exclusion Rules
 
@@ -92,9 +149,9 @@ Topic IDs incorporate parent directory context to avoid collisions:
 ## Build Output
 
 Generated files in `public/content/`:
-- `content-manifest.json` — category/topic index with metadata
+- `content-manifest.json` — category/topic index with metadata (includes subtopics array)
 - `search-index.json` — FlexSearch serialized index
-- `{category}/{topic}.json` — per-topic structured content
+- `{category}/{topic}.json` — per-topic structured content with subtopic data
 
 ## Manifest Schema
 
@@ -104,24 +161,30 @@ Generated files in `public/content/`:
     "id": "backend",
     "name": "Backend",
     "topics": [{
-      "id": "docker-containerization",
-      "slug": "backend/docker-containerization",
-      "title": "Docker & Containerization",
+      "id": "api-design",
+      "slug": "backend/api-design",
+      "title": "API Design",
+      "source": "parsed",
       "sectionCount": 7,
       "wordCount": 2500,
-      "contentPath": "/content/backend/docker-containerization.json"
+      "contentPath": "/content/backend/api-design.json",
+      "subtopics": [
+        { "id": "rest-api-design", "slug": "rest-api-design", "title": "REST API Design", "wordCount": 3000 },
+        { "id": "graphql", "slug": "graphql", "title": "GraphQL", "wordCount": 2800 },
+        { "id": "grpc", "slug": "grpc", "title": "gRPC", "wordCount": 2600 }
+      ]
     }]
   }],
-  "totalTopics": 50,
-  "totalSections": 300,
-  "buildTimestamp": "2025-01-15T10:00:00Z"
+  "totalTopics": 35,
+  "totalSections": 400,
+  "buildTimestamp": "2025-05-16T10:00:00Z"
 }
 ```
 
 ## Adding New Content
 
-1. Create `.md` file in the appropriate `content/{category}/` directory
-2. Use H1 for title, H2 for sections
-3. Follow the content-authoring steering file for structure
+1. Create a topic directory: `content/{category}/{topic-name}/`
+2. Create `index.md` with H1 title, description, and `## Learning Path` with numbered links
+3. Create subtopic `.md` files following the content-authoring steering file
 4. Run `npm run build` to verify it appears in the manifest
 5. Check the build log for any warnings about missing sections or low word count
