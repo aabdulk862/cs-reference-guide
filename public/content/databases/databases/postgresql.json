@@ -1,0 +1,308 @@
+{
+  "id": "databases-postgresql",
+  "slug": "postgresql",
+  "title": "PostgreSQL",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "PostgreSQL",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "PostgreSQL is the most advanced open-source relational database, combining strict SQL standards compliance with a powerful extension ecosystem that makes it suitable for workloads ranging from simple CRUD applications to geospatial analysis, full-text search, and time-series data. Unlike MySQL which historically prioritized speed over correctness, PostgreSQL has always prioritized data integrity, ACID compliance, and standards adherence — making it the default choice for systems where correctness matters more than raw throughput on simple queries. PostgreSQL's Multi-Version Concurrency Control (MVCC) implementation allows readers to never block writers and vice versa, enabling high concurrency without the locking overhead found in traditional databases. The extension system is PostgreSQL's defining architectural advantage: PostGIS transforms it into a geospatial database rivaling commercial GIS systems, pg_trgm enables fuzzy text matching, and TimescaleDB adds time-series capabilities — all without forking the core engine. Modern PostgreSQL (versions 14-17) has closed the performance gap with MySQL for simple workloads while maintaining its advantages in complex queries, advanced data types, and operational features like logical replication and declarative partitioning."
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MVCC: Every transaction sees a snapshot; dead tuples accumulate until VACUUM reclaims space; autovacuum handles this automatically but must be tuned for write-heavy tables",
+            "Index types: B-tree (default, equality/range), GIN (full-text, JSONB, arrays), GiST (geometric, range types, nearest-neighbor), BRIN (large sequential tables like time-series), Hash (equality only, rarely useful)",
+            "Partial indexes: CREATE INDEX idx ON orders(status) WHERE status = 'PENDING' — indexes only matching rows, dramatically smaller and faster for selective queries",
+            "JSONB: Binary JSON with indexing support; use GIN indexes for containment queries (@>) and path existence (?); 10-30% larger than JSON but orders of magnitude faster for queries",
+            "Declarative partitioning: Native since PostgreSQL 10; supports RANGE, LIST, and HASH partitioning with automatic partition pruning in query plans",
+            "Connection pooling: PostgreSQL forks a process per connection (~10MB each); PgBouncer in transaction mode supports 10,000+ application connections with 100-200 server connections",
+            "Streaming replication: Byte-level WAL shipping for hot standby replicas; synchronous mode guarantees zero data loss at the cost of write latency",
+            "Logical replication: Table-level selective replication; enables zero-downtime major version upgrades and cross-version replication",
+            "CTEs: Non-recursive CTEs are inlined (optimized) since PostgreSQL 12; use MATERIALIZED hint to force separate execution when needed",
+            "Extensions: Over 1,000 available; CREATE EXTENSION installs them; no restart required for most extensions"
+          ]
+        }
+      ],
+      "wordCount": 207,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "PostgreSQL is the right choice for the majority of production applications that need a relational database. Choose PostgreSQL when you need complex queries with multiple joins, subqueries, and window functions — its optimizer handles these significantly better than MySQL. It excels for applications requiring advanced data types: JSONB for semi-structured data (eliminating the need for a separate document store), arrays and hstore for denormalized attributes, range types for scheduling systems, and geometric types for spatial queries. PostgreSQL is essential when you need strong consistency guarantees with serializable isolation, row-level security for multi-tenant applications, or foreign data wrappers to query external systems. For geospatial applications, PostGIS makes PostgreSQL the only viable open-source option. Choose PostgreSQL for analytics workloads that benefit from parallel query execution, partitioning, and materialized views. It's also the best choice when you anticipate needing logical replication for zero-downtime migrations or selective data distribution. The main scenarios where PostgreSQL is NOT the best choice: extremely simple key-value workloads (use Redis), massive write-heavy append-only logs (use Kafka or a time-series database), or when your team has deep MySQL expertise and the workload doesn't require PostgreSQL's advanced features."
+        }
+      ],
+      "wordCount": 187,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "advanced-indexing-strategies",
+          "heading": "Advanced Indexing Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- GIN index on JSONB for containment queries\nCREATE INDEX idx_orders_metadata ON orders USING GIN (metadata jsonb_path_ops);\n\n-- Query using the GIN index: find orders with specific attributes\nSELECT order_id, total\nFROM orders\nWHERE metadata @> '{\"priority\": \"high\", \"region\": \"us-east\"}';\n\n-- GiST index for range type queries (scheduling/booking systems)\nCREATE TABLE reservations (\n    id SERIAL PRIMARY KEY,\n    room_id INT NOT NULL,\n    during TSTZRANGE NOT NULL,\n    EXCLUDE USING GIST (room_id WITH =, during WITH &&)  -- prevent overlaps\n);\n\n-- BRIN index for time-series data (1000x smaller than B-tree)\nCREATE INDEX idx_events_created ON events USING BRIN (created_at)\n    WITH (pages_per_range = 32);\n\n-- Partial index: only index rows that queries actually filter on\nCREATE INDEX idx_orders_pending ON orders (created_at)\n    WHERE status = 'PENDING' AND total_amount > 100;\n\n-- Covering index: include columns to enable index-only scans\nCREATE INDEX idx_users_email ON users (email) INCLUDE (name, created_at);\n\n-- Expression index: index computed values\nCREATE INDEX idx_users_lower_email ON users (LOWER(email));\n\n-- Multicolumn index with specific operator class for text search\nCREATE INDEX idx_products_search ON products\n    USING GIN (to_tsvector('english', name || ' ' || description));",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "jsonb-operations-and-querying",
+          "heading": "JSONB Operations and Querying",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Create table with JSONB column for flexible attributes\nCREATE TABLE products (\n    id SERIAL PRIMARY KEY,\n    name TEXT NOT NULL,\n    base_price NUMERIC(10,2) NOT NULL,\n    attributes JSONB NOT NULL DEFAULT '{}'\n);\n\n-- Insert with nested JSONB\nINSERT INTO products (name, base_price, attributes) VALUES\n('Laptop Pro', 1299.99, '{\n    \"specs\": {\"ram_gb\": 16, \"storage_gb\": 512, \"cpu\": \"M3\"},\n    \"tags\": [\"electronics\", \"portable\", \"premium\"],\n    \"dimensions\": {\"weight_kg\": 1.4, \"screen_inches\": 14.2}\n}');\n\n-- Path extraction with type casting\nSELECT name,\n       attributes->'specs'->>'cpu' AS cpu,\n       (attributes->'specs'->'ram_gb')::int AS ram_gb,\n       attributes->'tags' AS tags\nFROM products\nWHERE attributes @> '{\"specs\": {\"ram_gb\": 16}}'  -- uses GIN index\n  AND attributes ? 'dimensions';                  -- key existence\n\n-- JSONB aggregation: build summary JSON from relational data\nSELECT jsonb_build_object(\n    'total_orders', COUNT(*),\n    'revenue', SUM(total),\n    'avg_order_value', ROUND(AVG(total), 2),\n    'top_products', jsonb_agg(DISTINCT product_name ORDER BY product_name)\n) AS summary\nFROM orders\nWHERE order_date >= CURRENT_DATE - INTERVAL '30 days';\n\n-- Update nested JSONB without replacing the entire document\nUPDATE products\nSET attributes = jsonb_set(\n    attributes,\n    '{specs,ram_gb}',\n    '32'::jsonb\n)\nWHERE id = 1;\n\n-- Remove a key from JSONB\nUPDATE products\nSET attributes = attributes #- '{dimensions,weight_kg}'\nWHERE id = 1;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "partitioning-and-window-functions",
+          "heading": "Partitioning and Window Functions",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Declarative range partitioning for time-series data\nCREATE TABLE events (\n    event_id BIGSERIAL,\n    event_type TEXT NOT NULL,\n    payload JSONB,\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n) PARTITION BY RANGE (created_at);\n\n-- Create monthly partitions\nCREATE TABLE events_2024_01 PARTITION OF events\n    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');\nCREATE TABLE events_2024_02 PARTITION OF events\n    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');\n\n-- Automatic partition creation with pg_partman extension\nCREATE EXTENSION pg_partman;\nSELECT partman.create_parent(\n    p_parent_table := 'public.events',\n    p_control := 'created_at',\n    p_type := 'native',\n    p_interval := '1 month',\n    p_premake := 3\n);\n\n-- Window functions with complex framing\nSELECT\n    date,\n    daily_revenue,\n    -- Running total within each month\n    SUM(daily_revenue) OVER (\n        PARTITION BY DATE_TRUNC('month', date)\n        ORDER BY date\n    ) AS mtd_revenue,\n    -- 7-day moving average\n    AVG(daily_revenue) OVER (\n        ORDER BY date\n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS seven_day_avg,\n    -- Percent rank within the quarter\n    PERCENT_RANK() OVER (\n        PARTITION BY DATE_TRUNC('quarter', date)\n        ORDER BY daily_revenue\n    ) AS percentile_in_quarter,\n    -- Previous day comparison\n    daily_revenue - LAG(daily_revenue, 1) OVER (ORDER BY date) AS day_over_day_change\nFROM daily_revenue_summary;\n\n-- Recursive CTE: find all downstream dependencies\nWITH RECURSIVE deps AS (\n    SELECT service_id, depends_on, 1 AS depth\n    FROM service_dependencies\n    WHERE service_id = 'payment-service'\n    \n    UNION ALL\n    \n    SELECT sd.service_id, sd.depends_on, d.depth + 1\n    FROM service_dependencies sd\n    JOIN deps d ON sd.service_id = d.depends_on\n    WHERE d.depth < 10  -- prevent infinite recursion\n)\nSELECT DISTINCT depends_on, MIN(depth) AS min_depth\nFROM deps\nGROUP BY depends_on\nORDER BY min_depth;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "replication-and-connection-pooling-configuration",
+          "heading": "Replication and Connection Pooling Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "ini",
+              "code": "# postgresql.conf - Primary server settings for streaming replication\nwal_level = replica\nmax_wal_senders = 10\nwal_keep_size = 1GB\nsynchronous_standby_names = 'first 1 (replica1, replica2)'\n\n# Hot standby settings (replica)\nhot_standby = on\nmax_standby_streaming_delay = 30s\nhot_standby_feedback = on",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "ini",
+              "code": "# pgbouncer.ini - Transaction-mode pooling configuration\n[databases]\nmyapp = host=127.0.0.1 port=5432 dbname=myapp pool_size=50\n\n[pgbouncer]\nlisten_port = 6432\nlisten_addr = 0.0.0.0\nauth_type = scram-sha-256\nauth_file = /etc/pgbouncer/userlist.txt\n\npool_mode = transaction\nmax_client_conn = 10000\ndefault_pool_size = 50\nmin_pool_size = 10\nreserve_pool_size = 5\nreserve_pool_timeout = 3\n\n# Timeouts\nserver_idle_timeout = 600\nserver_lifetime = 3600\nclient_idle_timeout = 0\nquery_timeout = 300\n\n# Logging\nlog_connections = 0\nlog_disconnections = 0\nlog_pooler_errors = 1\nstats_period = 60",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Not tuning autovacuum for write-heavy tables. The default autovacuum settings (threshold=50, scale_factor=0.2) mean a table with 10 million rows won't vacuum until 2 million dead tuples accumulate. For high-write tables, set per-table overrides: ALTER TABLE hot_table SET (autovacuum_vacuum_scale_factor = 0.01, autovacuum_vacuum_threshold = 1000). Unvacuumed tables suffer from index bloat, increased I/O from scanning dead tuples, and eventually transaction ID wraparound — a catastrophic event that forces the database into single-user mode."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using PgBouncer in transaction mode with session-level features. Transaction pooling reassigns server connections between transactions, breaking any session-level state. This means prepared statements (PREPARE/EXECUTE), advisory locks, SET commands, LISTEN/NOTIFY, and temporary tables all fail unpredictably. Either use session mode for connections that need these features (at the cost of pooling efficiency) or redesign the application to avoid session state. Most ORMs use prepared statements by default — configure them to use protocol-level prepared statements or disable them entirely when behind PgBouncer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Creating GIN indexes without understanding their write amplification. GIN indexes are excellent for read-heavy JSONB and full-text search workloads, but each insert or update to the indexed column requires updating the inverted index structure. On write-heavy tables, GIN indexes can slow inserts by 3-5x compared to B-tree. Use fastupdate = on (default) to batch GIN index updates into a pending list, and tune gin_pending_list_limit based on your read/write ratio. For tables with >50% write operations, consider GiST as an alternative (faster writes, slower reads)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring connection overhead and not using a connection pooler. PostgreSQL forks a new OS process for each connection, consuming approximately 10MB of memory per connection. An application with 500 direct connections wastes 5GB of RAM on connection overhead alone, and context switching between hundreds of processes degrades performance. Always deploy PgBouncer or PgPool-II in front of PostgreSQL. A typical production setup uses 50-200 server connections to handle thousands of application connections. The connection pooler also protects against connection storms during application deployments."
+        },
+        {
+          "type": "paragraph",
+          "text": "Misusing CTEs as optimization barriers (pre-PostgreSQL 12 habit). Before version 12, CTEs were always materialized — they acted as optimization fences that prevented the planner from pushing predicates into the CTE. Engineers exploited this for plan stability. Since PostgreSQL 12, non-recursive CTEs are inlined by default. If you need the old materialization behavior (for plan stability or to prevent repeated evaluation), explicitly use WITH cte AS MATERIALIZED (...). Conversely, if you're on PostgreSQL 12+ and a CTE seems slow, check if materialization is being forced unnecessarily."
+        },
+        {
+          "type": "paragraph",
+          "text": "Over-partitioning tables that don't need it. Partitioning adds planning overhead — the query planner must evaluate partition pruning for every query. Tables under 10 million rows rarely benefit from partitioning. Each partition also needs its own indexes, constraints, and vacuum processes. Start with a single table and proper indexing; add partitioning only when you have clear evidence that table size is causing maintenance problems (vacuum duration, index size) or query performance issues that partitioning specifically addresses."
+        }
+      ],
+      "wordCount": 480,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Geospatial ride-sharing platform. A ride-sharing service uses PostGIS to match riders with nearby drivers in real-time. The system stores driver locations as GEOMETRY(Point, 4326) with a GiST spatial index, enabling sub-millisecond nearest-neighbor queries using ORDER BY location <-> ST_SetSRID(ST_MakePoint(lng, lat), 4326) LIMIT 10. The platform processes 50,000 location updates per second using batch inserts with ON CONFLICT DO UPDATE. Partitioning by city reduces index sizes and enables region-specific maintenance windows. PgBouncer handles 8,000 application connections with 150 server connections in transaction mode."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-tenant SaaS with row-level security. A B2B analytics platform serves 5,000 tenants from a single PostgreSQL cluster. Row-level security policies enforce tenant isolation at the database level: CREATE POLICY tenant_isolation ON analytics_data USING (tenant_id = current_setting('app.tenant_id')::int). The application sets the tenant context per request via SET LOCAL app.tenant_id = ?. This approach eliminates the risk of cross-tenant data leaks from application bugs. JSONB columns store tenant-specific custom fields without schema migrations, and GIN indexes enable efficient querying across heterogeneous attribute structures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Event sourcing with logical replication. A financial services platform uses PostgreSQL as its event store, appending immutable events to a partitioned table (monthly partitions, 500 million events total). Logical replication selectively publishes events to downstream consumers: the reporting database receives all events, the fraud detection system receives only transaction events, and the notification service receives only user-facing events. This eliminates the need for a separate message broker for event distribution. The system achieves 15,000 events/second sustained write throughput with synchronous replication to one standby for durability."
+        },
+        {
+          "type": "paragraph",
+          "text": "Full-text search replacing Elasticsearch. A content management system migrated from Elasticsearch to PostgreSQL's built-in full-text search for its 2 million document corpus. Using tsvector columns with GIN indexes, the system achieves sub-50ms search latency for most queries. The pg_trgm extension enables fuzzy matching and typo tolerance with trigram similarity indexes. This eliminated an entire infrastructure component (Elasticsearch cluster), reduced operational complexity, and maintained transactional consistency between content updates and search index updates — something that required complex synchronization logic with the external search engine."
+        }
+      ],
+      "wordCount": 333,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain PostgreSQL's MVCC implementation and why VACUUM is necessary."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: PostgreSQL implements MVCC by keeping multiple physical versions of each row (tuples). When a row is updated, PostgreSQL creates a new tuple with the new values and marks the old tuple's xmax with the updating transaction's ID. Readers with older snapshots still see the old tuple; newer transactions see the new one. DELETE similarly marks tuples as dead without physically removing them. VACUUM is necessary because these dead tuples accumulate and waste space — they bloat tables and indexes, slow sequential scans, and consume I/O. VACUUM marks dead tuple space as reusable (but doesn't return it to the OS unless VACUUM FULL). Additionally, PostgreSQL uses 32-bit transaction IDs that wrap around after ~4 billion transactions; VACUUM freezes old tuples to prevent wraparound. If VACUUM falls behind, the database eventually shuts down to prevent data corruption."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose a GIN index over a GiST index, and vice versa?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: GIN (Generalized Inverted Index) is optimized for values that contain multiple elements — full-text search vectors, JSONB documents, arrays, and hstore. It provides exact matches and is faster for reads but slower for writes due to the inverted index structure. GiST (Generalized Search Tree) is a balanced tree that supports approximate matches, nearest-neighbor searches, and range operations. Choose GIN when: read-heavy workload, need exact containment queries on JSONB (@>), or full-text search. Choose GiST when: write-heavy workload (GiST updates are cheaper), need nearest-neighbor queries (ORDER BY ... <-> for PostGIS), range type exclusion constraints, or fuzzy text matching with pg_trgm. For JSONB specifically, GIN with jsonb_path_ops is 2-3x smaller and faster than default GIN for containment queries, but only supports the @> operator."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does declarative partitioning improve performance and what are its limitations?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Declarative partitioning splits a logical table into physical partitions based on a partition key (range, list, or hash). Performance benefits include: partition pruning eliminates irrelevant partitions from query plans (a query for January data only scans the January partition), smaller indexes per partition fit in memory better, VACUUM operates on individual partitions reducing lock contention, and old data can be dropped instantly by detaching a partition. Limitations: queries without the partition key in the WHERE clause must scan all partitions; each partition needs its own indexes (more total index maintenance); unique constraints must include the partition key; foreign keys referencing partitioned tables weren't supported until PostgreSQL 12; and the query planner adds overhead evaluating partition pruning — tables with hundreds of partitions can see planning time increase significantly. The sweet spot is 10-100 partitions with clear access patterns aligned to the partition key."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Describe a production PgBouncer configuration and explain the trade-offs between pooling modes."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: PgBouncer offers three modes: session (connection held for entire client session), transaction (released after each transaction), and statement (released after each statement). Transaction mode is standard for production — it provides 10-50x connection multiplexing while supporting most application patterns. A typical config: default_pool_size=50 (server connections per database/user pair), max_client_conn=5000, reserve_pool_size=5 (extra connections for burst traffic), server_idle_timeout=600 (close idle server connections after 10 minutes). The trade-off: transaction mode breaks session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY, temp tables). Statement mode offers maximum multiplexing but breaks multi-statement transactions entirely. Most applications use transaction mode with application-level workarounds for prepared statements (either disable them or use protocol-level extended query protocol)."
+        }
+      ],
+      "wordCount": 564,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Monitor and tune autovacuum aggressively for high-write tables. Track n_dead_tup in pg_stat_user_tables and alert when dead tuple ratio exceeds 10% of n_live_tup. For tables with millions of writes per day, set per-table autovacuum parameters: autovacuum_vacuum_cost_delay = 2ms (default 20ms makes vacuum too slow), autovacuum_vacuum_scale_factor = 0.01, and increase autovacuum_max_workers from the default 3 to 5-8. Monitor pg_stat_progress_vacuum to track vacuum progress on large tables. Set up alerting on age(datfrozenxid) approaching 1 billion to prevent transaction ID wraparound emergencies."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use pg_stat_statements for query performance monitoring. Enable this extension in production (shared_preload_libraries = 'pg_stat_statements') to track execution statistics for every normalized query. Query it to find the top consumers: SELECT query, calls, mean_exec_time, total_exec_time FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20. This reveals which queries consume the most total time (high frequency × moderate latency) versus which are individually slowest. Reset statistics periodically with pg_stat_statements_reset() to track changes after deployments. Combine with auto_explain (configured with auto_explain.log_min_duration = 100ms) to automatically log execution plans for slow queries."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement connection pooling with proper health checks and failover. Deploy PgBouncer on each application server (sidecar pattern) rather than as a centralized proxy to eliminate the pooler as a single point of failure. Configure server_check_query = 'SELECT 1' with server_check_delay = 30 to detect dead connections. For high availability, use Patroni to manage PostgreSQL failover and configure PgBouncer to follow the primary via consul or etcd service discovery. Monitor PgBouncer's SHOW POOLS output for sv_active, sv_idle, cl_waiting — if cl_waiting is consistently above 0, increase default_pool_size or optimize transaction duration."
+        }
+      ],
+      "wordCount": 255,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SQL Fundamentals — Core SQL concepts that PostgreSQL extends with advanced features like JSONB, arrays, and range types",
+            "SQL Performance Tuning — General query optimization principles applied with PostgreSQL-specific tools like pg_stat_statements and EXPLAIN ANALYZE",
+            "Transactions and Consistency — PostgreSQL's MVCC implementation and isolation levels in the context of broader consistency guarantees",
+            "Database Design Patterns — Schema design approaches that leverage PostgreSQL-specific features like JSONB columns and partial indexes"
+          ]
+        }
+      ],
+      "wordCount": 69,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- GIN index on JSONB for containment queries\nCREATE INDEX idx_orders_metadata ON orders USING GIN (metadata jsonb_path_ops);\n\n-- Query using the GIN index: find orders with specific attributes\nSELECT order_id, total\nFROM orders\nWHERE metadata @> '{\"priority\": \"high\", \"region\": \"us-east\"}';\n\n-- GiST index for range type queries (scheduling/booking systems)\nCREATE TABLE reservations (\n    id SERIAL PRIMARY KEY,\n    room_id INT NOT NULL,\n    during TSTZRANGE NOT NULL,\n    EXCLUDE USING GIST (room_id WITH =, during WITH &&)  -- prevent overlaps\n);\n\n-- BRIN index for time-series data (1000x smaller than B-tree)\nCREATE INDEX idx_events_created ON events USING BRIN (created_at)\n    WITH (pages_per_range = 32);\n\n-- Partial index: only index rows that queries actually filter on\nCREATE INDEX idx_orders_pending ON orders (created_at)\n    WHERE status = 'PENDING' AND total_amount > 100;\n\n-- Covering index: include columns to enable index-only scans\nCREATE INDEX idx_users_email ON users (email) INCLUDE (name, created_at);\n\n-- Expression index: index computed values\nCREATE INDEX idx_users_lower_email ON users (LOWER(email));\n\n-- Multicolumn index with specific operator class for text search\nCREATE INDEX idx_products_search ON products\n    USING GIN (to_tsvector('english', name || ' ' || description));",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Create table with JSONB column for flexible attributes\nCREATE TABLE products (\n    id SERIAL PRIMARY KEY,\n    name TEXT NOT NULL,\n    base_price NUMERIC(10,2) NOT NULL,\n    attributes JSONB NOT NULL DEFAULT '{}'\n);\n\n-- Insert with nested JSONB\nINSERT INTO products (name, base_price, attributes) VALUES\n('Laptop Pro', 1299.99, '{\n    \"specs\": {\"ram_gb\": 16, \"storage_gb\": 512, \"cpu\": \"M3\"},\n    \"tags\": [\"electronics\", \"portable\", \"premium\"],\n    \"dimensions\": {\"weight_kg\": 1.4, \"screen_inches\": 14.2}\n}');\n\n-- Path extraction with type casting\nSELECT name,\n       attributes->'specs'->>'cpu' AS cpu,\n       (attributes->'specs'->'ram_gb')::int AS ram_gb,\n       attributes->'tags' AS tags\nFROM products\nWHERE attributes @> '{\"specs\": {\"ram_gb\": 16}}'  -- uses GIN index\n  AND attributes ? 'dimensions';                  -- key existence\n\n-- JSONB aggregation: build summary JSON from relational data\nSELECT jsonb_build_object(\n    'total_orders', COUNT(*),\n    'revenue', SUM(total),\n    'avg_order_value', ROUND(AVG(total), 2),\n    'top_products', jsonb_agg(DISTINCT product_name ORDER BY product_name)\n) AS summary\nFROM orders\nWHERE order_date >= CURRENT_DATE - INTERVAL '30 days';\n\n-- Update nested JSONB without replacing the entire document\nUPDATE products\nSET attributes = jsonb_set(\n    attributes,\n    '{specs,ram_gb}',\n    '32'::jsonb\n)\nWHERE id = 1;\n\n-- Remove a key from JSONB\nUPDATE products\nSET attributes = attributes #- '{dimensions,weight_kg}'\nWHERE id = 1;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Declarative range partitioning for time-series data\nCREATE TABLE events (\n    event_id BIGSERIAL,\n    event_type TEXT NOT NULL,\n    payload JSONB,\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n) PARTITION BY RANGE (created_at);\n\n-- Create monthly partitions\nCREATE TABLE events_2024_01 PARTITION OF events\n    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');\nCREATE TABLE events_2024_02 PARTITION OF events\n    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');\n\n-- Automatic partition creation with pg_partman extension\nCREATE EXTENSION pg_partman;\nSELECT partman.create_parent(\n    p_parent_table := 'public.events',\n    p_control := 'created_at',\n    p_type := 'native',\n    p_interval := '1 month',\n    p_premake := 3\n);\n\n-- Window functions with complex framing\nSELECT\n    date,\n    daily_revenue,\n    -- Running total within each month\n    SUM(daily_revenue) OVER (\n        PARTITION BY DATE_TRUNC('month', date)\n        ORDER BY date\n    ) AS mtd_revenue,\n    -- 7-day moving average\n    AVG(daily_revenue) OVER (\n        ORDER BY date\n        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n    ) AS seven_day_avg,\n    -- Percent rank within the quarter\n    PERCENT_RANK() OVER (\n        PARTITION BY DATE_TRUNC('quarter', date)\n        ORDER BY daily_revenue\n    ) AS percentile_in_quarter,\n    -- Previous day comparison\n    daily_revenue - LAG(daily_revenue, 1) OVER (ORDER BY date) AS day_over_day_change\nFROM daily_revenue_summary;\n\n-- Recursive CTE: find all downstream dependencies\nWITH RECURSIVE deps AS (\n    SELECT service_id, depends_on, 1 AS depth\n    FROM service_dependencies\n    WHERE service_id = 'payment-service'\n    \n    UNION ALL\n    \n    SELECT sd.service_id, sd.depends_on, d.depth + 1\n    FROM service_dependencies sd\n    JOIN deps d ON sd.service_id = d.depends_on\n    WHERE d.depth < 10  -- prevent infinite recursion\n)\nSELECT DISTINCT depends_on, MIN(depth) AS min_depth\nFROM deps\nGROUP BY depends_on\nORDER BY min_depth;",
+      "runnable": false
+    },
+    {
+      "language": "ini",
+      "code": "# postgresql.conf - Primary server settings for streaming replication\nwal_level = replica\nmax_wal_senders = 10\nwal_keep_size = 1GB\nsynchronous_standby_names = 'first 1 (replica1, replica2)'\n\n# Hot standby settings (replica)\nhot_standby = on\nmax_standby_streaming_delay = 30s\nhot_standby_feedback = on",
+      "runnable": false
+    },
+    {
+      "language": "ini",
+      "code": "# pgbouncer.ini - Transaction-mode pooling configuration\n[databases]\nmyapp = host=127.0.0.1 port=5432 dbname=myapp pool_size=50\n\n[pgbouncer]\nlisten_port = 6432\nlisten_addr = 0.0.0.0\nauth_type = scram-sha-256\nauth_file = /etc/pgbouncer/userlist.txt\n\npool_mode = transaction\nmax_client_conn = 10000\ndefault_pool_size = 50\nmin_pool_size = 10\nreserve_pool_size = 5\nreserve_pool_timeout = 3\n\n# Timeouts\nserver_idle_timeout = 600\nserver_lifetime = 3600\nclient_idle_timeout = 0\nquery_timeout = 300\n\n# Logging\nlog_connections = 0\nlog_disconnections = 0\nlog_pooler_errors = 1\nstats_period = 60",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/databases/postgresql.md",
+    "wordCount": 2264,
+    "sectionCount": 13
+  }
+}

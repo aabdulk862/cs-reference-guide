@@ -10,6 +10,9 @@ Each subtopic provides production-oriented guidance with real-world patterns, se
 2. [VPC and Networking](./vpc-and-networking.md) — Network architecture, subnets, security groups, endpoints, and multi-account connectivity
 3. [S3 and Storage](./s3-and-storage.md) — Object storage, lifecycle policies, encryption, and data lake patterns
 4. [Compute and Containers](./compute-and-containers.md) — ECS, EKS, Lambda, and compute selection strategies
+5. [AWS Core Services](./aws-core-services.md) — EC2, S3, Lambda, DynamoDB, SQS, SNS, CloudFront, and RDS in production
+6. [Serverless Patterns](./serverless-patterns.md) — Lambda architecture, Step Functions, EventBridge, and event-driven design
+7. [Cloud Architecture Patterns](./cloud-architecture-patterns.md) — Multi-region, disaster recovery, cost optimization, and Well-Architected Framework
 
 ## Related Topics
 

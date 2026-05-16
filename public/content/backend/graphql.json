@@ -1,0 +1,264 @@
+{
+  "id": "api-design-graphql",
+  "slug": "graphql",
+  "title": "GraphQL",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "GraphQL is a query language for APIs where clients specify exactly what data they need — no over-fetching or under-fetching",
+            "Schema-first development: define types and operations in SDL (Schema Definition Language) before implementing resolvers",
+            "Three operation types: query (read), mutation (write), subscription (real-time via WebSocket)",
+            "The N+1 problem is GraphQL's biggest performance trap — DataLoader batches and caches database calls within a single request",
+            "Federation enables composing multiple GraphQL services into a single unified graph (Apollo Federation, Schema Stitching)",
+            "Introspection allows clients to discover the schema at runtime — disable in production for security",
+            "Persisted queries hash query strings to reduce payload size and prevent arbitrary query execution",
+            "Complexity analysis and depth limiting prevent malicious queries from consuming excessive server resources"
+          ]
+        }
+      ],
+      "wordCount": 121,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "GraphQL excels when clients have diverse data requirements that a fixed REST endpoint cannot efficiently serve. Choose GraphQL for mobile applications where bandwidth is constrained and over-fetching wastes data, for frontend-heavy applications where different views need different subsets of the same entities, for API aggregation layers (BFF — Backend for Frontend) that compose data from multiple microservices, and for rapidly evolving UIs where adding new fields shouldn't require backend changes. GraphQL is less suitable for simple CRUD APIs with predictable access patterns (REST is simpler), for file uploads (requires multipart extensions), for real-time high-frequency data (gRPC streaming is more efficient), or when HTTP caching is critical (GraphQL uses POST, making CDN caching harder without persisted queries). The operational complexity of GraphQL — schema governance, performance monitoring per field, N+1 prevention, and query cost analysis — means it adds value primarily when the client diversity and data flexibility benefits outweigh the infrastructure investment."
+        }
+      ],
+      "wordCount": 152,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "schema-design-with-typescript-apollo-server",
+          "heading": "Schema Design with TypeScript (Apollo Server)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { ApolloServer } from '@apollo/server';\nimport { startStandaloneServer } from '@apollo/server/standalone';\nimport { GraphQLError } from 'graphql';\n\nconst typeDefs = `#graphql\n  type Query {\n    user(id: ID!): User\n    users(filter: UserFilter, pagination: PaginationInput): UserConnection!\n    order(id: ID!): Order\n  }\n\n  type Mutation {\n    createUser(input: CreateUserInput!): CreateUserPayload!\n    updateUser(id: ID!, input: UpdateUserInput!): UpdateUserPayload!\n    createOrder(input: CreateOrderInput!): CreateOrderPayload!\n  }\n\n  type Subscription {\n    orderStatusChanged(orderId: ID!): OrderStatusEvent!\n  }\n\n  # Relay-style connection for cursor pagination\n  type UserConnection {\n    edges: [UserEdge!]!\n    pageInfo: PageInfo!\n    totalCount: Int!\n  }\n\n  type UserEdge {\n    node: User!\n    cursor: String!\n  }\n\n  type PageInfo {\n    hasNextPage: Boolean!\n    hasPreviousPage: Boolean!\n    startCursor: String\n    endCursor: String\n  }\n\n  type User {\n    id: ID!\n    email: String!\n    name: String!\n    role: UserRole!\n    orders(first: Int = 10, after: String): OrderConnection!\n    createdAt: DateTime!\n    updatedAt: DateTime!\n  }\n\n  type Order {\n    id: ID!\n    customer: User!\n    items: [OrderItem!]!\n    status: OrderStatus!\n    total: Money!\n    createdAt: DateTime!\n  }\n\n  type OrderItem {\n    product: Product!\n    quantity: Int!\n    unitPrice: Money!\n  }\n\n  type Money {\n    amount: Int!       # Cents to avoid floating point\n    currency: String!  # ISO 4217\n  }\n\n  # Input types for mutations\n  input CreateUserInput {\n    email: String!\n    name: String!\n    role: UserRole = CUSTOMER\n  }\n\n  input CreateOrderInput {\n    customerId: ID!\n    items: [OrderItemInput!]!\n    idempotencyKey: String!\n  }\n\n  input OrderItemInput {\n    productId: ID!\n    quantity: Int!\n  }\n\n  # Mutation payloads follow a consistent pattern\n  type CreateUserPayload {\n    user: User\n    errors: [UserError!]!\n  }\n\n  type UserError {\n    field: String\n    message: String!\n    code: ErrorCode!\n  }\n\n  enum UserRole { ADMIN CUSTOMER SELLER }\n  enum OrderStatus { PENDING CONFIRMED SHIPPED DELIVERED CANCELLED }\n  enum ErrorCode { VALIDATION_ERROR NOT_FOUND CONFLICT UNAUTHORIZED }\n\n  scalar DateTime\n\n  input UserFilter {\n    role: UserRole\n    createdAfter: DateTime\n    search: String\n  }\n\n  input PaginationInput {\n    first: Int = 20\n    after: String\n  }\n`;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "resolvers-with-dataloader-for-n1-prevention",
+          "heading": "Resolvers with DataLoader for N+1 Prevention",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import DataLoader from 'dataloader';\nimport { Resolvers } from './generated/types';\n\n// DataLoader factory — create new loaders per request to avoid cross-request caching\nfunction createLoaders(db: Database) {\n  return {\n    userLoader: new DataLoader<string, User>(async (ids) => {\n      const users = await db.users.findByIds([...ids]);\n      // DataLoader requires results in same order as input IDs\n      const userMap = new Map(users.map(u => [u.id, u]));\n      return ids.map(id => userMap.get(id) || new Error(`User ${id} not found`));\n    }),\n\n    ordersByUserLoader: new DataLoader<string, Order[]>(async (userIds) => {\n      const orders = await db.orders.findByCustomerIds([...userIds]);\n      const grouped = new Map<string, Order[]>();\n      orders.forEach(order => {\n        const existing = grouped.get(order.customerId) || [];\n        existing.push(order);\n        grouped.set(order.customerId, existing);\n      });\n      return userIds.map(id => grouped.get(id) || []);\n    }),\n\n    productLoader: new DataLoader<string, Product>(async (ids) => {\n      const products = await db.products.findByIds([...ids]);\n      const productMap = new Map(products.map(p => [p.id, p]));\n      return ids.map(id => productMap.get(id) || new Error(`Product ${id} not found`));\n    }),\n  };\n}\n\nconst resolvers: Resolvers = {\n  Query: {\n    user: async (_, { id }, { loaders }) => {\n      return loaders.userLoader.load(id);\n    },\n\n    users: async (_, { filter, pagination }, { db }) => {\n      const { first = 20, after } = pagination || {};\n      const cursor = after ? decodeCursor(after) : null;\n\n      const { items, hasMore, totalCount } = await db.users.findPaginated({\n        filter,\n        limit: first + 1, // Fetch one extra to determine hasNextPage\n        afterId: cursor?.id,\n      });\n\n      const edges = items.slice(0, first).map(user => ({\n        node: user,\n        cursor: encodeCursor({ id: user.id }),\n      }));\n\n      return {\n        edges,\n        pageInfo: {\n          hasNextPage: items.length > first,\n          hasPreviousPage: !!after,\n          startCursor: edges[0]?.cursor || null,\n          endCursor: edges[edges.length - 1]?.cursor || null,\n        },\n        totalCount,\n      };\n    },\n  },\n\n  Mutation: {\n    createOrder: async (_, { input }, { db, loaders, currentUser }) => {\n      // Authorization check\n      if (!currentUser) {\n        return {\n          order: null,\n          errors: [{ message: 'Authentication required', code: 'UNAUTHORIZED' }],\n        };\n      }\n\n      // Idempotency check\n      const existing = await db.orders.findByIdempotencyKey(input.idempotencyKey);\n      if (existing) {\n        return { order: existing, errors: [] };\n      }\n\n      // Validate products exist and have sufficient stock\n      const products = await Promise.all(\n        input.items.map(item => loaders.productLoader.load(item.productId))\n      );\n\n      const errors = [];\n      for (let i = 0; i < input.items.length; i++) {\n        const product = products[i];\n        if (product instanceof Error) {\n          errors.push({\n            field: `items[${i}].productId`,\n            message: `Product not found`,\n            code: 'NOT_FOUND' as const,\n          });\n        }\n      }\n\n      if (errors.length > 0) {\n        return { order: null, errors };\n      }\n\n      const order = await db.orders.create({\n        customerId: input.customerId,\n        items: input.items,\n        idempotencyKey: input.idempotencyKey,\n      });\n\n      return { order, errors: [] };\n    },\n  },\n\n  // Field-level resolvers for relationships\n  User: {\n    orders: async (user, { first, after }, { loaders }) => {\n      // DataLoader batches these calls across all users in the query\n      const allOrders = await loaders.ordersByUserLoader.load(user.id);\n      // Apply pagination on the loaded results\n      return paginateArray(allOrders, { first, after });\n    },\n  },\n\n  Order: {\n    customer: async (order, _, { loaders }) => {\n      return loaders.userLoader.load(order.customerId);\n    },\n  },\n\n  OrderItem: {\n    product: async (item, _, { loaders }) => {\n      return loaders.productLoader.load(item.productId);\n    },\n  },\n};",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "query-complexity-and-depth-limiting",
+          "heading": "Query Complexity and Depth Limiting",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { ApolloServer } from '@apollo/server';\nimport { createComplexityLimitRule } from 'graphql-validation-complexity';\nimport depthLimit from 'graphql-depth-limit';\n\n// Custom complexity calculation\nconst complexityRule = createComplexityLimitRule(1000, {\n  scalarCost: 1,\n  objectCost: 2,\n  listFactor: 10, // Lists multiply child complexity\n  introspectionListFactor: 2,\n  formatErrorMessage: (cost: number) =>\n    `Query complexity ${cost} exceeds maximum allowed complexity of 1000`,\n});\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  validationRules: [\n    depthLimit(7), // Max query depth\n    complexityRule,\n  ],\n  plugins: [\n    // Query cost logging\n    {\n      async requestDidStart() {\n        const start = Date.now();\n        return {\n          async willSendResponse({ response, contextValue }) {\n            const duration = Date.now() - start;\n            contextValue.logger.info('GraphQL request completed', {\n              duration,\n              operationName: contextValue.operationName,\n              complexity: contextValue.queryComplexity,\n            });\n          },\n          async didEncounterErrors({ errors, contextValue }) {\n            contextValue.logger.error('GraphQL errors', { errors });\n          },\n        };\n      },\n    },\n    // Persisted queries for production\n    {\n      async requestDidStart({ request }) {\n        if (process.env.NODE_ENV === 'production' && !request.extensions?.persistedQuery) {\n          throw new GraphQLError('Only persisted queries allowed in production', {\n            extensions: { code: 'PERSISTED_QUERY_REQUIRED' },\n          });\n        }\n      },\n    },\n  ],\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "apollo-federation-subgraph",
+          "heading": "Apollo Federation (Subgraph)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { buildSubgraphSchema } from '@apollo/subgraph';\nimport { ApolloServer } from '@apollo/server';\nimport gql from 'graphql-tag';\n\n// Users subgraph — owns User entity\nconst typeDefs = gql`\n  extend schema @link(url: \"https://specs.apollo.dev/federation/v2.0\", import: [\"@key\", \"@shareable\", \"@external\"])\n\n  type Query {\n    me: User\n    user(id: ID!): User\n  }\n\n  type User @key(fields: \"id\") {\n    id: ID!\n    email: String!\n    name: String!\n    role: UserRole!\n    createdAt: DateTime!\n  }\n\n  enum UserRole { ADMIN CUSTOMER SELLER }\n  scalar DateTime\n`;\n\nconst resolvers = {\n  Query: {\n    me: (_, __, { currentUser }) => currentUser,\n    user: (_, { id }, { dataSources }) => dataSources.users.findById(id),\n  },\n  User: {\n    // Federation resolver — called when other subgraphs reference User\n    __resolveReference: (reference, { dataSources }) => {\n      return dataSources.users.findById(reference.id);\n    },\n  },\n};\n\n// Orders subgraph — extends User with orders field\nconst ordersTypeDefs = gql`\n  extend schema @link(url: \"https://specs.apollo.dev/federation/v2.0\", import: [\"@key\", \"@external\"])\n\n  type Query {\n    order(id: ID!): Order\n  }\n\n  type Order @key(fields: \"id\") {\n    id: ID!\n    customer: User!\n    items: [OrderItem!]!\n    status: OrderStatus!\n    total: Int!\n  }\n\n  # Extend User from users subgraph\n  type User @key(fields: \"id\") {\n    id: ID! @external\n    orders(first: Int = 10): [Order!]!\n  }\n\n  type OrderItem {\n    productId: ID!\n    quantity: Int!\n    unitPrice: Int!\n  }\n\n  enum OrderStatus { PENDING CONFIRMED SHIPPED DELIVERED }\n`;\n\nconst ordersResolvers = {\n  User: {\n    orders: (user, { first }, { dataSources }) => {\n      return dataSources.orders.findByCustomerId(user.id, { limit: first });\n    },\n  },\n  Order: {\n    customer: (order) => ({ __typename: 'User', id: order.customerId }),\n  },\n};",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "The N+1 query problem: Without DataLoader, fetching a list of 50 users with their orders generates 1 query for users + 50 individual queries for each user's orders. DataLoader batches these into 2 queries total. Always use DataLoader (or equivalent) for any field that triggers a database call",
+            "Unbounded queries without complexity limits: A malicious client can craft deeply nested queries ({ user { orders { items { product { reviews { author { orders ... } } } } } } }) that exponentially increase server load. Implement depth limiting (max 7-10 levels) and query complexity scoring",
+            "Exposing internal data models directly: Mapping database tables 1:1 to GraphQL types leaks implementation details and makes schema evolution difficult. Design the schema from the client's perspective, using resolvers to transform internal representations",
+            "Not handling partial failures: In GraphQL, a single resolver failure can null out an entire branch of the response. Use nullable fields strategically — make fields non-null only when you can guarantee they'll resolve. Return partial data with errors rather than failing the entire query",
+            "Over-fetching in resolvers: A resolver for User.email that loads the entire user record from the database wastes resources when only the email is needed. Use field-level selection awareness (info.fieldNodes) or DataLoader to batch and deduplicate",
+            "Schema design without pagination: Returning unbounded lists (orders: [Order!]!) works in development but causes timeouts in production. Always paginate list fields using Relay connection spec (edges/nodes/pageInfo) or simple limit/offset arguments"
+          ]
+        }
+      ],
+      "wordCount": 241,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "GitHub's Public API: GitHub migrated from REST (v3) to GraphQL (v4) because their REST API required clients to make 3-5 requests to assemble data for a single page view (repository + branches + pull requests + reviews). With GraphQL, clients fetch exactly what they need in one request. They use persisted queries, query complexity limits (point system per field), and rate limiting based on query cost rather than request count."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shopify's Storefront API: Shopify exposes a GraphQL API for custom storefronts that serves millions of merchants. The schema is designed around commerce concepts (products, collections, carts, checkouts) rather than database tables. They use schema stitching to compose APIs from multiple internal services and implement aggressive caching at the CDN level using persisted query hashes as cache keys."
+        },
+        {
+          "type": "paragraph",
+          "text": "Netflix's API Gateway: Netflix uses GraphQL as a BFF (Backend for Frontend) layer that aggregates data from hundreds of microservices. Different clients (TV app, mobile app, web) send different queries optimized for their UI needs. The gateway resolves fields by calling appropriate microservices, with DataLoader batching calls to the same service within a single request."
+        }
+      ],
+      "wordCount": 182,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the N+1 problem in GraphQL and how DataLoader solves it."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The N+1 problem occurs when resolving a list field triggers individual database queries for each item. Example: querying 100 users with their orders generates 1 query for users + 100 queries for orders (one per user). DataLoader solves this by batching and caching within a single request execution. When multiple resolvers call loader.load(userId) during the same tick of the event loop, DataLoader collects all IDs and makes a single batch call (SELECT * FROM orders WHERE user_id IN (...)) instead of 100 individual calls. Key implementation details: create new DataLoader instances per request (to avoid cross-request caching that could leak data between users), ensure the batch function returns results in the same order as input keys, and handle missing results by returning Error objects for individual keys rather than throwing. DataLoader also deduplicates — if the same user ID appears multiple times in a query, it's fetched only once."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement authorization in a GraphQL API?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Layer authorization at multiple levels. First, operation-level: use middleware/plugins to check authentication before any resolver executes. Second, field-level: use schema directives (@auth(requires: ADMIN)) that wrap resolvers with permission checks. Third, data-level: resolvers filter results based on the authenticated user's permissions (a user can only see their own orders). Implementation pattern: inject the authenticated user into context, create an authorization layer that resolvers call (ctx.authorize('order:read', order)), and return null or throw FORBIDDEN for unauthorized fields. For federation, each subgraph handles its own authorization since it owns its data. Critical consideration: GraphQL's type system means a non-null field that fails authorization will null out the parent object. Design nullable fields for data that may be restricted, and use union types (type OrderResult = Order | UnauthorizedError) for explicit error handling."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Compare GraphQL Federation and Schema Stitching. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Schema Stitching merges multiple schemas at the gateway level — the gateway fetches schemas from subservices and combines them, resolving cross-service references via delegated resolvers. Federation (Apollo) is a specification where each subgraph declares its own types and how they compose, and a router automatically builds the unified schema. Federation advantages: subgraphs are independently deployable, each team owns their portion of the schema, the router handles query planning automatically, and there's no central gateway code to maintain. Stitching advantages: works with any GraphQL server (no federation spec required), more flexible for legacy service integration, and simpler for small teams. Choose Federation when you have multiple teams owning different domains (users team, orders team, products team) and need independent deployment. Choose Stitching when integrating third-party GraphQL APIs you don't control, or when your services predate Federation and migration cost is high."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle caching in GraphQL given that most queries use POST?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Multiple strategies: First, persisted queries — hash query strings and use GET requests with the hash as a query parameter (GET /graphql?extensions={\"persistedQuery\":{\"sha256Hash\":\"abc123\"}}), enabling standard HTTP/CDN caching. Second, response-level caching — cache full responses keyed by (query hash + variables + auth context) in Redis with TTLs based on the most volatile field in the response. Third, field-level caching — use @cacheControl(maxAge: 3600) directives on types/fields, and the server calculates the minimum maxAge across all resolved fields for the Cache-Control header. Fourth, DataLoader's per-request cache prevents redundant database calls within a single query. Fifth, application-level caching in resolvers (Redis/Memcached) for expensive computations. The key insight: GraphQL caching is more granular than REST because different queries touch different fields with different freshness requirements."
+        }
+      ],
+      "wordCount": 590,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement automatic persisted queries (APQ) in production to reduce request payload size and enable query whitelisting. Clients send a hash on first request; if the server doesn't recognize it, the client sends the full query which gets cached. Subsequent requests use only the hash. This also prevents arbitrary query injection attacks",
+            "Monitor resolver performance per field: Track execution time for every resolver, not just per-request latency. A single slow resolver (e.g., User.recommendations calling an ML service) can dominate response time. Use Apollo Studio, GraphQL Mesh, or custom tracing to identify hot resolvers and optimize or add caching selectively",
+            "Use schema linting and breaking change detection in CI: Tools like graphql-inspector compare schema changes against the previous version and flag breaking changes (removed fields, changed types, removed enum values). Combine with client query analysis to determine if a \"breaking\" change actually affects any registered client queries",
+            "Implement query cost analysis with rate limiting: Assign point costs to fields (scalar: 1, object: 2, list: 10 × child cost) and reject queries exceeding a threshold. Rate limit by total points consumed per time window rather than raw request count — a simple { user { name } } should cost less quota than a complex nested query fetching thousands of records"
+          ]
+        }
+      ],
+      "wordCount": 208,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "REST API Design — Alternative API paradigm and comparison point for when to choose REST vs GraphQL",
+            "gRPC — High-performance alternative for internal service communication",
+            "Spring Data — Data access patterns relevant to GraphQL resolver implementation",
+            "Security — Authentication and authorization patterns applicable to GraphQL APIs"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { ApolloServer } from '@apollo/server';\nimport { startStandaloneServer } from '@apollo/server/standalone';\nimport { GraphQLError } from 'graphql';\n\nconst typeDefs = `#graphql\n  type Query {\n    user(id: ID!): User\n    users(filter: UserFilter, pagination: PaginationInput): UserConnection!\n    order(id: ID!): Order\n  }\n\n  type Mutation {\n    createUser(input: CreateUserInput!): CreateUserPayload!\n    updateUser(id: ID!, input: UpdateUserInput!): UpdateUserPayload!\n    createOrder(input: CreateOrderInput!): CreateOrderPayload!\n  }\n\n  type Subscription {\n    orderStatusChanged(orderId: ID!): OrderStatusEvent!\n  }\n\n  # Relay-style connection for cursor pagination\n  type UserConnection {\n    edges: [UserEdge!]!\n    pageInfo: PageInfo!\n    totalCount: Int!\n  }\n\n  type UserEdge {\n    node: User!\n    cursor: String!\n  }\n\n  type PageInfo {\n    hasNextPage: Boolean!\n    hasPreviousPage: Boolean!\n    startCursor: String\n    endCursor: String\n  }\n\n  type User {\n    id: ID!\n    email: String!\n    name: String!\n    role: UserRole!\n    orders(first: Int = 10, after: String): OrderConnection!\n    createdAt: DateTime!\n    updatedAt: DateTime!\n  }\n\n  type Order {\n    id: ID!\n    customer: User!\n    items: [OrderItem!]!\n    status: OrderStatus!\n    total: Money!\n    createdAt: DateTime!\n  }\n\n  type OrderItem {\n    product: Product!\n    quantity: Int!\n    unitPrice: Money!\n  }\n\n  type Money {\n    amount: Int!       # Cents to avoid floating point\n    currency: String!  # ISO 4217\n  }\n\n  # Input types for mutations\n  input CreateUserInput {\n    email: String!\n    name: String!\n    role: UserRole = CUSTOMER\n  }\n\n  input CreateOrderInput {\n    customerId: ID!\n    items: [OrderItemInput!]!\n    idempotencyKey: String!\n  }\n\n  input OrderItemInput {\n    productId: ID!\n    quantity: Int!\n  }\n\n  # Mutation payloads follow a consistent pattern\n  type CreateUserPayload {\n    user: User\n    errors: [UserError!]!\n  }\n\n  type UserError {\n    field: String\n    message: String!\n    code: ErrorCode!\n  }\n\n  enum UserRole { ADMIN CUSTOMER SELLER }\n  enum OrderStatus { PENDING CONFIRMED SHIPPED DELIVERED CANCELLED }\n  enum ErrorCode { VALIDATION_ERROR NOT_FOUND CONFLICT UNAUTHORIZED }\n\n  scalar DateTime\n\n  input UserFilter {\n    role: UserRole\n    createdAfter: DateTime\n    search: String\n  }\n\n  input PaginationInput {\n    first: Int = 20\n    after: String\n  }\n`;",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import DataLoader from 'dataloader';\nimport { Resolvers } from './generated/types';\n\n// DataLoader factory — create new loaders per request to avoid cross-request caching\nfunction createLoaders(db: Database) {\n  return {\n    userLoader: new DataLoader<string, User>(async (ids) => {\n      const users = await db.users.findByIds([...ids]);\n      // DataLoader requires results in same order as input IDs\n      const userMap = new Map(users.map(u => [u.id, u]));\n      return ids.map(id => userMap.get(id) || new Error(`User ${id} not found`));\n    }),\n\n    ordersByUserLoader: new DataLoader<string, Order[]>(async (userIds) => {\n      const orders = await db.orders.findByCustomerIds([...userIds]);\n      const grouped = new Map<string, Order[]>();\n      orders.forEach(order => {\n        const existing = grouped.get(order.customerId) || [];\n        existing.push(order);\n        grouped.set(order.customerId, existing);\n      });\n      return userIds.map(id => grouped.get(id) || []);\n    }),\n\n    productLoader: new DataLoader<string, Product>(async (ids) => {\n      const products = await db.products.findByIds([...ids]);\n      const productMap = new Map(products.map(p => [p.id, p]));\n      return ids.map(id => productMap.get(id) || new Error(`Product ${id} not found`));\n    }),\n  };\n}\n\nconst resolvers: Resolvers = {\n  Query: {\n    user: async (_, { id }, { loaders }) => {\n      return loaders.userLoader.load(id);\n    },\n\n    users: async (_, { filter, pagination }, { db }) => {\n      const { first = 20, after } = pagination || {};\n      const cursor = after ? decodeCursor(after) : null;\n\n      const { items, hasMore, totalCount } = await db.users.findPaginated({\n        filter,\n        limit: first + 1, // Fetch one extra to determine hasNextPage\n        afterId: cursor?.id,\n      });\n\n      const edges = items.slice(0, first).map(user => ({\n        node: user,\n        cursor: encodeCursor({ id: user.id }),\n      }));\n\n      return {\n        edges,\n        pageInfo: {\n          hasNextPage: items.length > first,\n          hasPreviousPage: !!after,\n          startCursor: edges[0]?.cursor || null,\n          endCursor: edges[edges.length - 1]?.cursor || null,\n        },\n        totalCount,\n      };\n    },\n  },\n\n  Mutation: {\n    createOrder: async (_, { input }, { db, loaders, currentUser }) => {\n      // Authorization check\n      if (!currentUser) {\n        return {\n          order: null,\n          errors: [{ message: 'Authentication required', code: 'UNAUTHORIZED' }],\n        };\n      }\n\n      // Idempotency check\n      const existing = await db.orders.findByIdempotencyKey(input.idempotencyKey);\n      if (existing) {\n        return { order: existing, errors: [] };\n      }\n\n      // Validate products exist and have sufficient stock\n      const products = await Promise.all(\n        input.items.map(item => loaders.productLoader.load(item.productId))\n      );\n\n      const errors = [];\n      for (let i = 0; i < input.items.length; i++) {\n        const product = products[i];\n        if (product instanceof Error) {\n          errors.push({\n            field: `items[${i}].productId`,\n            message: `Product not found`,\n            code: 'NOT_FOUND' as const,\n          });\n        }\n      }\n\n      if (errors.length > 0) {\n        return { order: null, errors };\n      }\n\n      const order = await db.orders.create({\n        customerId: input.customerId,\n        items: input.items,\n        idempotencyKey: input.idempotencyKey,\n      });\n\n      return { order, errors: [] };\n    },\n  },\n\n  // Field-level resolvers for relationships\n  User: {\n    orders: async (user, { first, after }, { loaders }) => {\n      // DataLoader batches these calls across all users in the query\n      const allOrders = await loaders.ordersByUserLoader.load(user.id);\n      // Apply pagination on the loaded results\n      return paginateArray(allOrders, { first, after });\n    },\n  },\n\n  Order: {\n    customer: async (order, _, { loaders }) => {\n      return loaders.userLoader.load(order.customerId);\n    },\n  },\n\n  OrderItem: {\n    product: async (item, _, { loaders }) => {\n      return loaders.productLoader.load(item.productId);\n    },\n  },\n};",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { ApolloServer } from '@apollo/server';\nimport { createComplexityLimitRule } from 'graphql-validation-complexity';\nimport depthLimit from 'graphql-depth-limit';\n\n// Custom complexity calculation\nconst complexityRule = createComplexityLimitRule(1000, {\n  scalarCost: 1,\n  objectCost: 2,\n  listFactor: 10, // Lists multiply child complexity\n  introspectionListFactor: 2,\n  formatErrorMessage: (cost: number) =>\n    `Query complexity ${cost} exceeds maximum allowed complexity of 1000`,\n});\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  validationRules: [\n    depthLimit(7), // Max query depth\n    complexityRule,\n  ],\n  plugins: [\n    // Query cost logging\n    {\n      async requestDidStart() {\n        const start = Date.now();\n        return {\n          async willSendResponse({ response, contextValue }) {\n            const duration = Date.now() - start;\n            contextValue.logger.info('GraphQL request completed', {\n              duration,\n              operationName: contextValue.operationName,\n              complexity: contextValue.queryComplexity,\n            });\n          },\n          async didEncounterErrors({ errors, contextValue }) {\n            contextValue.logger.error('GraphQL errors', { errors });\n          },\n        };\n      },\n    },\n    // Persisted queries for production\n    {\n      async requestDidStart({ request }) {\n        if (process.env.NODE_ENV === 'production' && !request.extensions?.persistedQuery) {\n          throw new GraphQLError('Only persisted queries allowed in production', {\n            extensions: { code: 'PERSISTED_QUERY_REQUIRED' },\n          });\n        }\n      },\n    },\n  ],\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { buildSubgraphSchema } from '@apollo/subgraph';\nimport { ApolloServer } from '@apollo/server';\nimport gql from 'graphql-tag';\n\n// Users subgraph — owns User entity\nconst typeDefs = gql`\n  extend schema @link(url: \"https://specs.apollo.dev/federation/v2.0\", import: [\"@key\", \"@shareable\", \"@external\"])\n\n  type Query {\n    me: User\n    user(id: ID!): User\n  }\n\n  type User @key(fields: \"id\") {\n    id: ID!\n    email: String!\n    name: String!\n    role: UserRole!\n    createdAt: DateTime!\n  }\n\n  enum UserRole { ADMIN CUSTOMER SELLER }\n  scalar DateTime\n`;\n\nconst resolvers = {\n  Query: {\n    me: (_, __, { currentUser }) => currentUser,\n    user: (_, { id }, { dataSources }) => dataSources.users.findById(id),\n  },\n  User: {\n    // Federation resolver — called when other subgraphs reference User\n    __resolveReference: (reference, { dataSources }) => {\n      return dataSources.users.findById(reference.id);\n    },\n  },\n};\n\n// Orders subgraph — extends User with orders field\nconst ordersTypeDefs = gql`\n  extend schema @link(url: \"https://specs.apollo.dev/federation/v2.0\", import: [\"@key\", \"@external\"])\n\n  type Query {\n    order(id: ID!): Order\n  }\n\n  type Order @key(fields: \"id\") {\n    id: ID!\n    customer: User!\n    items: [OrderItem!]!\n    status: OrderStatus!\n    total: Int!\n  }\n\n  # Extend User from users subgraph\n  type User @key(fields: \"id\") {\n    id: ID! @external\n    orders(first: Int = 10): [Order!]!\n  }\n\n  type OrderItem {\n    productId: ID!\n    quantity: Int!\n    unitPrice: Int!\n  }\n\n  enum OrderStatus { PENDING CONFIRMED SHIPPED DELIVERED }\n`;\n\nconst ordersResolvers = {\n  User: {\n    orders: (user, { first }, { dataSources }) => {\n      return dataSources.orders.findByCustomerId(user.id, { limit: first });\n    },\n  },\n  Order: {\n    customer: (order) => ({ __typename: 'User', id: order.customerId }),\n  },\n};",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/api-design/graphql.md",
+    "wordCount": 1540,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,236 @@
+{
+  "id": "backend-rest-api-design",
+  "slug": "rest-api-design",
+  "title": "REST API Design",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "REST (Representational State Transfer) is an architectural style with 6 constraints: client-server, stateless, cacheable, uniform interface, layered system, code-on-demand (optional)",
+            "Use nouns for resources (/users/123), not verbs (/getUser?id=123); HTTP methods convey the action",
+            "HTTP methods: GET (read), POST (create), PUT (full replace), PATCH (partial update), DELETE (remove)",
+            "Status codes: 2xx success, 3xx redirection, 4xx client error, 5xx server error — use specific codes, not just 200/500",
+            "Content negotiation via Accept header; default to application/json with Content-Type: application/json",
+            "Pagination: use cursor-based for large datasets (stable under writes), offset-based for simple cases",
+            "API versioning: URI path (/v1/users) is most common; header-based (Accept: application/vnd.api.v1+json) is more RESTful",
+            "Rate limiting headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset (Unix timestamp)"
+          ]
+        }
+      ],
+      "wordCount": 112,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "REST APIs are the default choice for public-facing web APIs, mobile app backends, and service-to-service communication where simplicity, cacheability, and broad client compatibility matter. Choose REST when your domain maps naturally to resources and CRUD operations, when you need HTTP caching at CDN and browser levels, when clients are diverse (web, mobile, third-party integrations), or when you want a well-understood contract that new developers can learn quickly. REST is less suitable for real-time bidirectional communication (use WebSockets), complex queries with nested relationships (consider GraphQL), high-performance internal service communication with strict schemas (consider gRPC), or event streaming (use SSE or message queues). In microservice architectures, REST works well for synchronous request-response patterns between services, especially at organizational boundaries where simplicity and discoverability outweigh raw performance."
+        }
+      ],
+      "wordCount": 124,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "resource-design-with-spring-boot",
+          "heading": "Resource Design with Spring Boot",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/api/v1/users\")\n@Validated\npublic class UserController {\n\n    private final UserService userService;\n\n    @GetMapping\n    public ResponseEntity<PagedResponse<UserDto>> listUsers(\n            @RequestParam(defaultValue = \"0\") @Min(0) int page,\n            @RequestParam(defaultValue = \"20\") @Min(1) @Max(100) int size,\n            @RequestParam(required = false) String status,\n            @RequestParam(defaultValue = \"createdAt\") String sortBy,\n            @RequestParam(defaultValue = \"desc\") String sortDir) {\n\n        Pageable pageable = PageRequest.of(page, size,\n            Sort.by(Sort.Direction.fromString(sortDir), sortBy));\n\n        Page<UserDto> users = userService.findAll(status, pageable);\n\n        PagedResponse<UserDto> response = PagedResponse.<UserDto>builder()\n            .data(users.getContent())\n            .page(users.getNumber())\n            .size(users.getSize())\n            .totalElements(users.getTotalElements())\n            .totalPages(users.getTotalPages())\n            .hasNext(users.hasNext())\n            .build();\n\n        return ResponseEntity.ok()\n            .cacheControl(CacheControl.maxAge(30, TimeUnit.SECONDS))\n            .body(response);\n    }\n\n    @GetMapping(\"/{userId}\")\n    public ResponseEntity<UserDto> getUser(\n            @PathVariable @UUID String userId,\n            HttpServletRequest request) {\n\n        UserDto user = userService.findById(userId);\n\n        // ETag for conditional requests\n        String etag = \"\\\"\" + user.getVersion() + \"\\\"\";\n        if (etag.equals(request.getHeader(\"If-None-Match\"))) {\n            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();\n        }\n\n        return ResponseEntity.ok()\n            .eTag(etag)\n            .cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS))\n            .body(user);\n    }\n\n    @PostMapping\n    public ResponseEntity<UserDto> createUser(\n            @Valid @RequestBody CreateUserRequest request,\n            UriComponentsBuilder uriBuilder) {\n\n        UserDto created = userService.create(request);\n\n        URI location = uriBuilder.path(\"/api/v1/users/{id}\")\n            .buildAndExpand(created.getId())\n            .toUri();\n\n        return ResponseEntity.created(location).body(created);\n    }\n\n    @PatchMapping(\"/{userId}\")\n    public ResponseEntity<UserDto> updateUser(\n            @PathVariable @UUID String userId,\n            @Valid @RequestBody UpdateUserRequest request,\n            @RequestHeader(\"If-Match\") String ifMatch) {\n\n        // Optimistic concurrency control\n        long expectedVersion = Long.parseLong(ifMatch.replace(\"\\\"\", \"\"));\n        UserDto updated = userService.update(userId, request, expectedVersion);\n\n        return ResponseEntity.ok()\n            .eTag(\"\\\"\" + updated.getVersion() + \"\\\"\")\n            .body(updated);\n    }\n\n    @DeleteMapping(\"/{userId}\")\n    @ResponseStatus(HttpStatus.NO_CONTENT)\n    public void deleteUser(@PathVariable @UUID String userId) {\n        userService.delete(userId);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "standardized-error-response",
+          "heading": "Standardized Error Response",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestControllerAdvice\npublic class GlobalExceptionHandler {\n\n    @ExceptionHandler(ResourceNotFoundException.class)\n    public ResponseEntity<ProblemDetail> handleNotFound(ResourceNotFoundException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);\n        problem.setTitle(\"Resource Not Found\");\n        problem.setDetail(ex.getMessage());\n        problem.setType(URI.create(\"https://api.example.com/errors/not-found\"));\n        problem.setProperty(\"resourceType\", ex.getResourceType());\n        problem.setProperty(\"resourceId\", ex.getResourceId());\n        problem.setProperty(\"timestamp\", Instant.now());\n        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);\n    }\n\n    @ExceptionHandler(MethodArgumentNotValidException.class)\n    public ResponseEntity<ProblemDetail> handleValidation(MethodArgumentNotValidException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);\n        problem.setTitle(\"Validation Failed\");\n        problem.setDetail(\"One or more fields failed validation\");\n        problem.setType(URI.create(\"https://api.example.com/errors/validation\"));\n\n        List<Map<String, String>> violations = ex.getBindingResult()\n            .getFieldErrors().stream()\n            .map(error -> Map.of(\n                \"field\", error.getField(),\n                \"message\", error.getDefaultMessage(),\n                \"rejectedValue\", String.valueOf(error.getRejectedValue())\n            ))\n            .toList();\n\n        problem.setProperty(\"violations\", violations);\n        return ResponseEntity.badRequest().body(problem);\n    }\n\n    @ExceptionHandler(OptimisticLockException.class)\n    public ResponseEntity<ProblemDetail> handleConflict(OptimisticLockException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);\n        problem.setTitle(\"Conflict\");\n        problem.setDetail(\"Resource was modified by another request. Fetch the latest version and retry.\");\n        problem.setType(URI.create(\"https://api.example.com/errors/conflict\"));\n        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);\n    }\n\n    @ExceptionHandler(RateLimitExceededException.class)\n    public ResponseEntity<ProblemDetail> handleRateLimit(RateLimitExceededException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.TOO_MANY_REQUESTS);\n        problem.setTitle(\"Rate Limit Exceeded\");\n        problem.setDetail(\"You have exceeded the rate limit. Try again after the reset time.\");\n        problem.setProperty(\"retryAfter\", ex.getRetryAfterSeconds());\n\n        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)\n            .header(\"Retry-After\", String.valueOf(ex.getRetryAfterSeconds()))\n            .header(\"X-RateLimit-Limit\", String.valueOf(ex.getLimit()))\n            .header(\"X-RateLimit-Remaining\", \"0\")\n            .header(\"X-RateLimit-Reset\", String.valueOf(ex.getResetTimestamp()))\n            .body(problem);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "hateoas-implementation",
+          "heading": "HATEOAS Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "@RestController\n@RequestMapping(\"/api/v1/orders\")\npublic class OrderController {\n\n    @GetMapping(\"/{orderId}\")\n    public EntityModel<OrderDto> getOrder(@PathVariable String orderId) {\n        OrderDto order = orderService.findById(orderId);\n\n        EntityModel<OrderDto> model = EntityModel.of(order);\n\n        // Self link\n        model.add(linkTo(methodOn(OrderController.class).getOrder(orderId)).withSelfRel());\n\n        // Related resource links\n        model.add(linkTo(methodOn(UserController.class)\n            .getUser(order.getCustomerId(), null)).withRel(\"customer\"));\n\n        // State-dependent action links (HATEOAS drives available transitions)\n        switch (order.getStatus()) {\n            case PENDING:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .confirmOrder(orderId)).withRel(\"confirm\"));\n                model.add(linkTo(methodOn(OrderController.class)\n                    .cancelOrder(orderId)).withRel(\"cancel\"));\n                break;\n            case CONFIRMED:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .shipOrder(orderId, null)).withRel(\"ship\"));\n                model.add(linkTo(methodOn(OrderController.class)\n                    .cancelOrder(orderId)).withRel(\"cancel\"));\n                break;\n            case SHIPPED:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .deliverOrder(orderId)).withRel(\"deliver\"));\n                break;\n        }\n\n        return model;\n    }\n\n    @GetMapping\n    public CollectionModel<EntityModel<OrderDto>> listOrders(\n            @RequestParam(defaultValue = \"\") String cursor,\n            @RequestParam(defaultValue = \"20\") int limit) {\n\n        CursorPage<OrderDto> page = orderService.findAll(cursor, limit);\n\n        List<EntityModel<OrderDto>> orderModels = page.getItems().stream()\n            .map(order -> EntityModel.of(order,\n                linkTo(methodOn(OrderController.class)\n                    .getOrder(order.getId())).withSelfRel()))\n            .toList();\n\n        CollectionModel<EntityModel<OrderDto>> collection =\n            CollectionModel.of(orderModels);\n\n        collection.add(linkTo(methodOn(OrderController.class)\n            .listOrders(\"\", limit)).withSelfRel());\n\n        if (page.hasNext()) {\n            collection.add(linkTo(methodOn(OrderController.class)\n                .listOrders(page.getNextCursor(), limit)).withRel(\"next\"));\n        }\n\n        return collection;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using verbs in URLs: /api/getUsers or /api/createOrder violates REST conventions. The HTTP method already conveys the action — use /api/users with GET/POST instead. This enables proper HTTP caching and makes the API predictable",
+            "Returning 200 for everything: Sending 200 OK with an error body ({\"success\": false, \"error\": \"not found\"}) breaks HTTP semantics. Clients, proxies, and monitoring tools rely on status codes. Use 404, 422, 409, etc. appropriately",
+            "Inconsistent naming conventions: Mixing camelCase, snake_case, and kebab-case across endpoints and response fields confuses consumers. Pick one convention (JSON standard is camelCase) and enforce it globally",
+            "Not implementing pagination from the start: Returning unbounded collections works in development but causes timeouts and OOM errors in production when tables grow. Always paginate collection endpoints, even if the initial dataset is small",
+            "Ignoring idempotency for POST: POST is not idempotent by default, meaning retries can create duplicate resources. Implement idempotency keys (Idempotency-Key header) for operations that create resources or trigger side effects, allowing safe client retries",
+            "Exposing internal IDs and database structure: Using auto-increment integer IDs reveals business information (competitor can estimate your order volume). Use UUIDs or opaque identifiers. Never expose internal field names that leak implementation details",
+            "Versioning too aggressively: Creating a new API version for every change leads to maintenance burden. Use additive changes (new optional fields) for backward-compatible evolution. Reserve version bumps for breaking changes that cannot be made backward-compatible"
+          ]
+        }
+      ],
+      "wordCount": 229,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Payment Processing API: Stripe's REST API exemplifies excellent design — resources map to domain concepts (charges, customers, subscriptions), idempotency keys prevent duplicate charges on network retries, expandable fields reduce round trips (?expand[]=customer), and versioning via date-based API versions (Stripe-Version: 2023-10-16) allows gradual migration. Each response includes a request_id for support debugging and webhook events reference the originating API call."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Platform API: A marketplace exposes REST APIs for sellers (product management, inventory, orders) and buyers (search, cart, checkout). Cursor-based pagination handles catalogs with millions of products. ETags on product resources enable conditional updates preventing lost writes when multiple sellers manage the same inventory. Rate limiting tiers (100 req/min for free, 1000 for premium) protect the platform while enabling high-volume integrations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare Integration API: A hospital system exposes FHIR-compliant REST APIs for patient records, appointments, and lab results. Strict versioning ensures backward compatibility for connected medical devices. HATEOAS links guide clients through workflows (patient → appointments → results) without hardcoding URLs. Audit logging captures every API call with the authenticated user, timestamp, and accessed resources for HIPAA compliance."
+        }
+      ],
+      "wordCount": 177,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle API versioning and what are the trade-offs of different approaches?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three main approaches: URI versioning (/v1/users), header versioning (Accept: application/vnd.api.v1+json), and query parameter (/users?version=1). URI versioning is most common because it is explicit, easy to route, cacheable by CDNs, and simple to document. The trade-off is that it violates REST's principle that a URI should identify a resource (the resource is the user, not \"v1 of the user\"). Header versioning is more RESTful but harder to test (can't just paste a URL in a browser), harder to cache, and requires client awareness. My recommendation: use URI versioning for major breaking changes (resource restructuring, removed fields) and evolve within a version using additive changes (new optional fields, new endpoints). Deprecate old versions with a sunset header and 12-month migration window. Never maintain more than 2 major versions simultaneously."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain cursor-based pagination and why it's preferred over offset-based for large datasets."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Offset-based pagination (?page=5&size=20) translates to OFFSET 80 LIMIT 20 in SQL, which requires the database to scan and discard 80 rows before returning 20. At page 10,000, the database scans 200,000 rows — performance degrades linearly with page depth. Additionally, if records are inserted or deleted between page requests, items can be skipped or duplicated. Cursor-based pagination uses an opaque token (typically an encoded primary key or timestamp) that marks the position: ?cursor=eyJpZCI6MTIzfQ&limit=20 translates to WHERE id > 123 LIMIT 20, which uses an index seek regardless of position in the dataset. Trade-offs: cursor-based doesn't support \"jump to page N\" (no random access), making it unsuitable for UIs with page number navigation. It also requires a stable sort order. Use cursor-based for infinite scroll, feeds, and large datasets; offset-based for admin dashboards with page numbers and small, stable datasets."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design idempotency for a payment API?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Require clients to send an Idempotency-Key header (UUID) with every POST request that creates resources or triggers side effects. Server-side implementation: before processing, check if the idempotency key exists in a store (Redis with TTL or DynamoDB). If found, return the stored response without re-executing the operation. If not found, process the request, store the response keyed by the idempotency key with a 24-hour TTL, then return the response. Critical details: the store must be checked and written atomically (use Redis SET NX or DynamoDB conditional writes) to prevent race conditions with concurrent retries. Store the full response (status code, headers, body) so retries get identical responses. Handle in-flight requests by storing a \"processing\" sentinel — if a retry arrives while the first request is still executing, return 409 or block briefly. Expire keys after 24 hours to bound storage. This pattern is essential for payment APIs where network timeouts can cause clients to retry, potentially creating duplicate charges."
+        }
+      ],
+      "wordCount": 466,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement request correlation IDs: Generate a unique X-Request-ID for each incoming request (or accept one from the client) and propagate it through all downstream service calls and log entries. This enables tracing a single user request across dozens of microservices during incident investigation. Return the ID in the response so clients can reference it in support tickets",
+            "Use RFC 7807 Problem Details for errors: Standardize error responses with type (URI identifying the error), title (human-readable summary), status (HTTP status code), detail (specific explanation), and instance (URI of the specific occurrence). This gives clients a machine-readable error taxonomy while remaining human-debuggable",
+            "Cache aggressively with proper invalidation: Set Cache-Control headers on GET responses — max-age=3600 for stable resources, no-cache (revalidate every time) for frequently changing data, private for user-specific responses. Use ETags for conditional requests that save bandwidth when resources haven't changed. CDN caching at the edge can reduce origin load by 80-95% for read-heavy APIs"
+          ]
+        }
+      ],
+      "wordCount": 154,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "gRPC — High-performance alternative to REST for internal service communication",
+            "GraphQL — Query language alternative that solves REST's over-fetching and under-fetching problems",
+            "Spring REST — Spring-specific REST implementation patterns and best practices",
+            "Security — Authentication, authorization, and API security patterns"
+          ]
+        }
+      ],
+      "wordCount": 40,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/api/v1/users\")\n@Validated\npublic class UserController {\n\n    private final UserService userService;\n\n    @GetMapping\n    public ResponseEntity<PagedResponse<UserDto>> listUsers(\n            @RequestParam(defaultValue = \"0\") @Min(0) int page,\n            @RequestParam(defaultValue = \"20\") @Min(1) @Max(100) int size,\n            @RequestParam(required = false) String status,\n            @RequestParam(defaultValue = \"createdAt\") String sortBy,\n            @RequestParam(defaultValue = \"desc\") String sortDir) {\n\n        Pageable pageable = PageRequest.of(page, size,\n            Sort.by(Sort.Direction.fromString(sortDir), sortBy));\n\n        Page<UserDto> users = userService.findAll(status, pageable);\n\n        PagedResponse<UserDto> response = PagedResponse.<UserDto>builder()\n            .data(users.getContent())\n            .page(users.getNumber())\n            .size(users.getSize())\n            .totalElements(users.getTotalElements())\n            .totalPages(users.getTotalPages())\n            .hasNext(users.hasNext())\n            .build();\n\n        return ResponseEntity.ok()\n            .cacheControl(CacheControl.maxAge(30, TimeUnit.SECONDS))\n            .body(response);\n    }\n\n    @GetMapping(\"/{userId}\")\n    public ResponseEntity<UserDto> getUser(\n            @PathVariable @UUID String userId,\n            HttpServletRequest request) {\n\n        UserDto user = userService.findById(userId);\n\n        // ETag for conditional requests\n        String etag = \"\\\"\" + user.getVersion() + \"\\\"\";\n        if (etag.equals(request.getHeader(\"If-None-Match\"))) {\n            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();\n        }\n\n        return ResponseEntity.ok()\n            .eTag(etag)\n            .cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS))\n            .body(user);\n    }\n\n    @PostMapping\n    public ResponseEntity<UserDto> createUser(\n            @Valid @RequestBody CreateUserRequest request,\n            UriComponentsBuilder uriBuilder) {\n\n        UserDto created = userService.create(request);\n\n        URI location = uriBuilder.path(\"/api/v1/users/{id}\")\n            .buildAndExpand(created.getId())\n            .toUri();\n\n        return ResponseEntity.created(location).body(created);\n    }\n\n    @PatchMapping(\"/{userId}\")\n    public ResponseEntity<UserDto> updateUser(\n            @PathVariable @UUID String userId,\n            @Valid @RequestBody UpdateUserRequest request,\n            @RequestHeader(\"If-Match\") String ifMatch) {\n\n        // Optimistic concurrency control\n        long expectedVersion = Long.parseLong(ifMatch.replace(\"\\\"\", \"\"));\n        UserDto updated = userService.update(userId, request, expectedVersion);\n\n        return ResponseEntity.ok()\n            .eTag(\"\\\"\" + updated.getVersion() + \"\\\"\")\n            .body(updated);\n    }\n\n    @DeleteMapping(\"/{userId}\")\n    @ResponseStatus(HttpStatus.NO_CONTENT)\n    public void deleteUser(@PathVariable @UUID String userId) {\n        userService.delete(userId);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestControllerAdvice\npublic class GlobalExceptionHandler {\n\n    @ExceptionHandler(ResourceNotFoundException.class)\n    public ResponseEntity<ProblemDetail> handleNotFound(ResourceNotFoundException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);\n        problem.setTitle(\"Resource Not Found\");\n        problem.setDetail(ex.getMessage());\n        problem.setType(URI.create(\"https://api.example.com/errors/not-found\"));\n        problem.setProperty(\"resourceType\", ex.getResourceType());\n        problem.setProperty(\"resourceId\", ex.getResourceId());\n        problem.setProperty(\"timestamp\", Instant.now());\n        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problem);\n    }\n\n    @ExceptionHandler(MethodArgumentNotValidException.class)\n    public ResponseEntity<ProblemDetail> handleValidation(MethodArgumentNotValidException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);\n        problem.setTitle(\"Validation Failed\");\n        problem.setDetail(\"One or more fields failed validation\");\n        problem.setType(URI.create(\"https://api.example.com/errors/validation\"));\n\n        List<Map<String, String>> violations = ex.getBindingResult()\n            .getFieldErrors().stream()\n            .map(error -> Map.of(\n                \"field\", error.getField(),\n                \"message\", error.getDefaultMessage(),\n                \"rejectedValue\", String.valueOf(error.getRejectedValue())\n            ))\n            .toList();\n\n        problem.setProperty(\"violations\", violations);\n        return ResponseEntity.badRequest().body(problem);\n    }\n\n    @ExceptionHandler(OptimisticLockException.class)\n    public ResponseEntity<ProblemDetail> handleConflict(OptimisticLockException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);\n        problem.setTitle(\"Conflict\");\n        problem.setDetail(\"Resource was modified by another request. Fetch the latest version and retry.\");\n        problem.setType(URI.create(\"https://api.example.com/errors/conflict\"));\n        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);\n    }\n\n    @ExceptionHandler(RateLimitExceededException.class)\n    public ResponseEntity<ProblemDetail> handleRateLimit(RateLimitExceededException ex) {\n        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.TOO_MANY_REQUESTS);\n        problem.setTitle(\"Rate Limit Exceeded\");\n        problem.setDetail(\"You have exceeded the rate limit. Try again after the reset time.\");\n        problem.setProperty(\"retryAfter\", ex.getRetryAfterSeconds());\n\n        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)\n            .header(\"Retry-After\", String.valueOf(ex.getRetryAfterSeconds()))\n            .header(\"X-RateLimit-Limit\", String.valueOf(ex.getLimit()))\n            .header(\"X-RateLimit-Remaining\", \"0\")\n            .header(\"X-RateLimit-Reset\", String.valueOf(ex.getResetTimestamp()))\n            .body(problem);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "@RestController\n@RequestMapping(\"/api/v1/orders\")\npublic class OrderController {\n\n    @GetMapping(\"/{orderId}\")\n    public EntityModel<OrderDto> getOrder(@PathVariable String orderId) {\n        OrderDto order = orderService.findById(orderId);\n\n        EntityModel<OrderDto> model = EntityModel.of(order);\n\n        // Self link\n        model.add(linkTo(methodOn(OrderController.class).getOrder(orderId)).withSelfRel());\n\n        // Related resource links\n        model.add(linkTo(methodOn(UserController.class)\n            .getUser(order.getCustomerId(), null)).withRel(\"customer\"));\n\n        // State-dependent action links (HATEOAS drives available transitions)\n        switch (order.getStatus()) {\n            case PENDING:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .confirmOrder(orderId)).withRel(\"confirm\"));\n                model.add(linkTo(methodOn(OrderController.class)\n                    .cancelOrder(orderId)).withRel(\"cancel\"));\n                break;\n            case CONFIRMED:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .shipOrder(orderId, null)).withRel(\"ship\"));\n                model.add(linkTo(methodOn(OrderController.class)\n                    .cancelOrder(orderId)).withRel(\"cancel\"));\n                break;\n            case SHIPPED:\n                model.add(linkTo(methodOn(OrderController.class)\n                    .deliverOrder(orderId)).withRel(\"deliver\"));\n                break;\n        }\n\n        return model;\n    }\n\n    @GetMapping\n    public CollectionModel<EntityModel<OrderDto>> listOrders(\n            @RequestParam(defaultValue = \"\") String cursor,\n            @RequestParam(defaultValue = \"20\") int limit) {\n\n        CursorPage<OrderDto> page = orderService.findAll(cursor, limit);\n\n        List<EntityModel<OrderDto>> orderModels = page.getItems().stream()\n            .map(order -> EntityModel.of(order,\n                linkTo(methodOn(OrderController.class)\n                    .getOrder(order.getId())).withSelfRel()))\n            .toList();\n\n        CollectionModel<EntityModel<OrderDto>> collection =\n            CollectionModel.of(orderModels);\n\n        collection.add(linkTo(methodOn(OrderController.class)\n            .listOrders(\"\", limit)).withSelfRel());\n\n        if (page.hasNext()) {\n            collection.add(linkTo(methodOn(OrderController.class)\n                .listOrders(page.getNextCursor(), limit)).withRel(\"next\"));\n        }\n\n        return collection;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/rest-api-design.md",
+    "wordCount": 1302,
+    "sectionCount": 11
+  }
+}

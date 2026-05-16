@@ -1,0 +1,417 @@
+{
+  "id": "angular",
+  "slug": "angular",
+  "title": "Angular",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Angular is a TypeScript-based component framework maintained by Google for building single-page applications with a batteries-included architecture",
+            "Core building blocks: Modules (NgModule), Components, Services, Directives, Pipes, Guards, Interceptors, and Resolvers",
+            "Dependency injection is hierarchical: providers registered at module level create singletons, while component-level providers create per-component instances",
+            "Change detection uses Zone.js to monkey-patch async APIs and trigger digest cycles; OnPush strategy skips subtrees unless inputs change or events fire",
+            "RxJS is deeply integrated: HttpClient returns Observables, Router exposes Observable params, and reactive forms use valueChanges streams",
+            "Angular CLI (ng) scaffolds projects, generates components/services, runs builds, and executes tests with Karma/Jasmine or Jest",
+            "Standalone components (Angular 14+) allow building applications without NgModules, simplifying the mental model and enabling tree-shaking at the component level"
+          ]
+        }
+      ],
+      "wordCount": 122,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Angular is the right choice when building large-scale enterprise applications that benefit from a strongly opinionated framework with built-in solutions for routing, forms, HTTP communication, internationalization, and testing. The framework enforces consistent project structure through its CLI and module system, making it ideal for teams of five or more developers who need to maintain code consistency without extensive custom linting rules. Choose Angular when your application requires complex form handling with both template-driven and reactive approaches, when you need a mature dependency injection system for managing service lifetimes and testability, or when your team already has TypeScript expertise and wants first-class type safety throughout the entire stack. Angular excels in enterprise dashboards, internal tools, and line-of-business applications where long-term maintainability outweighs initial development speed. It is particularly well-suited for applications that need server-side rendering via Angular Universal, lazy-loaded feature modules for performance, and strict separation of concerns between presentation and business logic. Prefer Angular over React when you want a complete framework rather than assembling libraries, and over Vue when you need stronger typing and a more structured architecture for large teams."
+        }
+      ],
+      "wordCount": 182,
+      "subsections": []
+    },
+    {
+      "id": "modules",
+      "heading": "Modules",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "NgModules are the organizational unit in Angular that group related components, directives, pipes, and services into cohesive blocks of functionality. Every Angular application has at least one module, the root AppModule, which bootstraps the application. Feature modules encapsulate domain-specific functionality and can be eagerly loaded, lazy-loaded, or preloaded based on routing configuration."
+        },
+        {
+          "type": "paragraph",
+          "text": "The @NgModule decorator accepts a metadata object with four key arrays: declarations (components, directives, and pipes owned by this module), imports (other modules whose exported declarations this module needs), exports (declarations made available to importing modules), and providers (services available to the module's injector). Understanding the boundary between declarations and imports is critical for avoiding circular dependencies and maintaining clean module architecture."
+        },
+        {
+          "type": "paragraph",
+          "text": "Feature modules encapsulate a vertical slice of application functionality. A CustomerModule might declare CustomerListComponent, CustomerDetailComponent, and CustomerFormComponent, import SharedModule for common UI elements, and provide CustomerService for data access. Feature modules enable lazy loading: the router loads the module bundle only when the user navigates to that feature, reducing initial bundle size significantly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shared modules export commonly used components, directives, and pipes that multiple feature modules need. A typical SharedModule exports CommonModule, form modules, and reusable UI components like buttons, modals, and data tables. Shared modules should never provide services (which would create multiple instances when imported by lazy-loaded modules) unless using forRoot() / forChild() patterns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Core modules contain singleton services and application-wide components (header, footer, navigation) that should only be instantiated once. The CoreModule is imported exclusively by AppModule and includes a guard constructor that throws an error if any other module attempts to import it, preventing accidental multiple instantiation."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Feature module with lazy loading support\n@NgModule({\n  declarations: [\n    CustomerListComponent,\n    CustomerDetailComponent,\n    CustomerFormComponent,\n    CustomerSearchPipe\n  ],\n  imports: [\n    CommonModule,\n    SharedModule,\n    CustomerRoutingModule,\n    ReactiveFormsModule\n  ],\n  providers: [\n    CustomerService,\n    CustomerResolver\n  ]\n})\nexport class CustomerModule {}\n\n// Lazy-loaded route configuration in AppRoutingModule\nconst routes: Routes = [\n  {\n    path: 'customers',\n    loadChildren: () => import('./customer/customer.module')\n      .then(m => m.CustomerModule)\n  },\n  {\n    path: 'orders',\n    loadChildren: () => import('./order/order.module')\n      .then(m => m.OrderModule)\n  }\n];\n\n// Core module with re-import guard\n@NgModule({\n  declarations: [HeaderComponent, FooterComponent, SidenavComponent],\n  imports: [CommonModule, RouterModule],\n  exports: [HeaderComponent, FooterComponent, SidenavComponent]\n})\nexport class CoreModule {\n  constructor(@Optional() @SkipSelf() parentModule: CoreModule) {\n    if (parentModule) {\n      throw new Error('CoreModule is already loaded. Import it only in AppModule.');\n    }\n  }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 265,
+      "subsections": []
+    },
+    {
+      "id": "components",
+      "heading": "Components",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Components are the fundamental building blocks of Angular's UI layer. Each component consists of a TypeScript class decorated with @Component, an HTML template, and optional styles. Components manage a view through data binding, respond to user interactions through event binding, and communicate with parent and child components through inputs, outputs, and content projection."
+        },
+        {
+          "type": "paragraph",
+          "text": "The component lifecycle is governed by a series of hooks that Angular calls at specific moments: ngOnInit (after first input binding), ngOnChanges (when input properties change), ngDoCheck (custom change detection), ngAfterViewInit (after view children are initialized), ngAfterContentInit (after projected content is initialized), and ngOnDestroy (before the component is removed from the DOM). Proper use of lifecycle hooks prevents memory leaks and ensures efficient resource management."
+        },
+        {
+          "type": "paragraph",
+          "text": "Input and output bindings form the component communication contract. @Input() properties receive data from parent components via property binding ([property]=\"value\"), while @Output() properties emit events to parents via event binding ((event)=\"handler($event)\"). This unidirectional data flow makes component interactions predictable and testable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Content projection (ng-content) allows parent components to inject arbitrary template content into designated slots within a child component. Multi-slot projection uses select attributes to route different content fragments to different slots, enabling flexible component composition patterns like card layouts with header, body, and footer slots."
+        },
+        {
+          "type": "paragraph",
+          "text": "View encapsulation controls how component styles interact with the rest of the application. The default Emulated mode scopes styles to the component using attribute selectors. ShadowDom uses native Shadow DOM for true isolation. None makes styles global, which is useful for theme overrides but risks unintended style leakage."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Component with lifecycle hooks and communication patterns\n@Component({\n  selector: 'app-product-card',\n  template: `\n    <div class=\"product-card\" [class.featured]=\"product.featured\">\n      <ng-content select=\"[card-header]\"></ng-content>\n      <div class=\"product-body\">\n        <h3>{{ product.name }}</h3>\n        <p class=\"price\">{{ product.price | currency }}</p>\n        <p class=\"stock\" [ngClass]=\"stockClass\">\n          {{ product.stock > 0 ? 'In Stock' : 'Out of Stock' }}\n        </p>\n      </div>\n      <div class=\"product-actions\">\n        <button (click)=\"onAddToCart()\" [disabled]=\"product.stock === 0\">\n          Add to Cart\n        </button>\n      </div>\n      <ng-content select=\"[card-footer]\"></ng-content>\n    </div>\n  `,\n  styleUrls: ['./product-card.component.scss'],\n  changeDetection: ChangeDetectionStrategy.OnPush\n})\nexport class ProductCardComponent implements OnInit, OnDestroy {\n  @Input() product!: Product;\n  @Output() addToCart = new EventEmitter<Product>();\n\n  stockClass = '';\n  private destroy$ = new Subject<void>();\n\n  ngOnInit(): void {\n    this.stockClass = this.product.stock > 10 ? 'high' : \n                      this.product.stock > 0 ? 'low' : 'none';\n  }\n\n  onAddToCart(): void {\n    this.addToCart.emit(this.product);\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 252,
+      "subsections": []
+    },
+    {
+      "id": "services",
+      "heading": "Services",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Services in Angular are classes decorated with @Injectable that encapsulate business logic, data access, and shared state outside of components. The separation of concerns between components (presentation) and services (logic) is a core architectural principle that improves testability, reusability, and maintainability. Services are the primary mechanism for sharing data and behavior across multiple components."
+        },
+        {
+          "type": "paragraph",
+          "text": "The @Injectable({ providedIn: 'root' }) decorator registers the service as a singleton at the application root injector, making it available everywhere without explicitly adding it to a module's providers array. This tree-shakable provider syntax means the service is only included in the bundle if it is actually injected somewhere, reducing dead code in production builds."
+        },
+        {
+          "type": "paragraph",
+          "text": "Services commonly follow the repository pattern for data access, abstracting HTTP calls behind a clean interface. A ProductService exposes methods like getAll(), getById(id), create(product), and delete(id), each returning an Observable. Components subscribe to these Observables and the service handles caching, error transformation, and retry logic internally."
+        },
+        {
+          "type": "paragraph",
+          "text": "State management services use BehaviorSubjects to maintain and broadcast application state. A CartService might hold a BehaviorSubject<CartItem[]> and expose it as a read-only Observable via asObservable(). Components subscribe to the cart state and the service provides mutation methods (addItem, removeItem, clearCart) that update the subject and notify all subscribers."
+        },
+        {
+          "type": "paragraph",
+          "text": "HTTP interceptors are specialized services that intercept outgoing requests and incoming responses globally. Common interceptor use cases include attaching authentication tokens to every request, logging request/response pairs, handling global error responses (401 redirects to login, 500 retry logic), and adding correlation IDs for distributed tracing."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Data access service with caching and error handling\n@Injectable({ providedIn: 'root' })\nexport class ProductService {\n  private apiUrl = '/api/products';\n  private cache$ = new BehaviorSubject<Product[] | null>(null);\n\n  constructor(private http: HttpClient) {}\n\n  getAll(forceRefresh = false): Observable<Product[]> {\n    if (!forceRefresh && this.cache$.value) {\n      return of(this.cache$.value);\n    }\n\n    return this.http.get<Product[]>(this.apiUrl).pipe(\n      tap(products => this.cache$.next(products)),\n      retry({ count: 2, delay: 1000 }),\n      catchError(this.handleError<Product[]>('getAll', []))\n    );\n  }\n\n  getById(id: string): Observable<Product> {\n    return this.http.get<Product>(`${this.apiUrl}/${id}`).pipe(\n      catchError(this.handleError<Product>('getById'))\n    );\n  }\n\n  create(product: CreateProductDto): Observable<Product> {\n    return this.http.post<Product>(this.apiUrl, product).pipe(\n      tap(newProduct => {\n        const current = this.cache$.value || [];\n        this.cache$.next([...current, newProduct]);\n      }),\n      catchError(this.handleError<Product>('create'))\n    );\n  }\n\n  private handleError<T>(operation: string, fallback?: T) {\n    return (error: HttpErrorResponse): Observable<T> => {\n      console.error(`${operation} failed:`, error.message);\n      if (fallback !== undefined) return of(fallback);\n      return throwError(() => new Error(`${operation} failed: ${error.message}`));\n    };\n  }\n}\n\n// HTTP Interceptor for authentication\n@Injectable()\nexport class AuthInterceptor implements HttpInterceptor {\n  constructor(private authService: AuthService) {}\n\n  intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {\n    const token = this.authService.getToken();\n\n    const authReq = token\n      ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })\n      : req;\n\n    return next.handle(authReq).pipe(\n      catchError((error: HttpErrorResponse) => {\n        if (error.status === 401) {\n          this.authService.logout();\n        }\n        return throwError(() => error);\n      })\n    );\n  }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 249,
+      "subsections": []
+    },
+    {
+      "id": "dependency-injection",
+      "heading": "Dependency Injection",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Angular's dependency injection (DI) system is a hierarchical injector tree that manages the creation and lifetime of service instances. DI is the mechanism by which components and services declare their dependencies without creating them directly, enabling loose coupling, testability, and flexible configuration. Understanding the injector hierarchy is essential for controlling service scope and avoiding common pitfalls like unintended multiple instances."
+        },
+        {
+          "type": "paragraph",
+          "text": "The injector hierarchy mirrors the component tree. At the top is the root injector (platform and application level), followed by module injectors for eagerly loaded modules, and then element injectors for each component and directive. When a component requests a dependency, Angular walks up the injector tree from the component's element injector to the root until it finds a provider. This hierarchical resolution enables powerful patterns like scoped services and provider overrides."
+        },
+        {
+          "type": "paragraph",
+          "text": "Provider types determine how the injector creates instances. useClass creates a new instance of the specified class. useExisting creates an alias to an existing provider. useFactory calls a factory function with optional dependencies. useValue provides a static value. These provider types enable advanced patterns like conditional service selection, configuration injection, and abstract class implementations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Injection tokens (InjectionToken<T>) provide type-safe keys for non-class dependencies. When you need to inject a configuration object, a string constant, or a function, you create an InjectionToken and register a provider for it. This avoids the ambiguity of using string keys and provides compile-time type checking."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-providers allow multiple values to be registered under the same token. When you use multi: true in a provider definition, the injector collects all registered values into an array. This pattern is used extensively by Angular itself for HTTP interceptors, validators, and route guards, allowing multiple implementations to be composed together."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Hierarchical DI with various provider types\n// Abstract service interface\nexport abstract class NotificationService {\n  abstract send(message: string): Observable<void>;\n}\n\n// Concrete implementations\n@Injectable()\nexport class EmailNotificationService extends NotificationService {\n  send(message: string): Observable<void> {\n    return this.http.post<void>('/api/notifications/email', { message });\n  }\n  constructor(private http: HttpClient) { super(); }\n}\n\n@Injectable()\nexport class SmsNotificationService extends NotificationService {\n  send(message: string): Observable<void> {\n    return this.http.post<void>('/api/notifications/sms', { message });\n  }\n  constructor(private http: HttpClient) { super(); }\n}\n\n// Factory provider with conditional logic\nconst notificationFactory = (config: AppConfig, http: HttpClient) => {\n  return config.notificationChannel === 'sms'\n    ? new SmsNotificationService(http)\n    : new EmailNotificationService(http);\n};\n\n// Module configuration with various provider types\n@NgModule({\n  providers: [\n    // Factory provider\n    {\n      provide: NotificationService,\n      useFactory: notificationFactory,\n      deps: [APP_CONFIG, HttpClient]\n    },\n    // InjectionToken with value\n    {\n      provide: APP_CONFIG,\n      useValue: { apiUrl: '/api', notificationChannel: 'email' }\n    },\n    // Multi-provider for HTTP interceptors\n    {\n      provide: HTTP_INTERCEPTORS,\n      useClass: AuthInterceptor,\n      multi: true\n    },\n    {\n      provide: HTTP_INTERCEPTORS,\n      useClass: LoggingInterceptor,\n      multi: true\n    }\n  ]\n})\nexport class AppModule {}\n\n// Component-level provider (creates new instance per component)\n@Component({\n  selector: 'app-editor',\n  providers: [EditorStateService],  // Scoped to this component subtree\n  template: `<app-toolbar></app-toolbar><app-canvas></app-canvas>`\n})\nexport class EditorComponent {\n  constructor(private editorState: EditorStateService) {}\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "rxjs-operators",
+      "heading": "RxJS Operators",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "RxJS (Reactive Extensions for JavaScript) is Angular's foundation for handling asynchronous operations and event streams. Angular uses Observables throughout its APIs: HttpClient returns Observables for HTTP responses, Router exposes route parameters as Observables, reactive forms emit value changes as Observable streams, and event emitters are built on Subjects. Mastering RxJS operators is essential for writing idiomatic Angular code."
+        },
+        {
+          "type": "paragraph",
+          "text": "Transformation operators modify emitted values. map transforms each value through a projection function. switchMap maps each value to an inner Observable and cancels the previous inner subscription when a new value arrives, making it ideal for search-as-you-type and route parameter changes. mergeMap (flatMap) subscribes to all inner Observables concurrently without cancellation, suitable for fire-and-forget operations. concatMap queues inner Observables and processes them sequentially, preserving order for operations that must not overlap."
+        },
+        {
+          "type": "paragraph",
+          "text": "Filtering operators control which values pass through the stream. filter emits only values satisfying a predicate. distinctUntilChanged suppresses consecutive duplicate values, useful for preventing redundant API calls when form values change. debounceTime waits for a pause in emissions before forwarding the latest value, essential for search inputs to avoid firing a request on every keystroke. take and takeUntil limit the stream lifetime, with takeUntil being the standard pattern for unsubscribing in ngOnDestroy."
+        },
+        {
+          "type": "paragraph",
+          "text": "Combination operators merge multiple streams. combineLatest emits whenever any source emits, providing the latest value from each source. forkJoin waits for all sources to complete and emits their final values as an array, similar to Promise.all. merge interleaves emissions from multiple sources into a single stream. withLatestFrom combines the source emission with the latest value from another Observable without triggering on the other Observable's emissions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Error handling operators manage failures in streams. catchError intercepts errors and returns a fallback Observable, preventing the stream from terminating. retry resubscribes to the source a specified number of times on error. retryWhen provides fine-grained control over retry timing with exponential backoff patterns."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Common RxJS patterns in Angular\n@Component({\n  selector: 'app-product-search',\n  template: `\n    <input [formControl]=\"searchControl\" placeholder=\"Search products...\">\n    <div *ngFor=\"let product of results$ | async\">\n      {{ product.name }} - {{ product.price | currency }}\n    </div>\n  `\n})\nexport class ProductSearchComponent implements OnInit, OnDestroy {\n  searchControl = new FormControl('');\n  results$!: Observable<Product[]>;\n  private destroy$ = new Subject<void>();\n\n  constructor(\n    private productService: ProductService,\n    private route: ActivatedRoute\n  ) {}\n\n  ngOnInit(): void {\n    // Search with debounce, distinct, and switchMap\n    this.results$ = this.searchControl.valueChanges.pipe(\n      debounceTime(300),\n      distinctUntilChanged(),\n      filter(term => term.length >= 2),\n      switchMap(term => this.productService.search(term).pipe(\n        catchError(() => of([]))  // Return empty on error\n      )),\n      takeUntil(this.destroy$)\n    );\n\n    // Combine route params with query params\n    combineLatest([\n      this.route.params,\n      this.route.queryParams\n    ]).pipe(\n      takeUntil(this.destroy$)\n    ).subscribe(([params, queryParams]) => {\n      this.loadCategory(params['id'], queryParams['sort']);\n    });\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}\n\n// Service with retry and exponential backoff\n@Injectable({ providedIn: 'root' })\nexport class ResilientHttpService {\n  fetchWithRetry<T>(url: string): Observable<T> {\n    return this.http.get<T>(url).pipe(\n      retry({\n        count: 3,\n        delay: (error, retryCount) => {\n          const delayMs = Math.pow(2, retryCount) * 1000;\n          console.warn(`Retry ${retryCount} after ${delayMs}ms`);\n          return timer(delayMs);\n        }\n      }),\n      catchError(error => {\n        console.error('All retries exhausted:', error);\n        return throwError(() => error);\n      })\n    );\n  }\n\n  constructor(private http: HttpClient) {}\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 309,
+      "subsections": []
+    },
+    {
+      "id": "change-detection",
+      "heading": "Change Detection",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Change detection is the mechanism by which Angular keeps the DOM in sync with component state. Whenever an asynchronous event occurs (user interaction, HTTP response, timer callback), Angular runs change detection starting from the root component and traversing the entire component tree, checking each component's template bindings for changes. Understanding change detection is critical for building performant applications, especially those with large component trees or frequent updates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Zone.js is the library that makes automatic change detection possible. It monkey-patches all asynchronous browser APIs (setTimeout, Promise, addEventListener, XMLHttpRequest, etc.) so that Angular is notified whenever an async operation completes. When Zone.js detects an async task completion, it triggers ApplicationRef.tick(), which runs change detection on the entire component tree. This \"magic\" means developers rarely need to manually trigger change detection, but it comes at a performance cost for applications with many components."
+        },
+        {
+          "type": "paragraph",
+          "text": "Default change detection checks every component in the tree on every cycle. Angular compares the current value of each template expression with its previous value. If any value has changed, Angular updates the corresponding DOM node. For small applications this is fast enough, but for applications with hundreds of components or high-frequency updates (animations, real-time data), default change detection becomes a bottleneck."
+        },
+        {
+          "type": "paragraph",
+          "text": "OnPush change detection (ChangeDetectionStrategy.OnPush) is the primary optimization strategy. A component with OnPush is only checked when one of its @Input() references changes (shallow comparison), when an event handler within the component fires, when an Observable bound via the async pipe emits, or when change detection is manually triggered via ChangeDetectorRef.markForCheck(). OnPush effectively prunes entire subtrees from the change detection cycle, dramatically reducing the number of checks per cycle."
+        },
+        {
+          "type": "paragraph",
+          "text": "Signals (Angular 16+) represent the future of Angular's reactivity model. Signals are synchronous reactive primitives that track their dependencies and notify consumers when their value changes. Unlike Zone.js-based change detection that checks everything, signal-based change detection only updates components that read a changed signal. This fine-grained reactivity eliminates the need for Zone.js entirely in signal-based applications, reducing bundle size and improving performance."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// OnPush component with manual change detection control\n@Component({\n  selector: 'app-live-dashboard',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div class=\"metrics-grid\">\n      <app-metric-card\n        *ngFor=\"let metric of metrics; trackBy: trackByMetricId\"\n        [metric]=\"metric\"\n        (click)=\"selectMetric(metric)\">\n      </app-metric-card>\n    </div>\n    <div class=\"selected\" *ngIf=\"selectedMetric\">\n      {{ selectedMetric.name }}: {{ selectedMetric.value }}\n    </div>\n  `\n})\nexport class LiveDashboardComponent implements OnInit, OnDestroy {\n  metrics: Metric[] = [];\n  selectedMetric: Metric | null = null;\n  private destroy$ = new Subject<void>();\n\n  constructor(\n    private metricsService: MetricsService,\n    private cdr: ChangeDetectorRef\n  ) {}\n\n  ngOnInit(): void {\n    // WebSocket stream updates metrics every second\n    this.metricsService.getLiveMetrics().pipe(\n      takeUntil(this.destroy$)\n    ).subscribe(metrics => {\n      this.metrics = metrics;  // New array reference triggers OnPush\n      this.cdr.markForCheck(); // Explicitly mark for check\n    });\n  }\n\n  selectMetric(metric: Metric): void {\n    this.selectedMetric = metric;\n    // Event handler automatically triggers change detection\n  }\n\n  trackByMetricId(index: number, metric: Metric): string {\n    return metric.id;\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}\n\n// Signal-based component (Angular 16+)\n@Component({\n  selector: 'app-counter',\n  standalone: true,\n  template: `\n    <p>Count: {{ count() }}</p>\n    <p>Double: {{ doubleCount() }}</p>\n    <button (click)=\"increment()\">+1</button>\n  `\n})\nexport class CounterComponent {\n  count = signal(0);\n  doubleCount = computed(() => this.count() * 2);\n\n  increment(): void {\n    this.count.update(c => c + 1);\n  }\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 333,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Angular Application Architecture\"\n        subgraph \"Root Module\"\n            APP[AppModule]\n            CORE[CoreModule]\n            SHARED[SharedModule]\n        end\n\n        subgraph \"Feature Modules (Lazy-Loaded)\"\n            FM1[CustomerModule]\n            FM2[OrderModule]\n            FM3[ProductModule]\n        end\n\n        subgraph \"Component Tree\"\n            ROOT[AppComponent]\n            NAV[NavComponent]\n            ROUTER[RouterOutlet]\n            FEAT[Feature Component]\n            CHILD1[Child Component]\n            CHILD2[Child Component]\n        end\n\n        subgraph \"Services Layer\"\n            HTTP[HttpClient]\n            AUTH[AuthService]\n            STATE[StateService]\n            INT[Interceptors]\n        end\n\n        subgraph \"DI Injector Hierarchy\"\n            RI[Root Injector]\n            MI[Module Injector]\n            EI[Element Injector]\n        end\n    end\n\n    APP --> CORE\n    APP --> SHARED\n    APP --> FM1\n    APP --> FM2\n    APP --> FM3\n\n    ROOT --> NAV\n    ROOT --> ROUTER\n    ROUTER --> FEAT\n    FEAT --> CHILD1\n    FEAT --> CHILD2\n\n    RI --> MI\n    MI --> EI\n\n    FEAT -.->|injects| STATE\n    FEAT -.->|injects| HTTP\n    INT -.->|intercepts| HTTP\n    AUTH -.->|provides token| INT"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant U as User Event\n    participant Z as Zone.js\n    participant CD as Change Detection\n    participant C as Component\n    participant DOM as DOM\n\n    U->>Z: Click / HTTP Response / Timer\n    Z->>CD: Notify async task complete\n    CD->>CD: ApplicationRef.tick()\n    \n    loop For each component (top-down)\n        CD->>C: Check bindings\n        alt OnPush & no input change\n            CD->>CD: Skip subtree\n        else Default or input changed\n            C->>C: Evaluate template expressions\n            alt Value changed\n                C->>DOM: Update DOM node\n            end\n        end\n    end\n    \n    Note over CD,DOM: Cycle complete until next async event"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Memory leaks from unsubscribed Observables: Subscribing to long-lived Observables (route params, WebSocket streams, interval timers) without unsubscribing causes memory leaks. Always use takeUntil(destroy$) pattern, the async pipe (which auto-unsubscribes), or the DestroyRef inject pattern (Angular 16+). Finite Observables like single HTTP requests complete automatically and do not need explicit unsubscription.",
+            "Circular dependency between services: When ServiceA injects ServiceB and ServiceB injects ServiceA, Angular throws a circular dependency error at runtime. Resolve this by extracting shared logic into a third service, using forwardRef() for class reference ordering issues, or restructuring the dependency graph to be acyclic.",
+            "Providing services in SharedModule without forRoot: If a service is provided in a SharedModule that is imported by multiple lazy-loaded modules, each lazy module gets its own instance instead of a singleton. Use providedIn: 'root' for application-wide singletons, or implement the forRoot() static method pattern that returns providers only when called from the root module.",
+            "Excessive change detection with Default strategy: Using the Default change detection strategy in components that render large lists or receive frequent updates causes Angular to re-evaluate all template bindings on every async event, even if nothing relevant changed. Switch to OnPush for any component that receives data via inputs or Observables, and use trackBy functions with *ngFor to prevent unnecessary DOM recreation.",
+            "Mutating input objects instead of creating new references: With OnPush change detection, Angular only detects input changes via reference comparison. Mutating an object property (e.g., this.user.name = 'new') does not trigger change detection because the object reference is the same. Always create new object references with spread syntax ({ ...this.user, name: 'new' }) or use immutable data patterns.",
+            "Subscribing in templates without async pipe: Calling .subscribe() in component code and assigning results to properties works but loses the benefits of OnPush optimization and automatic cleanup. The async pipe subscribes, triggers markForCheck() on emission, and unsubscribes on component destruction, making it the preferred approach for template-bound Observables."
+          ]
+        }
+      ],
+      "wordCount": 318,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enterprise admin dashboards: Large organizations use Angular for internal tools with complex data grids, role-based access control, and multi-step workflows. Angular's module system enables teams to own feature modules independently, lazy loading keeps initial load fast despite hundreds of components, and the DI system makes it straightforward to swap service implementations between environments.",
+            "Banking and financial applications: Angular's strict typing, built-in form validation (both template-driven and reactive), and comprehensive testing utilities make it well-suited for applications where data integrity is critical. Reactive forms with custom validators ensure complex financial inputs are validated consistently, and interceptors handle token refresh flows transparently.",
+            "Real-time monitoring systems: Applications displaying live metrics, alerts, and streaming data leverage Angular's RxJS integration. WebSocket connections wrapped in Observables feed data through transformation pipelines (throttle, buffer, scan for running averages) directly into OnPush components via the async pipe, achieving smooth 60fps updates without manual DOM manipulation.",
+            "Multi-tenant SaaS platforms: Angular's hierarchical DI enables tenant-specific configuration injection at the module level. A tenant resolver loads configuration on app initialization, and services throughout the application receive tenant-specific API URLs, feature flags, and branding without conditional logic scattered across components."
+          ]
+        }
+      ],
+      "wordCount": 188,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a BehaviorSubject and a Subject in Angular services?\nA: A Subject emits values only to subscribers who are listening at the time of emission; late subscribers miss previous values. A BehaviorSubject requires an initial value and immediately emits the current value to new subscribers, making it ideal for state management where components need the latest state upon subscription regardless of when they subscribe."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between OnPush and Default change detection strategies.\nA: Default strategy checks a component on every change detection cycle regardless of whether its inputs changed. OnPush only checks a component when an input reference changes, an event fires within the component, an Observable bound via async pipe emits, or markForCheck() is called manually. OnPush dramatically reduces unnecessary checks in large component trees."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does lazy loading work in Angular and why is it important?\nA: Lazy loading defers the download of feature module bundles until the user navigates to a route associated with that module. The router uses dynamic import() syntax to load the module chunk on demand. This reduces the initial bundle size, improving first contentful paint and time-to-interactive. Preloading strategies can load lazy modules in the background after the initial load completes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the purpose of trackBy in ngFor?\nA: By default, *ngFor identifies list items by object reference. When the array is replaced (common with OnPush and immutable patterns), Angular destroys and recreates all DOM elements even if the data is the same. trackBy provides a stable identity function (typically returning an ID), allowing Angular to reuse existing DOM elements for items that have not changed, significantly improving rendering performance for large lists."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you prevent memory leaks in Angular components?\nA: Use the takeUntil pattern with a destroy Subject that emits in ngOnDestroy, prefer the async pipe which auto-unsubscribes, use DestroyRef with takeUntilDestroyed() in Angular 16+, and avoid storing subscription references manually. For event listeners added via Renderer2 or native APIs, remove them explicitly in ngOnDestroy."
+        }
+      ],
+      "wordCount": 337,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enable OnPush everywhere: Default to ChangeDetectionStrategy.OnPush for all components and only use Default when you have a specific reason. This single change can reduce change detection cycles by 80% or more in large applications. Combine with immutable data patterns and the async pipe for maximum benefit.",
+            "Bundle analysis and lazy loading: Use ng build --stats-json with webpack-bundle-analyzer to identify oversized chunks. Split feature modules along route boundaries and lazy-load everything except the landing page. Consider preloading strategies (PreloadAllModules or custom strategies based on user behavior) to balance initial load with navigation speed.",
+            "AOT compilation and tree-shaking: Always build with Ahead-of-Time compilation (--aot, default since Angular 9) which catches template errors at build time, reduces bundle size by eliminating the template compiler, and improves runtime performance. Ensure services use providedIn: 'root' for tree-shaking rather than module-level providers arrays.",
+            "Error tracking and monitoring: Implement a global ErrorHandler that captures unhandled exceptions and sends them to an error tracking service (Sentry, Datadog). Add HTTP interceptors that log response times and error rates. Use Angular's built-in performance profiling (ng.profiler.timeChangeDetection()) in development to identify slow components.",
+            "State management at scale: For applications with complex shared state, consider NgRx (Redux pattern) or Akita for predictable state mutations with time-travel debugging. For simpler cases, BehaviorSubject-based services with the facade pattern provide sufficient state management without the boilerplate of a full Redux implementation."
+          ]
+        }
+      ],
+      "wordCount": 225,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "TypeScript - Angular is built entirely on TypeScript and leverages advanced type features like decorators, generics, and mapped types throughout its API",
+            "React - React offers a component-based alternative with a more flexible ecosystem, useful for comparing architectural trade-offs between opinionated frameworks and library-based approaches",
+            "JavaScript - Understanding JavaScript fundamentals like closures, prototypes, and the event loop is essential for effective Angular development and debugging Zone.js behavior"
+          ]
+        }
+      ],
+      "wordCount": 67,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// Feature module with lazy loading support\n@NgModule({\n  declarations: [\n    CustomerListComponent,\n    CustomerDetailComponent,\n    CustomerFormComponent,\n    CustomerSearchPipe\n  ],\n  imports: [\n    CommonModule,\n    SharedModule,\n    CustomerRoutingModule,\n    ReactiveFormsModule\n  ],\n  providers: [\n    CustomerService,\n    CustomerResolver\n  ]\n})\nexport class CustomerModule {}\n\n// Lazy-loaded route configuration in AppRoutingModule\nconst routes: Routes = [\n  {\n    path: 'customers',\n    loadChildren: () => import('./customer/customer.module')\n      .then(m => m.CustomerModule)\n  },\n  {\n    path: 'orders',\n    loadChildren: () => import('./order/order.module')\n      .then(m => m.OrderModule)\n  }\n];\n\n// Core module with re-import guard\n@NgModule({\n  declarations: [HeaderComponent, FooterComponent, SidenavComponent],\n  imports: [CommonModule, RouterModule],\n  exports: [HeaderComponent, FooterComponent, SidenavComponent]\n})\nexport class CoreModule {\n  constructor(@Optional() @SkipSelf() parentModule: CoreModule) {\n    if (parentModule) {\n      throw new Error('CoreModule is already loaded. Import it only in AppModule.');\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Component with lifecycle hooks and communication patterns\n@Component({\n  selector: 'app-product-card',\n  template: `\n    <div class=\"product-card\" [class.featured]=\"product.featured\">\n      <ng-content select=\"[card-header]\"></ng-content>\n      <div class=\"product-body\">\n        <h3>{{ product.name }}</h3>\n        <p class=\"price\">{{ product.price | currency }}</p>\n        <p class=\"stock\" [ngClass]=\"stockClass\">\n          {{ product.stock > 0 ? 'In Stock' : 'Out of Stock' }}\n        </p>\n      </div>\n      <div class=\"product-actions\">\n        <button (click)=\"onAddToCart()\" [disabled]=\"product.stock === 0\">\n          Add to Cart\n        </button>\n      </div>\n      <ng-content select=\"[card-footer]\"></ng-content>\n    </div>\n  `,\n  styleUrls: ['./product-card.component.scss'],\n  changeDetection: ChangeDetectionStrategy.OnPush\n})\nexport class ProductCardComponent implements OnInit, OnDestroy {\n  @Input() product!: Product;\n  @Output() addToCart = new EventEmitter<Product>();\n\n  stockClass = '';\n  private destroy$ = new Subject<void>();\n\n  ngOnInit(): void {\n    this.stockClass = this.product.stock > 10 ? 'high' : \n                      this.product.stock > 0 ? 'low' : 'none';\n  }\n\n  onAddToCart(): void {\n    this.addToCart.emit(this.product);\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Data access service with caching and error handling\n@Injectable({ providedIn: 'root' })\nexport class ProductService {\n  private apiUrl = '/api/products';\n  private cache$ = new BehaviorSubject<Product[] | null>(null);\n\n  constructor(private http: HttpClient) {}\n\n  getAll(forceRefresh = false): Observable<Product[]> {\n    if (!forceRefresh && this.cache$.value) {\n      return of(this.cache$.value);\n    }\n\n    return this.http.get<Product[]>(this.apiUrl).pipe(\n      tap(products => this.cache$.next(products)),\n      retry({ count: 2, delay: 1000 }),\n      catchError(this.handleError<Product[]>('getAll', []))\n    );\n  }\n\n  getById(id: string): Observable<Product> {\n    return this.http.get<Product>(`${this.apiUrl}/${id}`).pipe(\n      catchError(this.handleError<Product>('getById'))\n    );\n  }\n\n  create(product: CreateProductDto): Observable<Product> {\n    return this.http.post<Product>(this.apiUrl, product).pipe(\n      tap(newProduct => {\n        const current = this.cache$.value || [];\n        this.cache$.next([...current, newProduct]);\n      }),\n      catchError(this.handleError<Product>('create'))\n    );\n  }\n\n  private handleError<T>(operation: string, fallback?: T) {\n    return (error: HttpErrorResponse): Observable<T> => {\n      console.error(`${operation} failed:`, error.message);\n      if (fallback !== undefined) return of(fallback);\n      return throwError(() => new Error(`${operation} failed: ${error.message}`));\n    };\n  }\n}\n\n// HTTP Interceptor for authentication\n@Injectable()\nexport class AuthInterceptor implements HttpInterceptor {\n  constructor(private authService: AuthService) {}\n\n  intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {\n    const token = this.authService.getToken();\n\n    const authReq = token\n      ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })\n      : req;\n\n    return next.handle(authReq).pipe(\n      catchError((error: HttpErrorResponse) => {\n        if (error.status === 401) {\n          this.authService.logout();\n        }\n        return throwError(() => error);\n      })\n    );\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Hierarchical DI with various provider types\n// Abstract service interface\nexport abstract class NotificationService {\n  abstract send(message: string): Observable<void>;\n}\n\n// Concrete implementations\n@Injectable()\nexport class EmailNotificationService extends NotificationService {\n  send(message: string): Observable<void> {\n    return this.http.post<void>('/api/notifications/email', { message });\n  }\n  constructor(private http: HttpClient) { super(); }\n}\n\n@Injectable()\nexport class SmsNotificationService extends NotificationService {\n  send(message: string): Observable<void> {\n    return this.http.post<void>('/api/notifications/sms', { message });\n  }\n  constructor(private http: HttpClient) { super(); }\n}\n\n// Factory provider with conditional logic\nconst notificationFactory = (config: AppConfig, http: HttpClient) => {\n  return config.notificationChannel === 'sms'\n    ? new SmsNotificationService(http)\n    : new EmailNotificationService(http);\n};\n\n// Module configuration with various provider types\n@NgModule({\n  providers: [\n    // Factory provider\n    {\n      provide: NotificationService,\n      useFactory: notificationFactory,\n      deps: [APP_CONFIG, HttpClient]\n    },\n    // InjectionToken with value\n    {\n      provide: APP_CONFIG,\n      useValue: { apiUrl: '/api', notificationChannel: 'email' }\n    },\n    // Multi-provider for HTTP interceptors\n    {\n      provide: HTTP_INTERCEPTORS,\n      useClass: AuthInterceptor,\n      multi: true\n    },\n    {\n      provide: HTTP_INTERCEPTORS,\n      useClass: LoggingInterceptor,\n      multi: true\n    }\n  ]\n})\nexport class AppModule {}\n\n// Component-level provider (creates new instance per component)\n@Component({\n  selector: 'app-editor',\n  providers: [EditorStateService],  // Scoped to this component subtree\n  template: `<app-toolbar></app-toolbar><app-canvas></app-canvas>`\n})\nexport class EditorComponent {\n  constructor(private editorState: EditorStateService) {}\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Common RxJS patterns in Angular\n@Component({\n  selector: 'app-product-search',\n  template: `\n    <input [formControl]=\"searchControl\" placeholder=\"Search products...\">\n    <div *ngFor=\"let product of results$ | async\">\n      {{ product.name }} - {{ product.price | currency }}\n    </div>\n  `\n})\nexport class ProductSearchComponent implements OnInit, OnDestroy {\n  searchControl = new FormControl('');\n  results$!: Observable<Product[]>;\n  private destroy$ = new Subject<void>();\n\n  constructor(\n    private productService: ProductService,\n    private route: ActivatedRoute\n  ) {}\n\n  ngOnInit(): void {\n    // Search with debounce, distinct, and switchMap\n    this.results$ = this.searchControl.valueChanges.pipe(\n      debounceTime(300),\n      distinctUntilChanged(),\n      filter(term => term.length >= 2),\n      switchMap(term => this.productService.search(term).pipe(\n        catchError(() => of([]))  // Return empty on error\n      )),\n      takeUntil(this.destroy$)\n    );\n\n    // Combine route params with query params\n    combineLatest([\n      this.route.params,\n      this.route.queryParams\n    ]).pipe(\n      takeUntil(this.destroy$)\n    ).subscribe(([params, queryParams]) => {\n      this.loadCategory(params['id'], queryParams['sort']);\n    });\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}\n\n// Service with retry and exponential backoff\n@Injectable({ providedIn: 'root' })\nexport class ResilientHttpService {\n  fetchWithRetry<T>(url: string): Observable<T> {\n    return this.http.get<T>(url).pipe(\n      retry({\n        count: 3,\n        delay: (error, retryCount) => {\n          const delayMs = Math.pow(2, retryCount) * 1000;\n          console.warn(`Retry ${retryCount} after ${delayMs}ms`);\n          return timer(delayMs);\n        }\n      }),\n      catchError(error => {\n        console.error('All retries exhausted:', error);\n        return throwError(() => error);\n      })\n    );\n  }\n\n  constructor(private http: HttpClient) {}\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// OnPush component with manual change detection control\n@Component({\n  selector: 'app-live-dashboard',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `\n    <div class=\"metrics-grid\">\n      <app-metric-card\n        *ngFor=\"let metric of metrics; trackBy: trackByMetricId\"\n        [metric]=\"metric\"\n        (click)=\"selectMetric(metric)\">\n      </app-metric-card>\n    </div>\n    <div class=\"selected\" *ngIf=\"selectedMetric\">\n      {{ selectedMetric.name }}: {{ selectedMetric.value }}\n    </div>\n  `\n})\nexport class LiveDashboardComponent implements OnInit, OnDestroy {\n  metrics: Metric[] = [];\n  selectedMetric: Metric | null = null;\n  private destroy$ = new Subject<void>();\n\n  constructor(\n    private metricsService: MetricsService,\n    private cdr: ChangeDetectorRef\n  ) {}\n\n  ngOnInit(): void {\n    // WebSocket stream updates metrics every second\n    this.metricsService.getLiveMetrics().pipe(\n      takeUntil(this.destroy$)\n    ).subscribe(metrics => {\n      this.metrics = metrics;  // New array reference triggers OnPush\n      this.cdr.markForCheck(); // Explicitly mark for check\n    });\n  }\n\n  selectMetric(metric: Metric): void {\n    this.selectedMetric = metric;\n    // Event handler automatically triggers change detection\n  }\n\n  trackByMetricId(index: number, metric: Metric): string {\n    return metric.id;\n  }\n\n  ngOnDestroy(): void {\n    this.destroy$.next();\n    this.destroy$.complete();\n  }\n}\n\n// Signal-based component (Angular 16+)\n@Component({\n  selector: 'app-counter',\n  standalone: true,\n  template: `\n    <p>Count: {{ count() }}</p>\n    <p>Double: {{ doubleCount() }}</p>\n    <button (click)=\"increment()\">+1</button>\n  `\n})\nexport class CounterComponent {\n  count = signal(0);\n  doubleCount = computed(() => this.count() * 2);\n\n  increment(): void {\n    this.count.update(c => c + 1);\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/angular.md",
+    "wordCount": 3130,
+    "sectionCount": 14
+  }
+}

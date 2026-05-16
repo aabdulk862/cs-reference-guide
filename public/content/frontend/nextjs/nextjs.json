@@ -1,0 +1,449 @@
+{
+  "id": "nextjs",
+  "slug": "nextjs",
+  "title": "Next.js",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Next.js is a React meta-framework by Vercel providing server-side rendering (SSR), static site generation (SSG), incremental static regeneration (ISR), and API routes out of the box",
+            "App Router (Next.js 13+) uses file-system routing with app/ directory, React Server Components by default, nested layouts, and streaming",
+            "Pages Router (legacy) uses pages/ directory with getServerSideProps, getStaticProps, and getStaticPaths for data fetching",
+            "Rendering modes: SSR (per-request server render), SSG (build-time static HTML), ISR (static with background revalidation), CSR (client-side only)",
+            "Middleware runs at the edge before requests reach route handlers, enabling authentication, redirects, rewrites, and header manipulation",
+            "API routes provide serverless backend endpoints co-located with frontend code, supporting REST and edge runtime",
+            "Built-in optimizations: automatic code splitting, image optimization (next/image), font optimization (next/font), script loading (next/script), and link prefetching (next/link)"
+          ]
+        }
+      ],
+      "wordCount": 127,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Next.js is the right choice when you need a production-grade React application with server-side rendering for SEO, fast initial page loads, and a seamless developer experience. Choose Next.js when your application requires a mix of rendering strategies across different pages: marketing pages that benefit from static generation, dashboard pages that need server-side rendering with fresh data, and interactive components that require client-side hydration. Next.js excels in content-heavy applications like blogs, documentation sites, and e-commerce storefronts where SEO and performance are critical business requirements. It is particularly well-suited for teams that want a unified full-stack framework where API endpoints, server logic, and frontend components live in the same repository with shared TypeScript types. Prefer Next.js over plain React SPAs when you need first-contentful-paint under 1.5 seconds, when search engine crawlers must index your content, or when you want incremental static regeneration to serve stale content while revalidating in the background. Consider alternatives like Remix when you need nested route-level data loading with progressive enhancement, or Astro when your site is primarily static content with minimal interactivity."
+        }
+      ],
+      "wordCount": 175,
+      "subsections": []
+    },
+    {
+      "id": "ssr",
+      "heading": "SSR",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Server-Side Rendering generates HTML on the server for every incoming request, ensuring users and search engine crawlers receive fully rendered content without waiting for JavaScript to execute on the client. In Next.js, SSR is the default behavior in the App Router for any Server Component that performs data fetching, and is explicitly opted into in the Pages Router via getServerSideProps. The server executes the component tree, resolves all data dependencies, and streams the resulting HTML to the client along with a minimal JavaScript payload for hydration."
+        },
+        {
+          "type": "paragraph",
+          "text": "SSR is essential for pages that display user-specific or frequently changing data that cannot be pre-rendered at build time. Examples include personalized dashboards, search results pages, and authenticated content where the response depends on cookies or headers. The trade-off is increased server load and higher Time to First Byte (TTFB) compared to static pages, since every request triggers a full render cycle on the server."
+        },
+        {
+          "type": "paragraph",
+          "text": "In the App Router, Server Components are SSR by default. Any component in the app/ directory that does not include the \"use client\" directive runs exclusively on the server. You can fetch data directly in the component body using async/await without additional API layers. Next.js automatically deduplicates identical fetch requests within a single render pass, and you can control caching behavior with the cache and next.revalidate options on individual fetch calls."
+        },
+        {
+          "type": "paragraph",
+          "text": "In the Pages Router, getServerSideProps runs on every request and passes its return value as props to the page component. The function has access to the request object, cookies, headers, and query parameters. It must return an object with a props key, a redirect key, or a notFound: true flag. The function never runs in the browser, so you can safely use server-only code like database queries or secret API keys."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - Server Component with SSR (default behavior)\n// app/dashboard/page.tsx\nimport { cookies } from 'next/headers';\n\ninterface DashboardData {\n  user: { name: string; email: string };\n  stats: { totalOrders: number; revenue: number };\n}\n\nexport default async function DashboardPage() {\n  const cookieStore = cookies();\n  const token = cookieStore.get('session')?.value;\n\n  const data: DashboardData = await fetch('https://api.example.com/dashboard', {\n    headers: { Authorization: `Bearer ${token}` },\n    cache: 'no-store', // Opt out of caching for fresh data every request\n  }).then(res => res.json());\n\n  return (\n    <main>\n      <h1>Welcome, {data.user.name}</h1>\n      <div className=\"stats-grid\">\n        <StatCard label=\"Total Orders\" value={data.stats.totalOrders} />\n        <StatCard label=\"Revenue\" value={`$${data.stats.revenue}`} />\n      </div>\n    </main>\n  );\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Pages Router - getServerSideProps\n// pages/profile/[id].tsx\nimport { GetServerSideProps } from 'next';\n\ninterface ProfileProps {\n  user: { id: string; name: string; bio: string };\n}\n\nexport const getServerSideProps: GetServerSideProps<ProfileProps> = async (context) => {\n  const { id } = context.params!;\n  const res = await fetch(`https://api.example.com/users/${id}`);\n\n  if (!res.ok) {\n    return { notFound: true };\n  }\n\n  const user = await res.json();\n  return { props: { user } };\n};\n\nexport default function ProfilePage({ user }: ProfileProps) {\n  return (\n    <article>\n      <h1>{user.name}</h1>\n      <p>{user.bio}</p>\n    </article>\n  );\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 293,
+      "subsections": []
+    },
+    {
+      "id": "ssg",
+      "heading": "SSG",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Static Site Generation pre-renders pages at build time, producing plain HTML files that can be served directly from a CDN without any server computation at request time. SSG delivers the fastest possible page loads because the HTML is already generated and cached at the edge. In Next.js, SSG is achieved in the Pages Router via getStaticProps (optionally combined with getStaticPaths for dynamic routes) and in the App Router by using fetch with default caching behavior or by exporting generateStaticParams for dynamic segments."
+        },
+        {
+          "type": "paragraph",
+          "text": "SSG is ideal for content that does not change between deployments or changes infrequently enough that rebuilding is acceptable. Marketing pages, blog posts, documentation, product catalogs, and landing pages are classic SSG candidates. The key constraint is that the content must be knowable at build time: you need access to the data source during the build process, and the number of pages must be finite and enumerable."
+        },
+        {
+          "type": "paragraph",
+          "text": "For dynamic routes with SSG, you must tell Next.js which paths to pre-render. In the Pages Router, getStaticPaths returns an array of path parameters. The fallback option controls behavior for paths not generated at build time: false returns 404, true serves a loading state while generating the page on first request, and 'blocking' waits for generation to complete before responding (behaving like SSR for the first visitor). In the App Router, generateStaticParams serves the same purpose, returning an array of parameter objects for each path to pre-render."
+        },
+        {
+          "type": "paragraph",
+          "text": "The build output for SSG pages is a set of .html files and corresponding .json files containing the page props. These are deployed to a CDN and served with appropriate cache headers. Subsequent deployments generate new static files, and the CDN invalidates its cache. This model scales infinitely because serving static files requires no compute resources beyond the CDN edge nodes."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - Static Generation with generateStaticParams\n// app/blog/[slug]/page.tsx\nimport { notFound } from 'next/navigation';\n\ninterface Post {\n  slug: string;\n  title: string;\n  content: string;\n  publishedAt: string;\n}\n\n// Generate static paths at build time\nexport async function generateStaticParams() {\n  const posts: Post[] = await fetch('https://cms.example.com/posts').then(r => r.json());\n  return posts.map((post) => ({ slug: post.slug }));\n}\n\n// Generate metadata for SEO\nexport async function generateMetadata({ params }: { params: { slug: string } }) {\n  const post = await getPost(params.slug);\n  if (!post) return { title: 'Not Found' };\n  return { title: post.title, description: post.content.slice(0, 160) };\n}\n\nasync function getPost(slug: string): Promise<Post | null> {\n  const res = await fetch(`https://cms.example.com/posts/${slug}`, {\n    next: { revalidate: false }, // Fully static, no revalidation\n  });\n  if (!res.ok) return null;\n  return res.json();\n}\n\nexport default async function BlogPostPage({ params }: { params: { slug: string } }) {\n  const post = await getPost(params.slug);\n  if (!post) notFound();\n\n  return (\n    <article>\n      <h1>{post.title}</h1>\n      <time dateTime={post.publishedAt}>{new Date(post.publishedAt).toLocaleDateString()}</time>\n      <div dangerouslySetInnerHTML={{ __html: post.content }} />\n    </article>\n  );\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 297,
+      "subsections": []
+    },
+    {
+      "id": "isr",
+      "heading": "ISR",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Incremental Static Regeneration combines the performance benefits of static generation with the freshness of server-side rendering. ISR serves pre-rendered static pages from the cache but revalidates them in the background after a configurable time interval. When a request arrives for a page whose revalidation period has elapsed, Next.js serves the stale cached version immediately (ensuring fast response times) while triggering a background regeneration. The next request after regeneration completes receives the updated page. This pattern is sometimes called stale-while-revalidate at the page level."
+        },
+        {
+          "type": "paragraph",
+          "text": "ISR solves the fundamental limitation of pure SSG: content staleness. With SSG, updating a single blog post requires rebuilding and redeploying the entire site. With ISR, you set a revalidate interval (in seconds), and Next.js automatically regenerates individual pages in the background without a full rebuild. This makes ISR suitable for content that updates periodically but does not need real-time freshness: product prices that change hourly, news articles that update throughout the day, or user-generated content that grows over time."
+        },
+        {
+          "type": "paragraph",
+          "text": "On-demand revalidation extends ISR by allowing you to trigger regeneration programmatically rather than waiting for the time-based interval. When your CMS publishes a new article or updates a product price, it can call a Next.js API route that invokes revalidatePath() or revalidateTag(), immediately invalidating the cached page. This gives you the performance of static pages with near-real-time content updates, limited only by the time it takes to regenerate the page."
+        },
+        {
+          "type": "paragraph",
+          "text": "In the App Router, ISR is configured by passing next: { revalidate: seconds } to fetch calls or by exporting a revalidate segment config. In the Pages Router, you add a revalidate property to the object returned by getStaticProps. Both approaches produce the same behavior: serve static HTML, revalidate in the background after the specified interval."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - ISR with time-based revalidation\n// app/products/[id]/page.tsx\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  description: string;\n  lastUpdated: string;\n}\n\n// Revalidate every 60 seconds\nexport const revalidate = 60;\n\nexport async function generateStaticParams() {\n  const products = await fetch('https://api.example.com/products').then(r => r.json());\n  return products.map((p: Product) => ({ id: p.id }));\n}\n\nexport default async function ProductPage({ params }: { params: { id: string } }) {\n  const product: Product = await fetch(`https://api.example.com/products/${params.id}`, {\n    next: { revalidate: 60 }, // ISR: revalidate every 60 seconds\n  }).then(r => r.json());\n\n  return (\n    <div>\n      <h1>{product.name}</h1>\n      <p className=\"price\">${product.price.toFixed(2)}</p>\n      <p>{product.description}</p>\n      <small>Last updated: {product.lastUpdated}</small>\n    </div>\n  );\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// On-demand revalidation via API route\n// app/api/revalidate/route.ts\nimport { revalidatePath, revalidateTag } from 'next/cache';\nimport { NextRequest, NextResponse } from 'next/server';\n\nexport async function POST(request: NextRequest) {\n  const { secret, path, tag } = await request.json();\n\n  if (secret !== process.env.REVALIDATION_SECRET) {\n    return NextResponse.json({ message: 'Invalid secret' }, { status: 401 });\n  }\n\n  if (path) {\n    revalidatePath(path);\n    return NextResponse.json({ revalidated: true, path });\n  }\n\n  if (tag) {\n    revalidateTag(tag);\n    return NextResponse.json({ revalidated: true, tag });\n  }\n\n  return NextResponse.json({ message: 'Missing path or tag' }, { status: 400 });\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 289,
+      "subsections": []
+    },
+    {
+      "id": "api-routes",
+      "heading": "API Routes",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "API routes in Next.js provide serverless backend endpoints that deploy alongside your frontend application. They handle HTTP requests without requiring a separate backend server, making them ideal for form submissions, webhook handlers, authentication callbacks, and lightweight CRUD operations. API routes run in a Node.js environment (or Edge runtime) and have access to the full request/response cycle including headers, cookies, and request bodies."
+        },
+        {
+          "type": "paragraph",
+          "text": "In the App Router, API routes are called Route Handlers and are defined in route.ts files within the app/ directory. Each file exports named functions corresponding to HTTP methods (GET, POST, PUT, DELETE, PATCH). Route Handlers receive a NextRequest object and return a NextResponse. They support both the Node.js runtime (default) and the Edge runtime for lower latency at the cost of a restricted API surface."
+        },
+        {
+          "type": "paragraph",
+          "text": "In the Pages Router, API routes live in the pages/api/ directory. Each file exports a default handler function that receives req (NextApiRequest) and res (NextApiResponse) objects similar to Express.js. Dynamic API routes use the same bracket syntax as page routes ([id].ts), and catch-all routes use spread syntax ([...params].ts)."
+        },
+        {
+          "type": "paragraph",
+          "text": "API routes are serverless functions under the hood when deployed to Vercel or similar platforms. This means they have cold start latency, a maximum execution duration (typically 10-60 seconds depending on the plan), and no persistent state between invocations. For long-running operations, use background jobs or queue-based architectures. For real-time communication, consider WebSocket alternatives or server-sent events with streaming responses."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - Route Handler with multiple HTTP methods\n// app/api/posts/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { z } from 'zod';\n\nconst PostSchema = z.object({\n  title: z.string().min(1).max(200),\n  content: z.string().min(10),\n  published: z.boolean().default(false),\n});\n\nexport async function GET(request: NextRequest) {\n  const { searchParams } = new URL(request.url);\n  const page = parseInt(searchParams.get('page') || '1');\n  const limit = parseInt(searchParams.get('limit') || '10');\n\n  const posts = await db.post.findMany({\n    skip: (page - 1) * limit,\n    take: limit,\n    orderBy: { createdAt: 'desc' },\n  });\n\n  return NextResponse.json({ posts, page, limit });\n}\n\nexport async function POST(request: NextRequest) {\n  const body = await request.json();\n  const parsed = PostSchema.safeParse(body);\n\n  if (!parsed.success) {\n    return NextResponse.json(\n      { error: 'Validation failed', details: parsed.error.flatten() },\n      { status: 400 }\n    );\n  }\n\n  const post = await db.post.create({ data: parsed.data });\n  return NextResponse.json(post, { status: 201 });\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - Dynamic route handler\n// app/api/posts/[id]/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\n\nexport async function GET(\n  request: NextRequest,\n  { params }: { params: { id: string } }\n) {\n  const post = await db.post.findUnique({ where: { id: params.id } });\n\n  if (!post) {\n    return NextResponse.json({ error: 'Not found' }, { status: 404 });\n  }\n\n  return NextResponse.json(post);\n}\n\nexport async function DELETE(\n  request: NextRequest,\n  { params }: { params: { id: string } }\n) {\n  await db.post.delete({ where: { id: params.id } });\n  return new NextResponse(null, { status: 204 });\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 236,
+      "subsections": []
+    },
+    {
+      "id": "middleware",
+      "heading": "Middleware",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Middleware in Next.js runs before a request is completed, executing at the edge (close to the user) before the request reaches your route handlers or page components. Middleware intercepts every request matching its configured path pattern and can rewrite URLs, redirect users, modify request and response headers, set cookies, or return early responses. It is the ideal location for cross-cutting concerns like authentication checks, A/B testing, geolocation-based routing, bot detection, and rate limiting."
+        },
+        {
+          "type": "paragraph",
+          "text": "Middleware is defined in a single middleware.ts file at the root of your project (next to app/ or pages/). It exports a default function that receives a NextRequest and must return a NextResponse. The config export with a matcher array controls which paths trigger the middleware. Without a matcher, middleware runs on every request including static assets, so always define explicit path patterns to avoid unnecessary execution."
+        },
+        {
+          "type": "paragraph",
+          "text": "The Edge runtime used by middleware provides a subset of Node.js APIs optimized for low-latency execution. You cannot use Node.js-specific modules like fs, path, or native database drivers. Instead, use fetch-based APIs, edge-compatible libraries, and lightweight operations. Middleware has a strict execution time limit (typically 1.5 seconds on Vercel) and a maximum response body size, making it unsuitable for heavy computation or large data transformations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Middleware executes in a specific order within the Next.js request lifecycle: it runs after the next.config.js rewrites and redirects but before route matching, rendering, and API route execution. This positioning means middleware can modify the request before any page or API logic sees it, enabling patterns like injecting user identity headers that downstream components can read without repeating authentication logic."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// middleware.ts - Authentication and routing middleware\nimport { NextRequest, NextResponse } from 'next/server';\nimport { verifyToken } from './lib/auth';\n\nconst publicPaths = ['/login', '/register', '/api/auth', '/public'];\nconst adminPaths = ['/admin', '/api/admin'];\n\nexport async function middleware(request: NextRequest) {\n  const { pathname } = request.nextUrl;\n\n  // Allow public paths without authentication\n  if (publicPaths.some(path => pathname.startsWith(path))) {\n    return NextResponse.next();\n  }\n\n  // Check authentication token\n  const token = request.cookies.get('auth-token')?.value;\n  if (!token) {\n    const loginUrl = new URL('/login', request.url);\n    loginUrl.searchParams.set('redirect', pathname);\n    return NextResponse.redirect(loginUrl);\n  }\n\n  // Verify token and extract user claims\n  const user = await verifyToken(token);\n  if (!user) {\n    return NextResponse.redirect(new URL('/login', request.url));\n  }\n\n  // Admin route authorization\n  if (adminPaths.some(path => pathname.startsWith(path)) && user.role !== 'admin') {\n    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });\n  }\n\n  // Inject user identity into request headers for downstream use\n  const response = NextResponse.next();\n  response.headers.set('x-user-id', user.id);\n  response.headers.set('x-user-role', user.role);\n  return response;\n}\n\nexport const config = {\n  matcher: [\n    // Match all paths except static files and Next.js internals\n    '/((?!_next/static|_next/image|favicon.ico|public/).*)',\n  ],\n};",
+          "runnable": false
+        }
+      ],
+      "wordCount": 265,
+      "subsections": []
+    },
+    {
+      "id": "app-router-patterns",
+      "heading": "App Router Patterns",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The App Router, introduced in Next.js 13 and stable in Next.js 14, represents a fundamental shift in how Next.js applications are structured. It uses React Server Components by default, file-system-based routing with the app/ directory, nested layouts that persist across navigations, streaming with Suspense boundaries, and parallel routes for complex UI compositions. Understanding App Router patterns is essential for building modern Next.js applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "Layouts and Templates: Layouts are components that wrap child routes and persist their state across navigations. A layout.tsx file in any directory becomes the layout for all routes within that directory and its subdirectories. Unlike the Pages Router's _app.tsx which re-renders on every navigation, layouts only re-render when their own data changes. Templates (template.tsx) are similar but create a new instance on every navigation, useful for enter/exit animations or per-page state reset."
+        },
+        {
+          "type": "paragraph",
+          "text": "Server Components vs Client Components: In the App Router, all components are Server Components by default. They run only on the server, can directly access databases and file systems, and send zero JavaScript to the client. Add the \"use client\" directive at the top of a file to make it a Client Component that hydrates in the browser with interactivity. The boundary between server and client components is the key architectural decision: keep data fetching and heavy logic in Server Components, and push only interactive UI (event handlers, state, effects) to Client Components."
+        },
+        {
+          "type": "paragraph",
+          "text": "Loading and Error States: The App Router uses special file conventions for loading and error handling. A loading.tsx file in any route segment automatically wraps the page in a Suspense boundary, showing the loading component while the page's async data resolves. An error.tsx file creates an error boundary that catches runtime errors in the segment and its children, displaying a fallback UI with a retry mechanism. A not-found.tsx file handles 404 responses triggered by the notFound() function."
+        },
+        {
+          "type": "paragraph",
+          "text": "Parallel Routes and Intercepting Routes: Parallel routes (defined with @slot folder naming) allow rendering multiple pages simultaneously in the same layout, useful for dashboards with independent panels or modal patterns. Intercepting routes (using (.), (..), (...) conventions) let you intercept a navigation and show a route in a different context, such as opening a photo in a modal while keeping the gallery visible behind it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Data Fetching Patterns: The App Router encourages fetching data at the component level rather than at the page level. Each Server Component can independently fetch its own data using async/await. Next.js automatically deduplicates identical fetch requests within a render pass. For shared data across components, use React's cache() function to memoize expensive computations. For mutations, use Server Actions (functions marked with \"use server\") that can be called directly from Client Components without creating API endpoints."
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// App Router - Nested layout with parallel routes\n// app/dashboard/layout.tsx\nexport default function DashboardLayout({\n  children,\n  analytics,\n  notifications,\n}: {\n  children: React.ReactNode;\n  analytics: React.ReactNode;   // @analytics parallel route\n  notifications: React.ReactNode; // @notifications parallel route\n}) {\n  return (\n    <div className=\"dashboard-grid\">\n      <main>{children}</main>\n      <aside className=\"analytics-panel\">{analytics}</aside>\n      <aside className=\"notifications-panel\">{notifications}</aside>\n    </div>\n  );\n}\n\n// app/dashboard/@analytics/page.tsx\nexport default async function AnalyticsPanel() {\n  const stats = await fetch('https://api.example.com/analytics', {\n    next: { revalidate: 300 }, // Revalidate every 5 minutes\n  }).then(r => r.json());\n\n  return <AnalyticsChart data={stats} />;\n}",
+          "runnable": false
+        },
+        {
+          "type": "code",
+          "language": "typescript",
+          "code": "// Server Actions for mutations\n// app/posts/actions.ts\n'use server';\n\nimport { revalidatePath } from 'next/cache';\nimport { redirect } from 'next/navigation';\nimport { z } from 'zod';\n\nconst CreatePostSchema = z.object({\n  title: z.string().min(1),\n  content: z.string().min(10),\n});\n\nexport async function createPost(formData: FormData) {\n  const parsed = CreatePostSchema.safeParse({\n    title: formData.get('title'),\n    content: formData.get('content'),\n  });\n\n  if (!parsed.success) {\n    return { error: parsed.error.flatten().fieldErrors };\n  }\n\n  await db.post.create({ data: parsed.data });\n  revalidatePath('/posts');\n  redirect('/posts');\n}\n\n// app/posts/new/page.tsx (Client Component using Server Action)\n'use client';\n\nimport { createPost } from '../actions';\nimport { useFormState } from 'react-dom';\n\nexport default function NewPostPage() {\n  const [state, formAction] = useFormState(createPost, null);\n\n  return (\n    <form action={formAction}>\n      <input name=\"title\" placeholder=\"Post title\" required />\n      {state?.error?.title && <p className=\"error\">{state.error.title}</p>}\n      <textarea name=\"content\" placeholder=\"Write your post...\" required />\n      {state?.error?.content && <p className=\"error\">{state.error.content}</p>}\n      <button type=\"submit\">Publish</button>\n    </form>\n  );\n}",
+          "runnable": false
+        }
+      ],
+      "wordCount": 445,
+      "subsections": []
+    },
+    {
+      "id": "architecture-and-diagrams",
+      "heading": "Architecture and Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Next.js Request Lifecycle\"\n        REQ[Incoming Request] --> MW[Middleware - Edge Runtime]\n        MW --> MATCH{Route Matching}\n        \n        MATCH -->|Static Asset| CDN[CDN / Static File Server]\n        MATCH -->|API Route| API[Route Handler / API Route]\n        MATCH -->|Page Route| RENDER{Rendering Strategy}\n        \n        RENDER -->|SSG| CACHE[Serve Cached HTML]\n        RENDER -->|ISR| ISR_CHECK{Stale?}\n        RENDER -->|SSR| SERVER[Server Render]\n        \n        ISR_CHECK -->|Fresh| CACHE\n        ISR_CHECK -->|Stale| SERVE_STALE[Serve Stale + Background Regen]\n        \n        SERVER --> RSC[React Server Components]\n        RSC --> STREAM[Streaming HTML + Suspense]\n        STREAM --> CLIENT[Client Hydration]\n        \n        SERVE_STALE --> REGEN[Background Regeneration]\n        REGEN --> UPDATE_CACHE[Update Cache]\n    end\n\n    subgraph \"App Router File Conventions\"\n        APP[app/] --> LAYOUT[layout.tsx - Persistent wrapper]\n        APP --> PAGE[page.tsx - Route UI]\n        APP --> LOADING[loading.tsx - Suspense fallback]\n        APP --> ERROR[error.tsx - Error boundary]\n        APP --> NOTFOUND[not-found.tsx - 404 handler]\n        APP --> ROUTE[route.ts - API endpoint]\n        APP --> TEMPLATE[template.tsx - Re-mount on nav]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant Browser\n    participant Edge as Edge Middleware\n    participant Server as Next.js Server\n    participant Cache as ISR Cache\n    participant DB as Data Source\n\n    Browser->>Edge: GET /products/123\n    Edge->>Edge: Verify auth token\n    Edge->>Server: Forward request (with x-user-id header)\n    \n    Server->>Cache: Check ISR cache\n    \n    alt Cache Hit (Fresh)\n        Cache-->>Server: Return cached HTML\n        Server-->>Browser: 200 OK (cached)\n    else Cache Hit (Stale)\n        Cache-->>Server: Return stale HTML\n        Server-->>Browser: 200 OK (stale)\n        Server->>DB: Background fetch fresh data\n        DB-->>Server: Updated product data\n        Server->>Cache: Store regenerated page\n    else Cache Miss\n        Server->>DB: Fetch product data\n        DB-->>Server: Product data\n        Server->>Server: Render Server Components\n        Server->>Cache: Store generated page\n        Server-->>Browser: 200 OK (fresh)\n    end\n    \n    Browser->>Browser: Hydrate Client Components"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Accidentally making everything a Client Component: Adding \"use client\" to a parent component forces all its children to be Client Components too, even if they do not need interactivity. This sends unnecessary JavaScript to the browser and prevents children from using server-only features like direct database access. Instead, keep the client boundary as low in the tree as possible, wrapping only the interactive leaf components.",
+            "Fetching data in Client Components when Server Components suffice: A common anti-pattern is using useEffect + fetch in a Client Component for data that could be fetched in a Server Component. This adds a client-server waterfall (page loads, JavaScript executes, then fetch fires), increasing time to content. Move data fetching to Server Components wherever the data does not depend on client-side state or user interaction.",
+            "Misunderstanding ISR revalidation timing: The revalidate interval does not mean the page updates every N seconds. It means the page is eligible for regeneration after N seconds. The actual regeneration only happens when a request arrives after the interval has elapsed. If no traffic hits the page, it remains stale indefinitely. For critical updates, use on-demand revalidation via revalidatePath() or revalidateTag().",
+            "Middleware doing too much work: Middleware runs on every matched request at the edge with strict time limits. Performing database queries, complex JWT verification with remote JWKS fetching, or heavy computation in middleware causes timeouts and increased latency for all requests. Keep middleware lightweight: verify cached tokens, check simple conditions, and delegate heavy logic to route handlers.",
+            "Not handling loading and error states: Without loading.tsx and error.tsx files, users see a blank screen during data fetching and an unhandled error crashes the entire page. Always add loading states for routes with async data and error boundaries for routes that might fail, providing graceful degradation rather than broken experiences.",
+            "Ignoring the Server Component serialization boundary: Props passed from Server Components to Client Components must be serializable (no functions, classes, or Dates). Attempting to pass non-serializable values causes runtime errors. Use plain objects, strings, numbers, and arrays at the server-client boundary, and reconstruct complex types on the client side."
+          ]
+        }
+      ],
+      "wordCount": 348,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "E-commerce storefront: Product listing pages use SSG with generateStaticParams for the catalog, ISR with 60-second revalidation for pricing and inventory, and SSR for the shopping cart and checkout flow. Middleware handles geolocation-based currency selection and A/B testing for promotional banners. API routes process Stripe webhooks for order fulfillment.",
+            "SaaS dashboard application: The marketing site uses SSG for maximum performance and SEO. The authenticated dashboard uses SSR with Server Components fetching user-specific data directly from the database. Parallel routes render independent dashboard panels (analytics, notifications, activity feed) that load and stream independently. Server Actions handle form submissions for settings and data mutations without separate API endpoints.",
+            "Content management platform: Blog posts and documentation pages use ISR with on-demand revalidation triggered by CMS webhooks. The editorial interface uses Client Components with rich text editors and real-time collaboration. Middleware enforces role-based access control, redirecting unauthorized users to appropriate pages. The search page uses SSR to render results based on query parameters for SEO-friendly search result pages.",
+            "Multi-tenant platform: Middleware reads the subdomain from the request hostname and rewrites the URL to include the tenant identifier, enabling a single deployment to serve multiple tenants with tenant-specific content and theming. Each tenant's pages are statically generated with ISR, and on-demand revalidation updates individual tenant pages when their configuration changes."
+          ]
+        }
+      ],
+      "wordCount": 214,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between SSR, SSG, and ISR in Next.js?\nA: SSG generates HTML at build time and serves static files from a CDN, offering the fastest loads but requiring a rebuild for content updates. SSR generates HTML on every request, providing fresh data at the cost of higher TTFB and server load. ISR combines both: it serves static pages but revalidates them in the background after a configurable interval, giving you static performance with near-real-time freshness."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do React Server Components differ from traditional SSR in Next.js?\nA: Traditional SSR renders the full component tree on the server and sends HTML plus all the JavaScript needed for hydration. React Server Components render on the server and send only the rendered output with zero client-side JavaScript for those components. Only components marked with \"use client\" ship JavaScript to the browser. This reduces bundle size and eliminates hydration cost for server-only components."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you use middleware versus an API route for authentication?\nA: Use middleware for lightweight authentication checks that should run before any route logic executes, such as verifying a JWT signature or checking for the presence of a session cookie. Use API routes for the actual authentication flow (login, logout, token refresh) that involves database queries, password hashing, or external OAuth provider communication. Middleware runs at the edge with limited APIs and strict time constraints, while API routes have full Node.js capabilities."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the purpose of generateStaticParams in the App Router.\nA: generateStaticParams tells Next.js which dynamic route segments to pre-render at build time. It returns an array of parameter objects, each representing one path to statically generate. For a route like app/blog/[slug]/page.tsx, it returns [{ slug: 'post-1' }, { slug: 'post-2' }]. This is the App Router equivalent of getStaticPaths in the Pages Router, enabling SSG for dynamic routes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are Server Actions and how do they replace API routes for mutations?\nA: Server Actions are async functions marked with \"use server\" that execute on the server when called from Client Components. They can be passed directly to form action attributes or called imperatively. They replace the pattern of creating API routes solely for form submissions and data mutations, reducing boilerplate by eliminating the need for separate endpoint files, fetch calls, and request/response serialization."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Next.js handle code splitting and when does it load JavaScript?\nA: Next.js automatically code-splits at the route level, generating separate JavaScript bundles for each page. Only the JavaScript needed for the current route is loaded initially. When using next/link, Next.js prefetches the JavaScript for linked routes in the viewport during idle time. Dynamic imports via next/dynamic enable component-level code splitting for heavy libraries or below-the-fold content that should not block initial page load."
+        }
+      ],
+      "wordCount": 459,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Cache strategy alignment: Match your rendering strategy to your data freshness requirements. Use SSG for content that changes less than once per deploy, ISR with appropriate revalidation intervals for content that changes hourly or daily, and SSR only for truly per-request personalized content. Over-using SSR when ISR would suffice wastes server resources and increases response times.",
+            "Image optimization configuration: Configure next/image with appropriate deviceSizes and imageSizes in next.config.js to match your design breakpoints. Set formats: ['image/avif', 'image/webp'] for modern format support. Use priority prop on above-the-fold images to disable lazy loading and trigger preload hints. For external image domains, add them to remotePatterns with specific hostname and pathname patterns rather than broad wildcards.",
+            "Monitoring Server Component performance: Server Components do not appear in browser DevTools since they execute on the server. Use OpenTelemetry integration (@vercel/otel or custom instrumentation) to trace Server Component render times, data fetch durations, and streaming chunk delivery. Monitor cache hit rates for ISR pages and set alerts when regeneration failures cause stale content to persist beyond acceptable thresholds.",
+            "Edge vs Node.js runtime selection: Use the Edge runtime (export const runtime = 'edge') for middleware and simple API routes that benefit from low latency and global distribution. Use the Node.js runtime (default) for route handlers that need database connections, file system access, or Node.js-specific libraries. Mixing runtimes within an application is fully supported and encouraged for optimal performance per route.",
+            "Bundle analysis and optimization: Run ANALYZE=true next build with @next/bundle-analyzer to identify large dependencies in your client bundles. Move heavy libraries (charting, rich text editors, PDF generators) behind next/dynamic with ssr: false to prevent them from blocking initial page load. Use tree-shaking-friendly imports (e.g., import { format } from 'date-fns' instead of import * as dateFns from 'date-fns')."
+          ]
+        }
+      ],
+      "wordCount": 291,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "React - Next.js builds on React's component model, hooks, and rendering primitives including Server Components and Suspense",
+            "TypeScript - Next.js provides first-class TypeScript support with automatic type generation for routes, params, and configuration",
+            "JavaScript - Understanding async/await, modules, and the event loop is foundational for Next.js data fetching and server-side logic"
+          ]
+        }
+      ],
+      "wordCount": 51,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// App Router - Server Component with SSR (default behavior)\n// app/dashboard/page.tsx\nimport { cookies } from 'next/headers';\n\ninterface DashboardData {\n  user: { name: string; email: string };\n  stats: { totalOrders: number; revenue: number };\n}\n\nexport default async function DashboardPage() {\n  const cookieStore = cookies();\n  const token = cookieStore.get('session')?.value;\n\n  const data: DashboardData = await fetch('https://api.example.com/dashboard', {\n    headers: { Authorization: `Bearer ${token}` },\n    cache: 'no-store', // Opt out of caching for fresh data every request\n  }).then(res => res.json());\n\n  return (\n    <main>\n      <h1>Welcome, {data.user.name}</h1>\n      <div className=\"stats-grid\">\n        <StatCard label=\"Total Orders\" value={data.stats.totalOrders} />\n        <StatCard label=\"Revenue\" value={`$${data.stats.revenue}`} />\n      </div>\n    </main>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Pages Router - getServerSideProps\n// pages/profile/[id].tsx\nimport { GetServerSideProps } from 'next';\n\ninterface ProfileProps {\n  user: { id: string; name: string; bio: string };\n}\n\nexport const getServerSideProps: GetServerSideProps<ProfileProps> = async (context) => {\n  const { id } = context.params!;\n  const res = await fetch(`https://api.example.com/users/${id}`);\n\n  if (!res.ok) {\n    return { notFound: true };\n  }\n\n  const user = await res.json();\n  return { props: { user } };\n};\n\nexport default function ProfilePage({ user }: ProfileProps) {\n  return (\n    <article>\n      <h1>{user.name}</h1>\n      <p>{user.bio}</p>\n    </article>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App Router - Static Generation with generateStaticParams\n// app/blog/[slug]/page.tsx\nimport { notFound } from 'next/navigation';\n\ninterface Post {\n  slug: string;\n  title: string;\n  content: string;\n  publishedAt: string;\n}\n\n// Generate static paths at build time\nexport async function generateStaticParams() {\n  const posts: Post[] = await fetch('https://cms.example.com/posts').then(r => r.json());\n  return posts.map((post) => ({ slug: post.slug }));\n}\n\n// Generate metadata for SEO\nexport async function generateMetadata({ params }: { params: { slug: string } }) {\n  const post = await getPost(params.slug);\n  if (!post) return { title: 'Not Found' };\n  return { title: post.title, description: post.content.slice(0, 160) };\n}\n\nasync function getPost(slug: string): Promise<Post | null> {\n  const res = await fetch(`https://cms.example.com/posts/${slug}`, {\n    next: { revalidate: false }, // Fully static, no revalidation\n  });\n  if (!res.ok) return null;\n  return res.json();\n}\n\nexport default async function BlogPostPage({ params }: { params: { slug: string } }) {\n  const post = await getPost(params.slug);\n  if (!post) notFound();\n\n  return (\n    <article>\n      <h1>{post.title}</h1>\n      <time dateTime={post.publishedAt}>{new Date(post.publishedAt).toLocaleDateString()}</time>\n      <div dangerouslySetInnerHTML={{ __html: post.content }} />\n    </article>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App Router - ISR with time-based revalidation\n// app/products/[id]/page.tsx\ninterface Product {\n  id: string;\n  name: string;\n  price: number;\n  description: string;\n  lastUpdated: string;\n}\n\n// Revalidate every 60 seconds\nexport const revalidate = 60;\n\nexport async function generateStaticParams() {\n  const products = await fetch('https://api.example.com/products').then(r => r.json());\n  return products.map((p: Product) => ({ id: p.id }));\n}\n\nexport default async function ProductPage({ params }: { params: { id: string } }) {\n  const product: Product = await fetch(`https://api.example.com/products/${params.id}`, {\n    next: { revalidate: 60 }, // ISR: revalidate every 60 seconds\n  }).then(r => r.json());\n\n  return (\n    <div>\n      <h1>{product.name}</h1>\n      <p className=\"price\">${product.price.toFixed(2)}</p>\n      <p>{product.description}</p>\n      <small>Last updated: {product.lastUpdated}</small>\n    </div>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// On-demand revalidation via API route\n// app/api/revalidate/route.ts\nimport { revalidatePath, revalidateTag } from 'next/cache';\nimport { NextRequest, NextResponse } from 'next/server';\n\nexport async function POST(request: NextRequest) {\n  const { secret, path, tag } = await request.json();\n\n  if (secret !== process.env.REVALIDATION_SECRET) {\n    return NextResponse.json({ message: 'Invalid secret' }, { status: 401 });\n  }\n\n  if (path) {\n    revalidatePath(path);\n    return NextResponse.json({ revalidated: true, path });\n  }\n\n  if (tag) {\n    revalidateTag(tag);\n    return NextResponse.json({ revalidated: true, tag });\n  }\n\n  return NextResponse.json({ message: 'Missing path or tag' }, { status: 400 });\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App Router - Route Handler with multiple HTTP methods\n// app/api/posts/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { z } from 'zod';\n\nconst PostSchema = z.object({\n  title: z.string().min(1).max(200),\n  content: z.string().min(10),\n  published: z.boolean().default(false),\n});\n\nexport async function GET(request: NextRequest) {\n  const { searchParams } = new URL(request.url);\n  const page = parseInt(searchParams.get('page') || '1');\n  const limit = parseInt(searchParams.get('limit') || '10');\n\n  const posts = await db.post.findMany({\n    skip: (page - 1) * limit,\n    take: limit,\n    orderBy: { createdAt: 'desc' },\n  });\n\n  return NextResponse.json({ posts, page, limit });\n}\n\nexport async function POST(request: NextRequest) {\n  const body = await request.json();\n  const parsed = PostSchema.safeParse(body);\n\n  if (!parsed.success) {\n    return NextResponse.json(\n      { error: 'Validation failed', details: parsed.error.flatten() },\n      { status: 400 }\n    );\n  }\n\n  const post = await db.post.create({ data: parsed.data });\n  return NextResponse.json(post, { status: 201 });\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App Router - Dynamic route handler\n// app/api/posts/[id]/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\n\nexport async function GET(\n  request: NextRequest,\n  { params }: { params: { id: string } }\n) {\n  const post = await db.post.findUnique({ where: { id: params.id } });\n\n  if (!post) {\n    return NextResponse.json({ error: 'Not found' }, { status: 404 });\n  }\n\n  return NextResponse.json(post);\n}\n\nexport async function DELETE(\n  request: NextRequest,\n  { params }: { params: { id: string } }\n) {\n  await db.post.delete({ where: { id: params.id } });\n  return new NextResponse(null, { status: 204 });\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// middleware.ts - Authentication and routing middleware\nimport { NextRequest, NextResponse } from 'next/server';\nimport { verifyToken } from './lib/auth';\n\nconst publicPaths = ['/login', '/register', '/api/auth', '/public'];\nconst adminPaths = ['/admin', '/api/admin'];\n\nexport async function middleware(request: NextRequest) {\n  const { pathname } = request.nextUrl;\n\n  // Allow public paths without authentication\n  if (publicPaths.some(path => pathname.startsWith(path))) {\n    return NextResponse.next();\n  }\n\n  // Check authentication token\n  const token = request.cookies.get('auth-token')?.value;\n  if (!token) {\n    const loginUrl = new URL('/login', request.url);\n    loginUrl.searchParams.set('redirect', pathname);\n    return NextResponse.redirect(loginUrl);\n  }\n\n  // Verify token and extract user claims\n  const user = await verifyToken(token);\n  if (!user) {\n    return NextResponse.redirect(new URL('/login', request.url));\n  }\n\n  // Admin route authorization\n  if (adminPaths.some(path => pathname.startsWith(path)) && user.role !== 'admin') {\n    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });\n  }\n\n  // Inject user identity into request headers for downstream use\n  const response = NextResponse.next();\n  response.headers.set('x-user-id', user.id);\n  response.headers.set('x-user-role', user.role);\n  return response;\n}\n\nexport const config = {\n  matcher: [\n    // Match all paths except static files and Next.js internals\n    '/((?!_next/static|_next/image|favicon.ico|public/).*)',\n  ],\n};",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// App Router - Nested layout with parallel routes\n// app/dashboard/layout.tsx\nexport default function DashboardLayout({\n  children,\n  analytics,\n  notifications,\n}: {\n  children: React.ReactNode;\n  analytics: React.ReactNode;   // @analytics parallel route\n  notifications: React.ReactNode; // @notifications parallel route\n}) {\n  return (\n    <div className=\"dashboard-grid\">\n      <main>{children}</main>\n      <aside className=\"analytics-panel\">{analytics}</aside>\n      <aside className=\"notifications-panel\">{notifications}</aside>\n    </div>\n  );\n}\n\n// app/dashboard/@analytics/page.tsx\nexport default async function AnalyticsPanel() {\n  const stats = await fetch('https://api.example.com/analytics', {\n    next: { revalidate: 300 }, // Revalidate every 5 minutes\n  }).then(r => r.json());\n\n  return <AnalyticsChart data={stats} />;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Server Actions for mutations\n// app/posts/actions.ts\n'use server';\n\nimport { revalidatePath } from 'next/cache';\nimport { redirect } from 'next/navigation';\nimport { z } from 'zod';\n\nconst CreatePostSchema = z.object({\n  title: z.string().min(1),\n  content: z.string().min(10),\n});\n\nexport async function createPost(formData: FormData) {\n  const parsed = CreatePostSchema.safeParse({\n    title: formData.get('title'),\n    content: formData.get('content'),\n  });\n\n  if (!parsed.success) {\n    return { error: parsed.error.flatten().fieldErrors };\n  }\n\n  await db.post.create({ data: parsed.data });\n  revalidatePath('/posts');\n  redirect('/posts');\n}\n\n// app/posts/new/page.tsx (Client Component using Server Action)\n'use client';\n\nimport { createPost } from '../actions';\nimport { useFormState } from 'react-dom';\n\nexport default function NewPostPage() {\n  const [state, formAction] = useFormState(createPost, null);\n\n  return (\n    <form action={formAction}>\n      <input name=\"title\" placeholder=\"Post title\" required />\n      {state?.error?.title && <p className=\"error\">{state.error.title}</p>}\n      <textarea name=\"content\" placeholder=\"Write your post...\" required />\n      {state?.error?.content && <p className=\"error\">{state.error.content}</p>}\n      <button type=\"submit\">Publish</button>\n    </form>\n  );\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/nextjs/nextjs.md",
+    "wordCount": 3490,
+    "sectionCount": 14
+  }
+}

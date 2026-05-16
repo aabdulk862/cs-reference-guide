@@ -1,0 +1,254 @@
+{
+  "id": "web-performance",
+  "slug": "web-performance",
+  "title": "Web Performance",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core Web Vitals: LCP (Largest Contentful Paint) < 2.5s, INP (Interaction to Next Paint) < 200ms, CLS (Cumulative Layout Shift) < 0.1",
+            "Code splitting with dynamic import() reduces initial bundle size by 40-60% for typical SPAs",
+            "loading=\"lazy\" on images below the fold defers loading until 1250px from viewport (Chrome default)",
+            "HTTP/2 multiplexing eliminates the need for domain sharding and sprite sheets — serve individual assets",
+            "rel=\"preload\" for critical resources (fonts, hero images); rel=\"preconnect\" for third-party origins",
+            "Service Workers enable offline-first caching strategies: Cache First, Network First, Stale While Revalidate",
+            "content-visibility: auto skips rendering of off-screen content, reducing initial render time by 50%+ for long pages",
+            "TTFB (Time to First Byte) < 800ms; optimize with CDN, edge computing, and server-side caching"
+          ]
+        }
+      ],
+      "wordCount": 120,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Web performance optimization applies to every production web application, but the investment level should match the business impact. Prioritize performance work when Core Web Vitals scores directly affect SEO rankings (Google uses them as ranking signals), when conversion rates correlate with load time (Amazon found every 100ms of latency costs 1% in sales), when serving users on slow networks or low-end devices (emerging markets, mobile-first audiences), or when infrastructure costs scale with payload size (CDN bandwidth, server compute). Performance optimization is less critical for internal tools with captive audiences on fast networks, for prototypes and MVPs where iteration speed matters more, or for applications where functionality gaps outweigh speed improvements. The key principle: measure first, optimize the bottleneck, measure again. Premature optimization without profiling data wastes engineering time on non-impactful changes."
+        }
+      ],
+      "wordCount": 131,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "code-splitting-with-reactlazy-and-route-based-splitting",
+          "heading": "Code Splitting with React.lazy and Route-Based Splitting",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import React, { Suspense, lazy } from 'react';\nimport { Routes, Route } from 'react-router-dom';\n\n// Route-based code splitting — each route loads its own chunk\nconst Dashboard = lazy(() => import(/* webpackChunkName: \"dashboard\" */ './pages/Dashboard'));\nconst ProductList = lazy(() => import(/* webpackChunkName: \"products\" */ './pages/ProductList'));\nconst ProductDetail = lazy(() => import(/* webpackChunkName: \"product-detail\" */ './pages/ProductDetail'));\nconst Checkout = lazy(() => import(/* webpackChunkName: \"checkout\" */ './pages/Checkout'));\nconst AdminPanel = lazy(() => import(/* webpackChunkName: \"admin\" */ './pages/AdminPanel'));\n\n// Preload on hover for perceived instant navigation\nfunction preloadRoute(importFn: () => Promise<any>) {\n  return () => { importFn(); };\n}\n\nfunction AppRoutes() {\n  return (\n    <Suspense fallback={<PageSkeleton />}>\n      <Routes>\n        <Route path=\"/\" element={<Dashboard />} />\n        <Route path=\"/products\" element={<ProductList />} />\n        <Route path=\"/products/:id\" element={<ProductDetail />} />\n        <Route path=\"/checkout\" element={<Checkout />} />\n        <Route path=\"/admin/*\" element={<AdminPanel />} />\n      </Routes>\n    </Suspense>\n  );\n}\n\n// Component-level splitting for heavy libraries\nconst HeavyChart = lazy(() => import(/* webpackChunkName: \"chart\" */ './components/HeavyChart'));\nconst MarkdownEditor = lazy(() => import(/* webpackChunkName: \"editor\" */ './components/MarkdownEditor'));\n\nfunction AnalyticsDashboard({ data }) {\n  const [showChart, setShowChart] = useState(false);\n\n  return (\n    <div>\n      <button\n        onClick={() => setShowChart(true)}\n        onMouseEnter={preloadRoute(() => import('./components/HeavyChart'))}\n      >\n        Show Analytics\n      </button>\n      {showChart && (\n        <Suspense fallback={<ChartSkeleton />}>\n          <HeavyChart data={data} />\n        </Suspense>\n      )}\n    </div>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "image-optimization-with-responsive-loading",
+          "heading": "Image Optimization with Responsive Loading",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { useState, useRef, useEffect } from 'react';\n\ninterface OptimizedImageProps {\n  src: string;\n  alt: string;\n  width: number;\n  height: number;\n  priority?: boolean;\n  sizes?: string;\n}\n\nfunction OptimizedImage({ src, alt, width, height, priority = false, sizes }: OptimizedImageProps) {\n  // Generate srcset for responsive images\n  const widths = [320, 640, 768, 1024, 1280, 1920];\n  const srcSet = widths\n    .filter(w => w <= width * 2) // Don't upscale beyond 2x\n    .map(w => `${src}?w=${w}&format=webp ${w}w`)\n    .join(', ');\n\n  const defaultSizes = sizes || `\n    (max-width: 640px) 100vw,\n    (max-width: 1024px) 50vw,\n    33vw\n  `;\n\n  return (\n    <picture>\n      {/* AVIF for browsers that support it (30-50% smaller than WebP) */}\n      <source\n        type=\"image/avif\"\n        srcSet={widths.filter(w => w <= width * 2).map(w => `${src}?w=${w}&format=avif ${w}w`).join(', ')}\n        sizes={defaultSizes}\n      />\n      {/* WebP fallback */}\n      <source\n        type=\"image/webp\"\n        srcSet={srcSet}\n        sizes={defaultSizes}\n      />\n      {/* Original format as final fallback */}\n      <img\n        src={`${src}?w=768&format=webp`}\n        alt={alt}\n        width={width}\n        height={height}\n        loading={priority ? 'eager' : 'lazy'}\n        decoding={priority ? 'sync' : 'async'}\n        fetchPriority={priority ? 'high' : 'auto'}\n        style={{ aspectRatio: `${width} / ${height}` }}\n      />\n    </picture>\n  );\n}\n\n// Intersection Observer for lazy-loaded components\nfunction useLazyLoad(rootMargin = '200px') {\n  const ref = useRef<HTMLDivElement>(null);\n  const [isVisible, setIsVisible] = useState(false);\n\n  useEffect(() => {\n    const observer = new IntersectionObserver(\n      ([entry]) => {\n        if (entry.isIntersecting) {\n          setIsVisible(true);\n          observer.disconnect();\n        }\n      },\n      { rootMargin }\n    );\n\n    if (ref.current) observer.observe(ref.current);\n    return () => observer.disconnect();\n  }, [rootMargin]);\n\n  return { ref, isVisible };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "service-worker-caching-strategies",
+          "heading": "Service Worker Caching Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// service-worker.ts\nconst CACHE_VERSION = 'v2';\nconst STATIC_CACHE = `static-${CACHE_VERSION}`;\nconst DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;\nconst API_CACHE = `api-${CACHE_VERSION}`;\n\nconst STATIC_ASSETS = [\n  '/',\n  '/index.html',\n  '/static/js/main.chunk.js',\n  '/static/css/main.css',\n  '/manifest.json',\n];\n\n// Install: pre-cache static assets\nself.addEventListener('install', (event: ExtendableEvent) => {\n  event.waitUntil(\n    caches.open(STATIC_CACHE).then(cache => cache.addAll(STATIC_ASSETS))\n  );\n  self.skipWaiting();\n});\n\n// Activate: clean old caches\nself.addEventListener('activate', (event: ExtendableEvent) => {\n  event.waitUntil(\n    caches.keys().then(keys =>\n      Promise.all(\n        keys\n          .filter(key => !key.includes(CACHE_VERSION))\n          .map(key => caches.delete(key))\n      )\n    )\n  );\n  self.clients.claim();\n});\n\n// Fetch: strategy-based routing\nself.addEventListener('fetch', (event: FetchEvent) => {\n  const { request } = event;\n  const url = new URL(request.url);\n\n  if (url.pathname.startsWith('/api/')) {\n    // Network First for API calls (fresh data preferred)\n    event.respondWith(networkFirst(request, API_CACHE));\n  } else if (request.destination === 'image') {\n    // Cache First for images (rarely change)\n    event.respondWith(cacheFirst(request, DYNAMIC_CACHE));\n  } else if (STATIC_ASSETS.includes(url.pathname)) {\n    // Cache First for pre-cached static assets\n    event.respondWith(cacheFirst(request, STATIC_CACHE));\n  } else {\n    // Stale While Revalidate for everything else\n    event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE));\n  }\n});\n\nasync function networkFirst(request: Request, cacheName: string): Promise<Response> {\n  try {\n    const response = await fetch(request);\n    if (response.ok) {\n      const cache = await caches.open(cacheName);\n      cache.put(request, response.clone());\n    }\n    return response;\n  } catch {\n    const cached = await caches.match(request);\n    return cached || new Response('Offline', { status: 503 });\n  }\n}\n\nasync function cacheFirst(request: Request, cacheName: string): Promise<Response> {\n  const cached = await caches.match(request);\n  if (cached) return cached;\n\n  const response = await fetch(request);\n  if (response.ok) {\n    const cache = await caches.open(cacheName);\n    cache.put(request, response.clone());\n  }\n  return response;\n}\n\nasync function staleWhileRevalidate(request: Request, cacheName: string): Promise<Response> {\n  const cache = await caches.open(cacheName);\n  const cached = await cache.match(request);\n\n  const fetchPromise = fetch(request).then(response => {\n    if (response.ok) cache.put(request, response.clone());\n    return response;\n  });\n\n  return cached || fetchPromise;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "performance-monitoring-and-web-vitals",
+          "heading": "Performance Monitoring and Web Vitals",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { onCLS, onINP, onLCP, onFCP, onTTFB, Metric } from 'web-vitals';\n\ninterface PerformanceEntry {\n  name: string;\n  value: number;\n  rating: 'good' | 'needs-improvement' | 'poor';\n  navigationType: string;\n  url: string;\n}\n\nfunction reportWebVitals(metric: Metric) {\n  const entry: PerformanceEntry = {\n    name: metric.name,\n    value: metric.value,\n    rating: metric.rating,\n    navigationType: metric.navigationType,\n    url: window.location.href,\n  };\n\n  // Send to analytics endpoint\n  if (navigator.sendBeacon) {\n    navigator.sendBeacon('/api/vitals', JSON.stringify(entry));\n  } else {\n    fetch('/api/vitals', {\n      method: 'POST',\n      body: JSON.stringify(entry),\n      keepalive: true,\n    });\n  }\n}\n\n// Initialize monitoring\nonCLS(reportWebVitals);\nonINP(reportWebVitals);\nonLCP(reportWebVitals);\nonFCP(reportWebVitals);\nonTTFB(reportWebVitals);\n\n// Custom performance marks for business metrics\nfunction measureUserFlow(flowName: string) {\n  performance.mark(`${flowName}-start`);\n\n  return {\n    end() {\n      performance.mark(`${flowName}-end`);\n      const measure = performance.measure(flowName, `${flowName}-start`, `${flowName}-end`);\n      reportWebVitals({\n        name: flowName,\n        value: measure.duration,\n        rating: measure.duration < 1000 ? 'good' : measure.duration < 3000 ? 'needs-improvement' : 'poor',\n      } as Metric);\n    },\n  };\n}\n\n// Usage: const flow = measureUserFlow('checkout'); ... flow.end();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Optimizing without measuring: Making changes based on assumptions rather than profiling data. A developer might spend days optimizing JavaScript bundle size when the actual bottleneck is a 3-second API call or unoptimized images. Always profile with Lighthouse, WebPageTest, or Chrome DevTools Performance tab first",
+            "Render-blocking resources in the head: Loading large CSS files or synchronous JavaScript in <head> blocks first paint. Use media attributes for non-critical CSS, async/defer for scripts, and inline critical CSS for above-the-fold content",
+            "Layout shifts from unsized images and dynamic content: Not setting width and height attributes on images causes layout shifts when they load. Similarly, injecting ads, banners, or dynamically loaded content above existing content pushes everything down. Reserve space with aspect-ratio containers",
+            "Over-splitting code bundles: Splitting every component into its own chunk creates a waterfall of tiny requests. The overhead of HTTP requests (even with HTTP/2) and JavaScript parsing for many small files can exceed the cost of a slightly larger initial bundle. Split at route boundaries and for genuinely large libraries (>50KB)",
+            "Ignoring third-party script impact: Analytics, chat widgets, A/B testing tools, and ad scripts often add 500KB-2MB of JavaScript and block the main thread for 200-500ms. Audit third-party scripts quarterly, load them with async, and consider using Partytown to move them to a web worker",
+            "Not leveraging browser caching: Serving assets without proper Cache-Control headers means browsers re-download unchanged files on every visit. Use content-hashed filenames (app.abc123.js) with Cache-Control: max-age=31536000, immutable for static assets, and short TTLs for HTML documents"
+          ]
+        }
+      ],
+      "wordCount": 248,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Product Pages: A retailer reduced LCP from 4.2s to 1.8s by implementing: priority loading for hero product images with fetchpriority=\"high\", preconnecting to their image CDN, lazy loading below-fold product recommendations, and replacing a 400KB carousel library with a 12KB custom implementation using CSS scroll-snap. The result: 15% increase in conversion rate and improved Google search rankings."
+        },
+        {
+          "type": "paragraph",
+          "text": "News Media Site: A publisher serving 50M monthly visitors reduced CLS from 0.35 to 0.04 by reserving space for ads with CSS min-height, using font-display: optional to prevent FOIT (Flash of Invisible Text), and implementing a skeleton loading pattern for dynamically loaded article recommendations. They also reduced INP from 350ms to 120ms by breaking long JavaScript tasks into smaller chunks using requestIdleCallback and moving analytics processing to a web worker."
+        },
+        {
+          "type": "paragraph",
+          "text": "SaaS Dashboard: A B2B application with complex data visualizations reduced initial load from 8s to 2.5s by implementing route-based code splitting (the charting library loaded only on the analytics page), virtualizing long lists with react-window (rendering only visible rows from 10,000+ records), and using content-visibility: auto on off-screen dashboard panels. Service worker caching enabled instant subsequent loads."
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain Core Web Vitals and how you would improve a poor LCP score."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Core Web Vitals are Google's user-centric performance metrics: LCP measures loading (when the largest visible element renders), INP measures interactivity (delay between user input and visual response), and CLS measures visual stability (unexpected layout shifts). To improve poor LCP: First, identify the LCP element (usually a hero image, heading, or video poster) using Chrome DevTools Performance tab. Then optimize the critical path to that element: preload the LCP resource (<link rel=\"preload\">), eliminate render-blocking CSS/JS before it, optimize server response time (TTFB), use a CDN for static assets, serve images in modern formats (WebP/AVIF) at appropriate sizes, and set fetchpriority=\"high\" on the LCP image. For server-rendered apps, ensure the HTML contains the LCP element directly rather than requiring JavaScript to inject it. Target: LCP < 2.5s at the 75th percentile of page loads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement an effective caching strategy for a single-page application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Layer caching at multiple levels. CDN layer: cache static assets (JS, CSS, images) with long TTLs (max-age=31536000, immutable) using content-hashed filenames for cache busting. Cache HTML with short TTL (max-age=0, s-maxage=60) so CDN serves stale content briefly while revalidating. Browser layer: leverage HTTP cache headers — ETag for conditional requests on API responses, Cache-Control: private, max-age=300 for user-specific data. Service Worker layer: implement Stale While Revalidate for the app shell (instant load from cache, background update), Network First for API calls (fresh data with offline fallback), and Cache First for images and fonts. Application layer: use React Query or SWR for in-memory API response caching with configurable stale times, deduplication of concurrent requests, and background refetching. Key principle: static assets get aggressive caching with hash-based invalidation; dynamic content gets short TTLs with revalidation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What causes Cumulative Layout Shift and how do you prevent it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CLS measures unexpected visual movement of page content. Common causes: images without dimensions (browser doesn't know size until loaded), dynamically injected content (ads, cookie banners, notifications pushed above content), web fonts causing text reflow (FOUT/FOIT), and late-loading CSS that changes element sizes. Prevention strategies: always set explicit width and height on images and videos (or use CSS aspect-ratio), reserve space for ads and embeds with min-height containers, use font-display: swap with size-adjusted fallback fonts (size-adjust, ascent-override in @font-face), avoid inserting content above existing content (append below or use overlays), and use CSS contain: layout on components that shouldn't affect siblings. For dynamic content like notifications, use fixed/sticky positioning or transform animations (transforms don't cause layout shifts). Monitor CLS in the field using the web-vitals library since lab tools may not capture all real-user layout shifts."
+        }
+      ],
+      "wordCount": 442,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement resource hints strategically: Use <link rel=\"preconnect\"> for third-party origins you'll definitely use (CDN, API, fonts), <link rel=\"preload\"> for critical resources discovered late in the HTML (fonts referenced in CSS, hero images), and <link rel=\"prefetch\"> for resources needed on the next likely navigation. Over-using preload wastes bandwidth and can delay critical resources",
+            "Monitor real-user performance with RUM (Real User Monitoring): Lab tools (Lighthouse) test under controlled conditions but miss real-world variability — slow devices, congested networks, browser extensions. Collect Core Web Vitals from actual users using the web-vitals library, segment by device type, connection speed, and geography, and set alerts when p75 metrics degrade",
+            "Use HTTP/2 Server Push or 103 Early Hints to send critical resources before the browser parses HTML and discovers them. Early Hints (103 status code) is preferred over Server Push as it works with CDNs and doesn't risk pushing resources the client already has cached. Configure your CDN to send Early Hints for CSS and font files"
+          ]
+        }
+      ],
+      "wordCount": 161,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Accessibility — Performance and accessibility are complementary — fast sites that are inaccessible still fail users",
+            "REST API Design — API response optimization and caching strategies that affect frontend performance",
+            "Redis — Server-side caching that reduces API response times feeding into web performance"
+          ]
+        }
+      ],
+      "wordCount": 43,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import React, { Suspense, lazy } from 'react';\nimport { Routes, Route } from 'react-router-dom';\n\n// Route-based code splitting — each route loads its own chunk\nconst Dashboard = lazy(() => import(/* webpackChunkName: \"dashboard\" */ './pages/Dashboard'));\nconst ProductList = lazy(() => import(/* webpackChunkName: \"products\" */ './pages/ProductList'));\nconst ProductDetail = lazy(() => import(/* webpackChunkName: \"product-detail\" */ './pages/ProductDetail'));\nconst Checkout = lazy(() => import(/* webpackChunkName: \"checkout\" */ './pages/Checkout'));\nconst AdminPanel = lazy(() => import(/* webpackChunkName: \"admin\" */ './pages/AdminPanel'));\n\n// Preload on hover for perceived instant navigation\nfunction preloadRoute(importFn: () => Promise<any>) {\n  return () => { importFn(); };\n}\n\nfunction AppRoutes() {\n  return (\n    <Suspense fallback={<PageSkeleton />}>\n      <Routes>\n        <Route path=\"/\" element={<Dashboard />} />\n        <Route path=\"/products\" element={<ProductList />} />\n        <Route path=\"/products/:id\" element={<ProductDetail />} />\n        <Route path=\"/checkout\" element={<Checkout />} />\n        <Route path=\"/admin/*\" element={<AdminPanel />} />\n      </Routes>\n    </Suspense>\n  );\n}\n\n// Component-level splitting for heavy libraries\nconst HeavyChart = lazy(() => import(/* webpackChunkName: \"chart\" */ './components/HeavyChart'));\nconst MarkdownEditor = lazy(() => import(/* webpackChunkName: \"editor\" */ './components/MarkdownEditor'));\n\nfunction AnalyticsDashboard({ data }) {\n  const [showChart, setShowChart] = useState(false);\n\n  return (\n    <div>\n      <button\n        onClick={() => setShowChart(true)}\n        onMouseEnter={preloadRoute(() => import('./components/HeavyChart'))}\n      >\n        Show Analytics\n      </button>\n      {showChart && (\n        <Suspense fallback={<ChartSkeleton />}>\n          <HeavyChart data={data} />\n        </Suspense>\n      )}\n    </div>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { useState, useRef, useEffect } from 'react';\n\ninterface OptimizedImageProps {\n  src: string;\n  alt: string;\n  width: number;\n  height: number;\n  priority?: boolean;\n  sizes?: string;\n}\n\nfunction OptimizedImage({ src, alt, width, height, priority = false, sizes }: OptimizedImageProps) {\n  // Generate srcset for responsive images\n  const widths = [320, 640, 768, 1024, 1280, 1920];\n  const srcSet = widths\n    .filter(w => w <= width * 2) // Don't upscale beyond 2x\n    .map(w => `${src}?w=${w}&format=webp ${w}w`)\n    .join(', ');\n\n  const defaultSizes = sizes || `\n    (max-width: 640px) 100vw,\n    (max-width: 1024px) 50vw,\n    33vw\n  `;\n\n  return (\n    <picture>\n      {/* AVIF for browsers that support it (30-50% smaller than WebP) */}\n      <source\n        type=\"image/avif\"\n        srcSet={widths.filter(w => w <= width * 2).map(w => `${src}?w=${w}&format=avif ${w}w`).join(', ')}\n        sizes={defaultSizes}\n      />\n      {/* WebP fallback */}\n      <source\n        type=\"image/webp\"\n        srcSet={srcSet}\n        sizes={defaultSizes}\n      />\n      {/* Original format as final fallback */}\n      <img\n        src={`${src}?w=768&format=webp`}\n        alt={alt}\n        width={width}\n        height={height}\n        loading={priority ? 'eager' : 'lazy'}\n        decoding={priority ? 'sync' : 'async'}\n        fetchPriority={priority ? 'high' : 'auto'}\n        style={{ aspectRatio: `${width} / ${height}` }}\n      />\n    </picture>\n  );\n}\n\n// Intersection Observer for lazy-loaded components\nfunction useLazyLoad(rootMargin = '200px') {\n  const ref = useRef<HTMLDivElement>(null);\n  const [isVisible, setIsVisible] = useState(false);\n\n  useEffect(() => {\n    const observer = new IntersectionObserver(\n      ([entry]) => {\n        if (entry.isIntersecting) {\n          setIsVisible(true);\n          observer.disconnect();\n        }\n      },\n      { rootMargin }\n    );\n\n    if (ref.current) observer.observe(ref.current);\n    return () => observer.disconnect();\n  }, [rootMargin]);\n\n  return { ref, isVisible };\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// service-worker.ts\nconst CACHE_VERSION = 'v2';\nconst STATIC_CACHE = `static-${CACHE_VERSION}`;\nconst DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;\nconst API_CACHE = `api-${CACHE_VERSION}`;\n\nconst STATIC_ASSETS = [\n  '/',\n  '/index.html',\n  '/static/js/main.chunk.js',\n  '/static/css/main.css',\n  '/manifest.json',\n];\n\n// Install: pre-cache static assets\nself.addEventListener('install', (event: ExtendableEvent) => {\n  event.waitUntil(\n    caches.open(STATIC_CACHE).then(cache => cache.addAll(STATIC_ASSETS))\n  );\n  self.skipWaiting();\n});\n\n// Activate: clean old caches\nself.addEventListener('activate', (event: ExtendableEvent) => {\n  event.waitUntil(\n    caches.keys().then(keys =>\n      Promise.all(\n        keys\n          .filter(key => !key.includes(CACHE_VERSION))\n          .map(key => caches.delete(key))\n      )\n    )\n  );\n  self.clients.claim();\n});\n\n// Fetch: strategy-based routing\nself.addEventListener('fetch', (event: FetchEvent) => {\n  const { request } = event;\n  const url = new URL(request.url);\n\n  if (url.pathname.startsWith('/api/')) {\n    // Network First for API calls (fresh data preferred)\n    event.respondWith(networkFirst(request, API_CACHE));\n  } else if (request.destination === 'image') {\n    // Cache First for images (rarely change)\n    event.respondWith(cacheFirst(request, DYNAMIC_CACHE));\n  } else if (STATIC_ASSETS.includes(url.pathname)) {\n    // Cache First for pre-cached static assets\n    event.respondWith(cacheFirst(request, STATIC_CACHE));\n  } else {\n    // Stale While Revalidate for everything else\n    event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE));\n  }\n});\n\nasync function networkFirst(request: Request, cacheName: string): Promise<Response> {\n  try {\n    const response = await fetch(request);\n    if (response.ok) {\n      const cache = await caches.open(cacheName);\n      cache.put(request, response.clone());\n    }\n    return response;\n  } catch {\n    const cached = await caches.match(request);\n    return cached || new Response('Offline', { status: 503 });\n  }\n}\n\nasync function cacheFirst(request: Request, cacheName: string): Promise<Response> {\n  const cached = await caches.match(request);\n  if (cached) return cached;\n\n  const response = await fetch(request);\n  if (response.ok) {\n    const cache = await caches.open(cacheName);\n    cache.put(request, response.clone());\n  }\n  return response;\n}\n\nasync function staleWhileRevalidate(request: Request, cacheName: string): Promise<Response> {\n  const cache = await caches.open(cacheName);\n  const cached = await cache.match(request);\n\n  const fetchPromise = fetch(request).then(response => {\n    if (response.ok) cache.put(request, response.clone());\n    return response;\n  });\n\n  return cached || fetchPromise;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { onCLS, onINP, onLCP, onFCP, onTTFB, Metric } from 'web-vitals';\n\ninterface PerformanceEntry {\n  name: string;\n  value: number;\n  rating: 'good' | 'needs-improvement' | 'poor';\n  navigationType: string;\n  url: string;\n}\n\nfunction reportWebVitals(metric: Metric) {\n  const entry: PerformanceEntry = {\n    name: metric.name,\n    value: metric.value,\n    rating: metric.rating,\n    navigationType: metric.navigationType,\n    url: window.location.href,\n  };\n\n  // Send to analytics endpoint\n  if (navigator.sendBeacon) {\n    navigator.sendBeacon('/api/vitals', JSON.stringify(entry));\n  } else {\n    fetch('/api/vitals', {\n      method: 'POST',\n      body: JSON.stringify(entry),\n      keepalive: true,\n    });\n  }\n}\n\n// Initialize monitoring\nonCLS(reportWebVitals);\nonINP(reportWebVitals);\nonLCP(reportWebVitals);\nonFCP(reportWebVitals);\nonTTFB(reportWebVitals);\n\n// Custom performance marks for business metrics\nfunction measureUserFlow(flowName: string) {\n  performance.mark(`${flowName}-start`);\n\n  return {\n    end() {\n      performance.mark(`${flowName}-end`);\n      const measure = performance.measure(flowName, `${flowName}-start`, `${flowName}-end`);\n      reportWebVitals({\n        name: flowName,\n        value: measure.duration,\n        rating: measure.duration < 1000 ? 'good' : measure.duration < 3000 ? 'needs-improvement' : 'poor',\n      } as Metric);\n    },\n  };\n}\n\n// Usage: const flow = measureUserFlow('checkout'); ... flow.end();",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/web-performance/web-performance.md",
+    "wordCount": 1329,
+    "sectionCount": 12
+  }
+}

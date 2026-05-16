@@ -1,0 +1,372 @@
+{
+  "id": "software-engineering-code-review-practices",
+  "slug": "code-review-practices",
+  "title": "Code Review Practices",
+  "category": "Software Engineering",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Purpose of code review: Catch defects, share knowledge, maintain consistency, and improve design — not gatekeeping",
+            "Review scope: Aim for PRs under 400 lines of changed code — larger PRs have exponentially lower defect detection rates",
+            "Response time: Reviews should begin within 4 business hours to avoid blocking teammates and context loss",
+            "Approval criteria: Code must be correct, readable, maintainable, and tested — not necessarily how the reviewer would have written it",
+            "Two types of comments: Blocking (must fix before merge) and non-blocking (suggestions, nits, future improvements)",
+            "Automated checks first: Linting, formatting, type checking, and tests should pass before human review begins",
+            "Review the design, not just the code: Evaluate whether the approach is sound before nitpicking implementation details",
+            "Every comment should explain \"why\": State the principle or concern behind your feedback, not just what to change"
+          ]
+        }
+      ],
+      "wordCount": 137,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Code review should be applied to every change that reaches a shared branch in a collaborative codebase. The intensity and formality of review should scale with the risk and complexity of the change."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply thorough review with multiple reviewers for changes to authentication, authorization, payment processing, data migration, public APIs, shared libraries, and infrastructure configuration. These changes have high blast radius and are difficult to reverse."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply standard review (one reviewer, normal turnaround) for feature implementations, bug fixes, test additions, documentation updates, and internal refactoring. These changes are important but have limited blast radius and are easily reverted."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply lightweight review (quick scan, auto-merge eligible) for dependency version bumps with passing CI, generated code updates, configuration changes with feature flags, and typo fixes. These changes have minimal risk and automated checks provide sufficient validation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Skip formal review for emergency hotfixes in production (review post-merge), personal experimental branches, and draft PRs explicitly marked as work-in-progress. Even in these cases, a post-hoc review provides learning opportunities."
+        }
+      ],
+      "wordCount": 164,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "automated-review-configuration-with-github-actions",
+          "heading": "Automated Review Configuration with GitHub Actions",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Automated checks should run before human review begins. This ensures reviewers spend time on design and logic rather than formatting and type errors."
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# .github/workflows/pr-checks.yml\nname: PR Quality Checks\n\non:\n  pull_request:\n    branches: [main, develop]\n\njobs:\n  automated-review:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0  # Full history for diff analysis\n\n      - name: Setup Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Type checking\n        run: npx tsc --noEmit\n\n      - name: Lint\n        run: npx eslint --max-warnings 0 .\n\n      - name: Format check\n        run: npx prettier --check .\n\n      - name: Unit tests\n        run: npx vitest run --coverage\n\n      - name: Check PR size\n        uses: actions/github-script@v7\n        with:\n          script: |\n            const { data: files } = await github.rest.pulls.listFiles({\n              owner: context.repo.owner,\n              repo: context.repo.repo,\n              pull_number: context.issue.number,\n            });\n\n            const totalChanges = files.reduce((sum, file) =>\n              sum + file.additions + file.deletions, 0\n            );\n\n            if (totalChanges > 400) {\n              await github.rest.issues.createComment({\n                owner: context.repo.owner,\n                repo: context.repo.repo,\n                issue_number: context.issue.number,\n                body: `⚠️ This PR has ${totalChanges} lines changed. Consider splitting into smaller PRs for more effective review. PRs over 400 lines have significantly lower defect detection rates.`\n              });\n            }\n\n      - name: Check test coverage delta\n        run: |\n          npx vitest run --coverage --reporter=json --outputFile=coverage.json\n          node scripts/check-coverage-delta.js",
+              "runnable": false
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "review-checklist-implementation",
+          "heading": "Review Checklist Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A structured checklist ensures consistent review quality across team members and prevents common oversights."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// review-checklist.ts — Automated checklist generation based on PR content\ninterface ReviewChecklist {\n  category: string;\n  items: ChecklistItem[];\n}\n\ninterface ChecklistItem {\n  description: string;\n  severity: 'critical' | 'important' | 'nice-to-have';\n  automated: boolean;\n  applicable: (prContext: PRContext) => boolean;\n}\n\nconst REVIEW_CHECKLISTS: ReviewChecklist[] = [\n  {\n    category: 'Correctness',\n    items: [\n      {\n        description: 'Edge cases handled (null, empty, boundary values)',\n        severity: 'critical',\n        automated: false,\n        applicable: () => true,\n      },\n      {\n        description: 'Error handling covers all failure modes',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesErrorHandling,\n      },\n      {\n        description: 'Concurrent access is safe (race conditions, deadlocks)',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesSharedState || ctx.touchesAsync,\n      },\n      {\n        description: 'Database queries use parameterized statements',\n        severity: 'critical',\n        automated: true,\n        applicable: (ctx) => ctx.touchesDatabase,\n      },\n    ],\n  },\n  {\n    category: 'Security',\n    items: [\n      {\n        description: 'Input validation on all external data',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesAPI || ctx.touchesUserInput,\n      },\n      {\n        description: 'Authentication/authorization checks present',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesEndpoints,\n      },\n      {\n        description: 'No secrets or credentials in code',\n        severity: 'critical',\n        automated: true,\n        applicable: () => true,\n      },\n      {\n        description: 'Sensitive data not logged or exposed in errors',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesLogging || ctx.touchesPII,\n      },\n    ],\n  },\n  {\n    category: 'Testing',\n    items: [\n      {\n        description: 'New code has corresponding unit tests',\n        severity: 'important',\n        automated: true,\n        applicable: (ctx) => ctx.hasNewCode,\n      },\n      {\n        description: 'Tests cover happy path and error cases',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.hasNewTests,\n      },\n      {\n        description: 'Integration tests for new API endpoints',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.touchesEndpoints,\n      },\n    ],\n  },\n  {\n    category: 'Design',\n    items: [\n      {\n        description: 'Single responsibility — each class/function has one job',\n        severity: 'important',\n        automated: false,\n        applicable: () => true,\n      },\n      {\n        description: 'No unnecessary coupling between modules',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.touchesMultipleModules,\n      },\n      {\n        description: 'Public API is minimal and well-named',\n        severity: 'nice-to-have',\n        automated: false,\n        applicable: (ctx) => ctx.addsPublicAPI,\n      },\n    ],\n  },\n];\n\nfunction generateChecklist(prContext: PRContext): ReviewChecklist[] {\n  return REVIEW_CHECKLISTS.map(checklist => ({\n    ...checklist,\n    items: checklist.items.filter(item => item.applicable(prContext)),\n  })).filter(checklist => checklist.items.length > 0);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 14,
+          "subsections": []
+        },
+        {
+          "id": "constructive-feedback-examples",
+          "heading": "Constructive Feedback Examples",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The way feedback is delivered determines whether it improves code quality or creates conflict. Here are patterns for effective review comments:"
+            },
+            {
+              "type": "code",
+              "language": "markdown",
+              "code": "## Effective Review Comment Patterns\n\n### Pattern 1: Observation + Impact + Suggestion\n\n❌ BAD: \"This is wrong. Use a Map instead.\"\n\n✅ GOOD: \"This array lookup is O(n) for each iteration of the outer loop,\nmaking the overall complexity O(n²). Since we're looking up by ID repeatedly,\na Map would give O(1) lookups and bring this to O(n). Something like:\n\n```typescript\nconst usersById = new Map(users.map(u => [u.id, u]));\nfor (const order of orders) {\n  const user = usersById.get(order.userId);\n  // ...\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "This matters because the users array can reach 100k entries in production.\""
+            }
+          ],
+          "wordCount": 33,
+          "subsections": []
+        },
+        {
+          "id": "pattern-2-question-that-reveals-the-issue",
+          "heading": "Pattern 2: Question that reveals the issue",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "❌ BAD: \"This doesn't handle the null case.\""
+            },
+            {
+              "type": "paragraph",
+              "text": "✅ GOOD: \"What happens if user.preferences is null here? I see the\nUserPreferences type is nullable in the schema, and new users won't have\npreferences set until they visit settings. Should we fall back to defaults?\""
+            }
+          ],
+          "wordCount": 44,
+          "subsections": []
+        },
+        {
+          "id": "pattern-3-prefix-with-severity",
+          "heading": "Pattern 3: Prefix with severity",
+          "level": 3,
+          "content": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                "[blocking] — Must be addressed before merge",
+                "[suggestion] — Take it or leave it, won't block",
+                "[nit] — Style preference, completely optional",
+                "[question] — Seeking understanding, not requesting change",
+                "[praise] — Highlighting good work"
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Example:\n\"[suggestion] Consider extracting this validation into a separate function.\nIt would make the happy path more readable and the validation logic\nindependently testable. Not blocking though — the current approach works.\""
+            }
+          ],
+          "wordCount": 66,
+          "subsections": []
+        },
+        {
+          "id": "pattern-4-link-to-principles-or-documentation",
+          "heading": "Pattern 4: Link to principles or documentation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "\"[blocking] This endpoint accepts user input and passes it directly to the\nSQL query without parameterization. This creates a SQL injection vulnerability.\nSee our security guidelines: docs/security/input-validation.md"
+            },
+            {
+              "type": "paragraph",
+              "text": "Suggested fix: use the query builder's parameterized interface:"
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "db.query('SELECT * FROM users WHERE id = ?', [userId])\n```\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 35,
+          "subsections": []
+        },
+        {
+          "id": "pr-description-template",
+          "heading": "PR Description Template",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "markdown",
+              "code": "## PR Description Template\n\n### What does this PR do?\n<!-- One paragraph summary of the change -->\n\n### Why is this change needed?\n<!-- Link to issue/ticket, business context -->\n\n### How was this tested?\n<!-- Unit tests, integration tests, manual testing steps -->\n\n### Deployment considerations\n<!-- Feature flags, migrations, rollback plan -->\n\n### Screenshots/recordings (if UI change)\n<!-- Before/after screenshots -->\n\n### Checklist\n- [ ] Tests pass locally\n- [ ] No new warnings introduced\n- [ ] Documentation updated (if public API changed)\n- [ ] Migration is reversible (if database change)\n- [ ] Feature flag configured (if gradual rollout needed)\n\n### Review guidance\n<!-- What should reviewers focus on? Any areas of uncertainty? -->",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Rubber-stamping large PRs: When a PR exceeds 400 lines, reviewers experience cognitive overload and default to approving without thorough examination. Research shows defect detection drops from 70% for small PRs to under 20% for PRs over 1000 lines. Insist on splitting large changes into reviewable chunks.",
+            "Bikeshedding on style while missing logic errors: Spending review time debating variable names or formatting while overlooking race conditions, missing error handling, or security vulnerabilities. Automate style enforcement with linters and formatters so human review focuses on correctness and design.",
+            "Making it personal: Comments like \"you always do this\" or \"this is bad code\" attack the author rather than the code. Frame feedback around the code's behavior and impact: \"This approach may cause issues when X because Y\" rather than \"You didn't think about X.\"",
+            "Approval without understanding: Approving code you do not understand because you trust the author or feel pressured by deadlines. If you cannot explain what the code does and why it is correct, you cannot effectively review it. Ask questions or request a walkthrough rather than rubber-stamping.",
+            "Blocking on subjective preferences: Holding up a PR because you would have implemented it differently, even though the current approach is correct, readable, and maintainable. Reserve blocking comments for objective issues: bugs, security vulnerabilities, missing tests, and violations of documented team standards.",
+            "Delayed reviews creating context-switching costs: When reviews sit for days, the author loses context and must re-load the mental model when addressing feedback. The reviewer also loses context between rounds. Aim for first review within 4 hours and subsequent rounds within 2 hours.",
+            "Review comments without actionable guidance: Saying \"this could be better\" without explaining how or why provides no value. Every comment should include either a specific suggestion, a question that leads to improvement, or a reference to a principle/guideline that explains the concern."
+          ]
+        }
+      ],
+      "wordCount": 304,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Google's code review process: Google requires every change to be reviewed by at least one other engineer. Their research found that code review catches approximately 15% of defects (complementing testing which catches another 50%). More importantly, reviews serve as the primary mechanism for knowledge sharing and maintaining code consistency across 25,000+ engineers. Google's review tool (Critique) integrates automated analysis results directly into the review interface."
+        },
+        {
+          "type": "paragraph",
+          "text": "Microsoft's pull request insights: Microsoft Research studied pull request practices across Azure DevOps and found that PRs with clear descriptions receive feedback 40% faster, PRs under 200 lines have 2x higher approval rates on first submission, and teams with consistent review practices ship 30% fewer production defects. They also found that review quality degrades significantly after 60 minutes of continuous reviewing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shopify's review culture: Shopify uses a \"review buddy\" system where each PR is assigned to a specific reviewer based on code ownership and expertise. They distinguish between \"approval\" (code is correct and safe to ship) and \"endorsement\" (code follows team patterns and is maintainable). Both are required for merge, but from different reviewers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Linux kernel review process: The Linux kernel uses a multi-level review process where patches are reviewed by subsystem maintainers, then by senior maintainers, before reaching Linus Torvalds. Each level focuses on different concerns: correctness at the subsystem level, architectural consistency at the senior level, and overall direction at the top level. This hierarchical approach scales to thousands of contributors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Stripe's review for security-sensitive code: Stripe requires additional security-focused review for any change touching payment processing, authentication, or PII handling. Security reviewers have a specialized checklist covering injection attacks, authorization bypasses, data leakage, and cryptographic misuse. This targeted approach concentrates expensive expert review where it matters most."
+        }
+      ],
+      "wordCount": 285,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle disagreements during code review when you believe the approach is fundamentally wrong?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: First, I distinguish between \"wrong\" (will cause bugs, security issues, or maintenance nightmares) and \"different from how I would do it\" (valid alternative approach). For genuinely problematic approaches, I explain the specific concern with concrete examples: \"This approach will cause N+1 queries in production because X, which will degrade response times from 50ms to 2s at our current load.\" I provide an alternative with reasoning, not just criticism. If we still disagree, I suggest a brief synchronous discussion — text-based review comments are poor for nuanced design debates. For architectural disagreements that affect the team, I escalate to a design discussion with the broader team rather than blocking one person's PR indefinitely. The goal is reaching the best outcome for the codebase, not winning an argument."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What metrics would you use to measure code review effectiveness?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: I would track both process metrics and outcome metrics. Process metrics include: review turnaround time (time from PR opened to first review), review cycles (number of back-and-forth rounds before approval), PR size distribution (percentage of PRs under 400 lines), and review participation (are reviews concentrated among few people or distributed). Outcome metrics include: defect escape rate (bugs found in production that should have been caught in review), post-merge reverts (changes that had to be rolled back), knowledge distribution (measured by bus factor — how many people can modify each area), and developer satisfaction with the review process (quarterly surveys). The most important metric is defect escape rate combined with review turnaround time — you want high quality without creating bottlenecks."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you review code in a language or domain you are not expert in?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: I focus on what I can evaluate regardless of language expertise: logical correctness (does the algorithm make sense?), error handling completeness (are all failure modes addressed?), test coverage (do tests cover edge cases?), naming clarity (can I understand intent from names?), and architectural fit (does this follow the project's established patterns?). I explicitly state my limitations in the review: \"I'm not deeply familiar with Rust's ownership model, so I cannot evaluate the lifetime annotations, but the business logic and error handling look correct.\" I also use this as a learning opportunity — I ask questions about language-specific patterns I don't understand, which serves both my education and the review's thoroughness. For critical changes in unfamiliar domains, I recommend adding a domain expert as a second reviewer rather than approving something I cannot fully evaluate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you introduce code review practices to a team that has never done them?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: I would introduce reviews gradually rather than mandating them overnight. Start with voluntary reviews on high-risk changes (database migrations, auth changes) to demonstrate value without creating friction. Establish clear guidelines early: what constitutes a blocking comment, expected turnaround time, and PR size limits. Invest in automation first — linting, formatting, and type checking should be automated so early reviews focus on interesting problems rather than style debates. Lead by example by submitting my own code for review and responding graciously to feedback. After 2-3 weeks of voluntary adoption, formalize the process with team agreement on when reviews are required. Track and share metrics showing reduced bug rates and faster onboarding. Address resistance by acknowledging that reviews take time but frame it as an investment: 30 minutes of review prevents 4 hours of debugging in production."
+        }
+      ],
+      "wordCount": 579,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Integrate automated analysis into the review workflow: Configure static analysis tools (SonarQube, CodeClimate, Snyk) to post findings directly as review comments on PRs. This surfaces security vulnerabilities, complexity hotspots, and dependency issues without requiring reviewers to run tools manually. Prioritize findings by severity — only block merges for critical issues, present others as informational.",
+            "Implement CODEOWNERS for automatic reviewer assignment: Use GitHub's CODEOWNERS file or equivalent to automatically assign reviewers based on file paths. This ensures domain experts review changes in their area, reduces time spent finding appropriate reviewers, and distributes review load based on actual code ownership. Combine with rotation for shared code to prevent bottlenecks.",
+            "Establish review SLAs and measure compliance: Set explicit expectations for review turnaround (e.g., first review within 4 hours during business hours) and track compliance. Teams that measure review latency consistently achieve faster cycle times. Use Slack/Teams notifications for pending reviews and escalation paths for reviews that exceed SLA."
+          ]
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Refactoring Patterns — Code reviews are where refactoring opportunities are identified and refactoring quality is validated",
+            "Technical Debt — Reviews are the first line of defense against accumulating technical debt through conscious decision-making",
+            "SOLID Principles — SOLID violations are common review findings that indicate design issues requiring attention"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "# .github/workflows/pr-checks.yml\nname: PR Quality Checks\n\non:\n  pull_request:\n    branches: [main, develop]\n\njobs:\n  automated-review:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0  # Full history for diff analysis\n\n      - name: Setup Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Type checking\n        run: npx tsc --noEmit\n\n      - name: Lint\n        run: npx eslint --max-warnings 0 .\n\n      - name: Format check\n        run: npx prettier --check .\n\n      - name: Unit tests\n        run: npx vitest run --coverage\n\n      - name: Check PR size\n        uses: actions/github-script@v7\n        with:\n          script: |\n            const { data: files } = await github.rest.pulls.listFiles({\n              owner: context.repo.owner,\n              repo: context.repo.repo,\n              pull_number: context.issue.number,\n            });\n\n            const totalChanges = files.reduce((sum, file) =>\n              sum + file.additions + file.deletions, 0\n            );\n\n            if (totalChanges > 400) {\n              await github.rest.issues.createComment({\n                owner: context.repo.owner,\n                repo: context.repo.repo,\n                issue_number: context.issue.number,\n                body: `⚠️ This PR has ${totalChanges} lines changed. Consider splitting into smaller PRs for more effective review. PRs over 400 lines have significantly lower defect detection rates.`\n              });\n            }\n\n      - name: Check test coverage delta\n        run: |\n          npx vitest run --coverage --reporter=json --outputFile=coverage.json\n          node scripts/check-coverage-delta.js",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// review-checklist.ts — Automated checklist generation based on PR content\ninterface ReviewChecklist {\n  category: string;\n  items: ChecklistItem[];\n}\n\ninterface ChecklistItem {\n  description: string;\n  severity: 'critical' | 'important' | 'nice-to-have';\n  automated: boolean;\n  applicable: (prContext: PRContext) => boolean;\n}\n\nconst REVIEW_CHECKLISTS: ReviewChecklist[] = [\n  {\n    category: 'Correctness',\n    items: [\n      {\n        description: 'Edge cases handled (null, empty, boundary values)',\n        severity: 'critical',\n        automated: false,\n        applicable: () => true,\n      },\n      {\n        description: 'Error handling covers all failure modes',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesErrorHandling,\n      },\n      {\n        description: 'Concurrent access is safe (race conditions, deadlocks)',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesSharedState || ctx.touchesAsync,\n      },\n      {\n        description: 'Database queries use parameterized statements',\n        severity: 'critical',\n        automated: true,\n        applicable: (ctx) => ctx.touchesDatabase,\n      },\n    ],\n  },\n  {\n    category: 'Security',\n    items: [\n      {\n        description: 'Input validation on all external data',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesAPI || ctx.touchesUserInput,\n      },\n      {\n        description: 'Authentication/authorization checks present',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesEndpoints,\n      },\n      {\n        description: 'No secrets or credentials in code',\n        severity: 'critical',\n        automated: true,\n        applicable: () => true,\n      },\n      {\n        description: 'Sensitive data not logged or exposed in errors',\n        severity: 'critical',\n        automated: false,\n        applicable: (ctx) => ctx.touchesLogging || ctx.touchesPII,\n      },\n    ],\n  },\n  {\n    category: 'Testing',\n    items: [\n      {\n        description: 'New code has corresponding unit tests',\n        severity: 'important',\n        automated: true,\n        applicable: (ctx) => ctx.hasNewCode,\n      },\n      {\n        description: 'Tests cover happy path and error cases',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.hasNewTests,\n      },\n      {\n        description: 'Integration tests for new API endpoints',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.touchesEndpoints,\n      },\n    ],\n  },\n  {\n    category: 'Design',\n    items: [\n      {\n        description: 'Single responsibility — each class/function has one job',\n        severity: 'important',\n        automated: false,\n        applicable: () => true,\n      },\n      {\n        description: 'No unnecessary coupling between modules',\n        severity: 'important',\n        automated: false,\n        applicable: (ctx) => ctx.touchesMultipleModules,\n      },\n      {\n        description: 'Public API is minimal and well-named',\n        severity: 'nice-to-have',\n        automated: false,\n        applicable: (ctx) => ctx.addsPublicAPI,\n      },\n    ],\n  },\n];\n\nfunction generateChecklist(prContext: PRContext): ReviewChecklist[] {\n  return REVIEW_CHECKLISTS.map(checklist => ({\n    ...checklist,\n    items: checklist.items.filter(item => item.applicable(prContext)),\n  })).filter(checklist => checklist.items.length > 0);\n}",
+      "runnable": false
+    },
+    {
+      "language": "markdown",
+      "code": "## Effective Review Comment Patterns\n\n### Pattern 1: Observation + Impact + Suggestion\n\n❌ BAD: \"This is wrong. Use a Map instead.\"\n\n✅ GOOD: \"This array lookup is O(n) for each iteration of the outer loop,\nmaking the overall complexity O(n²). Since we're looking up by ID repeatedly,\na Map would give O(1) lookups and bring this to O(n). Something like:\n\n```typescript\nconst usersById = new Map(users.map(u => [u.id, u]));\nfor (const order of orders) {\n  const user = usersById.get(order.userId);\n  // ...\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "db.query('SELECT * FROM users WHERE id = ?', [userId])\n```\"",
+      "runnable": false
+    },
+    {
+      "language": "markdown",
+      "code": "## PR Description Template\n\n### What does this PR do?\n<!-- One paragraph summary of the change -->\n\n### Why is this change needed?\n<!-- Link to issue/ticket, business context -->\n\n### How was this tested?\n<!-- Unit tests, integration tests, manual testing steps -->\n\n### Deployment considerations\n<!-- Feature flags, migrations, rollback plan -->\n\n### Screenshots/recordings (if UI change)\n<!-- Before/after screenshots -->\n\n### Checklist\n- [ ] Tests pass locally\n- [ ] No new warnings introduced\n- [ ] Documentation updated (if public API changed)\n- [ ] Migration is reversible (if database change)\n- [ ] Feature flag configured (if gradual rollout needed)\n\n### Review guidance\n<!-- What should reviewers focus on? Any areas of uncertainty? -->",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/software-engineering/software-engineering/code-review-practices.md",
+    "wordCount": 1887,
+    "sectionCount": 15
+  }
+}

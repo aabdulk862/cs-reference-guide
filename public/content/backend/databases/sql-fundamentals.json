@@ -1,0 +1,277 @@
+{
+  "id": "databases-sql-fundamentals",
+  "slug": "sql-fundamentals",
+  "title": "SQL Fundamentals",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "SQL Fundamentals",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Structured Query Language remains the dominant interface for relational database management systems after more than four decades of production use. Every major RDBMS — PostgreSQL, MySQL, Oracle, SQL Server, and SQLite — implements the SQL standard with vendor-specific extensions, but the core language semantics are portable across engines. Senior engineers must internalize not just the syntax but the declarative execution model: you describe what data you want, and the query optimizer determines how to retrieve it. Understanding this separation between logical intent and physical execution is what distinguishes engineers who write correct queries from those who write performant ones. SQL operates across three distinct sublanguages — DDL for schema definition, DML for data manipulation, and DCL for access control — each with different transactional semantics and operational implications. Mastery of joins, subqueries, aggregations, and set operations forms the foundation upon which advanced topics like window functions, recursive CTEs, and query optimization are built."
+        }
+      ],
+      "wordCount": 153,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "DDL (Data Definition Language): CREATE, ALTER, DROP, TRUNCATE — defines schema objects; most engines auto-commit DDL statements",
+            "DML (Data Manipulation Language): SELECT, INSERT, UPDATE, DELETE, MERGE — manipulates data within transactions",
+            "DCL (Data Control Language): GRANT, REVOKE, DENY — controls access permissions at table, column, or row level",
+            "JOIN order in the FROM clause does not determine execution order; the optimizer reorders joins based on statistics and cost estimates",
+            "NULL is not a value but a marker for missing information; any comparison with NULL yields UNKNOWN, not TRUE or FALSE",
+            "GROUP BY logically executes before SELECT, so column aliases defined in SELECT cannot be referenced in GROUP BY (except in MySQL)",
+            "Set operations (UNION, INTERSECT, EXCEPT) operate on the entire result set and require compatible column types and counts",
+            "Correlated subqueries execute once per row of the outer query, making them O(n×m) in the worst case without optimizer rewrites",
+            "Materialized views store precomputed results physically, trading storage and staleness for read performance",
+            "Triggers fire automatically on DML events and execute within the same transaction as the triggering statement"
+          ]
+        }
+      ],
+      "wordCount": 178,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "SQL fundamentals apply whenever you interact with a relational database, which covers the vast majority of transactional systems in production. You need solid SQL skills when designing schemas for new services, writing data access layers, building reporting queries, debugging slow queries in production, and migrating data between systems. These fundamentals are especially critical during system design interviews where candidates must demonstrate they can model relationships correctly, write efficient joins across normalized tables, and reason about query execution without running the query. Engineers working with ORMs still need raw SQL knowledge because ORMs generate SQL — and when the generated queries perform poorly or produce incorrect results, you need to read and rewrite the underlying SQL. Data pipeline engineers use SQL for ETL transformations, analytics engineers use it for dimensional modeling, and backend engineers use it for CRUD operations, aggregations, and batch processing. Even in systems that primarily use NoSQL stores, SQL often appears in the analytics layer, audit systems, or configuration databases."
+        }
+      ],
+      "wordCount": 162,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "joins-and-set-operations",
+          "heading": "Joins and Set Operations",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- INNER JOIN: returns only matching rows from both tables\nSELECT e.employee_id, e.name, d.department_name, m.name AS manager_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.department_id\nLEFT JOIN employees m ON e.manager_id = m.employee_id\nWHERE d.active = TRUE;\n\n-- Self-join: find employees who earn more than their manager\nSELECT e.name AS employee, e.salary AS emp_salary,\n       m.name AS manager, m.salary AS mgr_salary\nFROM employees e\nINNER JOIN employees m ON e.manager_id = m.employee_id\nWHERE e.salary > m.salary;\n\n-- FULL OUTER JOIN: all rows from both tables, NULLs where no match\nSELECT c.customer_id, c.name, o.order_id, o.total\nFROM customers c\nFULL OUTER JOIN orders o ON c.customer_id = o.customer_id;\n\n-- CROSS JOIN: cartesian product, useful for generating date ranges\nSELECT d.date, p.product_id\nFROM generate_series('2024-01-01'::date, '2024-12-31'::date, '1 day') AS d(date)\nCROSS JOIN products p\nWHERE p.track_daily_inventory = TRUE;\n\n-- UNION removes duplicates; UNION ALL preserves them (faster)\nSELECT customer_id, email FROM active_customers\nUNION ALL\nSELECT customer_id, email FROM churned_customers;\n\n-- EXCEPT: customers who placed orders but never left a review\nSELECT customer_id FROM orders\nEXCEPT\nSELECT customer_id FROM reviews;\n\n-- INTERSECT: customers who both ordered AND reviewed\nSELECT customer_id FROM orders\nINTERSECT\nSELECT customer_id FROM reviews;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "subqueries-ctes-and-window-functions",
+          "heading": "Subqueries, CTEs, and Window Functions",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Correlated subquery: find each department's highest-paid employee\nSELECT e.name, e.salary, e.department_id\nFROM employees e\nWHERE e.salary = (\n    SELECT MAX(e2.salary)\n    FROM employees e2\n    WHERE e2.department_id = e.department_id\n);\n\n-- Equivalent using window function (typically more efficient)\nSELECT name, salary, department_id\nFROM (\n    SELECT name, salary, department_id,\n           RANK() OVER (PARTITION BY department_id ORDER BY salary DESC) AS rnk\n    FROM employees\n) ranked\nWHERE rnk = 1;\n\n-- Recursive CTE: traverse an org chart hierarchy\nWITH RECURSIVE org_tree AS (\n    -- Anchor: start from the CEO (no manager)\n    SELECT employee_id, name, manager_id, 1 AS depth\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    -- Recursive: join children to current level\n    SELECT e.employee_id, e.name, e.manager_id, ot.depth + 1\n    FROM employees e\n    INNER JOIN org_tree ot ON e.manager_id = ot.employee_id\n)\nSELECT * FROM org_tree ORDER BY depth, name;\n\n-- Window functions: running total and moving average\nSELECT order_date,\n       daily_revenue,\n       SUM(daily_revenue) OVER (ORDER BY order_date) AS running_total,\n       AVG(daily_revenue) OVER (\n           ORDER BY order_date\n           ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n       ) AS seven_day_avg\nFROM daily_sales;\n\n-- GROUP BY with HAVING: filter aggregated results\nSELECT department_id, COUNT(*) AS headcount, AVG(salary) AS avg_salary\nFROM employees\nGROUP BY department_id\nHAVING COUNT(*) >= 5 AND AVG(salary) > 75000\nORDER BY avg_salary DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "views-stored-procedures-and-triggers",
+          "heading": "Views, Stored Procedures, and Triggers",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Materialized view: precompute expensive aggregation\nCREATE MATERIALIZED VIEW monthly_revenue AS\nSELECT DATE_TRUNC('month', order_date) AS month,\n       product_category,\n       SUM(total_amount) AS revenue,\n       COUNT(DISTINCT customer_id) AS unique_customers\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nJOIN products p ON oi.product_id = p.product_id\nGROUP BY DATE_TRUNC('month', order_date), product_category;\n\n-- Refresh concurrently (no lock on reads during refresh)\nREFRESH MATERIALIZED VIEW CONCURRENTLY monthly_revenue;\n\n-- Stored procedure with error handling (PostgreSQL syntax)\nCREATE OR REPLACE FUNCTION transfer_funds(\n    p_from_account INT,\n    p_to_account INT,\n    p_amount NUMERIC\n) RETURNS VOID AS $$\nBEGIN\n    IF p_amount <= 0 THEN\n        RAISE EXCEPTION 'Transfer amount must be positive: %', p_amount;\n    END IF;\n\n    UPDATE accounts SET balance = balance - p_amount\n    WHERE account_id = p_from_account AND balance >= p_amount;\n\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'Insufficient funds in account %', p_from_account;\n    END IF;\n\n    UPDATE accounts SET balance = balance + p_amount\n    WHERE account_id = p_to_account;\n\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'Destination account % not found', p_to_account;\n    END IF;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Trigger: audit trail for sensitive table changes\nCREATE OR REPLACE FUNCTION audit_employee_changes()\nRETURNS TRIGGER AS $$\nBEGIN\n    INSERT INTO employee_audit (\n        employee_id, action, old_salary, new_salary, changed_by, changed_at\n    ) VALUES (\n        COALESCE(NEW.employee_id, OLD.employee_id),\n        TG_OP,\n        OLD.salary,\n        NEW.salary,\n        current_user,\n        NOW()\n    );\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER trg_employee_audit\nAFTER UPDATE OF salary ON employees\nFOR EACH ROW\nEXECUTE FUNCTION audit_employee_changes();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Using SELECT * in production queries. Beyond pulling unnecessary data across the network, SELECT * prevents covering index usage, breaks applications when columns are added or reordered, and makes query plans unstable. Always enumerate the columns you need. In high-throughput systems, the difference between selecting 3 columns versus 30 can be a 10x reduction in I/O and network transfer."
+        },
+        {
+          "type": "paragraph",
+          "text": "Ignoring NULL semantics in comparisons and aggregations. WHERE status != 'ACTIVE' does NOT return rows where status is NULL — you need WHERE status != 'ACTIVE' OR status IS NULL. Similarly, COUNT(column) excludes NULLs while COUNT(*) counts all rows. SUM() over an empty set returns NULL, not 0. These semantics cause subtle bugs in reporting queries that go undetected until someone notices missing data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Writing correlated subqueries where joins or window functions suffice. A correlated subquery re-executes for every row in the outer query. While modern optimizers can sometimes decorrelate these into joins, they often cannot — especially with complex predicates. Rewriting as a JOIN or window function gives the optimizer more flexibility and typically reduces execution time by orders of magnitude on large tables."
+        },
+        {
+          "type": "paragraph",
+          "text": "Misunderstanding GROUP BY and HAVING execution order. The logical execution order is FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT. Filtering in WHERE (before grouping) is always more efficient than filtering in HAVING (after grouping) when the predicate doesn't involve an aggregate. Placing a non-aggregate filter in HAVING forces the engine to compute groups that will be discarded."
+        },
+        {
+          "type": "paragraph",
+          "text": "Relying on implicit type conversions in WHERE clauses. When you compare a VARCHAR column to an integer literal, the database may cast every row's value to integer for comparison, preventing index usage. This is especially dangerous in PostgreSQL where WHERE phone_number = 5551234 on a text column triggers a sequential scan. Always match types explicitly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Using OFFSET for pagination on large result sets. OFFSET 100000 LIMIT 20 still scans and discards 100,000 rows before returning 20. For deep pagination, use keyset pagination (WHERE id > last_seen_id ORDER BY id LIMIT 20) which leverages the index directly and maintains constant performance regardless of page depth."
+        }
+      ],
+      "wordCount": 353,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "E-commerce order analytics pipeline. A retail platform processes 2 million orders daily and needs real-time dashboards showing revenue by category, region, and time period. The analytics layer uses materialized views refreshed every 5 minutes with REFRESH MATERIALIZED VIEW CONCURRENTLY, allowing reads during refresh. CTEs decompose complex aggregations into readable stages, and window functions compute period-over-period growth rates without multiple table scans. The query layer uses connection pooling through PgBouncer with 200 server connections serving 2,000 application connections."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-tenant SaaS access control. A B2B platform stores data for 10,000 tenants in a shared database using row-level security. Views abstract the tenant filtering logic so application queries don't need to include WHERE tenant_id = ? in every statement. Stored procedures enforce business rules (like subscription limits) at the database level, preventing bypass through direct SQL access. Triggers maintain audit logs for compliance, recording every data modification with the authenticated user and timestamp."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial reconciliation batch processing. A payment processor reconciles transactions between internal ledgers and external bank feeds nightly. The reconciliation uses FULL OUTER JOINs to identify transactions present in one system but not the other, EXCEPT operations to find unmatched records, and recursive CTEs to trace transaction chains through split payments and refunds. The batch runs within a single transaction with SERIALIZABLE isolation to prevent concurrent modifications during reconciliation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare data warehouse ETL. A hospital system consolidates patient records from 15 source systems into a unified data warehouse. The ETL pipeline uses MERGE (UPSERT) statements to handle both new records and updates in a single pass, window functions to deduplicate records by selecting the most recent version, and self-joins to link related encounters across systems. Stored procedures encapsulate the transformation logic with comprehensive error handling, rolling back individual patient loads without affecting the entire batch."
+        }
+      ],
+      "wordCount": 294,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the logical execution order of a SQL SELECT statement and why it matters."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The logical order is: FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT/OFFSET. This matters because it determines what's visible at each stage. You cannot reference a SELECT alias in WHERE because WHERE executes first. You cannot use window functions in WHERE because they compute after SELECT. HAVING can reference aggregates because it executes after GROUP BY. Understanding this order helps you write correct queries and predict which optimizations are possible — for example, pushing filters from HAVING into WHERE when they don't involve aggregates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between a correlated and non-correlated subquery? When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A non-correlated subquery executes once independently and its result is reused for every row of the outer query — like WHERE id IN (SELECT id FROM other_table WHERE condition). A correlated subquery references columns from the outer query and re-executes for each outer row — like WHERE salary > (SELECT AVG(salary) FROM employees e2 WHERE e2.dept_id = e1.dept_id). Use non-correlated subqueries for existence checks and static lookups. Use correlated subqueries when the inner query depends on the current outer row, but prefer rewriting as a JOIN or window function for performance. The optimizer can sometimes decorrelate subqueries automatically, but explicit joins give it more optimization paths."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose a materialized view over a regular view?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Regular views are query aliases — they execute the underlying query every time and add no performance benefit. Materialized views store computed results physically, trading freshness for speed. Choose materialized views when: the underlying query is expensive (complex joins, aggregations over millions of rows), the data changes infrequently relative to read frequency, and your application can tolerate stale data between refreshes. In PostgreSQL, REFRESH MATERIALIZED VIEW CONCURRENTLY allows reads during refresh but requires a unique index. The trade-off is storage cost, refresh overhead, and staleness. For real-time requirements, consider indexed views (SQL Server) or query result caching at the application layer instead."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between UNION, UNION ALL, INTERSECT, and EXCEPT."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: UNION combines two result sets and removes duplicates (requires a sort or hash). UNION ALL combines without deduplication — always prefer this when duplicates are impossible or acceptable, as it avoids the sort overhead. INTERSECT returns only rows present in both result sets. EXCEPT returns rows from the first set that don't appear in the second. All four require compatible column counts and types. In production, UNION ALL is used 10x more frequently than UNION because most cases involve disjoint sets (like combining data from partitioned tables or different time ranges) where duplicates cannot occur."
+        }
+      ],
+      "wordCount": 454,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use EXPLAIN ANALYZE to validate query plans before deploying new queries. Never deploy a query to production based solely on correctness testing with small datasets. Run EXPLAIN ANALYZE against production-scale data (or a staging replica with production volumes) to verify the optimizer chooses efficient plans. Look for sequential scans on large tables, nested loop joins with high row counts, and sort operations that spill to disk. In PostgreSQL, EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) provides buffer hit ratios that reveal whether your working set fits in shared_buffers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement keyset pagination instead of OFFSET for any user-facing paginated endpoint. OFFSET-based pagination degrades linearly with page depth — page 1000 is 1000x slower than page 1. Keyset pagination uses a WHERE clause on the sort column (WHERE created_at < ? ORDER BY created_at DESC LIMIT 20) and maintains constant performance. This requires a stable sort order and passing the last-seen value between pages. For APIs, encode the cursor as an opaque token (base64-encoded composite key) so clients don't depend on internal column names."
+        },
+        {
+          "type": "paragraph",
+          "text": "Prefer batch operations over row-by-row processing. Instead of inserting 10,000 rows in a loop with individual INSERT statements, use multi-row INSERT (INSERT INTO t VALUES (...), (...), ...), COPY (PostgreSQL), or bulk insert APIs. Row-by-row processing incurs per-statement overhead including parsing, planning, and transaction logging. Batch sizes of 1,000-5,000 rows typically balance throughput against memory usage and lock duration. For updates, use UPDATE FROM (PostgreSQL) or MERGE to update multiple rows in a single statement."
+        }
+      ],
+      "wordCount": 245,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SQL Performance Tuning — Advanced optimization techniques building on these fundamentals, including index strategies and query plan analysis",
+            "Database Design Patterns — Schema modeling approaches that determine how effectively SQL queries can operate on your data",
+            "Transactions and Consistency — How SQL DML operates within transactional boundaries and isolation levels",
+            "PostgreSQL — PostgreSQL-specific extensions to standard SQL including advanced indexing, JSONB, and partitioning"
+          ]
+        }
+      ],
+      "wordCount": 63,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- INNER JOIN: returns only matching rows from both tables\nSELECT e.employee_id, e.name, d.department_name, m.name AS manager_name\nFROM employees e\nINNER JOIN departments d ON e.department_id = d.department_id\nLEFT JOIN employees m ON e.manager_id = m.employee_id\nWHERE d.active = TRUE;\n\n-- Self-join: find employees who earn more than their manager\nSELECT e.name AS employee, e.salary AS emp_salary,\n       m.name AS manager, m.salary AS mgr_salary\nFROM employees e\nINNER JOIN employees m ON e.manager_id = m.employee_id\nWHERE e.salary > m.salary;\n\n-- FULL OUTER JOIN: all rows from both tables, NULLs where no match\nSELECT c.customer_id, c.name, o.order_id, o.total\nFROM customers c\nFULL OUTER JOIN orders o ON c.customer_id = o.customer_id;\n\n-- CROSS JOIN: cartesian product, useful for generating date ranges\nSELECT d.date, p.product_id\nFROM generate_series('2024-01-01'::date, '2024-12-31'::date, '1 day') AS d(date)\nCROSS JOIN products p\nWHERE p.track_daily_inventory = TRUE;\n\n-- UNION removes duplicates; UNION ALL preserves them (faster)\nSELECT customer_id, email FROM active_customers\nUNION ALL\nSELECT customer_id, email FROM churned_customers;\n\n-- EXCEPT: customers who placed orders but never left a review\nSELECT customer_id FROM orders\nEXCEPT\nSELECT customer_id FROM reviews;\n\n-- INTERSECT: customers who both ordered AND reviewed\nSELECT customer_id FROM orders\nINTERSECT\nSELECT customer_id FROM reviews;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Correlated subquery: find each department's highest-paid employee\nSELECT e.name, e.salary, e.department_id\nFROM employees e\nWHERE e.salary = (\n    SELECT MAX(e2.salary)\n    FROM employees e2\n    WHERE e2.department_id = e.department_id\n);\n\n-- Equivalent using window function (typically more efficient)\nSELECT name, salary, department_id\nFROM (\n    SELECT name, salary, department_id,\n           RANK() OVER (PARTITION BY department_id ORDER BY salary DESC) AS rnk\n    FROM employees\n) ranked\nWHERE rnk = 1;\n\n-- Recursive CTE: traverse an org chart hierarchy\nWITH RECURSIVE org_tree AS (\n    -- Anchor: start from the CEO (no manager)\n    SELECT employee_id, name, manager_id, 1 AS depth\n    FROM employees\n    WHERE manager_id IS NULL\n    \n    UNION ALL\n    \n    -- Recursive: join children to current level\n    SELECT e.employee_id, e.name, e.manager_id, ot.depth + 1\n    FROM employees e\n    INNER JOIN org_tree ot ON e.manager_id = ot.employee_id\n)\nSELECT * FROM org_tree ORDER BY depth, name;\n\n-- Window functions: running total and moving average\nSELECT order_date,\n       daily_revenue,\n       SUM(daily_revenue) OVER (ORDER BY order_date) AS running_total,\n       AVG(daily_revenue) OVER (\n           ORDER BY order_date\n           ROWS BETWEEN 6 PRECEDING AND CURRENT ROW\n       ) AS seven_day_avg\nFROM daily_sales;\n\n-- GROUP BY with HAVING: filter aggregated results\nSELECT department_id, COUNT(*) AS headcount, AVG(salary) AS avg_salary\nFROM employees\nGROUP BY department_id\nHAVING COUNT(*) >= 5 AND AVG(salary) > 75000\nORDER BY avg_salary DESC;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Materialized view: precompute expensive aggregation\nCREATE MATERIALIZED VIEW monthly_revenue AS\nSELECT DATE_TRUNC('month', order_date) AS month,\n       product_category,\n       SUM(total_amount) AS revenue,\n       COUNT(DISTINCT customer_id) AS unique_customers\nFROM orders o\nJOIN order_items oi ON o.order_id = oi.order_id\nJOIN products p ON oi.product_id = p.product_id\nGROUP BY DATE_TRUNC('month', order_date), product_category;\n\n-- Refresh concurrently (no lock on reads during refresh)\nREFRESH MATERIALIZED VIEW CONCURRENTLY monthly_revenue;\n\n-- Stored procedure with error handling (PostgreSQL syntax)\nCREATE OR REPLACE FUNCTION transfer_funds(\n    p_from_account INT,\n    p_to_account INT,\n    p_amount NUMERIC\n) RETURNS VOID AS $$\nBEGIN\n    IF p_amount <= 0 THEN\n        RAISE EXCEPTION 'Transfer amount must be positive: %', p_amount;\n    END IF;\n\n    UPDATE accounts SET balance = balance - p_amount\n    WHERE account_id = p_from_account AND balance >= p_amount;\n\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'Insufficient funds in account %', p_from_account;\n    END IF;\n\n    UPDATE accounts SET balance = balance + p_amount\n    WHERE account_id = p_to_account;\n\n    IF NOT FOUND THEN\n        RAISE EXCEPTION 'Destination account % not found', p_to_account;\n    END IF;\nEND;\n$$ LANGUAGE plpgsql;\n\n-- Trigger: audit trail for sensitive table changes\nCREATE OR REPLACE FUNCTION audit_employee_changes()\nRETURNS TRIGGER AS $$\nBEGIN\n    INSERT INTO employee_audit (\n        employee_id, action, old_salary, new_salary, changed_by, changed_at\n    ) VALUES (\n        COALESCE(NEW.employee_id, OLD.employee_id),\n        TG_OP,\n        OLD.salary,\n        NEW.salary,\n        current_user,\n        NOW()\n    );\n    RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql;\n\nCREATE TRIGGER trg_employee_audit\nAFTER UPDATE OF salary ON employees\nFOR EACH ROW\nEXECUTE FUNCTION audit_employee_changes();",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/databases/sql-fundamentals.md",
+    "wordCount": 1902,
+    "sectionCount": 12
+  }
+}

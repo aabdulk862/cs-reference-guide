@@ -14,3 +14,8 @@ This guide covers the foundational concepts that underpin all large-scale system
 4. [Load Balancing](./load-balancing.md) — Traffic distribution algorithms, health checking, and high availability
 5. [Caching](./caching.md) — Cache hierarchies, invalidation strategies, and distributed cache patterns
 6. [Database Sharding](./database-sharding.md) — Data partitioning strategies, shard key selection, and operational concerns
+7. [Rate Limiting](./rate-limiting.md) — Token bucket, leaky bucket, sliding window algorithms, and distributed rate limiting patterns
+8. [API Design](./api-design.md) — REST principles, versioning strategies, pagination, error handling, and GraphQL vs REST tradeoffs
+9. [Event-Driven Architecture](./event-driven-architecture.md) — Event sourcing, CQRS, saga pattern, choreography vs orchestration, and exactly-once delivery
+10. [Common Interview Problems](./common-interview-problems.md) — URL shortener, chat system, notification service, news feed, and distributed cache design
+11. [Design Patterns](./design-patterns.md) — GoF patterns, architectural patterns, and their application in distributed systems

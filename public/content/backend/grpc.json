@@ -1,0 +1,264 @@
+{
+  "id": "api-design-grpc",
+  "slug": "grpc",
+  "title": "gRPC",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "gRPC uses Protocol Buffers (protobuf) for serialization — 3-10x smaller and 20-100x faster than JSON",
+            "Four communication patterns: unary (request-response), server streaming, client streaming, bidirectional streaming",
+            "HTTP/2 transport enables multiplexing (multiple RPCs on one connection), header compression, and flow control",
+            "Service definitions in .proto files generate strongly-typed client/server code for 10+ languages",
+            "Deadlines propagate across service boundaries — if a client sets a 5s deadline, downstream services see remaining time",
+            "gRPC status codes (16 total): OK, CANCELLED, DEADLINE_EXCEEDED, NOT_FOUND, ALREADY_EXISTS, PERMISSION_DENIED, RESOURCE_EXHAUSTED, UNIMPLEMENTED, INTERNAL, UNAVAILABLE",
+            "Interceptors (middleware) handle cross-cutting concerns: auth, logging, metrics, retry, rate limiting",
+            "gRPC-Web enables browser clients via a proxy (Envoy) since browsers cannot use HTTP/2 trailers directly"
+          ]
+        }
+      ],
+      "wordCount": 111,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "gRPC excels in internal microservice communication where performance, type safety, and streaming capabilities matter more than human readability. Choose gRPC when services are polyglot (Java, Go, Python, C++ teams sharing contracts via proto files), when you need bidirectional streaming (real-time feeds, chat, telemetry), when payload size and serialization speed are critical (high-throughput data pipelines processing millions of messages/second), or when you want compile-time contract enforcement that catches breaking changes before deployment. gRPC is less suitable for public-facing APIs consumed by web browsers (limited browser support without gRPC-Web proxy), when human-readable payloads aid debugging (REST with JSON is easier to inspect with curl), when you need HTTP caching at CDN/proxy layers (gRPC uses POST for everything), or for simple CRUD APIs where REST's simplicity outweighs gRPC's performance benefits. The operational overhead of managing proto file distribution, code generation pipelines, and load balancer compatibility (not all L7 load balancers support HTTP/2 gRPC) should factor into the decision."
+        }
+      ],
+      "wordCount": 155,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "protocol-buffer-service-definition",
+          "heading": "Protocol Buffer Service Definition",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "protobuf",
+              "code": "syntax = \"proto3\";\n\npackage ecommerce.orders.v1;\n\noption java_package = \"com.example.ecommerce.orders.v1\";\noption java_multiple_files = true;\noption go_package = \"github.com/example/ecommerce/orders/v1;ordersv1\";\n\nimport \"google/protobuf/timestamp.proto\";\nimport \"google/protobuf/field_mask.proto\";\n\n// Order service with all four RPC patterns\nservice OrderService {\n  // Unary: create a single order\n  rpc CreateOrder(CreateOrderRequest) returns (Order);\n\n  // Unary: get order by ID\n  rpc GetOrder(GetOrderRequest) returns (Order);\n\n  // Server streaming: watch order status changes in real-time\n  rpc WatchOrderStatus(WatchOrderStatusRequest) returns (stream OrderStatusEvent);\n\n  // Client streaming: batch upload order items\n  rpc BatchAddItems(stream AddItemRequest) returns (BatchAddItemsResponse);\n\n  // Bidirectional streaming: real-time order negotiation\n  rpc NegotiateOrder(stream NegotiationMessage) returns (stream NegotiationMessage);\n}\n\nmessage Order {\n  string order_id = 1;\n  string customer_id = 2;\n  repeated OrderItem items = 3;\n  OrderStatus status = 4;\n  Money total = 5;\n  google.protobuf.Timestamp created_at = 6;\n  google.protobuf.Timestamp updated_at = 7;\n  map<string, string> metadata = 8;\n}\n\nmessage OrderItem {\n  string sku = 1;\n  string name = 2;\n  int32 quantity = 3;\n  Money unit_price = 4;\n}\n\nmessage Money {\n  string currency_code = 1;  // ISO 4217\n  int64 units = 2;           // Whole units (e.g., dollars)\n  int32 nanos = 3;           // Nano units (10^-9)\n}\n\nenum OrderStatus {\n  ORDER_STATUS_UNSPECIFIED = 0;\n  ORDER_STATUS_PENDING = 1;\n  ORDER_STATUS_CONFIRMED = 2;\n  ORDER_STATUS_SHIPPED = 3;\n  ORDER_STATUS_DELIVERED = 4;\n  ORDER_STATUS_CANCELLED = 5;\n}\n\nmessage CreateOrderRequest {\n  string customer_id = 1;\n  repeated OrderItem items = 2;\n  map<string, string> metadata = 3;\n  string idempotency_key = 4;  // Client-generated for safe retries\n}\n\nmessage GetOrderRequest {\n  string order_id = 1;\n  google.protobuf.FieldMask field_mask = 2;  // Partial response\n}\n\nmessage WatchOrderStatusRequest {\n  string order_id = 1;\n}\n\nmessage OrderStatusEvent {\n  string order_id = 1;\n  OrderStatus previous_status = 2;\n  OrderStatus new_status = 3;\n  google.protobuf.Timestamp timestamp = 4;\n  string reason = 5;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "go-grpc-server-with-interceptors",
+          "heading": "Go gRPC Server with Interceptors",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "go",
+              "code": "package main\n\nimport (\n    \"context\"\n    \"log\"\n    \"net\"\n    \"time\"\n\n    \"google.golang.org/grpc\"\n    \"google.golang.org/grpc/codes\"\n    \"google.golang.org/grpc/metadata\"\n    \"google.golang.org/grpc/status\"\n    \"google.golang.org/grpc/keepalive\"\n\n    pb \"github.com/example/ecommerce/orders/v1\"\n)\n\ntype orderServer struct {\n    pb.UnimplementedOrderServiceServer\n    store OrderStore\n}\n\nfunc (s *orderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.Order, error) {\n    // Check deadline propagation\n    if deadline, ok := ctx.Deadline(); ok {\n        remaining := time.Until(deadline)\n        if remaining < 100*time.Millisecond {\n            return nil, status.Error(codes.DeadlineExceeded, \"insufficient time remaining\")\n        }\n    }\n\n    // Idempotency check\n    if req.IdempotencyKey != \"\" {\n        if existing, err := s.store.GetByIdempotencyKey(ctx, req.IdempotencyKey); err == nil {\n            return existing, nil\n        }\n    }\n\n    order, err := s.store.Create(ctx, req)\n    if err != nil {\n        return nil, status.Errorf(codes.Internal, \"failed to create order: %v\", err)\n    }\n\n    // Set response metadata\n    header := metadata.Pairs(\"x-request-id\", extractRequestID(ctx))\n    grpc.SetHeader(ctx, header)\n\n    return order, nil\n}\n\nfunc (s *orderServer) WatchOrderStatus(req *pb.WatchOrderStatusRequest, stream pb.OrderService_WatchOrderStatusServer) error {\n    ctx := stream.Context()\n    events := s.store.Subscribe(req.OrderId)\n    defer s.store.Unsubscribe(req.OrderId, events)\n\n    for {\n        select {\n        case <-ctx.Done():\n            return status.Error(codes.Cancelled, \"client disconnected\")\n        case event, ok := <-events:\n            if !ok {\n                return nil // Channel closed, order finalized\n            }\n            if err := stream.Send(event); err != nil {\n                return status.Errorf(codes.Internal, \"failed to send event: %v\", err)\n            }\n        }\n    }\n}\n\n// Unary interceptor for logging and metrics\nfunc loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {\n    start := time.Now()\n    resp, err := handler(ctx, req)\n    duration := time.Since(start)\n\n    code := codes.OK\n    if err != nil {\n        code = status.Code(err)\n    }\n\n    log.Printf(\"method=%s duration=%v code=%s\", info.FullMethod, duration, code)\n    recordMetrics(info.FullMethod, code, duration)\n\n    return resp, err\n}\n\n// Auth interceptor\nfunc authInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {\n    md, ok := metadata.FromIncomingContext(ctx)\n    if !ok {\n        return nil, status.Error(codes.Unauthenticated, \"missing metadata\")\n    }\n\n    tokens := md.Get(\"authorization\")\n    if len(tokens) == 0 {\n        return nil, status.Error(codes.Unauthenticated, \"missing authorization token\")\n    }\n\n    claims, err := validateToken(tokens[0])\n    if err != nil {\n        return nil, status.Errorf(codes.Unauthenticated, \"invalid token: %v\", err)\n    }\n\n    // Inject claims into context for downstream use\n    ctx = context.WithValue(ctx, claimsKey{}, claims)\n    return handler(ctx, req)\n}\n\nfunc main() {\n    lis, err := net.Listen(\"tcp\", \":50051\")\n    if err != nil {\n        log.Fatalf(\"failed to listen: %v\", err)\n    }\n\n    server := grpc.NewServer(\n        grpc.ChainUnaryInterceptor(\n            loggingInterceptor,\n            authInterceptor,\n        ),\n        grpc.KeepaliveParams(keepalive.ServerParameters{\n            MaxConnectionIdle: 5 * time.Minute,\n            Time:             1 * time.Minute,\n            Timeout:          20 * time.Second,\n        }),\n        grpc.MaxRecvMsgSize(4 * 1024 * 1024), // 4MB max message\n    )\n\n    pb.RegisterOrderServiceServer(server, &orderServer{store: NewOrderStore()})\n\n    log.Printf(\"gRPC server listening on :50051\")\n    if err := server.Serve(lis); err != nil {\n        log.Fatalf(\"failed to serve: %v\", err)\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "java-grpc-client-with-retry-and-load-balancing",
+          "heading": "Java gRPC Client with Retry and Load Balancing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import io.grpc.*;\nimport io.grpc.stub.StreamObserver;\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.CountDownLatch;\n\npublic class OrderClient {\n\n    private final OrderServiceGrpc.OrderServiceBlockingStub blockingStub;\n    private final OrderServiceGrpc.OrderServiceStub asyncStub;\n    private final ManagedChannel channel;\n\n    public OrderClient(String target) {\n        // Client-side load balancing with round-robin\n        this.channel = ManagedChannelBuilder.forTarget(target)\n            .defaultLoadBalancingPolicy(\"round_robin\")\n            .enableRetry()\n            .maxRetryAttempts(3)\n            .keepAliveTime(30, TimeUnit.SECONDS)\n            .keepAliveTimeout(10, TimeUnit.SECONDS)\n            .build();\n\n        this.blockingStub = OrderServiceGrpc.newBlockingStub(channel)\n            .withDeadlineAfter(5, TimeUnit.SECONDS)\n            .withCompression(\"gzip\");\n\n        this.asyncStub = OrderServiceGrpc.newStub(channel);\n    }\n\n    public Order createOrder(CreateOrderRequest request) {\n        try {\n            return blockingStub\n                .withDeadlineAfter(3, TimeUnit.SECONDS)\n                .createOrder(request);\n        } catch (StatusRuntimeException e) {\n            switch (e.getStatus().getCode()) {\n                case DEADLINE_EXCEEDED:\n                    throw new ServiceTimeoutException(\"Order creation timed out\", e);\n                case ALREADY_EXISTS:\n                    // Idempotent retry hit existing order\n                    return getOrder(request.getIdempotencyKey());\n                case UNAVAILABLE:\n                    throw new ServiceUnavailableException(\"Order service unavailable\", e);\n                default:\n                    throw new ServiceException(\"Order creation failed: \" + e.getStatus(), e);\n            }\n        }\n    }\n\n    public void watchOrderStatus(String orderId, OrderStatusListener listener) {\n        WatchOrderStatusRequest request = WatchOrderStatusRequest.newBuilder()\n            .setOrderId(orderId)\n            .build();\n\n        asyncStub.watchOrderStatus(request, new StreamObserver<OrderStatusEvent>() {\n            @Override\n            public void onNext(OrderStatusEvent event) {\n                listener.onStatusChange(event);\n            }\n\n            @Override\n            public void onError(Throwable t) {\n                Status status = Status.fromThrowable(t);\n                if (status.getCode() == Status.Code.UNAVAILABLE) {\n                    // Reconnect with exponential backoff\n                    scheduleReconnect(orderId, listener);\n                } else {\n                    listener.onError(t);\n                }\n            }\n\n            @Override\n            public void onCompleted() {\n                listener.onComplete();\n            }\n        });\n    }\n\n    // Bidirectional streaming example\n    public void negotiateOrder(List<NegotiationMessage> proposals) throws InterruptedException {\n        CountDownLatch finishLatch = new CountDownLatch(1);\n\n        StreamObserver<NegotiationMessage> requestObserver = asyncStub.negotiateOrder(\n            new StreamObserver<NegotiationMessage>() {\n                @Override\n                public void onNext(NegotiationMessage response) {\n                    System.out.println(\"Server response: \" + response.getMessage());\n                }\n\n                @Override\n                public void onError(Throwable t) {\n                    finishLatch.countDown();\n                }\n\n                @Override\n                public void onCompleted() {\n                    finishLatch.countDown();\n                }\n            });\n\n        for (NegotiationMessage proposal : proposals) {\n            requestObserver.onNext(proposal);\n            Thread.sleep(500); // Simulate thinking time\n        }\n        requestObserver.onCompleted();\n\n        finishLatch.await(30, TimeUnit.SECONDS);\n    }\n\n    public void shutdown() throws InterruptedException {\n        channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "grpc-load-balancing-configuration",
+          "heading": "gRPC Load Balancing Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Kubernetes service for gRPC with headless service (client-side LB)\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  annotations:\n    # For gRPC, use headless service so clients see individual pod IPs\n    service.alpha.kubernetes.io/tolerate-unready-endpoints: \"true\"\nspec:\n  clusterIP: None  # Headless - DNS returns all pod IPs\n  ports:\n    - port: 50051\n      targetPort: 50051\n      protocol: TCP\n      name: grpc\n  selector:\n    app: order-service\n---\n# Envoy sidecar config for gRPC load balancing\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: envoy-config\ndata:\n  envoy.yaml: |\n    static_resources:\n      listeners:\n        - name: grpc_listener\n          address:\n            socket_address:\n              address: 0.0.0.0\n              port_value: 8080\n          filter_chains:\n            - filters:\n                - name: envoy.filters.network.http_connection_manager\n                  typed_config:\n                    \"@type\": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager\n                    codec_type: AUTO\n                    stat_prefix: ingress_http\n                    route_config:\n                      name: local_route\n                      virtual_hosts:\n                        - name: grpc_service\n                          domains: [\"*\"]\n                          routes:\n                            - match:\n                                prefix: \"/\"\n                                grpc: {}\n                              route:\n                                cluster: order_service\n                                timeout: 5s\n                                retry_policy:\n                                  retry_on: \"unavailable,resource-exhausted\"\n                                  num_retries: 3\n                                  per_try_timeout: 2s\n                    http_filters:\n                      - name: envoy.filters.http.router\n      clusters:\n        - name: order_service\n          type: STRICT_DNS\n          lb_policy: ROUND_ROBIN\n          typed_extension_protocol_options:\n            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:\n              \"@type\": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions\n              explicit_http_config:\n                http2_protocol_options: {}\n          load_assignment:\n            cluster_name: order_service\n            endpoints:\n              - lb_endpoints:\n                  - endpoint:\n                      address:\n                        socket_address:\n                          address: order-service.default.svc.cluster.local\n                          port_value: 50051\n          health_checks:\n            - timeout: 1s\n              interval: 5s\n              unhealthy_threshold: 3\n              healthy_threshold: 2\n              grpc_health_check: {}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Not setting deadlines on every RPC call: Without deadlines, a slow downstream service causes requests to hang indefinitely, consuming resources and eventually cascading failures. Always set deadlines on client calls and check remaining deadline in servers before starting expensive operations",
+            "Large messages without streaming: gRPC has a default 4MB message size limit. Sending large payloads (file uploads, bulk data) as single messages fails silently or requires increasing limits globally. Use client streaming for large uploads and server streaming for large responses",
+            "Breaking proto compatibility: Removing fields, changing field numbers, or changing field types in proto files breaks existing clients. Follow proto3 evolution rules: add new fields with new numbers, deprecate (don't remove) old fields, never reuse field numbers",
+            "Ignoring gRPC health checking: Kubernetes liveness/readiness probes default to HTTP, but gRPC services need the gRPC Health Checking Protocol. Without it, load balancers route traffic to unhealthy instances. Implement grpc.health.v1.Health service on every gRPC server",
+            "Connection management in long-lived clients: gRPC uses persistent HTTP/2 connections. If the server restarts or a load balancer drains connections, clients may hold stale connections. Configure keepalive parameters and implement connection backoff/retry logic",
+            "Not using interceptors for cross-cutting concerns: Implementing auth, logging, and metrics inside each RPC handler leads to code duplication and inconsistency. Use interceptor chains (equivalent to HTTP middleware) for concerns that apply to all or most RPCs"
+          ]
+        }
+      ],
+      "wordCount": 223,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Google's Internal Services: gRPC originated at Google where it handles billions of RPCs per second across their infrastructure. Services like Spanner, Bigtable, and Pub/Sub expose gRPC APIs. The proto-first development workflow means teams define contracts before implementation, enabling parallel development across hundreds of teams speaking different languages."
+        },
+        {
+          "type": "paragraph",
+          "text": "Netflix Microservices: Netflix uses gRPC for inter-service communication where latency and throughput matter — recommendation engine calls, real-time personalization, and streaming metadata services. The binary protocol reduces payload sizes by 70% compared to their previous REST/JSON approach, directly reducing infrastructure costs at their scale (hundreds of millions of requests per second)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial Trading Systems: A trading platform uses bidirectional gRPC streaming for real-time market data feeds. Clients subscribe to price updates for specific instruments and receive sub-millisecond updates. The server-side streaming pattern pushes thousands of price ticks per second to each connected client, with flow control preventing slow consumers from causing backpressure on the feed."
+        }
+      ],
+      "wordCount": 152,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare gRPC and REST. When would you choose each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose REST for public APIs (browser compatibility, curl-friendly, CDN caching), simple CRUD operations, and when human readability of payloads aids debugging. Choose gRPC for internal microservice communication (type safety, performance), streaming use cases (real-time feeds, file transfers), polyglot environments (proto generates clients for all languages from one definition), and when you need strict contract enforcement with backward compatibility rules. Performance comparison: gRPC is typically 5-10x faster for serialization/deserialization and produces 3-10x smaller payloads than JSON. However, gRPC's operational complexity (proto management, code generation pipelines, HTTP/2 load balancer requirements) means the performance benefit must justify the overhead. Many organizations use REST at the edge (public APIs, BFF layer) and gRPC internally between services."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does gRPC handle failure scenarios and what retry strategies are appropriate?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: gRPC provides rich error handling through status codes and error details. Retryable codes: UNAVAILABLE (transient network issue), RESOURCE_EXHAUSTED (rate limited, retry with backoff), ABORTED (transaction conflict, retry immediately). Non-retryable: INVALID_ARGUMENT, NOT_FOUND, PERMISSION_DENIED, UNIMPLEMENTED. gRPC supports built-in retry policies configured in service config JSON — specifying max attempts, initial backoff, max backoff, backoff multiplier, and retryable status codes. For hedged requests (sending parallel RPCs and using the first response), configure hedging policy for latency-sensitive idempotent calls. Critical: only retry idempotent operations automatically. For non-idempotent RPCs (CreateOrder), use idempotency keys and let the client decide whether to retry. Deadline propagation ensures retries don't outlive the original deadline — if 4 of 5 seconds have elapsed, don't start a retry that will timeout immediately."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain gRPC streaming patterns and their use cases."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Server streaming: server sends multiple responses to a single client request. Use for real-time feeds (stock prices, notifications), large result sets (database query results streamed in chunks), and long-running operations (progress updates). Client streaming: client sends multiple messages, server responds once. Use for file uploads (chunked transfer), telemetry/metrics collection (batch of measurements), and aggregation (client sends data points, server returns summary). Bidirectional streaming: both sides send messages independently. Use for chat applications, collaborative editing, real-time gaming, and interactive protocols where both sides need to send data at arbitrary times. Implementation consideration: streaming RPCs hold connections open, consuming server resources. Implement timeouts, maximum message counts, and flow control. Monitor stream duration and terminate long-lived streams that may indicate leaked connections."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle proto file versioning and backward compatibility across teams?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a centralized proto registry (Buf Schema Registry, or a Git monorepo with CI validation). Enforce backward compatibility rules in CI: never remove or rename fields (deprecate instead), never change field numbers or types, never change the type of a repeated field. Use reserved keyword to prevent reuse of deleted field numbers. Version packages semantically (orders.v1, orders.v2) for breaking changes, maintaining both versions during migration. Generate client libraries in CI and publish to language-specific package registries (Maven, npm, PyPI). Use Buf's breaking change detection (buf breaking) in PR checks to catch incompatible changes before merge. For gradual migrations, servers should accept both v1 and v2 messages during the transition period using proto oneof or separate service definitions."
+        }
+      ],
+      "wordCount": 518,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement the gRPC Health Checking Protocol on every service and configure Kubernetes probes to use grpc_health_probe binary. This ensures load balancers and orchestrators accurately detect unhealthy instances. Return NOT_SERVING during graceful shutdown to drain connections before termination",
+            "Use connection pooling with subchannel management: A single gRPC channel multiplexes RPCs over one HTTP/2 connection, but a single connection to a single server doesn't distribute load. Use DNS-based service discovery with multiple addresses, or configure dns:///service-name with round-robin policy to spread RPCs across multiple backends",
+            "Enable gzip compression for large payloads: gRPC supports per-call compression. Enable it for RPCs with payloads over 1KB — protobuf is already compact, but gzip adds 50-70% reduction for repetitive data structures. Set compression at the call level rather than globally to avoid overhead on small messages",
+            "Monitor with gRPC-specific metrics: Track request rate, error rate, and latency percentiles per method (not just per service). Monitor stream duration for streaming RPCs, message count per stream, and connection count per client. Alert on DEADLINE_EXCEEDED spikes which indicate downstream latency issues"
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "REST API Design — Comparison point and alternative for HTTP-based APIs",
+            "GraphQL — Another API paradigm solving different problems than gRPC",
+            "Messaging Patterns — Async communication patterns complementing synchronous gRPC",
+            "Spring Microservices — Microservice patterns where gRPC fits as the transport layer"
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "protobuf",
+      "code": "syntax = \"proto3\";\n\npackage ecommerce.orders.v1;\n\noption java_package = \"com.example.ecommerce.orders.v1\";\noption java_multiple_files = true;\noption go_package = \"github.com/example/ecommerce/orders/v1;ordersv1\";\n\nimport \"google/protobuf/timestamp.proto\";\nimport \"google/protobuf/field_mask.proto\";\n\n// Order service with all four RPC patterns\nservice OrderService {\n  // Unary: create a single order\n  rpc CreateOrder(CreateOrderRequest) returns (Order);\n\n  // Unary: get order by ID\n  rpc GetOrder(GetOrderRequest) returns (Order);\n\n  // Server streaming: watch order status changes in real-time\n  rpc WatchOrderStatus(WatchOrderStatusRequest) returns (stream OrderStatusEvent);\n\n  // Client streaming: batch upload order items\n  rpc BatchAddItems(stream AddItemRequest) returns (BatchAddItemsResponse);\n\n  // Bidirectional streaming: real-time order negotiation\n  rpc NegotiateOrder(stream NegotiationMessage) returns (stream NegotiationMessage);\n}\n\nmessage Order {\n  string order_id = 1;\n  string customer_id = 2;\n  repeated OrderItem items = 3;\n  OrderStatus status = 4;\n  Money total = 5;\n  google.protobuf.Timestamp created_at = 6;\n  google.protobuf.Timestamp updated_at = 7;\n  map<string, string> metadata = 8;\n}\n\nmessage OrderItem {\n  string sku = 1;\n  string name = 2;\n  int32 quantity = 3;\n  Money unit_price = 4;\n}\n\nmessage Money {\n  string currency_code = 1;  // ISO 4217\n  int64 units = 2;           // Whole units (e.g., dollars)\n  int32 nanos = 3;           // Nano units (10^-9)\n}\n\nenum OrderStatus {\n  ORDER_STATUS_UNSPECIFIED = 0;\n  ORDER_STATUS_PENDING = 1;\n  ORDER_STATUS_CONFIRMED = 2;\n  ORDER_STATUS_SHIPPED = 3;\n  ORDER_STATUS_DELIVERED = 4;\n  ORDER_STATUS_CANCELLED = 5;\n}\n\nmessage CreateOrderRequest {\n  string customer_id = 1;\n  repeated OrderItem items = 2;\n  map<string, string> metadata = 3;\n  string idempotency_key = 4;  // Client-generated for safe retries\n}\n\nmessage GetOrderRequest {\n  string order_id = 1;\n  google.protobuf.FieldMask field_mask = 2;  // Partial response\n}\n\nmessage WatchOrderStatusRequest {\n  string order_id = 1;\n}\n\nmessage OrderStatusEvent {\n  string order_id = 1;\n  OrderStatus previous_status = 2;\n  OrderStatus new_status = 3;\n  google.protobuf.Timestamp timestamp = 4;\n  string reason = 5;\n}",
+      "runnable": false
+    },
+    {
+      "language": "go",
+      "code": "package main\n\nimport (\n    \"context\"\n    \"log\"\n    \"net\"\n    \"time\"\n\n    \"google.golang.org/grpc\"\n    \"google.golang.org/grpc/codes\"\n    \"google.golang.org/grpc/metadata\"\n    \"google.golang.org/grpc/status\"\n    \"google.golang.org/grpc/keepalive\"\n\n    pb \"github.com/example/ecommerce/orders/v1\"\n)\n\ntype orderServer struct {\n    pb.UnimplementedOrderServiceServer\n    store OrderStore\n}\n\nfunc (s *orderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.Order, error) {\n    // Check deadline propagation\n    if deadline, ok := ctx.Deadline(); ok {\n        remaining := time.Until(deadline)\n        if remaining < 100*time.Millisecond {\n            return nil, status.Error(codes.DeadlineExceeded, \"insufficient time remaining\")\n        }\n    }\n\n    // Idempotency check\n    if req.IdempotencyKey != \"\" {\n        if existing, err := s.store.GetByIdempotencyKey(ctx, req.IdempotencyKey); err == nil {\n            return existing, nil\n        }\n    }\n\n    order, err := s.store.Create(ctx, req)\n    if err != nil {\n        return nil, status.Errorf(codes.Internal, \"failed to create order: %v\", err)\n    }\n\n    // Set response metadata\n    header := metadata.Pairs(\"x-request-id\", extractRequestID(ctx))\n    grpc.SetHeader(ctx, header)\n\n    return order, nil\n}\n\nfunc (s *orderServer) WatchOrderStatus(req *pb.WatchOrderStatusRequest, stream pb.OrderService_WatchOrderStatusServer) error {\n    ctx := stream.Context()\n    events := s.store.Subscribe(req.OrderId)\n    defer s.store.Unsubscribe(req.OrderId, events)\n\n    for {\n        select {\n        case <-ctx.Done():\n            return status.Error(codes.Cancelled, \"client disconnected\")\n        case event, ok := <-events:\n            if !ok {\n                return nil // Channel closed, order finalized\n            }\n            if err := stream.Send(event); err != nil {\n                return status.Errorf(codes.Internal, \"failed to send event: %v\", err)\n            }\n        }\n    }\n}\n\n// Unary interceptor for logging and metrics\nfunc loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {\n    start := time.Now()\n    resp, err := handler(ctx, req)\n    duration := time.Since(start)\n\n    code := codes.OK\n    if err != nil {\n        code = status.Code(err)\n    }\n\n    log.Printf(\"method=%s duration=%v code=%s\", info.FullMethod, duration, code)\n    recordMetrics(info.FullMethod, code, duration)\n\n    return resp, err\n}\n\n// Auth interceptor\nfunc authInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {\n    md, ok := metadata.FromIncomingContext(ctx)\n    if !ok {\n        return nil, status.Error(codes.Unauthenticated, \"missing metadata\")\n    }\n\n    tokens := md.Get(\"authorization\")\n    if len(tokens) == 0 {\n        return nil, status.Error(codes.Unauthenticated, \"missing authorization token\")\n    }\n\n    claims, err := validateToken(tokens[0])\n    if err != nil {\n        return nil, status.Errorf(codes.Unauthenticated, \"invalid token: %v\", err)\n    }\n\n    // Inject claims into context for downstream use\n    ctx = context.WithValue(ctx, claimsKey{}, claims)\n    return handler(ctx, req)\n}\n\nfunc main() {\n    lis, err := net.Listen(\"tcp\", \":50051\")\n    if err != nil {\n        log.Fatalf(\"failed to listen: %v\", err)\n    }\n\n    server := grpc.NewServer(\n        grpc.ChainUnaryInterceptor(\n            loggingInterceptor,\n            authInterceptor,\n        ),\n        grpc.KeepaliveParams(keepalive.ServerParameters{\n            MaxConnectionIdle: 5 * time.Minute,\n            Time:             1 * time.Minute,\n            Timeout:          20 * time.Second,\n        }),\n        grpc.MaxRecvMsgSize(4 * 1024 * 1024), // 4MB max message\n    )\n\n    pb.RegisterOrderServiceServer(server, &orderServer{store: NewOrderStore()})\n\n    log.Printf(\"gRPC server listening on :50051\")\n    if err := server.Serve(lis); err != nil {\n        log.Fatalf(\"failed to serve: %v\", err)\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import io.grpc.*;\nimport io.grpc.stub.StreamObserver;\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.CountDownLatch;\n\npublic class OrderClient {\n\n    private final OrderServiceGrpc.OrderServiceBlockingStub blockingStub;\n    private final OrderServiceGrpc.OrderServiceStub asyncStub;\n    private final ManagedChannel channel;\n\n    public OrderClient(String target) {\n        // Client-side load balancing with round-robin\n        this.channel = ManagedChannelBuilder.forTarget(target)\n            .defaultLoadBalancingPolicy(\"round_robin\")\n            .enableRetry()\n            .maxRetryAttempts(3)\n            .keepAliveTime(30, TimeUnit.SECONDS)\n            .keepAliveTimeout(10, TimeUnit.SECONDS)\n            .build();\n\n        this.blockingStub = OrderServiceGrpc.newBlockingStub(channel)\n            .withDeadlineAfter(5, TimeUnit.SECONDS)\n            .withCompression(\"gzip\");\n\n        this.asyncStub = OrderServiceGrpc.newStub(channel);\n    }\n\n    public Order createOrder(CreateOrderRequest request) {\n        try {\n            return blockingStub\n                .withDeadlineAfter(3, TimeUnit.SECONDS)\n                .createOrder(request);\n        } catch (StatusRuntimeException e) {\n            switch (e.getStatus().getCode()) {\n                case DEADLINE_EXCEEDED:\n                    throw new ServiceTimeoutException(\"Order creation timed out\", e);\n                case ALREADY_EXISTS:\n                    // Idempotent retry hit existing order\n                    return getOrder(request.getIdempotencyKey());\n                case UNAVAILABLE:\n                    throw new ServiceUnavailableException(\"Order service unavailable\", e);\n                default:\n                    throw new ServiceException(\"Order creation failed: \" + e.getStatus(), e);\n            }\n        }\n    }\n\n    public void watchOrderStatus(String orderId, OrderStatusListener listener) {\n        WatchOrderStatusRequest request = WatchOrderStatusRequest.newBuilder()\n            .setOrderId(orderId)\n            .build();\n\n        asyncStub.watchOrderStatus(request, new StreamObserver<OrderStatusEvent>() {\n            @Override\n            public void onNext(OrderStatusEvent event) {\n                listener.onStatusChange(event);\n            }\n\n            @Override\n            public void onError(Throwable t) {\n                Status status = Status.fromThrowable(t);\n                if (status.getCode() == Status.Code.UNAVAILABLE) {\n                    // Reconnect with exponential backoff\n                    scheduleReconnect(orderId, listener);\n                } else {\n                    listener.onError(t);\n                }\n            }\n\n            @Override\n            public void onCompleted() {\n                listener.onComplete();\n            }\n        });\n    }\n\n    // Bidirectional streaming example\n    public void negotiateOrder(List<NegotiationMessage> proposals) throws InterruptedException {\n        CountDownLatch finishLatch = new CountDownLatch(1);\n\n        StreamObserver<NegotiationMessage> requestObserver = asyncStub.negotiateOrder(\n            new StreamObserver<NegotiationMessage>() {\n                @Override\n                public void onNext(NegotiationMessage response) {\n                    System.out.println(\"Server response: \" + response.getMessage());\n                }\n\n                @Override\n                public void onError(Throwable t) {\n                    finishLatch.countDown();\n                }\n\n                @Override\n                public void onCompleted() {\n                    finishLatch.countDown();\n                }\n            });\n\n        for (NegotiationMessage proposal : proposals) {\n            requestObserver.onNext(proposal);\n            Thread.sleep(500); // Simulate thinking time\n        }\n        requestObserver.onCompleted();\n\n        finishLatch.await(30, TimeUnit.SECONDS);\n    }\n\n    public void shutdown() throws InterruptedException {\n        channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Kubernetes service for gRPC with headless service (client-side LB)\napiVersion: v1\nkind: Service\nmetadata:\n  name: order-service\n  annotations:\n    # For gRPC, use headless service so clients see individual pod IPs\n    service.alpha.kubernetes.io/tolerate-unready-endpoints: \"true\"\nspec:\n  clusterIP: None  # Headless - DNS returns all pod IPs\n  ports:\n    - port: 50051\n      targetPort: 50051\n      protocol: TCP\n      name: grpc\n  selector:\n    app: order-service\n---\n# Envoy sidecar config for gRPC load balancing\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: envoy-config\ndata:\n  envoy.yaml: |\n    static_resources:\n      listeners:\n        - name: grpc_listener\n          address:\n            socket_address:\n              address: 0.0.0.0\n              port_value: 8080\n          filter_chains:\n            - filters:\n                - name: envoy.filters.network.http_connection_manager\n                  typed_config:\n                    \"@type\": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager\n                    codec_type: AUTO\n                    stat_prefix: ingress_http\n                    route_config:\n                      name: local_route\n                      virtual_hosts:\n                        - name: grpc_service\n                          domains: [\"*\"]\n                          routes:\n                            - match:\n                                prefix: \"/\"\n                                grpc: {}\n                              route:\n                                cluster: order_service\n                                timeout: 5s\n                                retry_policy:\n                                  retry_on: \"unavailable,resource-exhausted\"\n                                  num_retries: 3\n                                  per_try_timeout: 2s\n                    http_filters:\n                      - name: envoy.filters.http.router\n      clusters:\n        - name: order_service\n          type: STRICT_DNS\n          lb_policy: ROUND_ROBIN\n          typed_extension_protocol_options:\n            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:\n              \"@type\": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions\n              explicit_http_config:\n                http2_protocol_options: {}\n          load_assignment:\n            cluster_name: order_service\n            endpoints:\n              - lb_endpoints:\n                  - endpoint:\n                      address:\n                        socket_address:\n                          address: order-service.default.svc.cluster.local\n                          port_value: 50051\n          health_checks:\n            - timeout: 1s\n              interval: 5s\n              unhealthy_threshold: 3\n              healthy_threshold: 2\n              grpc_health_check: {}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/api-design/grpc.md",
+    "wordCount": 1373,
+    "sectionCount": 12
+  }
+}

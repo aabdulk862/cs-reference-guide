@@ -1,0 +1,286 @@
+{
+  "id": "cloud-infrastructure-as-code",
+  "slug": "infrastructure-as-code",
+  "title": "Infrastructure as Code",
+  "category": "Cloud",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Terraform uses HCL (HashiCorp Configuration Language) with a plan-apply workflow; state stored in backends (S3, Terraform Cloud, Consul)",
+            "CloudFormation is AWS-native, supports drift detection natively, and processes changes as changesets before execution",
+            "Pulumi uses general-purpose languages (TypeScript, Python, Go, C#) instead of DSLs, enabling loops, conditionals, and unit testing",
+            "Terraform state file contains sensitive data (passwords, keys) — always encrypt at rest and restrict access to the state backend",
+            "terraform plan is not a guarantee — concurrent changes between plan and apply can cause drift or conflicts",
+            "CloudFormation stack updates can cause resource replacement (destructive) — always review changeset before executing",
+            "Terraform modules should be versioned and sourced from a registry (public or private) for reusability across teams",
+            "IaC drift occurs when manual changes are made outside the tool — detect with terraform plan, CloudFormation drift detection, or scheduled CI checks"
+          ]
+        }
+      ],
+      "wordCount": 141,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Infrastructure as Code is mandatory for any production environment beyond a single developer's sandbox. Use Terraform when managing multi-cloud infrastructure, when you need a mature ecosystem of providers (AWS, GCP, Azure, Kubernetes, Datadog, PagerDuty), or when your team values the explicit plan-apply workflow. Choose CloudFormation when operating exclusively in AWS and you want native integration with AWS services (Service Catalog, Control Tower, StackSets for multi-account), or when you need drift detection without third-party tooling. Select Pulumi when your team prefers writing infrastructure in familiar programming languages, needs complex logic (dynamic resource generation, conditional deployments), or wants to leverage existing testing frameworks (Jest, pytest) for infrastructure tests. For small teams or startups, Terraform with an S3 backend is the pragmatic default. For enterprises with AWS-only footprints and governance requirements, CloudFormation with StackSets provides centralized control. Pulumi fits teams that find HCL limiting and want IDE support, type checking, and code reuse patterns from their application development workflow."
+        }
+      ],
+      "wordCount": 156,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "terraform-production-vpc-with-multi-az-subnets",
+          "heading": "Terraform: Production VPC with Multi-AZ Subnets",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "hcl",
+              "code": "# modules/vpc/main.tf\nterraform {\n  required_version = \">= 1.5.0\"\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n}\n\nvariable \"environment\" {\n  type        = string\n  description = \"Environment name (dev, staging, prod)\"\n}\n\nvariable \"vpc_cidr\" {\n  type    = string\n  default = \"10.0.0.0/16\"\n}\n\nvariable \"availability_zones\" {\n  type    = list(string)\n  default = [\"us-east-1a\", \"us-east-1b\", \"us-east-1c\"]\n}\n\nlocals {\n  public_subnets  = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i)]\n  private_subnets = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i + 10)]\n  db_subnets      = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i + 20)]\n}\n\nresource \"aws_vpc\" \"main\" {\n  cidr_block           = var.vpc_cidr\n  enable_dns_hostnames = true\n  enable_dns_support   = true\n\n  tags = {\n    Name        = \"${var.environment}-vpc\"\n    Environment = var.environment\n    ManagedBy   = \"terraform\"\n  }\n}\n\nresource \"aws_subnet\" \"public\" {\n  count                   = length(var.availability_zones)\n  vpc_id                  = aws_vpc.main.id\n  cidr_block              = local.public_subnets[count.index]\n  availability_zone       = var.availability_zones[count.index]\n  map_public_ip_on_launch = true\n\n  tags = {\n    Name = \"${var.environment}-public-${var.availability_zones[count.index]}\"\n    Tier = \"public\"\n  }\n}\n\nresource \"aws_subnet\" \"private\" {\n  count             = length(var.availability_zones)\n  vpc_id            = aws_vpc.main.id\n  cidr_block        = local.private_subnets[count.index]\n  availability_zone = var.availability_zones[count.index]\n\n  tags = {\n    Name = \"${var.environment}-private-${var.availability_zones[count.index]}\"\n    Tier = \"private\"\n  }\n}\n\nresource \"aws_nat_gateway\" \"main\" {\n  count         = length(var.availability_zones)\n  allocation_id = aws_eip.nat[count.index].id\n  subnet_id     = aws_subnet.public[count.index].id\n\n  tags = {\n    Name = \"${var.environment}-nat-${var.availability_zones[count.index]}\"\n  }\n}\n\nresource \"aws_eip\" \"nat\" {\n  count  = length(var.availability_zones)\n  domain = \"vpc\"\n}\n\noutput \"vpc_id\" {\n  value = aws_vpc.main.id\n}\n\noutput \"private_subnet_ids\" {\n  value = aws_subnet.private[*].id\n}\n\noutput \"public_subnet_ids\" {\n  value = aws_subnet.public[*].id\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "terraform-remote-state-with-locking",
+          "heading": "Terraform: Remote State with Locking",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "hcl",
+              "code": "# backend.tf — S3 backend with DynamoDB locking\nterraform {\n  backend \"s3\" {\n    bucket         = \"mycompany-terraform-state\"\n    key            = \"prod/networking/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    kms_key_id     = \"alias/terraform-state-key\"\n    dynamodb_table = \"terraform-state-locks\"\n  }\n}\n\n# State locking table (bootstrap separately or use CloudFormation)\nresource \"aws_dynamodb_table\" \"terraform_locks\" {\n  name         = \"terraform-state-locks\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"LockID\"\n\n  attribute {\n    name = \"LockID\"\n    type = \"S\"\n  }\n\n  tags = {\n    Purpose = \"Terraform state locking\"\n  }\n}\n\n# Data source: reference another state file\ndata \"terraform_remote_state\" \"networking\" {\n  backend = \"s3\"\n  config = {\n    bucket = \"mycompany-terraform-state\"\n    key    = \"prod/networking/terraform.tfstate\"\n    region = \"us-east-1\"\n  }\n}\n\n# Use outputs from networking state\nresource \"aws_instance\" \"app\" {\n  ami           = \"ami-0c02fb55956c7d316\"\n  instance_type = \"t3.medium\"\n  subnet_id     = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cloudformation-ecs-fargate-service-with-auto-scaling",
+          "heading": "CloudFormation: ECS Fargate Service with Auto Scaling",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "AWSTemplateFormatVersion: '2010-09-09'\nDescription: ECS Fargate service with auto-scaling and ALB\n\nParameters:\n  Environment:\n    Type: String\n    AllowedValues: [dev, staging, prod]\n  ImageUri:\n    Type: String\n    Description: Container image URI from ECR\n  DesiredCount:\n    Type: Number\n    Default: 2\n\nResources:\n  TaskDefinition:\n    Type: AWS::ECS::TaskDefinition\n    Properties:\n      Family: !Sub '${Environment}-api'\n      Cpu: '512'\n      Memory: '1024'\n      NetworkMode: awsvpc\n      RequiresCompatibilities: [FARGATE]\n      ExecutionRoleArn: !GetAtt ExecutionRole.Arn\n      TaskRoleArn: !GetAtt TaskRole.Arn\n      ContainerDefinitions:\n        - Name: api\n          Image: !Ref ImageUri\n          PortMappings:\n            - ContainerPort: 8080\n              Protocol: tcp\n          LogConfiguration:\n            LogDriver: awslogs\n            Options:\n              awslogs-group: !Ref LogGroup\n              awslogs-region: !Ref AWS::Region\n              awslogs-stream-prefix: api\n          Environment:\n            - Name: ENVIRONMENT\n              Value: !Ref Environment\n          Secrets:\n            - Name: DATABASE_URL\n              ValueFrom: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/database-url'\n          HealthCheck:\n            Command: ['CMD-SHELL', 'curl -f http://localhost:8080/health || exit 1']\n            Interval: 30\n            Timeout: 5\n            Retries: 3\n\n  Service:\n    Type: AWS::ECS::Service\n    DependsOn: ALBListener\n    Properties:\n      Cluster: !Ref ECSCluster\n      TaskDefinition: !Ref TaskDefinition\n      DesiredCount: !Ref DesiredCount\n      LaunchType: FARGATE\n      NetworkConfiguration:\n        AwsvpcConfiguration:\n          Subnets: !Ref PrivateSubnets\n          SecurityGroups: [!Ref ServiceSG]\n      LoadBalancers:\n        - ContainerName: api\n          ContainerPort: 8080\n          TargetGroupArn: !Ref TargetGroup\n      DeploymentConfiguration:\n        MaximumPercent: 200\n        MinimumHealthyPercent: 100\n        DeploymentCircuitBreaker:\n          Enable: true\n          Rollback: true\n\n  AutoScaling:\n    Type: AWS::ApplicationAutoScaling::ScalableTarget\n    Properties:\n      MaxCapacity: 20\n      MinCapacity: !Ref DesiredCount\n      ResourceId: !Sub 'service/${ECSCluster}/${Service.Name}'\n      ScalableDimension: ecs:service:DesiredCount\n      ServiceNamespace: ecs\n\n  ScalingPolicy:\n    Type: AWS::ApplicationAutoScaling::ScalingPolicy\n    Properties:\n      PolicyName: cpu-target-tracking\n      PolicyType: TargetTrackingScaling\n      ScalingTargetId: !Ref AutoScaling\n      TargetTrackingScalingPolicyConfiguration:\n        PredefinedMetricSpecification:\n          PredefinedMetricType: ECSServiceAverageCPUUtilization\n        TargetValue: 70\n        ScaleInCooldown: 300\n        ScaleOutCooldown: 60",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pulumi-kubernetes-deployment-with-typescript",
+          "heading": "Pulumi: Kubernetes Deployment with TypeScript",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import * as pulumi from '@pulumi/pulumi';\nimport * as aws from '@pulumi/aws';\nimport * as k8s from '@pulumi/kubernetes';\n\nconst config = new pulumi.Config();\nconst environment = config.require('environment');\nconst replicas = config.getNumber('replicas') || 3;\n\n// Create EKS cluster\nconst cluster = new aws.eks.Cluster('app-cluster', {\n  name: `${environment}-cluster`,\n  roleArn: clusterRole.arn,\n  vpcConfig: {\n    subnetIds: privateSubnetIds,\n    securityGroupIds: [clusterSg.id],\n    endpointPrivateAccess: true,\n    endpointPublicAccess: environment !== 'prod',\n  },\n  version: '1.28',\n  enabledClusterLogTypes: ['api', 'audit', 'authenticator'],\n});\n\n// Kubernetes provider using EKS cluster credentials\nconst k8sProvider = new k8s.Provider('k8s', {\n  kubeconfig: cluster.kubeconfig,\n});\n\n// Deploy application with health checks and resource limits\nconst appDeployment = new k8s.apps.v1.Deployment('api-deployment', {\n  metadata: {\n    name: 'api',\n    namespace: 'default',\n    labels: { app: 'api', environment },\n  },\n  spec: {\n    replicas,\n    selector: { matchLabels: { app: 'api' } },\n    strategy: {\n      type: 'RollingUpdate',\n      rollingUpdate: { maxSurge: '25%', maxUnavailable: 0 },\n    },\n    template: {\n      metadata: { labels: { app: 'api', environment } },\n      spec: {\n        containers: [{\n          name: 'api',\n          image: `${ecrRepo.repositoryUrl}:${config.require('imageTag')}`,\n          ports: [{ containerPort: 8080 }],\n          resources: {\n            requests: { cpu: '250m', memory: '512Mi' },\n            limits: { cpu: '1000m', memory: '1Gi' },\n          },\n          livenessProbe: {\n            httpGet: { path: '/health', port: 8080 },\n            initialDelaySeconds: 15,\n            periodSeconds: 10,\n          },\n          readinessProbe: {\n            httpGet: { path: '/ready', port: 8080 },\n            initialDelaySeconds: 5,\n            periodSeconds: 5,\n          },\n          env: [\n            { name: 'ENVIRONMENT', value: environment },\n            { name: 'DB_HOST', valueFrom: { secretKeyRef: { name: 'db-credentials', key: 'host' } } },\n          ],\n        }],\n        topologySpreadConstraints: [{\n          maxSkew: 1,\n          topologyKey: 'topology.kubernetes.io/zone',\n          whenUnsatisfiable: 'DoNotSchedule',\n          labelSelector: { matchLabels: { app: 'api' } },\n        }],\n      },\n    },\n  },\n}, { provider: k8sProvider });\n\nexport const clusterEndpoint = cluster.endpoint;\nexport const deploymentName = appDeployment.metadata.name;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "terraform-module-composition-pattern",
+          "heading": "Terraform: Module Composition Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "hcl",
+              "code": "# environments/prod/main.tf — composing reusable modules\nmodule \"networking\" {\n  source  = \"git::https://github.com/myorg/terraform-modules.git//networking?ref=v2.3.1\"\n  \n  environment        = \"prod\"\n  vpc_cidr           = \"10.0.0.0/16\"\n  availability_zones = [\"us-east-1a\", \"us-east-1b\", \"us-east-1c\"]\n  enable_nat_gateway = true\n  single_nat_gateway = false  # One per AZ for HA in prod\n}\n\nmodule \"database\" {\n  source = \"git::https://github.com/myorg/terraform-modules.git//rds?ref=v1.8.0\"\n\n  environment        = \"prod\"\n  engine             = \"postgres\"\n  engine_version     = \"15.4\"\n  instance_class     = \"db.r6g.xlarge\"\n  allocated_storage  = 100\n  multi_az           = true\n  subnet_ids         = module.networking.db_subnet_ids\n  vpc_id             = module.networking.vpc_id\n  \n  backup_retention_period = 35\n  deletion_protection     = true\n  \n  performance_insights_enabled = true\n  monitoring_interval         = 60\n}\n\nmodule \"ecs_service\" {\n  source = \"git::https://github.com/myorg/terraform-modules.git//ecs-fargate?ref=v3.1.0\"\n\n  environment    = \"prod\"\n  service_name   = \"api\"\n  image_uri      = \"${aws_ecr_repository.api.repository_url}:${var.image_tag}\"\n  desired_count  = 4\n  cpu            = 1024\n  memory         = 2048\n  \n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n  public_subnet_ids  = module.networking.public_subnet_ids\n  \n  environment_variables = {\n    DATABASE_HOST = module.database.endpoint\n    REDIS_HOST    = module.cache.endpoint\n  }\n  \n  secrets = {\n    DATABASE_PASSWORD = module.database.password_secret_arn\n    API_KEY           = aws_secretsmanager_secret.api_key.arn\n  }\n\n  auto_scaling = {\n    min_capacity = 4\n    max_capacity = 40\n    cpu_target   = 70\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Storing secrets in Terraform state: State files contain all resource attributes including passwords, API keys, and certificates in plaintext. Always use an encrypted backend (S3 with KMS, Terraform Cloud) and restrict state access via IAM policies. Never commit state files to version control",
+            "Monolithic state files: Putting all infrastructure in a single state file creates blast radius problems — a typo in a dev resource change can accidentally destroy production databases. Split state by environment and by service boundary (networking, compute, data)",
+            "CloudFormation circular dependencies: Resources that reference each other create circular dependencies that CloudFormation cannot resolve. Break cycles by using DependsOn, splitting into nested stacks, or using Fn::ImportValue across stacks",
+            "Terraform provider version drift: Not pinning provider versions causes different team members to get different plan outputs. Always use version constraints (~> 5.0) and commit the .terraform.lock.hcl file to ensure reproducible builds",
+            "Ignoring prevent_destroy lifecycle rules: Critical resources (databases, S3 buckets with data, encryption keys) should have lifecycle { prevent_destroy = true } to prevent accidental deletion via terraform destroy or resource replacement",
+            "Manual changes causing drift: Any change made through the AWS console or CLI outside of IaC creates drift that causes future applies to fail or produce unexpected results. Implement SCPs that restrict console access to read-only for production accounts, and run drift detection in CI on a schedule",
+            "Not using terraform import for existing resources: Teams often recreate resources that already exist instead of importing them, causing downtime. Use terraform import to bring existing infrastructure under management, then run terraform plan to verify no changes are detected"
+          ]
+        }
+      ],
+      "wordCount": 261,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Multi-Account AWS Landing Zone: An enterprise uses Terraform with AWS Organizations to manage 50+ accounts. A root module defines the organizational structure, SCPs, and shared networking (Transit Gateway). Account-level modules deploy standardized VPCs, IAM roles, GuardDuty, and Config rules. Each team gets a dedicated account with pre-configured Terraform backends and CI/CD pipelines. Changes to shared infrastructure require approval from the platform team via Atlantis pull request automation, while team-level changes are self-service within guardrails defined by SCPs."
+        },
+        {
+          "type": "paragraph",
+          "text": "GitOps Deployment Pipeline: A SaaS company uses Terraform Cloud workspaces connected to GitHub repositories. Infrastructure changes follow the same PR workflow as application code: branch, commit, plan (auto-triggered), review plan output, approve, apply. Sentinel policies enforce compliance rules (no public S3 buckets, all RDS instances must be encrypted, EC2 instances must use approved AMIs). Cost estimation runs on every plan, blocking merges that exceed budget thresholds. State is versioned with automatic rollback capability."
+        },
+        {
+          "type": "paragraph",
+          "text": "Disaster Recovery Infrastructure: A financial services company maintains active-passive multi-region infrastructure using CloudFormation StackSets. The primary region runs full production workloads while the DR region maintains warm standby (RDS read replicas, pre-provisioned ECS capacity at minimum scale, replicated S3 buckets). A single CloudFormation parameter change (ActiveRegion: us-west-2) triggers failover by scaling up the DR region and updating Route 53 health checks. Monthly DR drills validate the failover process completes within the 15-minute RTO target."
+        }
+      ],
+      "wordCount": 224,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you manage Terraform state safely in a team environment?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a remote backend (S3 + DynamoDB for locking, or Terraform Cloud) that provides encryption at rest, access control, and state locking to prevent concurrent modifications. Structure state files by environment and service boundary — never put dev and prod in the same state. Enable state file versioning in S3 for rollback capability. Restrict state access via IAM policies so developers can plan against production state but only CI/CD pipelines can apply. Use terraform_remote_state data sources to share outputs between state files without coupling them. For sensitive values, use sensitive = true on outputs and variables to prevent them from appearing in CLI output, but remember they still exist in state — the real protection is backend encryption and access control."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between Terraform's declarative approach and Pulumi's imperative approach."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Terraform is declarative — you describe the desired end state in HCL and Terraform figures out the operations needed to reach it. This makes plans predictable and auditable but limits expressiveness (no arbitrary loops until recently, limited conditionals). Pulumi is imperative in syntax but declarative in execution — you write TypeScript/Python that constructs a desired state graph, and Pulumi's engine diffs it against current state just like Terraform. The practical difference is developer experience: Pulumi gives you IDE autocomplete, type checking, unit testing with standard frameworks, and the full power of a programming language for dynamic resource generation. The trade-off is that Pulumi code can be harder to review in PRs because the infrastructure intent is mixed with programming logic, whereas HCL's limited syntax makes the infrastructure declaration immediately visible."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle infrastructure drift in production?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Prevention first: restrict production console access to read-only via SCPs, require all changes through IaC pipelines, and use AWS Config rules to detect non-compliant resources. Detection: run terraform plan on a schedule (every 4 hours via CI) against production state — any planned changes indicate drift. CloudFormation has native drift detection that compares actual resource properties against the template. Response: for minor drift (tag changes, description updates), import the current state and update the code to match. For critical drift (security group rules opened, encryption disabled), immediately remediate through the IaC pipeline and investigate the root cause. Implement alerting on drift detection results so the team is notified within minutes of unauthorized changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose CloudFormation over Terraform for an AWS-only environment?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CloudFormation advantages: native AWS integration means zero-day support for new services (Terraform providers lag by days/weeks), StackSets for multi-account deployments, Service Catalog integration for self-service provisioning, native drift detection, and no external state management (AWS manages it). Choose CloudFormation when you need AWS Control Tower integration, when compliance requires using only AWS-native tools, when you want automatic rollback on deployment failures (CloudFormation rolls back the entire stack), or when using AWS-specific features like custom resources backed by Lambda. Choose Terraform when you need multi-cloud support, when the HCL ecosystem provides better abstractions for your use case, when you want more granular control over the apply process (targeted applies, resource tainting), or when your team already has Terraform expertise."
+        }
+      ],
+      "wordCount": 531,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement policy-as-code using OPA/Conftest for Terraform plans or CloudFormation Guard for templates. Enforce rules like \"no public S3 buckets,\" \"all EBS volumes encrypted,\" and \"RDS instances must have deletion protection\" before changes reach production. This catches misconfigurations at PR time rather than after deployment",
+            "Use Terraform workspaces or directory-based separation for environment isolation. Directory-based (environments/dev/, environments/prod/) with separate state files is preferred over workspaces because it provides clearer separation and allows different module versions per environment",
+            "Pin module versions explicitly — never use ref=main for module sources in production. Tag releases (ref=v2.3.1) and upgrade deliberately with changelog review. A broken module update applied across all environments simultaneously is a common cause of widespread outages",
+            "Implement blast radius controls: use -target flags in CI for high-risk changes, require manual approval for changes affecting more than N resources, and separate stateless compute (safe to recreate) from stateful data (dangerous to modify) into different state files",
+            "Run terraform plan in CI on every PR and post the plan output as a PR comment (tools like Atlantis, Spacelift, or env0 automate this). Require human review of plan output before merge. This catches unintended resource replacements that would cause downtime"
+          ]
+        }
+      ],
+      "wordCount": 195,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AWS Core Services — The services you provision and manage with IaC tools",
+            "Cloud Architecture Patterns — Architectural patterns that IaC enables at scale",
+            "Serverless Patterns — Serverless infrastructure commonly deployed via SAM, CDK, or Terraform",
+            "CI/CD Fundamentals — Pipeline integration for automated infrastructure deployment"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "hcl",
+      "code": "# modules/vpc/main.tf\nterraform {\n  required_version = \">= 1.5.0\"\n  required_providers {\n    aws = {\n      source  = \"hashicorp/aws\"\n      version = \"~> 5.0\"\n    }\n  }\n}\n\nvariable \"environment\" {\n  type        = string\n  description = \"Environment name (dev, staging, prod)\"\n}\n\nvariable \"vpc_cidr\" {\n  type    = string\n  default = \"10.0.0.0/16\"\n}\n\nvariable \"availability_zones\" {\n  type    = list(string)\n  default = [\"us-east-1a\", \"us-east-1b\", \"us-east-1c\"]\n}\n\nlocals {\n  public_subnets  = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i)]\n  private_subnets = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i + 10)]\n  db_subnets      = [for i, az in var.availability_zones : cidrsubnet(var.vpc_cidr, 8, i + 20)]\n}\n\nresource \"aws_vpc\" \"main\" {\n  cidr_block           = var.vpc_cidr\n  enable_dns_hostnames = true\n  enable_dns_support   = true\n\n  tags = {\n    Name        = \"${var.environment}-vpc\"\n    Environment = var.environment\n    ManagedBy   = \"terraform\"\n  }\n}\n\nresource \"aws_subnet\" \"public\" {\n  count                   = length(var.availability_zones)\n  vpc_id                  = aws_vpc.main.id\n  cidr_block              = local.public_subnets[count.index]\n  availability_zone       = var.availability_zones[count.index]\n  map_public_ip_on_launch = true\n\n  tags = {\n    Name = \"${var.environment}-public-${var.availability_zones[count.index]}\"\n    Tier = \"public\"\n  }\n}\n\nresource \"aws_subnet\" \"private\" {\n  count             = length(var.availability_zones)\n  vpc_id            = aws_vpc.main.id\n  cidr_block        = local.private_subnets[count.index]\n  availability_zone = var.availability_zones[count.index]\n\n  tags = {\n    Name = \"${var.environment}-private-${var.availability_zones[count.index]}\"\n    Tier = \"private\"\n  }\n}\n\nresource \"aws_nat_gateway\" \"main\" {\n  count         = length(var.availability_zones)\n  allocation_id = aws_eip.nat[count.index].id\n  subnet_id     = aws_subnet.public[count.index].id\n\n  tags = {\n    Name = \"${var.environment}-nat-${var.availability_zones[count.index]}\"\n  }\n}\n\nresource \"aws_eip\" \"nat\" {\n  count  = length(var.availability_zones)\n  domain = \"vpc\"\n}\n\noutput \"vpc_id\" {\n  value = aws_vpc.main.id\n}\n\noutput \"private_subnet_ids\" {\n  value = aws_subnet.private[*].id\n}\n\noutput \"public_subnet_ids\" {\n  value = aws_subnet.public[*].id\n}",
+      "runnable": false
+    },
+    {
+      "language": "hcl",
+      "code": "# backend.tf — S3 backend with DynamoDB locking\nterraform {\n  backend \"s3\" {\n    bucket         = \"mycompany-terraform-state\"\n    key            = \"prod/networking/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    kms_key_id     = \"alias/terraform-state-key\"\n    dynamodb_table = \"terraform-state-locks\"\n  }\n}\n\n# State locking table (bootstrap separately or use CloudFormation)\nresource \"aws_dynamodb_table\" \"terraform_locks\" {\n  name         = \"terraform-state-locks\"\n  billing_mode = \"PAY_PER_REQUEST\"\n  hash_key     = \"LockID\"\n\n  attribute {\n    name = \"LockID\"\n    type = \"S\"\n  }\n\n  tags = {\n    Purpose = \"Terraform state locking\"\n  }\n}\n\n# Data source: reference another state file\ndata \"terraform_remote_state\" \"networking\" {\n  backend = \"s3\"\n  config = {\n    bucket = \"mycompany-terraform-state\"\n    key    = \"prod/networking/terraform.tfstate\"\n    region = \"us-east-1\"\n  }\n}\n\n# Use outputs from networking state\nresource \"aws_instance\" \"app\" {\n  ami           = \"ami-0c02fb55956c7d316\"\n  instance_type = \"t3.medium\"\n  subnet_id     = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "AWSTemplateFormatVersion: '2010-09-09'\nDescription: ECS Fargate service with auto-scaling and ALB\n\nParameters:\n  Environment:\n    Type: String\n    AllowedValues: [dev, staging, prod]\n  ImageUri:\n    Type: String\n    Description: Container image URI from ECR\n  DesiredCount:\n    Type: Number\n    Default: 2\n\nResources:\n  TaskDefinition:\n    Type: AWS::ECS::TaskDefinition\n    Properties:\n      Family: !Sub '${Environment}-api'\n      Cpu: '512'\n      Memory: '1024'\n      NetworkMode: awsvpc\n      RequiresCompatibilities: [FARGATE]\n      ExecutionRoleArn: !GetAtt ExecutionRole.Arn\n      TaskRoleArn: !GetAtt TaskRole.Arn\n      ContainerDefinitions:\n        - Name: api\n          Image: !Ref ImageUri\n          PortMappings:\n            - ContainerPort: 8080\n              Protocol: tcp\n          LogConfiguration:\n            LogDriver: awslogs\n            Options:\n              awslogs-group: !Ref LogGroup\n              awslogs-region: !Ref AWS::Region\n              awslogs-stream-prefix: api\n          Environment:\n            - Name: ENVIRONMENT\n              Value: !Ref Environment\n          Secrets:\n            - Name: DATABASE_URL\n              ValueFrom: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/database-url'\n          HealthCheck:\n            Command: ['CMD-SHELL', 'curl -f http://localhost:8080/health || exit 1']\n            Interval: 30\n            Timeout: 5\n            Retries: 3\n\n  Service:\n    Type: AWS::ECS::Service\n    DependsOn: ALBListener\n    Properties:\n      Cluster: !Ref ECSCluster\n      TaskDefinition: !Ref TaskDefinition\n      DesiredCount: !Ref DesiredCount\n      LaunchType: FARGATE\n      NetworkConfiguration:\n        AwsvpcConfiguration:\n          Subnets: !Ref PrivateSubnets\n          SecurityGroups: [!Ref ServiceSG]\n      LoadBalancers:\n        - ContainerName: api\n          ContainerPort: 8080\n          TargetGroupArn: !Ref TargetGroup\n      DeploymentConfiguration:\n        MaximumPercent: 200\n        MinimumHealthyPercent: 100\n        DeploymentCircuitBreaker:\n          Enable: true\n          Rollback: true\n\n  AutoScaling:\n    Type: AWS::ApplicationAutoScaling::ScalableTarget\n    Properties:\n      MaxCapacity: 20\n      MinCapacity: !Ref DesiredCount\n      ResourceId: !Sub 'service/${ECSCluster}/${Service.Name}'\n      ScalableDimension: ecs:service:DesiredCount\n      ServiceNamespace: ecs\n\n  ScalingPolicy:\n    Type: AWS::ApplicationAutoScaling::ScalingPolicy\n    Properties:\n      PolicyName: cpu-target-tracking\n      PolicyType: TargetTrackingScaling\n      ScalingTargetId: !Ref AutoScaling\n      TargetTrackingScalingPolicyConfiguration:\n        PredefinedMetricSpecification:\n          PredefinedMetricType: ECSServiceAverageCPUUtilization\n        TargetValue: 70\n        ScaleInCooldown: 300\n        ScaleOutCooldown: 60",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import * as pulumi from '@pulumi/pulumi';\nimport * as aws from '@pulumi/aws';\nimport * as k8s from '@pulumi/kubernetes';\n\nconst config = new pulumi.Config();\nconst environment = config.require('environment');\nconst replicas = config.getNumber('replicas') || 3;\n\n// Create EKS cluster\nconst cluster = new aws.eks.Cluster('app-cluster', {\n  name: `${environment}-cluster`,\n  roleArn: clusterRole.arn,\n  vpcConfig: {\n    subnetIds: privateSubnetIds,\n    securityGroupIds: [clusterSg.id],\n    endpointPrivateAccess: true,\n    endpointPublicAccess: environment !== 'prod',\n  },\n  version: '1.28',\n  enabledClusterLogTypes: ['api', 'audit', 'authenticator'],\n});\n\n// Kubernetes provider using EKS cluster credentials\nconst k8sProvider = new k8s.Provider('k8s', {\n  kubeconfig: cluster.kubeconfig,\n});\n\n// Deploy application with health checks and resource limits\nconst appDeployment = new k8s.apps.v1.Deployment('api-deployment', {\n  metadata: {\n    name: 'api',\n    namespace: 'default',\n    labels: { app: 'api', environment },\n  },\n  spec: {\n    replicas,\n    selector: { matchLabels: { app: 'api' } },\n    strategy: {\n      type: 'RollingUpdate',\n      rollingUpdate: { maxSurge: '25%', maxUnavailable: 0 },\n    },\n    template: {\n      metadata: { labels: { app: 'api', environment } },\n      spec: {\n        containers: [{\n          name: 'api',\n          image: `${ecrRepo.repositoryUrl}:${config.require('imageTag')}`,\n          ports: [{ containerPort: 8080 }],\n          resources: {\n            requests: { cpu: '250m', memory: '512Mi' },\n            limits: { cpu: '1000m', memory: '1Gi' },\n          },\n          livenessProbe: {\n            httpGet: { path: '/health', port: 8080 },\n            initialDelaySeconds: 15,\n            periodSeconds: 10,\n          },\n          readinessProbe: {\n            httpGet: { path: '/ready', port: 8080 },\n            initialDelaySeconds: 5,\n            periodSeconds: 5,\n          },\n          env: [\n            { name: 'ENVIRONMENT', value: environment },\n            { name: 'DB_HOST', valueFrom: { secretKeyRef: { name: 'db-credentials', key: 'host' } } },\n          ],\n        }],\n        topologySpreadConstraints: [{\n          maxSkew: 1,\n          topologyKey: 'topology.kubernetes.io/zone',\n          whenUnsatisfiable: 'DoNotSchedule',\n          labelSelector: { matchLabels: { app: 'api' } },\n        }],\n      },\n    },\n  },\n}, { provider: k8sProvider });\n\nexport const clusterEndpoint = cluster.endpoint;\nexport const deploymentName = appDeployment.metadata.name;",
+      "runnable": false
+    },
+    {
+      "language": "hcl",
+      "code": "# environments/prod/main.tf — composing reusable modules\nmodule \"networking\" {\n  source  = \"git::https://github.com/myorg/terraform-modules.git//networking?ref=v2.3.1\"\n  \n  environment        = \"prod\"\n  vpc_cidr           = \"10.0.0.0/16\"\n  availability_zones = [\"us-east-1a\", \"us-east-1b\", \"us-east-1c\"]\n  enable_nat_gateway = true\n  single_nat_gateway = false  # One per AZ for HA in prod\n}\n\nmodule \"database\" {\n  source = \"git::https://github.com/myorg/terraform-modules.git//rds?ref=v1.8.0\"\n\n  environment        = \"prod\"\n  engine             = \"postgres\"\n  engine_version     = \"15.4\"\n  instance_class     = \"db.r6g.xlarge\"\n  allocated_storage  = 100\n  multi_az           = true\n  subnet_ids         = module.networking.db_subnet_ids\n  vpc_id             = module.networking.vpc_id\n  \n  backup_retention_period = 35\n  deletion_protection     = true\n  \n  performance_insights_enabled = true\n  monitoring_interval         = 60\n}\n\nmodule \"ecs_service\" {\n  source = \"git::https://github.com/myorg/terraform-modules.git//ecs-fargate?ref=v3.1.0\"\n\n  environment    = \"prod\"\n  service_name   = \"api\"\n  image_uri      = \"${aws_ecr_repository.api.repository_url}:${var.image_tag}\"\n  desired_count  = 4\n  cpu            = 1024\n  memory         = 2048\n  \n  vpc_id             = module.networking.vpc_id\n  private_subnet_ids = module.networking.private_subnet_ids\n  public_subnet_ids  = module.networking.public_subnet_ids\n  \n  environment_variables = {\n    DATABASE_HOST = module.database.endpoint\n    REDIS_HOST    = module.cache.endpoint\n  }\n  \n  secrets = {\n    DATABASE_PASSWORD = module.database.password_secret_arn\n    API_KEY           = aws_secretsmanager_secret.api_key.arn\n  }\n\n  auto_scaling = {\n    min_capacity = 4\n    max_capacity = 40\n    cpu_target   = 70\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/cloud/cloud/infrastructure-as-code.md",
+    "wordCount": 1553,
+    "sectionCount": 13
+  }
+}

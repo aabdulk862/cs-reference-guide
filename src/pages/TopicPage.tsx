@@ -377,6 +377,8 @@ export default function TopicPage() {
         topicData={topicData}
         categorySlug={categorySlug!}
         topicSlug={topicSlug!}
+        subtopicSlug={subtopicSlug}
+        subtopics={manifestTopic?.subtopics ?? []}
         breadcrumbDisplayNames={breadcrumbDisplayNames}
         activeView={activeView}
         onViewChange={handleViewChange}
@@ -420,6 +422,8 @@ interface SubtopicViewProps {
   topicData: TopicData;
   categorySlug: string;
   topicSlug: string;
+  subtopicSlug: string;
+  subtopics: ManifestSubtopic[];
   breadcrumbDisplayNames: Record<string, string>;
   activeView: ContentView;
   onViewChange: (view: ContentView) => void;
@@ -431,6 +435,8 @@ function SubtopicView({
   topicData,
   categorySlug,
   topicSlug,
+  subtopicSlug,
+  subtopics,
   breadcrumbDisplayNames,
   activeView,
   onViewChange,
@@ -441,6 +447,11 @@ function SubtopicView({
   const totalWordCount = getTotalWordCount(topicData.sections);
   const readingTime = calculateReadingTime(totalWordCount);
   const showTableOfContents = topicData.sections.length > 5;
+
+  // Compute prev/next subtopics
+  const currentIndex = subtopics.findIndex((s) => s.slug === subtopicSlug);
+  const prevSubtopic = currentIndex > 0 ? subtopics[currentIndex - 1] : null;
+  const nextSubtopic = currentIndex < subtopics.length - 1 ? subtopics[currentIndex + 1] : null;
 
   return (
     <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
@@ -465,6 +476,30 @@ function SubtopicView({
           <ContentCard key={section.id} section={section} />
         ))}
       </div>
+
+      {/* Prev/Next Navigation */}
+      {(prevSubtopic || nextSubtopic) && (
+        <nav className="topic-prev-next" aria-label="Previous and next subtopics">
+          {prevSubtopic ? (
+            <Link
+              to={`/topic/${categorySlug}/${topicSlug}/${prevSubtopic.slug}`}
+              className="topic-prev-next__link topic-prev-next__link--prev"
+            >
+              <span className="topic-prev-next__direction">← Previous</span>
+              <span className="topic-prev-next__title">{prevSubtopic.title}</span>
+            </Link>
+          ) : <span />}
+          {nextSubtopic ? (
+            <Link
+              to={`/topic/${categorySlug}/${topicSlug}/${nextSubtopic.slug}`}
+              className="topic-prev-next__link topic-prev-next__link--next"
+            >
+              <span className="topic-prev-next__direction">Next →</span>
+              <span className="topic-prev-next__title">{nextSubtopic.title}</span>
+            </Link>
+          ) : <span />}
+        </nav>
+      )}
 
       <MarkCompleteButton isCompleted={isCompleted} onToggle={onToggleComplete} />
     </div>

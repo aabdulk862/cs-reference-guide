@@ -1,0 +1,261 @@
+{
+  "id": "databases-sql-performance-tuning",
+  "slug": "sql-performance-tuning",
+  "title": "SQL Performance Tuning",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use EXPLAIN ANALYZE to inspect actual execution plans, row estimates, and timing for any query",
+            "B-tree indexes are the default and best for equality and range queries; use composite indexes with the most selective column first",
+            "Covering indexes include all columns needed by a query, eliminating table lookups entirely (Index Only Scan)",
+            "Partitioning splits large tables into smaller physical segments by range, list, or hash for faster scans and easier maintenance",
+            "The query optimizer chooses between sequential scans, index scans, and bitmap scans based on table statistics and cost estimates",
+            "Avoid SELECT *, implicit type conversions, and functions on indexed columns in WHERE clauses",
+            "Keep statistics up to date with ANALYZE (PostgreSQL) or UPDATE STATISTICS (SQL Server) for accurate optimizer decisions",
+            "Connection pooling (PgBouncer, HikariCP) prevents connection overhead from degrading throughput under load"
+          ]
+        }
+      ],
+      "wordCount": 133,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "SQL performance tuning is essential whenever database queries become a bottleneck in application response times or system throughput. Invest in tuning when queries exceed acceptable latency thresholds (typically 100ms for user-facing operations), when database CPU or I/O utilization is consistently high, or when slow query logs reveal repeated problematic patterns. Performance tuning is particularly critical during scaling events where data volume grows beyond what unoptimized queries can handle, during migration from monolithic to microservice architectures where database access patterns change fundamentally, and when preparing for production launches where load testing reveals query bottlenecks. Start with query plan analysis to identify the root cause before applying any optimization, as premature indexing or denormalization without understanding the actual execution path often introduces new problems rather than solving existing ones. The cost-based optimizer makes intelligent decisions when given accurate statistics and appropriate indexes, so the tuning process is primarily about providing the optimizer with the right tools and information."
+        }
+      ],
+      "wordCount": 156,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "query-plan-analysis",
+          "heading": "Query Plan Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- PostgreSQL: EXPLAIN ANALYZE shows actual execution time and row counts\nEXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)\nSELECT o.order_id, o.total_amount, c.name, c.email\nFROM orders o\nJOIN customers c ON o.customer_id = c.customer_id\nWHERE o.order_date >= '2024-01-01'\n  AND o.status = 'SHIPPED'\nORDER BY o.order_date DESC\nLIMIT 50;\n\n-- Key metrics to examine in the output:\n-- 1. actual time vs estimated cost (large discrepancies = stale statistics)\n-- 2. rows (estimated vs actual) - if wildly different, run ANALYZE\n-- 3. Sort Method - external merge sort indicates insufficient work_mem\n-- 4. Seq Scan on large tables - potential missing index\n-- 5. Buffers: shared hit vs read - cache hit ratio\n-- 6. Planning Time vs Execution Time - high planning time = complex query\n\n-- Identify slow queries with pg_stat_statements\nSELECT query, calls, mean_exec_time, total_exec_time,\n       rows / calls AS avg_rows,\n       shared_blks_hit::float / (shared_blks_hit + shared_blks_read) AS cache_hit_ratio\nFROM pg_stat_statements\nWHERE mean_exec_time > 100  -- queries averaging over 100ms\nORDER BY total_exec_time DESC\nLIMIT 20;\n\n-- Find missing indexes by examining sequential scans on large tables\nSELECT schemaname, relname, seq_scan, seq_tup_read,\n       idx_scan, n_live_tup,\n       seq_tup_read / GREATEST(seq_scan, 1) AS avg_rows_per_scan\nFROM pg_stat_user_tables\nWHERE seq_scan > 100\n  AND n_live_tup > 10000\nORDER BY seq_tup_read DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "indexing-strategies",
+          "heading": "Indexing Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Composite index following ESR rule: Equality, Sort, Range\n-- Equality columns first, then sort columns, then range columns\nCREATE INDEX idx_orders_status_date_amount\nON orders (status, order_date DESC, total_amount);\n\n-- Covering index: includes all columns needed by the query\n-- Enables Index Only Scan, avoiding heap table access entirely\nCREATE INDEX idx_orders_covering\nON orders (status, order_date DESC)\nINCLUDE (order_id, total_amount, customer_id);\n\n-- Partial index: only indexes rows matching a condition\n-- Dramatically smaller for queries that always filter on this condition\nCREATE INDEX idx_orders_active\nON orders (customer_id, order_date DESC)\nWHERE status IN ('PENDING', 'PROCESSING', 'SHIPPED');\n\n-- Expression index: for queries applying functions to columns\nCREATE INDEX idx_customers_lower_email\nON customers (LOWER(email));\n\n-- GIN index for full-text search\nCREATE INDEX idx_products_search\nON products USING gin (to_tsvector('english', name || ' ' || description));\n\n-- BRIN index for naturally ordered data (time-series, sequential IDs)\n-- Much smaller than B-tree, effective when physical order correlates with value\nCREATE INDEX idx_events_created_brin\nON events USING brin (created_at) WITH (pages_per_range = 32);\n\n-- Monitor index usage to identify unused indexes consuming resources\nSELECT schemaname, relname, indexrelname,\n       idx_scan, idx_tup_read, idx_tup_fetch,\n       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size\nFROM pg_stat_user_indexes\nWHERE idx_scan = 0 AND indexrelname NOT LIKE '%_pkey'\nORDER BY pg_relation_size(indexrelid) DESC;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "table-partitioning",
+          "heading": "Table Partitioning",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Range partitioning by date (PostgreSQL declarative partitioning)\nCREATE TABLE orders (\n    order_id    BIGSERIAL,\n    customer_id BIGINT NOT NULL,\n    order_date  DATE NOT NULL,\n    total_amount DECIMAL(10,2),\n    status      VARCHAR(20),\n    PRIMARY KEY (order_id, order_date)\n) PARTITION BY RANGE (order_date);\n\n-- Create quarterly partitions\nCREATE TABLE orders_2024_q1 PARTITION OF orders\n    FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');\nCREATE TABLE orders_2024_q2 PARTITION OF orders\n    FOR VALUES FROM ('2024-04-01') TO ('2024-07-01');\nCREATE TABLE orders_2024_q3 PARTITION OF orders\n    FOR VALUES FROM ('2024-07-01') TO ('2024-10-01');\nCREATE TABLE orders_2024_q4 PARTITION OF orders\n    FOR VALUES FROM ('2024-10-01') TO ('2025-01-01');\nCREATE TABLE orders_default PARTITION OF orders DEFAULT;\n\n-- Hash partitioning for even distribution across shards\nCREATE TABLE audit_logs (\n    log_id      BIGSERIAL,\n    user_id     BIGINT NOT NULL,\n    action      VARCHAR(50),\n    created_at  TIMESTAMP DEFAULT NOW(),\n    PRIMARY KEY (log_id, user_id)\n) PARTITION BY HASH (user_id);\n\nCREATE TABLE audit_logs_p0 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 0);\nCREATE TABLE audit_logs_p1 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 1);\nCREATE TABLE audit_logs_p2 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 2);\nCREATE TABLE audit_logs_p3 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 3);\n\n-- Automate partition creation for future months\nCREATE OR REPLACE FUNCTION create_monthly_partition()\nRETURNS void AS $$\nDECLARE\n    partition_date DATE := date_trunc('month', NOW() + interval '1 month');\n    partition_name TEXT;\n    start_date TEXT;\n    end_date TEXT;\nBEGIN\n    partition_name := 'orders_' || to_char(partition_date, 'YYYY_MM');\n    start_date := to_char(partition_date, 'YYYY-MM-DD');\n    end_date := to_char(partition_date + interval '1 month', 'YYYY-MM-DD');\n\n    EXECUTE format(\n        'CREATE TABLE IF NOT EXISTS %I PARTITION OF orders FOR VALUES FROM (%L) TO (%L)',\n        partition_name, start_date, end_date\n    );\nEND;\n$$ LANGUAGE plpgsql;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "query-optimization-techniques",
+          "heading": "Query Optimization Techniques",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Replace correlated subquery with JOIN + aggregation\n-- BEFORE: executes subquery once per row in outer query\nSELECT c.name, c.email,\n    (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.customer_id) AS order_count\nFROM customers c WHERE c.region = 'US';\n\n-- AFTER: single pass with LEFT JOIN\nSELECT c.name, c.email, COALESCE(o.order_count, 0) AS order_count\nFROM customers c\nLEFT JOIN (\n    SELECT customer_id, COUNT(*) AS order_count\n    FROM orders GROUP BY customer_id\n) o ON o.customer_id = c.customer_id\nWHERE c.region = 'US';\n\n-- Keyset pagination instead of OFFSET for large datasets\n-- BEFORE: OFFSET scans and discards rows (O(offset) per page)\nSELECT * FROM orders ORDER BY order_date DESC, order_id DESC\nOFFSET 100000 LIMIT 50;\n\n-- AFTER: keyset pagination uses index efficiently (O(1) per page)\nSELECT * FROM orders\nWHERE (order_date, order_id) < ('2024-03-15', 987654)\nORDER BY order_date DESC, order_id DESC\nLIMIT 50;\n\n-- Batch processing to avoid long-running locks\nDO $$\nDECLARE\n    batch_size INT := 5000;\n    rows_affected INT;\nBEGIN\n    LOOP\n        WITH batch AS (\n            SELECT order_id FROM orders\n            WHERE order_date < '2023-01-01' AND status != 'ARCHIVED'\n            LIMIT batch_size\n            FOR UPDATE SKIP LOCKED\n        )\n        UPDATE orders SET status = 'ARCHIVED'\n        WHERE order_id IN (SELECT order_id FROM batch);\n\n        GET DIAGNOSTICS rows_affected = ROW_COUNT;\n        COMMIT;\n        EXIT WHEN rows_affected = 0;\n        PERFORM pg_sleep(0.1);\n    END LOOP;\nEND $$;\n\n-- Use materialized views for expensive aggregations\nCREATE MATERIALIZED VIEW daily_revenue AS\nSELECT date_trunc('day', order_date) AS day,\n       COUNT(*) AS order_count,\n       SUM(total_amount) AS revenue,\n       AVG(total_amount) AS avg_order_value\nFROM orders\nWHERE status = 'completed'\nGROUP BY date_trunc('day', order_date);\n\nCREATE UNIQUE INDEX idx_daily_revenue_day ON daily_revenue (day);\n\n-- Refresh concurrently (no lock on reads during refresh)\nREFRESH MATERIALIZED VIEW CONCURRENTLY daily_revenue;",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Stale statistics causing bad plans: The optimizer relies on table statistics (row counts, value distributions, correlation) to estimate costs. After bulk loads, large deletes, or significant data changes, statistics become stale and the optimizer chooses suboptimal plans. Run ANALYZE on affected tables after major data changes, and configure autovacuum_analyze_threshold appropriately for high-churn tables.",
+            "Functions on indexed columns preventing index usage: Applying a function to an indexed column in a WHERE clause (e.g., WHERE YEAR(order_date) = 2024) prevents the optimizer from using the index because it cannot match transformed values against the B-tree. Rewrite as range conditions (WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01') or create expression indexes.",
+            "N+1 query pattern from ORMs: Object-relational mappers frequently produce N+1 queries through lazy loading, executing one query per related entity instead of a single JOIN. Always inspect generated SQL with logging enabled, use eager loading annotations (@EntityGraph in JPA), or write explicit JPQL with JOIN FETCH for known access patterns.",
+            "OFFSET pagination on large datasets: Using OFFSET 100000 LIMIT 50 requires the database to scan and discard 100,000 rows before returning 50, making deep pages progressively slower. Switch to keyset pagination using a WHERE clause with the last seen value for constant-time page access regardless of depth.",
+            "Over-indexing write-heavy tables: Each index adds overhead to every INSERT, UPDATE, and DELETE operation. Tables with high write-to-read ratios suffer from excessive indexing. Audit index usage regularly and remove indexes with zero or near-zero scans. For bulk load operations, consider dropping indexes, loading data, and rebuilding indexes.",
+            "Implicit type conversions in WHERE clauses: Comparing a VARCHAR column to an integer (WHERE phone_number = 12345) forces a full table scan because the database must convert every row's value for comparison. Ensure parameter types match column types exactly, and use explicit casts when necessary."
+          ]
+        }
+      ],
+      "wordCount": 297,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "E-commerce order search optimization: A retail platform with 500 million orders experienced 8-second response times on the order history page. Analysis revealed a sequential scan due to a missing composite index on (customer_id, order_date). Adding a covering index with INCLUDE columns for display fields reduced query time to 12ms. Partitioning by quarter further improved archival queries and enabled instant partition drops for GDPR data deletion requests.",
+            "Financial transaction reporting: A payment processing system needed sub-second aggregation across billions of transactions for daily settlement reports. The solution combined range partitioning by transaction date with materialized views that pre-compute daily summaries. Incremental refresh during off-peak hours keeps reports current without impacting OLTP workload, while partition pruning ensures ad-hoc queries only scan relevant date ranges.",
+            "Multi-tenant SaaS query isolation: A B2B platform serving 10,000 tenants on a shared database experienced noisy-neighbor problems where one tenant's analytical queries degraded performance for others. Hash partitioning by tenant_id combined with connection pool isolation and query timeout enforcement resolved contention. Partial indexes filtered by tenant_id for the largest tenants eliminated unnecessary index bloat for smaller accounts.",
+            "Real-time analytics dashboard: A logistics company needed sub-200ms dashboard queries across 2 billion GPS tracking points. The solution used TimescaleDB hypertables (automatic time-based partitioning) with continuous aggregates for pre-computed hourly and daily rollups. Chunk exclusion ensures real-time queries only touch the most recent chunks, while compressed older chunks reduce storage by 90%."
+          ]
+        }
+      ],
+      "wordCount": 231,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you identify a slow query and determine the root cause?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with the slow query log or pg_stat_statements to identify problematic queries by total execution time. Then use EXPLAIN ANALYZE to examine the actual execution plan. Look for sequential scans on large tables (missing index), large discrepancies between estimated and actual rows (stale statistics), sort operations spilling to disk (insufficient work_mem), nested loop joins on large result sets (missing join index), and high buffer read counts (poor cache utilization). The ratio of rows examined to rows returned indicates index effectiveness."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose not to add an index?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Avoid adding indexes on tables with very high write-to-read ratios (each index adds write overhead), on columns with very low cardinality where the optimizer would choose a sequential scan anyway (e.g., a boolean column), on small tables where a full scan is faster than index traversal overhead, and when the index would duplicate coverage already provided by an existing composite index. Also avoid indexing columns that are frequently updated, as each update requires index maintenance."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between a clustered and non-clustered index."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A clustered index determines the physical storage order of table rows (only one per table in SQL Server; PostgreSQL uses CLUSTER command). Range scans on the clustering key are extremely efficient since data is contiguous on disk. Non-clustered indexes store a separate B-tree structure with pointers back to the heap or clustered index key, requiring an additional lookup (key lookup) to retrieve non-covered columns. Covering indexes eliminate this extra lookup by including all needed columns in the index itself."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does partitioning improve query performance?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Partitioning enables partition pruning where the query planner eliminates entire partitions from scans based on WHERE clause filters on the partition key. A query filtering on order_date = '2024-03-15' against a monthly-partitioned table only scans one partition instead of the entire table, reducing I/O proportionally. It also enables parallel scans across partitions, simplifies data lifecycle management (dropping old partitions is instantaneous vs. deleting millions of rows), and reduces index sizes per partition improving cache efficiency."
+        }
+      ],
+      "wordCount": 353,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor query plan regressions: Use pg_stat_statements to track execution time trends. A query that was fast yesterday may become slow today if the optimizer switches plans due to changed statistics or data growth. Set up alerts for queries whose mean execution time increases by more than 3x from their baseline, and investigate immediately before user impact accumulates.",
+            "Right-size connection pools: Set pool size to (core_count * 2) + effective_spindle_count as a starting point (typically 10-30 connections). Too many connections cause context switching overhead and lock contention; too few cause request queuing. Monitor pool wait time and active connection count. For PostgreSQL, use PgBouncer in transaction mode to multiplex thousands of application connections across a smaller number of database connections.",
+            "Automate partition maintenance: Create future partitions ahead of time with scheduled jobs (at least one period ahead). Set up alerts for partition boundary violations and automate detaching or dropping expired partitions during low-traffic windows. Missing partitions cause INSERT failures, so proactive creation is critical for time-series workloads.",
+            "Index maintenance schedule: B-tree indexes accumulate bloat from updates and deletes. Monitor index bloat with pgstattuple extension and schedule REINDEX CONCURRENTLY (PostgreSQL 12+) when bloat exceeds 30-40%. For high-write tables, consider using pg_repack which rebuilds indexes without holding exclusive locks, allowing continued read/write access during maintenance."
+          ]
+        }
+      ],
+      "wordCount": 212,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "MongoDB and Document Databases — Comparison of document store indexing strategies with relational B-tree indexes",
+            "Database Design Patterns — Schema normalization and denormalization decisions that affect query performance",
+            "Transactions and Consistency — Transaction isolation levels and their performance implications"
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- PostgreSQL: EXPLAIN ANALYZE shows actual execution time and row counts\nEXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)\nSELECT o.order_id, o.total_amount, c.name, c.email\nFROM orders o\nJOIN customers c ON o.customer_id = c.customer_id\nWHERE o.order_date >= '2024-01-01'\n  AND o.status = 'SHIPPED'\nORDER BY o.order_date DESC\nLIMIT 50;\n\n-- Key metrics to examine in the output:\n-- 1. actual time vs estimated cost (large discrepancies = stale statistics)\n-- 2. rows (estimated vs actual) - if wildly different, run ANALYZE\n-- 3. Sort Method - external merge sort indicates insufficient work_mem\n-- 4. Seq Scan on large tables - potential missing index\n-- 5. Buffers: shared hit vs read - cache hit ratio\n-- 6. Planning Time vs Execution Time - high planning time = complex query\n\n-- Identify slow queries with pg_stat_statements\nSELECT query, calls, mean_exec_time, total_exec_time,\n       rows / calls AS avg_rows,\n       shared_blks_hit::float / (shared_blks_hit + shared_blks_read) AS cache_hit_ratio\nFROM pg_stat_statements\nWHERE mean_exec_time > 100  -- queries averaging over 100ms\nORDER BY total_exec_time DESC\nLIMIT 20;\n\n-- Find missing indexes by examining sequential scans on large tables\nSELECT schemaname, relname, seq_scan, seq_tup_read,\n       idx_scan, n_live_tup,\n       seq_tup_read / GREATEST(seq_scan, 1) AS avg_rows_per_scan\nFROM pg_stat_user_tables\nWHERE seq_scan > 100\n  AND n_live_tup > 10000\nORDER BY seq_tup_read DESC;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Composite index following ESR rule: Equality, Sort, Range\n-- Equality columns first, then sort columns, then range columns\nCREATE INDEX idx_orders_status_date_amount\nON orders (status, order_date DESC, total_amount);\n\n-- Covering index: includes all columns needed by the query\n-- Enables Index Only Scan, avoiding heap table access entirely\nCREATE INDEX idx_orders_covering\nON orders (status, order_date DESC)\nINCLUDE (order_id, total_amount, customer_id);\n\n-- Partial index: only indexes rows matching a condition\n-- Dramatically smaller for queries that always filter on this condition\nCREATE INDEX idx_orders_active\nON orders (customer_id, order_date DESC)\nWHERE status IN ('PENDING', 'PROCESSING', 'SHIPPED');\n\n-- Expression index: for queries applying functions to columns\nCREATE INDEX idx_customers_lower_email\nON customers (LOWER(email));\n\n-- GIN index for full-text search\nCREATE INDEX idx_products_search\nON products USING gin (to_tsvector('english', name || ' ' || description));\n\n-- BRIN index for naturally ordered data (time-series, sequential IDs)\n-- Much smaller than B-tree, effective when physical order correlates with value\nCREATE INDEX idx_events_created_brin\nON events USING brin (created_at) WITH (pages_per_range = 32);\n\n-- Monitor index usage to identify unused indexes consuming resources\nSELECT schemaname, relname, indexrelname,\n       idx_scan, idx_tup_read, idx_tup_fetch,\n       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size\nFROM pg_stat_user_indexes\nWHERE idx_scan = 0 AND indexrelname NOT LIKE '%_pkey'\nORDER BY pg_relation_size(indexrelid) DESC;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Range partitioning by date (PostgreSQL declarative partitioning)\nCREATE TABLE orders (\n    order_id    BIGSERIAL,\n    customer_id BIGINT NOT NULL,\n    order_date  DATE NOT NULL,\n    total_amount DECIMAL(10,2),\n    status      VARCHAR(20),\n    PRIMARY KEY (order_id, order_date)\n) PARTITION BY RANGE (order_date);\n\n-- Create quarterly partitions\nCREATE TABLE orders_2024_q1 PARTITION OF orders\n    FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');\nCREATE TABLE orders_2024_q2 PARTITION OF orders\n    FOR VALUES FROM ('2024-04-01') TO ('2024-07-01');\nCREATE TABLE orders_2024_q3 PARTITION OF orders\n    FOR VALUES FROM ('2024-07-01') TO ('2024-10-01');\nCREATE TABLE orders_2024_q4 PARTITION OF orders\n    FOR VALUES FROM ('2024-10-01') TO ('2025-01-01');\nCREATE TABLE orders_default PARTITION OF orders DEFAULT;\n\n-- Hash partitioning for even distribution across shards\nCREATE TABLE audit_logs (\n    log_id      BIGSERIAL,\n    user_id     BIGINT NOT NULL,\n    action      VARCHAR(50),\n    created_at  TIMESTAMP DEFAULT NOW(),\n    PRIMARY KEY (log_id, user_id)\n) PARTITION BY HASH (user_id);\n\nCREATE TABLE audit_logs_p0 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 0);\nCREATE TABLE audit_logs_p1 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 1);\nCREATE TABLE audit_logs_p2 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 2);\nCREATE TABLE audit_logs_p3 PARTITION OF audit_logs\n    FOR VALUES WITH (MODULUS 4, REMAINDER 3);\n\n-- Automate partition creation for future months\nCREATE OR REPLACE FUNCTION create_monthly_partition()\nRETURNS void AS $$\nDECLARE\n    partition_date DATE := date_trunc('month', NOW() + interval '1 month');\n    partition_name TEXT;\n    start_date TEXT;\n    end_date TEXT;\nBEGIN\n    partition_name := 'orders_' || to_char(partition_date, 'YYYY_MM');\n    start_date := to_char(partition_date, 'YYYY-MM-DD');\n    end_date := to_char(partition_date + interval '1 month', 'YYYY-MM-DD');\n\n    EXECUTE format(\n        'CREATE TABLE IF NOT EXISTS %I PARTITION OF orders FOR VALUES FROM (%L) TO (%L)',\n        partition_name, start_date, end_date\n    );\nEND;\n$$ LANGUAGE plpgsql;",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Replace correlated subquery with JOIN + aggregation\n-- BEFORE: executes subquery once per row in outer query\nSELECT c.name, c.email,\n    (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.customer_id) AS order_count\nFROM customers c WHERE c.region = 'US';\n\n-- AFTER: single pass with LEFT JOIN\nSELECT c.name, c.email, COALESCE(o.order_count, 0) AS order_count\nFROM customers c\nLEFT JOIN (\n    SELECT customer_id, COUNT(*) AS order_count\n    FROM orders GROUP BY customer_id\n) o ON o.customer_id = c.customer_id\nWHERE c.region = 'US';\n\n-- Keyset pagination instead of OFFSET for large datasets\n-- BEFORE: OFFSET scans and discards rows (O(offset) per page)\nSELECT * FROM orders ORDER BY order_date DESC, order_id DESC\nOFFSET 100000 LIMIT 50;\n\n-- AFTER: keyset pagination uses index efficiently (O(1) per page)\nSELECT * FROM orders\nWHERE (order_date, order_id) < ('2024-03-15', 987654)\nORDER BY order_date DESC, order_id DESC\nLIMIT 50;\n\n-- Batch processing to avoid long-running locks\nDO $$\nDECLARE\n    batch_size INT := 5000;\n    rows_affected INT;\nBEGIN\n    LOOP\n        WITH batch AS (\n            SELECT order_id FROM orders\n            WHERE order_date < '2023-01-01' AND status != 'ARCHIVED'\n            LIMIT batch_size\n            FOR UPDATE SKIP LOCKED\n        )\n        UPDATE orders SET status = 'ARCHIVED'\n        WHERE order_id IN (SELECT order_id FROM batch);\n\n        GET DIAGNOSTICS rows_affected = ROW_COUNT;\n        COMMIT;\n        EXIT WHEN rows_affected = 0;\n        PERFORM pg_sleep(0.1);\n    END LOOP;\nEND $$;\n\n-- Use materialized views for expensive aggregations\nCREATE MATERIALIZED VIEW daily_revenue AS\nSELECT date_trunc('day', order_date) AS day,\n       COUNT(*) AS order_count,\n       SUM(total_amount) AS revenue,\n       AVG(total_amount) AS avg_order_value\nFROM orders\nWHERE status = 'completed'\nGROUP BY date_trunc('day', order_date);\n\nCREATE UNIQUE INDEX idx_daily_revenue_day ON daily_revenue (day);\n\n-- Refresh concurrently (no lock on reads during refresh)\nREFRESH MATERIALIZED VIEW CONCURRENTLY daily_revenue;",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/databases/sql-performance-tuning.md",
+    "wordCount": 1421,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,267 @@
+{
+  "id": "web-performance-accessibility",
+  "slug": "accessibility",
+  "title": "Accessibility",
+  "category": "Frontend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "WCAG 2.1 has three conformance levels: A (minimum), AA (standard for most legal requirements), AAA (enhanced)",
+            "Color contrast ratios: 4.5:1 for normal text, 3:1 for large text (18px+ bold or 24px+ regular) at AA level",
+            "All interactive elements must be keyboard accessible — focusable, operable, and have visible focus indicators",
+            "ARIA (Accessible Rich Internet Applications) supplements HTML semantics — use native HTML elements first, ARIA only when needed",
+            "Screen readers announce elements by their role, name, and state — ensure all three are correct for custom components",
+            "aria-live=\"polite\" announces dynamic content changes without interrupting; aria-live=\"assertive\" interrupts immediately",
+            "Skip navigation links (<a href=\"#main-content\">Skip to content</a>) let keyboard users bypass repetitive navigation",
+            "Form inputs must have associated labels — use <label for=\"id\"> or aria-labelledby; placeholder text is not a label"
+          ]
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Accessibility is not optional — it applies to every web application. Legal requirements (ADA in the US, EAA in the EU, AODA in Canada) mandate WCAG 2.1 AA compliance for public-facing websites and increasingly for internal tools. Beyond compliance, accessible design improves usability for all users: keyboard navigation benefits power users, captions help users in noisy environments, high contrast helps users in bright sunlight, and clear structure helps users with cognitive load. Prioritize accessibility work when launching public-facing products (legal exposure), when serving government or education sectors (Section 508 compliance), when your analytics show users with assistive technologies (typically 5-15% of traffic uses some form of AT), or when redesigning components (cheaper to build accessible from the start than to retrofit). The cost of accessibility remediation increases 10-30x when done after launch versus during initial development."
+        },
+        {
+          "type": "admonition",
+          "admonitionType": "note",
+          "content": "Full WCAG compliance validation requires manual testing with assistive technologies and expert accessibility review. Automated tools catch only 30-50% of accessibility issues."
+        }
+      ],
+      "wordCount": 158,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "accessible-modal-dialog",
+          "heading": "Accessible Modal Dialog",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { useRef, useEffect, useCallback } from 'react';\n\ninterface ModalProps {\n  isOpen: boolean;\n  onClose: () => void;\n  title: string;\n  children: React.ReactNode;\n}\n\nfunction AccessibleModal({ isOpen, onClose, title, children }: ModalProps) {\n  const modalRef = useRef<HTMLDivElement>(null);\n  const previousFocusRef = useRef<HTMLElement | null>(null);\n\n  // Trap focus within modal\n  const handleKeyDown = useCallback((event: KeyboardEvent) => {\n    if (event.key === 'Escape') {\n      onClose();\n      return;\n    }\n\n    if (event.key !== 'Tab') return;\n\n    const focusableElements = modalRef.current?.querySelectorAll<HTMLElement>(\n      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex=\"-1\"])'\n    );\n\n    if (!focusableElements || focusableElements.length === 0) return;\n\n    const firstElement = focusableElements[0];\n    const lastElement = focusableElements[focusableElements.length - 1];\n\n    if (event.shiftKey && document.activeElement === firstElement) {\n      event.preventDefault();\n      lastElement.focus();\n    } else if (!event.shiftKey && document.activeElement === lastElement) {\n      event.preventDefault();\n      firstElement.focus();\n    }\n  }, [onClose]);\n\n  useEffect(() => {\n    if (isOpen) {\n      previousFocusRef.current = document.activeElement as HTMLElement;\n      document.addEventListener('keydown', handleKeyDown);\n      // Focus the modal after render\n      setTimeout(() => modalRef.current?.focus(), 0);\n      // Prevent background scrolling\n      document.body.style.overflow = 'hidden';\n    }\n\n    return () => {\n      document.removeEventListener('keydown', handleKeyDown);\n      document.body.style.overflow = '';\n      // Restore focus to trigger element\n      previousFocusRef.current?.focus();\n    };\n  }, [isOpen, handleKeyDown]);\n\n  if (!isOpen) return null;\n\n  return (\n    <>\n      {/* Backdrop */}\n      <div\n        className=\"modal-backdrop\"\n        aria-hidden=\"true\"\n        onClick={onClose}\n      />\n      {/* Modal */}\n      <div\n        ref={modalRef}\n        role=\"dialog\"\n        aria-modal=\"true\"\n        aria-labelledby=\"modal-title\"\n        aria-describedby=\"modal-description\"\n        tabIndex={-1}\n        className=\"modal\"\n      >\n        <header className=\"modal__header\">\n          <h2 id=\"modal-title\">{title}</h2>\n          <button\n            onClick={onClose}\n            aria-label=\"Close dialog\"\n            className=\"modal__close\"\n          >\n            <span aria-hidden=\"true\">&times;</span>\n          </button>\n        </header>\n        <div id=\"modal-description\" className=\"modal__body\">\n          {children}\n        </div>\n      </div>\n    </>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "accessible-form-with-validation",
+          "heading": "Accessible Form with Validation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { useState, useId } from 'react';\n\ninterface FormErrors {\n  [field: string]: string;\n}\n\nfunction AccessibleForm() {\n  const [errors, setErrors] = useState<FormErrors>({});\n  const [submitted, setSubmitted] = useState(false);\n  const emailId = useId();\n  const passwordId = useId();\n  const nameId = useId();\n  const errorSummaryId = useId();\n\n  const validate = (formData: FormData): FormErrors => {\n    const newErrors: FormErrors = {};\n    const email = formData.get('email') as string;\n    const password = formData.get('password') as string;\n\n    if (!email) newErrors.email = 'Email is required';\n    else if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))\n      newErrors.email = 'Enter a valid email address';\n\n    if (!password) newErrors.password = 'Password is required';\n    else if (password.length < 8)\n      newErrors.password = 'Password must be at least 8 characters';\n\n    return newErrors;\n  };\n\n  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {\n    event.preventDefault();\n    const formData = new FormData(event.currentTarget);\n    const newErrors = validate(formData);\n    setErrors(newErrors);\n\n    if (Object.keys(newErrors).length > 0) {\n      // Focus error summary for screen reader announcement\n      document.getElementById(errorSummaryId)?.focus();\n      return;\n    }\n\n    setSubmitted(true);\n  };\n\n  return (\n    <form onSubmit={handleSubmit} noValidate aria-label=\"Registration form\">\n      {/* Error summary — announced when focused */}\n      {Object.keys(errors).length > 0 && (\n        <div\n          id={errorSummaryId}\n          role=\"alert\"\n          aria-labelledby=\"error-heading\"\n          tabIndex={-1}\n          className=\"error-summary\"\n        >\n          <h3 id=\"error-heading\">There are {Object.keys(errors).length} errors in this form</h3>\n          <ul>\n            {Object.entries(errors).map(([field, message]) => (\n              <li key={field}>\n                <a href={`#${field}`}>{message}</a>\n              </li>\n            ))}\n          </ul>\n        </div>\n      )}\n\n      {/* Success message */}\n      {submitted && (\n        <div role=\"status\" aria-live=\"polite\" className=\"success-message\">\n          Registration successful! Check your email for confirmation.\n        </div>\n      )}\n\n      <div className=\"form-field\">\n        <label htmlFor={nameId}>\n          Full name <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={nameId}\n          name=\"name\"\n          type=\"text\"\n          required\n          aria-required=\"true\"\n          autoComplete=\"name\"\n        />\n      </div>\n\n      <div className=\"form-field\">\n        <label htmlFor={emailId}>\n          Email address <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={emailId}\n          name=\"email\"\n          type=\"email\"\n          required\n          aria-required=\"true\"\n          aria-invalid={!!errors.email}\n          aria-describedby={errors.email ? `${emailId}-error` : undefined}\n          autoComplete=\"email\"\n        />\n        {errors.email && (\n          <span id={`${emailId}-error`} className=\"field-error\" role=\"alert\">\n            {errors.email}\n          </span>\n        )}\n      </div>\n\n      <div className=\"form-field\">\n        <label htmlFor={passwordId}>\n          Password <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={passwordId}\n          name=\"password\"\n          type=\"password\"\n          required\n          aria-required=\"true\"\n          aria-invalid={!!errors.password}\n          aria-describedby={`${passwordId}-hint ${errors.password ? `${passwordId}-error` : ''}`}\n          autoComplete=\"new-password\"\n          minLength={8}\n        />\n        <span id={`${passwordId}-hint`} className=\"field-hint\">\n          Must be at least 8 characters with one uppercase and one number\n        </span>\n        {errors.password && (\n          <span id={`${passwordId}-error`} className=\"field-error\" role=\"alert\">\n            {errors.password}\n          </span>\n        )}\n      </div>\n\n      <button type=\"submit\">Create account</button>\n    </form>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "accessible-data-table-with-sorting",
+          "heading": "Accessible Data Table with Sorting",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { useState } from 'react';\n\ninterface Column<T> {\n  key: keyof T;\n  label: string;\n  sortable?: boolean;\n}\n\ninterface AccessibleTableProps<T> {\n  data: T[];\n  columns: Column<T>[];\n  caption: string;\n}\n\nfunction AccessibleTable<T extends Record<string, any>>({\n  data, columns, caption\n}: AccessibleTableProps<T>) {\n  const [sortColumn, setSortColumn] = useState<keyof T | null>(null);\n  const [sortDirection, setSortDirection] = useState<'ascending' | 'descending'>('ascending');\n  const [announcement, setAnnouncement] = useState('');\n\n  const handleSort = (column: Column<T>) => {\n    if (!column.sortable) return;\n\n    const newDirection = sortColumn === column.key && sortDirection === 'ascending'\n      ? 'descending' : 'ascending';\n\n    setSortColumn(column.key);\n    setSortDirection(newDirection);\n    setAnnouncement(`Table sorted by ${column.label}, ${newDirection}`);\n  };\n\n  const sortedData = [...data].sort((a, b) => {\n    if (!sortColumn) return 0;\n    const aVal = a[sortColumn];\n    const bVal = b[sortColumn];\n    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;\n    return sortDirection === 'ascending' ? comparison : -comparison;\n  });\n\n  return (\n    <>\n      {/* Live region for sort announcements */}\n      <div aria-live=\"polite\" aria-atomic=\"true\" className=\"visually-hidden\">\n        {announcement}\n      </div>\n\n      <table aria-label={caption} role=\"grid\">\n        <caption className=\"visually-hidden\">{caption}</caption>\n        <thead>\n          <tr>\n            {columns.map(column => (\n              <th\n                key={String(column.key)}\n                scope=\"col\"\n                aria-sort={sortColumn === column.key ? sortDirection : undefined}\n              >\n                {column.sortable ? (\n                  <button\n                    onClick={() => handleSort(column)}\n                    aria-label={`Sort by ${column.label}, currently ${\n                      sortColumn === column.key ? sortDirection : 'unsorted'\n                    }`}\n                    className=\"sort-button\"\n                  >\n                    {column.label}\n                    <span aria-hidden=\"true\" className=\"sort-icon\">\n                      {sortColumn === column.key\n                        ? (sortDirection === 'ascending' ? '▲' : '▼')\n                        : '⇅'}\n                    </span>\n                  </button>\n                ) : (\n                  column.label\n                )}\n              </th>\n            ))}\n          </tr>\n        </thead>\n        <tbody>\n          {sortedData.map((row, index) => (\n            <tr key={index}>\n              {columns.map(column => (\n                <td key={String(column.key)}>{String(row[column.key])}</td>\n              ))}\n            </tr>\n          ))}\n        </tbody>\n      </table>\n    </>\n  );\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "skip-navigation-and-landmark-structure",
+          "heading": "Skip Navigation and Landmark Structure",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "html",
+              "code": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Accessible Page Structure</title>\n  <style>\n    /* Visually hidden but accessible to screen readers */\n    .visually-hidden {\n      position: absolute;\n      width: 1px;\n      height: 1px;\n      padding: 0;\n      margin: -1px;\n      overflow: hidden;\n      clip: rect(0, 0, 0, 0);\n      white-space: nowrap;\n      border: 0;\n    }\n\n    /* Skip link visible on focus */\n    .skip-link {\n      position: absolute;\n      top: -40px;\n      left: 0;\n      background: #000;\n      color: #fff;\n      padding: 8px 16px;\n      z-index: 100;\n      transition: top 0.2s;\n    }\n    .skip-link:focus {\n      top: 0;\n    }\n\n    /* Visible focus indicators */\n    :focus-visible {\n      outline: 3px solid #4A90D9;\n      outline-offset: 2px;\n    }\n\n    /* Minimum touch target size */\n    button, a, input, select, textarea {\n      min-height: 44px;\n      min-width: 44px;\n    }\n  </style>\n</head>\n<body>\n  <!-- Skip navigation -->\n  <a href=\"#main-content\" class=\"skip-link\">Skip to main content</a>\n  <a href=\"#search\" class=\"skip-link\">Skip to search</a>\n\n  <header role=\"banner\">\n    <nav aria-label=\"Primary navigation\">\n      <ul role=\"list\">\n        <li><a href=\"/\" aria-current=\"page\">Home</a></li>\n        <li><a href=\"/products\">Products</a></li>\n        <li><a href=\"/about\">About</a></li>\n        <li><a href=\"/contact\">Contact</a></li>\n      </ul>\n    </nav>\n    <form role=\"search\" id=\"search\" aria-label=\"Site search\">\n      <label for=\"search-input\" class=\"visually-hidden\">Search</label>\n      <input id=\"search-input\" type=\"search\" placeholder=\"Search...\" aria-describedby=\"search-hint\">\n      <span id=\"search-hint\" class=\"visually-hidden\">Search products, articles, and help topics</span>\n      <button type=\"submit\" aria-label=\"Submit search\">\n        <svg aria-hidden=\"true\" focusable=\"false\"><!-- icon --></svg>\n      </button>\n    </form>\n  </header>\n\n  <nav aria-label=\"Breadcrumb\">\n    <ol>\n      <li><a href=\"/\">Home</a></li>\n      <li><a href=\"/products\">Products</a></li>\n      <li><a href=\"/products/electronics\" aria-current=\"page\">Electronics</a></li>\n    </ol>\n  </nav>\n\n  <main id=\"main-content\" tabindex=\"-1\">\n    <h1>Electronics</h1>\n    <!-- Page content -->\n\n    <section aria-labelledby=\"featured-heading\">\n      <h2 id=\"featured-heading\">Featured Products</h2>\n      <!-- Section content -->\n    </section>\n  </main>\n\n  <aside aria-label=\"Related categories\">\n    <!-- Sidebar content -->\n  </aside>\n\n  <footer role=\"contentinfo\">\n    <nav aria-label=\"Footer navigation\">\n      <!-- Footer links -->\n    </nav>\n  </footer>\n</body>\n</html>",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using div and span for interactive elements: Custom buttons built with <div onclick=\"...\"> lack keyboard support, focus management, and screen reader semantics. Use native <button> or <a> elements which provide these for free. If you must use a div, add role=\"button\", tabindex=\"0\", and keyboard event handlers for Enter and Space",
+            "Relying on color alone to convey information: Red text for errors, green for success, or color-coded charts exclude colorblind users (8% of males). Always pair color with text labels, icons, or patterns. Error messages need text like \"Error:\" not just red styling",
+            "Missing or incorrect ARIA usage: Adding aria-label to elements that already have visible text creates confusion (screen readers announce both). Using role=\"button\" without implementing keyboard handlers creates a broken experience. The first rule of ARIA: don't use ARIA if native HTML provides the semantics",
+            "Inaccessible custom dropdowns and autocompletes: Custom select components that don't implement the combobox or listbox ARIA pattern are unusable with screen readers. They need role=\"combobox\", aria-expanded, aria-activedescendant, and full keyboard navigation (arrow keys, Home, End, type-ahead)",
+            "Focus management failures in SPAs: Client-side navigation doesn't trigger screen reader page announcements like traditional page loads. After route changes, programmatically move focus to the new page's heading or main content area, and announce the page title via an aria-live region",
+            "Hiding content incorrectly: display: none and visibility: hidden hide from both visual users and screen readers. Use .visually-hidden CSS class (absolute positioning off-screen) for content that should be screen-reader-only. Use aria-hidden=\"true\" for decorative content that should be hidden from screen readers but visible"
+          ]
+        }
+      ],
+      "wordCount": 256,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Government Digital Services: The UK's GOV.UK platform serves 4 million weekly users including many with disabilities. Their design system enforces WCAG 2.1 AA compliance with components tested across JAWS, NVDA, VoiceOver, and Dragon NaturallySpeaking. Every form follows a consistent error pattern: error summary at the top with links to each field, inline error messages associated via aria-describedby, and red left-border visual indicator. This pattern reduced form abandonment by 25%."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-Commerce Accessibility Remediation: A major retailer faced a lawsuit under ADA Title III for inaccessible product pages. The remediation project involved: adding alt text to 500,000 product images using AI-generated descriptions reviewed by humans, implementing keyboard-navigable product carousels with proper ARIA roles, fixing color contrast on 200+ components, and adding screen reader announcements for cart updates and filter changes. Post-remediation, they saw a 12% increase in conversions from users with assistive technologies."
+        },
+        {
+          "type": "paragraph",
+          "text": "Banking Application: A financial institution built an accessible dashboard for account management. Complex data tables use proper <th scope=\"col/row\"> markup with sortable columns announced via aria-sort. Transaction filters use an accessible combobox pattern with type-ahead search. Real-time balance updates use aria-live=\"polite\" to announce changes without disrupting the user's current task. The application passes automated testing (axe-core) and quarterly manual audits with screen reader users."
+        }
+      ],
+      "wordCount": 205,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between aria-label, aria-labelledby, and aria-describedby?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: aria-label provides an accessible name as a string directly on the element — use when there's no visible text label (icon buttons, search inputs with placeholder only). aria-labelledby references another element's ID whose text content becomes the accessible name — use when a visible heading or label exists elsewhere on the page (modal title labeling the dialog). aria-describedby provides supplementary description that screen readers announce after the name and role — use for hints, error messages, or additional context (password requirements, field format hints). Priority order for accessible name calculation: aria-labelledby > aria-label > native label (<label for>) > content. Key distinction: aria-labelledby and aria-label define what the element IS (its name), while aria-describedby provides additional context about it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you make a single-page application accessible for screen reader users?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: SPAs break the traditional page load model that screen readers rely on for navigation announcements. Solutions: First, manage focus on route changes — move focus to the new page's <h1> or a skip-link target after navigation completes. Second, announce page changes using an aria-live region that updates with the new page title. Third, update document.title on every route change so screen reader users can identify their location. Fourth, ensure the browser's back/forward buttons work correctly and restore focus position. Fifth, use proper landmark regions (<main>, <nav>, <aside>) so users can navigate by landmarks. Sixth, implement loading states accessibly — announce \"Loading\" via aria-live and announce completion. Seventh, handle dynamic content updates (infinite scroll, live data) with appropriate aria-live politeness levels. Test with actual screen readers (NVDA on Windows, VoiceOver on macOS) — automated tools cannot verify the user experience of dynamic content."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the accessibility tree and how browsers construct it."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The accessibility tree is a simplified representation of the DOM that assistive technologies interact with. Browsers construct it by: mapping HTML elements to accessibility roles (e.g., <button> → role \"button\", <nav> → role \"navigation\"), computing accessible names from labels/content/ARIA attributes, determining states and properties (checked, expanded, disabled, required), and establishing relationships (labelledby, describedby, owns, controls). Elements with aria-hidden=\"true\" or display: none are excluded from the tree. Custom elements without semantic HTML need explicit ARIA roles and properties to appear correctly. The tree exposes: role (what the element is), name (what it's called), state (its current condition), and value (for inputs). Chrome DevTools' Accessibility tab shows the computed tree, and the Accessibility Inspector in Firefox shows how each element maps. Understanding this tree is essential for debugging why screen readers announce elements incorrectly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you test for accessibility and what tools do you use?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Multi-layered testing approach. Automated testing (catches 30-50% of issues): axe-core integrated into CI/CD (via jest-axe or cypress-axe), Lighthouse accessibility audit, ESLint plugin jsx-a11y for compile-time checks. Manual testing (catches remaining issues): keyboard-only navigation (Tab, Shift+Tab, Enter, Space, Escape, Arrow keys), screen reader testing with NVDA (Windows), VoiceOver (macOS/iOS), TalkBack (Android), zoom to 200% and verify no content is lost, Windows High Contrast mode verification. Browser tools: Chrome DevTools Accessibility tab for inspecting the accessibility tree, Firefox Accessibility Inspector for contrast checking and tabbing order visualization, WAVE browser extension for visual overlay of issues. Process: run automated tests in CI on every PR, conduct manual screen reader testing for new components, perform quarterly full-site audits with assistive technology users, and maintain an accessibility checklist in the component library documentation."
+        }
+      ],
+      "wordCount": 571,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Integrate axe-core into your CI pipeline to catch regressions automatically. Use @axe-core/react in development for real-time warnings, jest-axe in unit tests for component-level checks, and cypress-axe or playwright with axe for integration tests. Block PRs that introduce new violations. This catches ~40% of issues automatically, freeing manual testing time for the complex interactions that tools cannot evaluate",
+            "Maintain a component library with built-in accessibility: Build accessible patterns once (modal, dropdown, tabs, accordion, toast notifications) and reuse them. Document the keyboard interaction pattern, ARIA attributes, and screen reader behavior for each component. This prevents individual developers from reinventing (and breaking) complex accessible interactions",
+            "Use prefers-reduced-motion media query to respect user preferences for reduced animation. Users with vestibular disorders can experience nausea from parallax effects, auto-playing videos, and complex transitions. Wrap all animations in @media (prefers-reduced-motion: no-preference) and provide instant state changes as the default"
+          ]
+        }
+      ],
+      "wordCount": 143,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Web Performance — Performance and accessibility are complementary concerns for user experience",
+            "REST API Design — API error responses that support accessible error display patterns",
+            "Security — Authentication flows that must be accessible (CAPTCHA alternatives, MFA)"
+          ]
+        }
+      ],
+      "wordCount": 36,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { useRef, useEffect, useCallback } from 'react';\n\ninterface ModalProps {\n  isOpen: boolean;\n  onClose: () => void;\n  title: string;\n  children: React.ReactNode;\n}\n\nfunction AccessibleModal({ isOpen, onClose, title, children }: ModalProps) {\n  const modalRef = useRef<HTMLDivElement>(null);\n  const previousFocusRef = useRef<HTMLElement | null>(null);\n\n  // Trap focus within modal\n  const handleKeyDown = useCallback((event: KeyboardEvent) => {\n    if (event.key === 'Escape') {\n      onClose();\n      return;\n    }\n\n    if (event.key !== 'Tab') return;\n\n    const focusableElements = modalRef.current?.querySelectorAll<HTMLElement>(\n      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex=\"-1\"])'\n    );\n\n    if (!focusableElements || focusableElements.length === 0) return;\n\n    const firstElement = focusableElements[0];\n    const lastElement = focusableElements[focusableElements.length - 1];\n\n    if (event.shiftKey && document.activeElement === firstElement) {\n      event.preventDefault();\n      lastElement.focus();\n    } else if (!event.shiftKey && document.activeElement === lastElement) {\n      event.preventDefault();\n      firstElement.focus();\n    }\n  }, [onClose]);\n\n  useEffect(() => {\n    if (isOpen) {\n      previousFocusRef.current = document.activeElement as HTMLElement;\n      document.addEventListener('keydown', handleKeyDown);\n      // Focus the modal after render\n      setTimeout(() => modalRef.current?.focus(), 0);\n      // Prevent background scrolling\n      document.body.style.overflow = 'hidden';\n    }\n\n    return () => {\n      document.removeEventListener('keydown', handleKeyDown);\n      document.body.style.overflow = '';\n      // Restore focus to trigger element\n      previousFocusRef.current?.focus();\n    };\n  }, [isOpen, handleKeyDown]);\n\n  if (!isOpen) return null;\n\n  return (\n    <>\n      {/* Backdrop */}\n      <div\n        className=\"modal-backdrop\"\n        aria-hidden=\"true\"\n        onClick={onClose}\n      />\n      {/* Modal */}\n      <div\n        ref={modalRef}\n        role=\"dialog\"\n        aria-modal=\"true\"\n        aria-labelledby=\"modal-title\"\n        aria-describedby=\"modal-description\"\n        tabIndex={-1}\n        className=\"modal\"\n      >\n        <header className=\"modal__header\">\n          <h2 id=\"modal-title\">{title}</h2>\n          <button\n            onClick={onClose}\n            aria-label=\"Close dialog\"\n            className=\"modal__close\"\n          >\n            <span aria-hidden=\"true\">&times;</span>\n          </button>\n        </header>\n        <div id=\"modal-description\" className=\"modal__body\">\n          {children}\n        </div>\n      </div>\n    </>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { useState, useId } from 'react';\n\ninterface FormErrors {\n  [field: string]: string;\n}\n\nfunction AccessibleForm() {\n  const [errors, setErrors] = useState<FormErrors>({});\n  const [submitted, setSubmitted] = useState(false);\n  const emailId = useId();\n  const passwordId = useId();\n  const nameId = useId();\n  const errorSummaryId = useId();\n\n  const validate = (formData: FormData): FormErrors => {\n    const newErrors: FormErrors = {};\n    const email = formData.get('email') as string;\n    const password = formData.get('password') as string;\n\n    if (!email) newErrors.email = 'Email is required';\n    else if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))\n      newErrors.email = 'Enter a valid email address';\n\n    if (!password) newErrors.password = 'Password is required';\n    else if (password.length < 8)\n      newErrors.password = 'Password must be at least 8 characters';\n\n    return newErrors;\n  };\n\n  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {\n    event.preventDefault();\n    const formData = new FormData(event.currentTarget);\n    const newErrors = validate(formData);\n    setErrors(newErrors);\n\n    if (Object.keys(newErrors).length > 0) {\n      // Focus error summary for screen reader announcement\n      document.getElementById(errorSummaryId)?.focus();\n      return;\n    }\n\n    setSubmitted(true);\n  };\n\n  return (\n    <form onSubmit={handleSubmit} noValidate aria-label=\"Registration form\">\n      {/* Error summary — announced when focused */}\n      {Object.keys(errors).length > 0 && (\n        <div\n          id={errorSummaryId}\n          role=\"alert\"\n          aria-labelledby=\"error-heading\"\n          tabIndex={-1}\n          className=\"error-summary\"\n        >\n          <h3 id=\"error-heading\">There are {Object.keys(errors).length} errors in this form</h3>\n          <ul>\n            {Object.entries(errors).map(([field, message]) => (\n              <li key={field}>\n                <a href={`#${field}`}>{message}</a>\n              </li>\n            ))}\n          </ul>\n        </div>\n      )}\n\n      {/* Success message */}\n      {submitted && (\n        <div role=\"status\" aria-live=\"polite\" className=\"success-message\">\n          Registration successful! Check your email for confirmation.\n        </div>\n      )}\n\n      <div className=\"form-field\">\n        <label htmlFor={nameId}>\n          Full name <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={nameId}\n          name=\"name\"\n          type=\"text\"\n          required\n          aria-required=\"true\"\n          autoComplete=\"name\"\n        />\n      </div>\n\n      <div className=\"form-field\">\n        <label htmlFor={emailId}>\n          Email address <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={emailId}\n          name=\"email\"\n          type=\"email\"\n          required\n          aria-required=\"true\"\n          aria-invalid={!!errors.email}\n          aria-describedby={errors.email ? `${emailId}-error` : undefined}\n          autoComplete=\"email\"\n        />\n        {errors.email && (\n          <span id={`${emailId}-error`} className=\"field-error\" role=\"alert\">\n            {errors.email}\n          </span>\n        )}\n      </div>\n\n      <div className=\"form-field\">\n        <label htmlFor={passwordId}>\n          Password <span aria-hidden=\"true\">*</span>\n          <span className=\"visually-hidden\">(required)</span>\n        </label>\n        <input\n          id={passwordId}\n          name=\"password\"\n          type=\"password\"\n          required\n          aria-required=\"true\"\n          aria-invalid={!!errors.password}\n          aria-describedby={`${passwordId}-hint ${errors.password ? `${passwordId}-error` : ''}`}\n          autoComplete=\"new-password\"\n          minLength={8}\n        />\n        <span id={`${passwordId}-hint`} className=\"field-hint\">\n          Must be at least 8 characters with one uppercase and one number\n        </span>\n        {errors.password && (\n          <span id={`${passwordId}-error`} className=\"field-error\" role=\"alert\">\n            {errors.password}\n          </span>\n        )}\n      </div>\n\n      <button type=\"submit\">Create account</button>\n    </form>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { useState } from 'react';\n\ninterface Column<T> {\n  key: keyof T;\n  label: string;\n  sortable?: boolean;\n}\n\ninterface AccessibleTableProps<T> {\n  data: T[];\n  columns: Column<T>[];\n  caption: string;\n}\n\nfunction AccessibleTable<T extends Record<string, any>>({\n  data, columns, caption\n}: AccessibleTableProps<T>) {\n  const [sortColumn, setSortColumn] = useState<keyof T | null>(null);\n  const [sortDirection, setSortDirection] = useState<'ascending' | 'descending'>('ascending');\n  const [announcement, setAnnouncement] = useState('');\n\n  const handleSort = (column: Column<T>) => {\n    if (!column.sortable) return;\n\n    const newDirection = sortColumn === column.key && sortDirection === 'ascending'\n      ? 'descending' : 'ascending';\n\n    setSortColumn(column.key);\n    setSortDirection(newDirection);\n    setAnnouncement(`Table sorted by ${column.label}, ${newDirection}`);\n  };\n\n  const sortedData = [...data].sort((a, b) => {\n    if (!sortColumn) return 0;\n    const aVal = a[sortColumn];\n    const bVal = b[sortColumn];\n    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;\n    return sortDirection === 'ascending' ? comparison : -comparison;\n  });\n\n  return (\n    <>\n      {/* Live region for sort announcements */}\n      <div aria-live=\"polite\" aria-atomic=\"true\" className=\"visually-hidden\">\n        {announcement}\n      </div>\n\n      <table aria-label={caption} role=\"grid\">\n        <caption className=\"visually-hidden\">{caption}</caption>\n        <thead>\n          <tr>\n            {columns.map(column => (\n              <th\n                key={String(column.key)}\n                scope=\"col\"\n                aria-sort={sortColumn === column.key ? sortDirection : undefined}\n              >\n                {column.sortable ? (\n                  <button\n                    onClick={() => handleSort(column)}\n                    aria-label={`Sort by ${column.label}, currently ${\n                      sortColumn === column.key ? sortDirection : 'unsorted'\n                    }`}\n                    className=\"sort-button\"\n                  >\n                    {column.label}\n                    <span aria-hidden=\"true\" className=\"sort-icon\">\n                      {sortColumn === column.key\n                        ? (sortDirection === 'ascending' ? '▲' : '▼')\n                        : '⇅'}\n                    </span>\n                  </button>\n                ) : (\n                  column.label\n                )}\n              </th>\n            ))}\n          </tr>\n        </thead>\n        <tbody>\n          {sortedData.map((row, index) => (\n            <tr key={index}>\n              {columns.map(column => (\n                <td key={String(column.key)}>{String(row[column.key])}</td>\n              ))}\n            </tr>\n          ))}\n        </tbody>\n      </table>\n    </>\n  );\n}",
+      "runnable": false
+    },
+    {
+      "language": "html",
+      "code": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Accessible Page Structure</title>\n  <style>\n    /* Visually hidden but accessible to screen readers */\n    .visually-hidden {\n      position: absolute;\n      width: 1px;\n      height: 1px;\n      padding: 0;\n      margin: -1px;\n      overflow: hidden;\n      clip: rect(0, 0, 0, 0);\n      white-space: nowrap;\n      border: 0;\n    }\n\n    /* Skip link visible on focus */\n    .skip-link {\n      position: absolute;\n      top: -40px;\n      left: 0;\n      background: #000;\n      color: #fff;\n      padding: 8px 16px;\n      z-index: 100;\n      transition: top 0.2s;\n    }\n    .skip-link:focus {\n      top: 0;\n    }\n\n    /* Visible focus indicators */\n    :focus-visible {\n      outline: 3px solid #4A90D9;\n      outline-offset: 2px;\n    }\n\n    /* Minimum touch target size */\n    button, a, input, select, textarea {\n      min-height: 44px;\n      min-width: 44px;\n    }\n  </style>\n</head>\n<body>\n  <!-- Skip navigation -->\n  <a href=\"#main-content\" class=\"skip-link\">Skip to main content</a>\n  <a href=\"#search\" class=\"skip-link\">Skip to search</a>\n\n  <header role=\"banner\">\n    <nav aria-label=\"Primary navigation\">\n      <ul role=\"list\">\n        <li><a href=\"/\" aria-current=\"page\">Home</a></li>\n        <li><a href=\"/products\">Products</a></li>\n        <li><a href=\"/about\">About</a></li>\n        <li><a href=\"/contact\">Contact</a></li>\n      </ul>\n    </nav>\n    <form role=\"search\" id=\"search\" aria-label=\"Site search\">\n      <label for=\"search-input\" class=\"visually-hidden\">Search</label>\n      <input id=\"search-input\" type=\"search\" placeholder=\"Search...\" aria-describedby=\"search-hint\">\n      <span id=\"search-hint\" class=\"visually-hidden\">Search products, articles, and help topics</span>\n      <button type=\"submit\" aria-label=\"Submit search\">\n        <svg aria-hidden=\"true\" focusable=\"false\"><!-- icon --></svg>\n      </button>\n    </form>\n  </header>\n\n  <nav aria-label=\"Breadcrumb\">\n    <ol>\n      <li><a href=\"/\">Home</a></li>\n      <li><a href=\"/products\">Products</a></li>\n      <li><a href=\"/products/electronics\" aria-current=\"page\">Electronics</a></li>\n    </ol>\n  </nav>\n\n  <main id=\"main-content\" tabindex=\"-1\">\n    <h1>Electronics</h1>\n    <!-- Page content -->\n\n    <section aria-labelledby=\"featured-heading\">\n      <h2 id=\"featured-heading\">Featured Products</h2>\n      <!-- Section content -->\n    </section>\n  </main>\n\n  <aside aria-label=\"Related categories\">\n    <!-- Sidebar content -->\n  </aside>\n\n  <footer role=\"contentinfo\">\n    <nav aria-label=\"Footer navigation\">\n      <!-- Footer links -->\n    </nav>\n  </footer>\n</body>\n</html>",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/web-performance/accessibility.md",
+    "wordCount": 1497,
+    "sectionCount": 12
+  }
+}

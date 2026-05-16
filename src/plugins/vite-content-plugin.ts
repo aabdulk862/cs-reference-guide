@@ -33,16 +33,18 @@ interface CategoryMapping {
 const CATEGORY_MAPPINGS: CategoryMapping[] = [
   { pattern: 'backend', category: 'Backend' },
   { pattern: 'frontend', category: 'Frontend' },
+  { pattern: 'databases', category: 'Databases' },
   { pattern: 'infrastructure', category: 'Infrastructure' },
   { pattern: 'data-structures-and-algorithms', category: 'Data Structures & Algorithms' },
   { pattern: 'system-design', category: 'System Design' },
+  { pattern: 'networking', category: 'Networking' },
+  { pattern: 'operating-systems', category: 'Operating Systems' },
   { pattern: 'interview-prep', category: 'Interview Prep' },
   { pattern: 'git', category: 'Git' },
   { pattern: 'security', category: 'Security' },
-  { pattern: 'nextjs', category: 'Next.js' },
-  { pattern: 'html-css', category: 'HTML & CSS' },
-  { pattern: 'ci-cd', category: 'CI/CD' },
-  { pattern: 'linux', category: 'Linux' },
+
+  { pattern: 'testing', category: 'Testing' },
+  { pattern: 'software-engineering', category: 'Software Engineering' },
 ];
 
 /**
@@ -91,6 +93,24 @@ export interface MultiPageTopic {
   category: string;
   /** URL-friendly slug derived from the directory name */
   topicSlug: string;
+}
+
+/**
+ * Extracts the learning path order from an index.md file's content.
+ * Parses markdown links in ordered lists to determine subtopic display order.
+ * Returns an array of slugs derived from the linked filenames.
+ * If no learning path is found, returns an empty array (falls back to alphabetical).
+ */
+export function extractLearningPathOrder(indexContent: string): string[] {
+  const order: string[] = [];
+  // Match ordered list items with markdown links: "1. [Title](./filename.md)"
+  const linkPattern = /^\s*\d+\.\s+\[.*?\]\(\.\/([\w-]+)\.md\)/gm;
+  let match: RegExpExecArray | null;
+  while ((match = linkPattern.exec(indexContent)) !== null) {
+    const filename = match[1];
+    order.push(slugify(filename));
+  }
+  return order;
 }
 
 /**
@@ -446,9 +466,12 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
     }
     // Store index parsed content tagged with multi-page metadata for manifest generation
     // We attach subtopic data to the index entry for later manifest building
-    (indexParsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage = {
+    // Extract learning path order from index.md links
+    const learningPathOrder = extractLearningPathOrder(indexRawContent);
+    (indexParsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[]; learningPathOrder: string[] } })._multiPage = {
       topicSlug,
       subtopics: subtopicParsedList,
+      learningPathOrder,
     };
     categoryMap.get(category)!.push(indexParsed);
   }
@@ -466,21 +489,35 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
     const topics: ManifestTopic[] = [];
 
     for (const parsed of contents) {
-      const multiPageData = (parsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage;
+      const multiPageData = (parsed as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[]; learningPathOrder: string[] } })._multiPage;
 
       if (multiPageData) {
         // Multi-page topic: JSON already written above, just build manifest entry
-        const { topicSlug: mpTopicSlug, subtopics } = multiPageData;
+        const { topicSlug: mpTopicSlug, subtopics, learningPathOrder } = multiPageData;
 
-        // Build subtopics array ordered alphabetically by title
+        // Build subtopics array — use learning path order from index.md if available,
+        // otherwise fall back to alphabetical by title
         const manifestSubtopics: ManifestSubtopic[] = subtopics
           .map((s) => ({
             id: `${mpTopicSlug}-${s.slug}`,
             slug: s.slug,
             title: s.title,
             wordCount: s.metadata.wordCount,
-          }))
-          .sort((a, b) => a.title.localeCompare(b.title));
+          }));
+
+        if (learningPathOrder.length > 0) {
+          // Sort by learning path order; items not in the path go to the end alphabetically
+          manifestSubtopics.sort((a, b) => {
+            const indexA = learningPathOrder.indexOf(a.slug);
+            const indexB = learningPathOrder.indexOf(b.slug);
+            const posA = indexA === -1 ? Infinity : indexA;
+            const posB = indexB === -1 ? Infinity : indexB;
+            if (posA !== posB) return posA - posB;
+            return a.title.localeCompare(b.title);
+          });
+        } else {
+          manifestSubtopics.sort((a, b) => a.title.localeCompare(b.title));
+        }
 
         // Aggregate counts: topic-level = index + all subtopics
         const aggregatedSectionCount = parsed.metadata.sectionCount + subtopics.reduce((sum, s) => sum + s.metadata.sectionCount, 0);
@@ -522,7 +559,7 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
       }
     }
 
-    // Detect and disambiguate duplicate topic IDs within this category
+    // Detect and disambiguate duplicate topic IDs and slugs within this category
     const idCounts = new Map<string, number>();
     for (const topic of topics) {
       idCounts.set(topic.id, (idCounts.get(topic.id) || 0) + 1);
@@ -535,6 +572,25 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
         idCounters.set(topic.id, counter);
         if (counter > 1) {
           topic.id = `${topic.id}-${counter}`;
+        }
+      }
+    }
+
+    // Also disambiguate duplicate slugs (the slug suffix after category/)
+    const slugCounts = new Map<string, number>();
+    for (const topic of topics) {
+      slugCounts.set(topic.slug, (slugCounts.get(topic.slug) || 0) + 1);
+    }
+    const slugCounters = new Map<string, number>();
+    for (const topic of topics) {
+      if ((slugCounts.get(topic.slug) || 0) > 1) {
+        const counter = (slugCounters.get(topic.slug) || 0) + 1;
+        slugCounters.set(topic.slug, counter);
+        if (counter > 1) {
+          topic.slug = `${topic.slug}-${counter}`;
+          // Also update contentPath to match the new slug
+          const slugPart = topic.slug.split('/').slice(1).join('/');
+          topic.contentPath = `/content/${categorySlug}/${slugPart}.json`;
         }
       }
     }

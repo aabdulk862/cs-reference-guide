@@ -1,0 +1,419 @@
+{
+  "id": "testing-integration-testing",
+  "slug": "integration-testing",
+  "title": "Integration Testing",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Scope: Verifies that multiple components work together correctly across real boundaries (databases, APIs, queues)",
+            "Speed: Slower than unit tests (seconds to minutes) but faster than end-to-end tests",
+            "Dependencies: Uses real or containerized infrastructure — not mocks",
+            "Test containers: Docker-based ephemeral infrastructure for reproducible integration tests",
+            "Contract testing: Verifies API compatibility between producer and consumer without full integration",
+            "Fixture management: Seed data setup and teardown strategies for consistent test state",
+            "Isolation strategy: Each test gets a clean database state via transactions, truncation, or fresh containers",
+            "CI requirement: Integration tests need infrastructure access — use Docker Compose or cloud test environments",
+            "Failure signals: Integration test failures indicate interface mismatches, schema drift, or configuration errors"
+          ]
+        }
+      ],
+      "wordCount": 112,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Integration tests fill the confidence gap between unit tests and end-to-end tests. Write integration tests when you need to verify that your SQL queries actually work against a real database engine with real query planning, that your HTTP client correctly handles the actual response format from a third-party API, that your message consumer correctly deserializes and processes messages from a real broker, that your cache invalidation logic works with actual Redis TTL behavior, and that your ORM mappings correctly translate between domain objects and database schemas."
+        },
+        {
+          "type": "paragraph",
+          "text": "The key insight is that integration tests verify assumptions. Unit tests with mocked repositories assume the SQL is correct. Integration tests prove it. When a unit test mocks repository.findByEmail(email) to return a user, it assumes the actual query works. An integration test runs that query against PostgreSQL and discovers that the index is missing, the collation is wrong, or the query plan is catastrophically slow."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use integration tests for code that crosses process or network boundaries, for database queries and migrations, for serialization and deserialization of external formats, for authentication and authorization flows that depend on external identity providers, and for any code where the mock might not accurately represent real behavior."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid integration tests for pure business logic (use unit tests), for UI rendering (use component tests), and for scenarios where the integration boundary is stable and well-understood (a mature, versioned internal library)."
+        }
+      ],
+      "wordCount": 230,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "database-integration-testing-with-test-containers",
+          "heading": "Database Integration Testing with Test Containers",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Test containers provide ephemeral, isolated database instances that start fresh for each test suite. This eliminates shared state problems and ensures tests run identically on developer machines and CI."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';\nimport { GenericContainer, StartedTestContainer } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { UserRepository } from './user-repository';\nimport { runMigrations } from './migrations';\n\ndescribe('UserRepository Integration', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n  let repository: UserRepository;\n\n  beforeAll(async () => {\n    // Start a PostgreSQL container\n    container = await new GenericContainer('postgres:15-alpine')\n      .withEnvironment({\n        POSTGRES_DB: 'testdb',\n        POSTGRES_USER: 'testuser',\n        POSTGRES_PASSWORD: 'testpass',\n      })\n      .withExposedPorts(5432)\n      .start();\n\n    const connectionString = `postgresql://testuser:testpass@${container.getHost()}:${container.getMappedPort(5432)}/testdb`;\n\n    pool = new Pool({ connectionString });\n    await runMigrations(pool); // Apply schema\n    repository = new UserRepository(pool);\n  }, 60000); // Container startup timeout\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    // Clean slate for each test — truncate with cascade\n    await pool.query('TRUNCATE TABLE users, orders, sessions CASCADE');\n  });\n\n  it('should persist and retrieve a user with all fields', async () => {\n    const user = {\n      email: 'test@example.com',\n      name: 'Test User',\n      role: 'admin',\n      metadata: { department: 'engineering', level: 'senior' },\n    };\n\n    const created = await repository.create(user);\n    const retrieved = await repository.findById(created.id);\n\n    expect(retrieved).not.toBeNull();\n    expect(retrieved!.email).toBe('test@example.com');\n    expect(retrieved!.metadata).toEqual({ department: 'engineering', level: 'senior' });\n    expect(retrieved!.createdAt).toBeInstanceOf(Date);\n  });\n\n  it('should enforce unique email constraint', async () => {\n    await repository.create({ email: 'dup@example.com', name: 'First', role: 'user' });\n\n    await expect(\n      repository.create({ email: 'dup@example.com', name: 'Second', role: 'user' })\n    ).rejects.toThrow(/unique.*email/i);\n  });\n\n  it('should support pagination with correct ordering', async () => {\n    // Seed 25 users\n    for (let i = 0; i < 25; i++) {\n      await repository.create({\n        email: `user${i.toString().padStart(2, '0')}@example.com`,\n        name: `User ${i}`,\n        role: 'user',\n      });\n    }\n\n    const page1 = await repository.findAll({ page: 1, pageSize: 10, orderBy: 'email' });\n    const page2 = await repository.findAll({ page: 2, pageSize: 10, orderBy: 'email' });\n    const page3 = await repository.findAll({ page: 3, pageSize: 10, orderBy: 'email' });\n\n    expect(page1.items).toHaveLength(10);\n    expect(page2.items).toHaveLength(10);\n    expect(page3.items).toHaveLength(5);\n    expect(page1.totalCount).toBe(25);\n    // Verify ordering\n    expect(page1.items[0].email).toBe('user00@example.com');\n    expect(page1.items[9].email).toBe('user09@example.com');\n  });\n\n  it('should handle JSONB queries correctly', async () => {\n    await repository.create({\n      email: 'eng@example.com',\n      name: 'Engineer',\n      role: 'user',\n      metadata: { department: 'engineering', skills: ['typescript', 'rust'] },\n    });\n    await repository.create({\n      email: 'sales@example.com',\n      name: 'Sales Rep',\n      role: 'user',\n      metadata: { department: 'sales', skills: ['negotiation'] },\n    });\n\n    const engineers = await repository.findByMetadata({ department: 'engineering' });\n\n    expect(engineers).toHaveLength(1);\n    expect(engineers[0].email).toBe('eng@example.com');\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        },
+        {
+          "id": "api-integration-testing-with-supertest",
+          "heading": "API Integration Testing with Supertest",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "API integration tests verify the full HTTP request/response cycle including routing, middleware, serialization, validation, and error handling."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import org.junit.jupiter.api.*;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.http.MediaType;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\nimport org.springframework.test.web.servlet.MockMvc;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\n\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\nimport static org.hamcrest.Matchers.*;\n\n@SpringBootTest\n@AutoConfigureMockMvc\n@Testcontainers\n@TestMethodOrder(MethodOrderer.OrderAnnotation.class)\nclass OrderApiIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:15-alpine\")\n        .withDatabaseName(\"orders_test\")\n        .withUsername(\"test\")\n        .withPassword(\"test\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private MockMvc mockMvc;\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @BeforeEach\n    void cleanDatabase() {\n        orderRepository.deleteAll();\n    }\n\n    @Test\n    @DisplayName(\"POST /api/orders - should create order and return 201\")\n    void createOrder() throws Exception {\n        String orderJson = \"\"\"\n            {\n                \"customerId\": \"cust-123\",\n                \"items\": [\n                    {\"productId\": \"prod-1\", \"quantity\": 2, \"unitPrice\": 29.99},\n                    {\"productId\": \"prod-2\", \"quantity\": 1, \"unitPrice\": 49.99}\n                ],\n                \"shippingAddress\": {\n                    \"street\": \"123 Main St\",\n                    \"city\": \"Portland\",\n                    \"state\": \"OR\",\n                    \"zip\": \"97201\"\n                }\n            }\n            \"\"\";\n\n        mockMvc.perform(post(\"/api/orders\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(orderJson))\n            .andExpect(status().isCreated())\n            .andExpect(jsonPath(\"$.id\").exists())\n            .andExpect(jsonPath(\"$.status\").value(\"PENDING\"))\n            .andExpect(jsonPath(\"$.totalAmount\").value(109.97))\n            .andExpect(jsonPath(\"$.items\", hasSize(2)))\n            .andExpect(jsonPath(\"$.createdAt\").exists());\n    }\n\n    @Test\n    @DisplayName(\"POST /api/orders - should return 400 for invalid input\")\n    void createOrderValidationError() throws Exception {\n        String invalidJson = \"\"\"\n            {\n                \"customerId\": \"\",\n                \"items\": []\n            }\n            \"\"\";\n\n        mockMvc.perform(post(\"/api/orders\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(invalidJson))\n            .andExpect(status().isBadRequest())\n            .andExpect(jsonPath(\"$.errors\", hasSize(greaterThanOrEqualTo(2))))\n            .andExpect(jsonPath(\"$.errors[*].field\", hasItems(\"customerId\", \"items\")));\n    }\n\n    @Test\n    @DisplayName(\"GET /api/orders/{id} - should return 404 for non-existent order\")\n    void getOrderNotFound() throws Exception {\n        mockMvc.perform(get(\"/api/orders/non-existent-id\"))\n            .andExpect(status().isNotFound())\n            .andExpect(jsonPath(\"$.message\").value(\"Order not found\"));\n    }\n\n    @Test\n    @DisplayName(\"PATCH /api/orders/{id}/cancel - should transition order to CANCELLED\")\n    void cancelOrder() throws Exception {\n        // Create an order first\n        Order order = orderRepository.save(Order.builder()\n            .customerId(\"cust-123\")\n            .status(OrderStatus.PENDING)\n            .totalAmount(new BigDecimal(\"59.99\"))\n            .build());\n\n        mockMvc.perform(patch(\"/api/orders/\" + order.getId() + \"/cancel\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(\"{\\\"reason\\\": \\\"changed_mind\\\"}\"))\n            .andExpect(status().isOk())\n            .andExpect(jsonPath(\"$.status\").value(\"CANCELLED\"))\n            .andExpect(jsonPath(\"$.cancellationReason\").value(\"changed_mind\"));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 17,
+          "subsections": []
+        },
+        {
+          "id": "contract-testing-with-pact",
+          "heading": "Contract Testing with Pact",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Contract tests verify that API producers and consumers agree on the interface without requiring both services to be running simultaneously. This enables independent deployment of microservices."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { PactV3, MatchersV3 } from '@pact-foundation/pact';\nimport { resolve } from 'path';\nimport { UserApiClient } from './user-api-client';\n\nconst { like, eachLike, string, integer, iso8601DateTimeWithMillis } = MatchersV3;\n\nconst provider = new PactV3({\n  consumer: 'OrderService',\n  provider: 'UserService',\n  dir: resolve(process.cwd(), 'pacts'),\n});\n\ndescribe('UserService Contract', () => {\n  it('should return user details for a valid user ID', async () => {\n    // Define the expected interaction\n    provider\n      .given('a user with ID user-123 exists')\n      .uponReceiving('a request for user details')\n      .withRequest({\n        method: 'GET',\n        path: '/api/users/user-123',\n        headers: { Accept: 'application/json' },\n      })\n      .willRespondWith({\n        status: 200,\n        headers: { 'Content-Type': 'application/json' },\n        body: {\n          id: string('user-123'),\n          email: string('john@example.com'),\n          name: string('John Doe'),\n          tier: string('premium'),\n          createdAt: iso8601DateTimeWithMillis('2024-01-15T10:30:00.000Z'),\n          orderCount: integer(42),\n        },\n      });\n\n    await provider.executeTest(async (mockServer) => {\n      const client = new UserApiClient(mockServer.url);\n      const user = await client.getUserById('user-123');\n\n      expect(user.id).toBe('user-123');\n      expect(user.email).toBe('john@example.com');\n      expect(user.tier).toBe('premium');\n    });\n  });\n\n  it('should return 404 for non-existent user', async () => {\n    provider\n      .given('no user with ID user-999 exists')\n      .uponReceiving('a request for a non-existent user')\n      .withRequest({\n        method: 'GET',\n        path: '/api/users/user-999',\n        headers: { Accept: 'application/json' },\n      })\n      .willRespondWith({\n        status: 404,\n        body: {\n          error: string('USER_NOT_FOUND'),\n          message: string('User with ID user-999 does not exist'),\n        },\n      });\n\n    await provider.executeTest(async (mockServer) => {\n      const client = new UserApiClient(mockServer.url);\n      await expect(client.getUserById('user-999')).rejects.toThrow('User not found');\n    });\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-shared-database-state-between-tests",
+          "heading": "1. Shared Database State Between Tests",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The most common integration test failure mode is test interdependence through shared database state. Test A inserts a record, Test B assumes the table is empty. When tests run in a different order or in parallel, they fail unpredictably."
+            },
+            {
+              "type": "paragraph",
+              "text": "Solution: Use transaction rollback (wrap each test in a transaction that rolls back), table truncation in beforeEach, or per-test database schemas. Test containers with fresh databases per suite eliminate this entirely at the cost of startup time."
+            }
+          ],
+          "wordCount": 76,
+          "subsections": []
+        },
+        {
+          "id": "2-hardcoded-ports-and-connection-strings",
+          "heading": "2. Hardcoded Ports and Connection Strings",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Tests that connect to localhost:5432 or localhost:6379 fail when those ports are occupied by other processes or when running in CI where services are on different hosts. Always use dynamic port allocation (test containers expose random mapped ports) or environment-variable-based configuration."
+            }
+          ],
+          "wordCount": 41,
+          "subsections": []
+        },
+        {
+          "id": "3-ignoring-test-data-cleanup",
+          "heading": "3. Ignoring Test Data Cleanup",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Leaving test data in shared environments (staging databases, shared Redis instances) causes cascading failures across teams. Integration tests must clean up after themselves. Use afterEach or afterAll hooks, or better yet, use ephemeral infrastructure that is destroyed when tests complete."
+            }
+          ],
+          "wordCount": 40,
+          "subsections": []
+        },
+        {
+          "id": "4-testing-too-much-through-the-integration-layer",
+          "heading": "4. Testing Too Much Through the Integration Layer",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "If your integration test verifies 15 different business logic branches through the API, you're using integration tests as unit tests. Integration tests should verify the integration — correct serialization, proper error codes, database constraint enforcement. Business logic permutations belong in unit tests where they run 100x faster."
+            }
+          ],
+          "wordCount": 47,
+          "subsections": []
+        },
+        {
+          "id": "5-flaky-tests-due-to-timing-dependencies",
+          "heading": "5. Flaky Tests Due to Timing Dependencies",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Integration tests that depend on timing — waiting for async events, polling for state changes, or assuming operations complete within a fixed timeout — are inherently flaky. Use explicit wait conditions (poll until state changes), event-driven assertions (wait for a specific message), or deterministic test clocks where possible."
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        },
+        {
+          "id": "6-missing-network-failure-scenarios",
+          "heading": "6. Missing Network Failure Scenarios",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Integration tests often only test the happy path. Real integrations fail: connections time out, services return 503, DNS resolution fails, TLS certificates expire. Test these failure modes explicitly by configuring test containers with network delays, using chaos testing tools, or injecting faults through proxy layers."
+            }
+          ],
+          "wordCount": 45,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "e-commerce-order-pipeline",
+          "heading": "E-Commerce Order Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "An e-commerce platform tests the full order pipeline: API receives order → validates inventory → charges payment → publishes event → updates database → sends confirmation email. Integration tests use test containers for PostgreSQL and Redis, a mock SMTP server for email verification, and Pact contracts for the payment gateway. The test suite catches schema drift between the order service and inventory service that unit tests with mocked interfaces would miss."
+            }
+          ],
+          "wordCount": 71,
+          "subsections": []
+        },
+        {
+          "id": "data-pipeline-validation",
+          "heading": "Data Pipeline Validation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A data engineering team tests ETL pipelines that read from Kafka, transform records, and write to PostgreSQL and Elasticsearch. Integration tests use test containers for all three systems, publish known messages to Kafka topics, and verify that transformed data appears correctly in both sinks. Tests catch serialization mismatches, schema evolution issues, and exactly-once processing failures that only manifest with real infrastructure."
+            }
+          ],
+          "wordCount": 61,
+          "subsections": []
+        },
+        {
+          "id": "authentication-flow",
+          "heading": "Authentication Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "An identity service tests the full OAuth2 flow: authorization code grant, token exchange, token refresh, and token revocation. Integration tests start a real Redis instance for session storage, use a test LDAP container for user lookup, and verify that JWTs contain correct claims with proper expiration. These tests caught a production bug where refresh tokens weren't being invalidated on password change — a scenario impossible to catch with mocked token stores."
+            }
+          ],
+          "wordCount": 71,
+          "subsections": []
+        },
+        {
+          "id": "database-migration-testing",
+          "heading": "Database Migration Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A team tests database migrations by running them against a real PostgreSQL container, verifying schema state, then running rollback migrations and verifying the schema returns to its previous state. This catches migration ordering issues, missing foreign key constraints, and data loss during column type changes that would only surface in production deployments."
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle database state in integration tests?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: There are four main strategies, each with trade-offs. Transaction rollback wraps each test in a transaction that rolls back at the end — fast but doesn't test commit behavior and fails with code that manages its own transactions. Truncation clears tables in beforeEach — reliable but slower and requires careful ordering for foreign key constraints. Fresh containers start a new database per test suite — completely isolated but adds 5-10 seconds of startup time. Schema-per-test creates isolated schemas within one database — good parallelization but complex setup. In practice, I use transaction rollback for most tests, truncation when testing transaction boundaries, and fresh containers for migration testing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is contract testing and when would you use it over integration testing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Contract testing verifies that two services agree on their API interface without requiring both to be running simultaneously. The consumer defines expectations (a contract), and the provider verifies it can fulfill those expectations independently. Use contract testing when services are owned by different teams with different release cycles, when spinning up the full dependency graph for integration tests is impractical, when you need to verify backward compatibility before deploying a new API version, and when you want faster feedback than full integration tests provide. Contract tests don't replace integration tests — they complement them by catching interface mismatches earlier in the pipeline. You still need integration tests to verify behavior that contracts can't express (timing, ordering, side effects)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you test microservice interactions without deploying all services?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a layered approach. First, contract tests (Pact, Spring Cloud Contract) verify interface compatibility between each pair of services independently. Second, use service virtualization (WireMock, Mountebank) to simulate downstream services with realistic response patterns including errors and latency. Third, for critical paths, run focused integration tests with the actual downstream service in a test container. Fourth, use consumer-driven contracts where the consuming team defines what they need, and the producing team verifies they provide it. This approach gives you confidence in service interactions without the complexity and fragility of running 20 services simultaneously in a test environment."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you make integration tests fast enough for CI?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Several strategies compound. Parallel execution: run independent test suites concurrently, each with their own container set. Container reuse: start containers once per suite rather than per test, using truncation for isolation. Selective execution: only run integration tests affected by changed code paths (use dependency graphs or file-based triggers). Layered caching: cache Docker images in CI, use tmpfs for database storage to eliminate disk I/O. Test slicing: Spring's @DataJpaTest loads only the persistence layer, not the full application context. A well-optimized integration suite of 200 tests can run in under 2 minutes with these techniques."
+        }
+      ],
+      "wordCount": 466,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "use-docker-compose-for-local-development-testing",
+          "heading": "Use Docker Compose for Local Development Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Define a docker-compose.test.yml that mirrors your CI environment. Developers run docker compose -f docker-compose.test.yml up -d to start all required infrastructure locally. This eliminates \"works on my machine\" failures and ensures integration tests behave identically everywhere. Pin image versions to avoid surprise breakages from upstream updates."
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# docker-compose.test.yml\nservices:\n  postgres:\n    image: postgres:15.4-alpine\n    environment:\n      POSTGRES_DB: testdb\n      POSTGRES_USER: test\n      POSTGRES_PASSWORD: test\n    ports:\n      - \"5433:5432\"  # Non-standard port to avoid conflicts\n    tmpfs:\n      - /var/lib/postgresql/data  # RAM-backed storage for speed\n\n  redis:\n    image: redis:7.2-alpine\n    ports:\n      - \"6380:6379\"\n\n  localstack:\n    image: localstack/localstack:3.0\n    environment:\n      SERVICES: s3,sqs,sns\n    ports:\n      - \"4566:4566\"",
+              "runnable": false
+            }
+          ],
+          "wordCount": 46,
+          "subsections": []
+        },
+        {
+          "id": "implement-test-data-builders-with-realistic-defaults",
+          "heading": "Implement Test Data Builders with Realistic Defaults",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Integration tests need realistic data that satisfies all constraints (foreign keys, not-null columns, unique indexes). Build a test data factory that generates valid entities with sensible defaults, allowing tests to override only the fields relevant to their scenario. This prevents tests from breaking when new required columns are added to the schema."
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        },
+        {
+          "id": "separate-integration-tests-in-ci-pipeline",
+          "heading": "Separate Integration Tests in CI Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Run unit tests first (fast gate), then integration tests (slower gate). If unit tests fail, skip integration tests entirely — there's no point testing integrations when the logic is broken. Use CI pipeline stages or test tags (@Tag(\"integration\") in JUnit, describe.concurrent groups in Vitest) to control execution order and parallelism."
+            }
+          ],
+          "wordCount": 50,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Unit Testing — Foundation-level testing that integration tests build upon",
+            "Test Architecture — How integration tests fit into the test pyramid and CI pipeline strategy",
+            "Property-Based Testing — Generate diverse inputs for integration test scenarios automatically",
+            "Mocking Strategies — Understanding when to use real dependencies versus test doubles"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';\nimport { GenericContainer, StartedTestContainer } from 'testcontainers';\nimport { Pool } from 'pg';\nimport { UserRepository } from './user-repository';\nimport { runMigrations } from './migrations';\n\ndescribe('UserRepository Integration', () => {\n  let container: StartedTestContainer;\n  let pool: Pool;\n  let repository: UserRepository;\n\n  beforeAll(async () => {\n    // Start a PostgreSQL container\n    container = await new GenericContainer('postgres:15-alpine')\n      .withEnvironment({\n        POSTGRES_DB: 'testdb',\n        POSTGRES_USER: 'testuser',\n        POSTGRES_PASSWORD: 'testpass',\n      })\n      .withExposedPorts(5432)\n      .start();\n\n    const connectionString = `postgresql://testuser:testpass@${container.getHost()}:${container.getMappedPort(5432)}/testdb`;\n\n    pool = new Pool({ connectionString });\n    await runMigrations(pool); // Apply schema\n    repository = new UserRepository(pool);\n  }, 60000); // Container startup timeout\n\n  afterAll(async () => {\n    await pool.end();\n    await container.stop();\n  });\n\n  beforeEach(async () => {\n    // Clean slate for each test — truncate with cascade\n    await pool.query('TRUNCATE TABLE users, orders, sessions CASCADE');\n  });\n\n  it('should persist and retrieve a user with all fields', async () => {\n    const user = {\n      email: 'test@example.com',\n      name: 'Test User',\n      role: 'admin',\n      metadata: { department: 'engineering', level: 'senior' },\n    };\n\n    const created = await repository.create(user);\n    const retrieved = await repository.findById(created.id);\n\n    expect(retrieved).not.toBeNull();\n    expect(retrieved!.email).toBe('test@example.com');\n    expect(retrieved!.metadata).toEqual({ department: 'engineering', level: 'senior' });\n    expect(retrieved!.createdAt).toBeInstanceOf(Date);\n  });\n\n  it('should enforce unique email constraint', async () => {\n    await repository.create({ email: 'dup@example.com', name: 'First', role: 'user' });\n\n    await expect(\n      repository.create({ email: 'dup@example.com', name: 'Second', role: 'user' })\n    ).rejects.toThrow(/unique.*email/i);\n  });\n\n  it('should support pagination with correct ordering', async () => {\n    // Seed 25 users\n    for (let i = 0; i < 25; i++) {\n      await repository.create({\n        email: `user${i.toString().padStart(2, '0')}@example.com`,\n        name: `User ${i}`,\n        role: 'user',\n      });\n    }\n\n    const page1 = await repository.findAll({ page: 1, pageSize: 10, orderBy: 'email' });\n    const page2 = await repository.findAll({ page: 2, pageSize: 10, orderBy: 'email' });\n    const page3 = await repository.findAll({ page: 3, pageSize: 10, orderBy: 'email' });\n\n    expect(page1.items).toHaveLength(10);\n    expect(page2.items).toHaveLength(10);\n    expect(page3.items).toHaveLength(5);\n    expect(page1.totalCount).toBe(25);\n    // Verify ordering\n    expect(page1.items[0].email).toBe('user00@example.com');\n    expect(page1.items[9].email).toBe('user09@example.com');\n  });\n\n  it('should handle JSONB queries correctly', async () => {\n    await repository.create({\n      email: 'eng@example.com',\n      name: 'Engineer',\n      role: 'user',\n      metadata: { department: 'engineering', skills: ['typescript', 'rust'] },\n    });\n    await repository.create({\n      email: 'sales@example.com',\n      name: 'Sales Rep',\n      role: 'user',\n      metadata: { department: 'sales', skills: ['negotiation'] },\n    });\n\n    const engineers = await repository.findByMetadata({ department: 'engineering' });\n\n    expect(engineers).toHaveLength(1);\n    expect(engineers[0].email).toBe('eng@example.com');\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import org.junit.jupiter.api.*;\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;\nimport org.springframework.boot.test.context.SpringBootTest;\nimport org.springframework.http.MediaType;\nimport org.springframework.test.context.DynamicPropertyRegistry;\nimport org.springframework.test.context.DynamicPropertySource;\nimport org.springframework.test.web.servlet.MockMvc;\nimport org.testcontainers.containers.PostgreSQLContainer;\nimport org.testcontainers.junit.jupiter.Container;\nimport org.testcontainers.junit.jupiter.Testcontainers;\n\nimport static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;\nimport static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\nimport static org.hamcrest.Matchers.*;\n\n@SpringBootTest\n@AutoConfigureMockMvc\n@Testcontainers\n@TestMethodOrder(MethodOrderer.OrderAnnotation.class)\nclass OrderApiIntegrationTest {\n\n    @Container\n    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(\"postgres:15-alpine\")\n        .withDatabaseName(\"orders_test\")\n        .withUsername(\"test\")\n        .withPassword(\"test\");\n\n    @DynamicPropertySource\n    static void configureProperties(DynamicPropertyRegistry registry) {\n        registry.add(\"spring.datasource.url\", postgres::getJdbcUrl);\n        registry.add(\"spring.datasource.username\", postgres::getUsername);\n        registry.add(\"spring.datasource.password\", postgres::getPassword);\n    }\n\n    @Autowired\n    private MockMvc mockMvc;\n\n    @Autowired\n    private OrderRepository orderRepository;\n\n    @BeforeEach\n    void cleanDatabase() {\n        orderRepository.deleteAll();\n    }\n\n    @Test\n    @DisplayName(\"POST /api/orders - should create order and return 201\")\n    void createOrder() throws Exception {\n        String orderJson = \"\"\"\n            {\n                \"customerId\": \"cust-123\",\n                \"items\": [\n                    {\"productId\": \"prod-1\", \"quantity\": 2, \"unitPrice\": 29.99},\n                    {\"productId\": \"prod-2\", \"quantity\": 1, \"unitPrice\": 49.99}\n                ],\n                \"shippingAddress\": {\n                    \"street\": \"123 Main St\",\n                    \"city\": \"Portland\",\n                    \"state\": \"OR\",\n                    \"zip\": \"97201\"\n                }\n            }\n            \"\"\";\n\n        mockMvc.perform(post(\"/api/orders\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(orderJson))\n            .andExpect(status().isCreated())\n            .andExpect(jsonPath(\"$.id\").exists())\n            .andExpect(jsonPath(\"$.status\").value(\"PENDING\"))\n            .andExpect(jsonPath(\"$.totalAmount\").value(109.97))\n            .andExpect(jsonPath(\"$.items\", hasSize(2)))\n            .andExpect(jsonPath(\"$.createdAt\").exists());\n    }\n\n    @Test\n    @DisplayName(\"POST /api/orders - should return 400 for invalid input\")\n    void createOrderValidationError() throws Exception {\n        String invalidJson = \"\"\"\n            {\n                \"customerId\": \"\",\n                \"items\": []\n            }\n            \"\"\";\n\n        mockMvc.perform(post(\"/api/orders\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(invalidJson))\n            .andExpect(status().isBadRequest())\n            .andExpect(jsonPath(\"$.errors\", hasSize(greaterThanOrEqualTo(2))))\n            .andExpect(jsonPath(\"$.errors[*].field\", hasItems(\"customerId\", \"items\")));\n    }\n\n    @Test\n    @DisplayName(\"GET /api/orders/{id} - should return 404 for non-existent order\")\n    void getOrderNotFound() throws Exception {\n        mockMvc.perform(get(\"/api/orders/non-existent-id\"))\n            .andExpect(status().isNotFound())\n            .andExpect(jsonPath(\"$.message\").value(\"Order not found\"));\n    }\n\n    @Test\n    @DisplayName(\"PATCH /api/orders/{id}/cancel - should transition order to CANCELLED\")\n    void cancelOrder() throws Exception {\n        // Create an order first\n        Order order = orderRepository.save(Order.builder()\n            .customerId(\"cust-123\")\n            .status(OrderStatus.PENDING)\n            .totalAmount(new BigDecimal(\"59.99\"))\n            .build());\n\n        mockMvc.perform(patch(\"/api/orders/\" + order.getId() + \"/cancel\")\n                .contentType(MediaType.APPLICATION_JSON)\n                .content(\"{\\\"reason\\\": \\\"changed_mind\\\"}\"))\n            .andExpect(status().isOk())\n            .andExpect(jsonPath(\"$.status\").value(\"CANCELLED\"))\n            .andExpect(jsonPath(\"$.cancellationReason\").value(\"changed_mind\"));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { PactV3, MatchersV3 } from '@pact-foundation/pact';\nimport { resolve } from 'path';\nimport { UserApiClient } from './user-api-client';\n\nconst { like, eachLike, string, integer, iso8601DateTimeWithMillis } = MatchersV3;\n\nconst provider = new PactV3({\n  consumer: 'OrderService',\n  provider: 'UserService',\n  dir: resolve(process.cwd(), 'pacts'),\n});\n\ndescribe('UserService Contract', () => {\n  it('should return user details for a valid user ID', async () => {\n    // Define the expected interaction\n    provider\n      .given('a user with ID user-123 exists')\n      .uponReceiving('a request for user details')\n      .withRequest({\n        method: 'GET',\n        path: '/api/users/user-123',\n        headers: { Accept: 'application/json' },\n      })\n      .willRespondWith({\n        status: 200,\n        headers: { 'Content-Type': 'application/json' },\n        body: {\n          id: string('user-123'),\n          email: string('john@example.com'),\n          name: string('John Doe'),\n          tier: string('premium'),\n          createdAt: iso8601DateTimeWithMillis('2024-01-15T10:30:00.000Z'),\n          orderCount: integer(42),\n        },\n      });\n\n    await provider.executeTest(async (mockServer) => {\n      const client = new UserApiClient(mockServer.url);\n      const user = await client.getUserById('user-123');\n\n      expect(user.id).toBe('user-123');\n      expect(user.email).toBe('john@example.com');\n      expect(user.tier).toBe('premium');\n    });\n  });\n\n  it('should return 404 for non-existent user', async () => {\n    provider\n      .given('no user with ID user-999 exists')\n      .uponReceiving('a request for a non-existent user')\n      .withRequest({\n        method: 'GET',\n        path: '/api/users/user-999',\n        headers: { Accept: 'application/json' },\n      })\n      .willRespondWith({\n        status: 404,\n        body: {\n          error: string('USER_NOT_FOUND'),\n          message: string('User with ID user-999 does not exist'),\n        },\n      });\n\n    await provider.executeTest(async (mockServer) => {\n      const client = new UserApiClient(mockServer.url);\n      await expect(client.getUserById('user-999')).rejects.toThrow('User not found');\n    });\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# docker-compose.test.yml\nservices:\n  postgres:\n    image: postgres:15.4-alpine\n    environment:\n      POSTGRES_DB: testdb\n      POSTGRES_USER: test\n      POSTGRES_PASSWORD: test\n    ports:\n      - \"5433:5432\"  # Non-standard port to avoid conflicts\n    tmpfs:\n      - /var/lib/postgresql/data  # RAM-backed storage for speed\n\n  redis:\n    image: redis:7.2-alpine\n    ports:\n      - \"6380:6379\"\n\n  localstack:\n    image: localstack/localstack:3.0\n    environment:\n      SERVICES: s3,sqs,sns\n    ports:\n      - \"4566:4566\"",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/testing/integration-testing.md",
+    "wordCount": 1628,
+    "sectionCount": 24
+  }
+}

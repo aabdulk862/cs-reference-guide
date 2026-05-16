@@ -1,0 +1,393 @@
+{
+  "id": "software-engineering-solid-principles",
+  "slug": "solid-principles",
+  "title": "SOLID Principles",
+  "category": "Software Engineering",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SRP (Single Responsibility Principle): A class should have only one reason to change — one actor, one responsibility",
+            "OCP (Open/Closed Principle): Software entities should be open for extension but closed for modification",
+            "LSP (Liskov Substitution Principle): Subtypes must be substitutable for their base types without altering program correctness",
+            "ISP (Interface Segregation Principle): Clients should not be forced to depend on interfaces they do not use",
+            "DIP (Dependency Inversion Principle): High-level modules should not depend on low-level modules; both should depend on abstractions",
+            "SOLID principles were introduced by Robert C. Martin (Uncle Bob) and are foundational to object-oriented design",
+            "These principles reduce coupling, increase cohesion, and make systems easier to test, extend, and maintain",
+            "Violations of SOLID often manifest as shotgun surgery, rigid hierarchies, and test fragility"
+          ]
+        }
+      ],
+      "wordCount": 126,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "SOLID principles apply whenever you are designing object-oriented systems that need to evolve over time. They are particularly critical in large codebases with multiple contributors where changes in one area should not cascade unpredictably through the system."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply SOLID when building domain models that will grow in complexity, when designing service layers that multiple clients consume, when creating plugin architectures or extension points, when writing code that must be unit-testable in isolation, and when working on systems where requirements change frequently. These principles are most valuable in enterprise applications, microservice boundaries, and library/framework design."
+        },
+        {
+          "type": "paragraph",
+          "text": "SOLID is less critical for throwaway scripts, prototypes with known short lifespans, or performance-critical inner loops where abstraction overhead matters. However, even in these cases, awareness of the principles helps you make conscious trade-offs rather than accumulating accidental complexity."
+        },
+        {
+          "type": "paragraph",
+          "text": "In microservice architectures, SOLID principles apply at both the class level and the service level. A microservice that handles user authentication, email sending, and report generation violates SRP at the architectural level just as a god class violates it at the code level."
+        }
+      ],
+      "wordCount": 176,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "single-responsibility-principle",
+          "heading": "Single Responsibility Principle",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The SRP states that a class should have only one reason to change. This means each class should encapsulate a single concern or responsibility. When a class handles multiple concerns, changes to one concern risk breaking the other."
+            },
+            {
+              "type": "paragraph",
+              "text": "Violation — a class handling both business logic and persistence:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// BAD: This class has two reasons to change:\n// 1. Business rules for order validation change\n// 2. Database schema or persistence mechanism changes\npublic class OrderService {\n    private final DataSource dataSource;\n\n    public OrderService(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    public Order createOrder(OrderRequest request) {\n        // Business logic\n        if (request.getItems().isEmpty()) {\n            throw new IllegalArgumentException(\"Order must have at least one item\");\n        }\n        BigDecimal total = request.getItems().stream()\n            .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n\n        if (total.compareTo(BigDecimal.valueOf(10000)) > 0) {\n            throw new OrderLimitExceededException(\"Order exceeds maximum limit\");\n        }\n\n        Order order = new Order(UUID.randomUUID(), request.getItems(), total, OrderStatus.PENDING);\n\n        // Persistence logic mixed in\n        try (Connection conn = dataSource.getConnection()) {\n            PreparedStatement stmt = conn.prepareStatement(\n                \"INSERT INTO orders (id, total, status) VALUES (?, ?, ?)\"\n            );\n            stmt.setString(1, order.getId().toString());\n            stmt.setBigDecimal(2, order.getTotal());\n            stmt.setString(3, order.getStatus().name());\n            stmt.executeUpdate();\n        } catch (SQLException e) {\n            throw new RuntimeException(\"Failed to persist order\", e);\n        }\n\n        return order;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Corrected — responsibilities separated:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// GOOD: Business logic isolated in domain service\npublic class OrderService {\n    private final OrderRepository orderRepository;\n    private final OrderValidator validator;\n\n    public OrderService(OrderRepository orderRepository, OrderValidator validator) {\n        this.orderRepository = orderRepository;\n        this.validator = validator;\n    }\n\n    public Order createOrder(OrderRequest request) {\n        validator.validate(request);\n        BigDecimal total = calculateTotal(request.getItems());\n        Order order = new Order(UUID.randomUUID(), request.getItems(), total, OrderStatus.PENDING);\n        orderRepository.save(order);\n        return order;\n    }\n\n    private BigDecimal calculateTotal(List<OrderItem> items) {\n        return items.stream()\n            .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n}\n\n// Persistence concern isolated\npublic class JdbcOrderRepository implements OrderRepository {\n    private final DataSource dataSource;\n\n    public JdbcOrderRepository(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    @Override\n    public void save(Order order) {\n        try (Connection conn = dataSource.getConnection()) {\n            PreparedStatement stmt = conn.prepareStatement(\n                \"INSERT INTO orders (id, total, status) VALUES (?, ?, ?)\"\n            );\n            stmt.setString(1, order.getId().toString());\n            stmt.setBigDecimal(2, order.getTotal());\n            stmt.setString(3, order.getStatus().name());\n            stmt.executeUpdate();\n        } catch (SQLException e) {\n            throw new PersistenceException(\"Failed to persist order\", e);\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        },
+        {
+          "id": "openclosed-principle",
+          "heading": "Open/Closed Principle",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The OCP states that you should be able to extend behavior without modifying existing code. This is typically achieved through polymorphism, strategy patterns, or plugin architectures."
+            },
+            {
+              "type": "paragraph",
+              "text": "Violation — adding new payment types requires modifying existing code:"
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// BAD: Every new payment method requires modifying this function\nfunction processPayment(payment: Payment): PaymentResult {\n  switch (payment.type) {\n    case 'credit_card':\n      return chargeCreditCard(payment.cardNumber, payment.amount);\n    case 'paypal':\n      return chargePayPal(payment.email, payment.amount);\n    case 'bank_transfer':\n      return initiateBankTransfer(payment.accountNumber, payment.amount);\n    // Adding 'crypto' requires modifying this function\n    default:\n      throw new Error(`Unsupported payment type: ${payment.type}`);\n  }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "Corrected — new payment types extend without modification:"
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// GOOD: Open for extension via new implementations, closed for modification\ninterface PaymentProcessor {\n  supports(payment: Payment): boolean;\n  process(payment: Payment): PaymentResult;\n}\n\nclass CreditCardProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'credit_card';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.chargeCreditCard(payment.cardNumber!, payment.amount);\n  }\n\n  private chargeCreditCard(cardNumber: string, amount: number): PaymentResult {\n    // Credit card specific logic\n    return { success: true, transactionId: generateId() };\n  }\n}\n\nclass PayPalProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'paypal';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.chargePayPal(payment.email!, payment.amount);\n  }\n\n  private chargePayPal(email: string, amount: number): PaymentResult {\n    // PayPal specific logic\n    return { success: true, transactionId: generateId() };\n  }\n}\n\n// Adding crypto requires ZERO changes to existing code\nclass CryptoProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'crypto';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.processBlockchainPayment(payment.walletAddress!, payment.amount);\n  }\n\n  private processBlockchainPayment(wallet: string, amount: number): PaymentResult {\n    return { success: true, transactionId: generateId() };\n  }\n}\n\n// Registry is closed for modification but open for extension via registration\nclass PaymentService {\n  private processors: PaymentProcessor[] = [];\n\n  register(processor: PaymentProcessor): void {\n    this.processors.push(processor);\n  }\n\n  processPayment(payment: Payment): PaymentResult {\n    const processor = this.processors.find(p => p.supports(payment));\n    if (!processor) {\n      throw new Error(`No processor registered for payment type: ${payment.type}`);\n    }\n    return processor.process(payment);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 44,
+          "subsections": []
+        },
+        {
+          "id": "liskov-substitution-principle",
+          "heading": "Liskov Substitution Principle",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "LSP requires that objects of a superclass should be replaceable with objects of a subclass without breaking the application. This goes beyond simple type compatibility — it requires behavioral compatibility including preconditions, postconditions, and invariants."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// BAD: Square violates LSP when substituted for Rectangle\n// because setWidth/setHeight have unexpected coupled behavior\npublic class Rectangle {\n    protected int width;\n    protected int height;\n\n    public void setWidth(int width) { this.width = width; }\n    public void setHeight(int height) { this.height = height; }\n    public int getArea() { return width * height; }\n}\n\npublic class Square extends Rectangle {\n    @Override\n    public void setWidth(int width) {\n        this.width = width;\n        this.height = width;  // Violates expected behavior of setWidth\n    }\n\n    @Override\n    public void setHeight(int height) {\n        this.width = height;  // Violates expected behavior of setHeight\n        this.height = height;\n    }\n}\n\n// Client code breaks with Square:\nvoid resize(Rectangle rect) {\n    rect.setWidth(5);\n    rect.setHeight(10);\n    assert rect.getArea() == 50;  // FAILS with Square (returns 100)\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// GOOD: Use composition and separate interfaces\npublic interface Shape {\n    int getArea();\n}\n\npublic class Rectangle implements Shape {\n    private final int width;\n    private final int height;\n\n    public Rectangle(int width, int height) {\n        this.width = width;\n        this.height = height;\n    }\n\n    @Override\n    public int getArea() { return width * height; }\n}\n\npublic class Square implements Shape {\n    private final int side;\n\n    public Square(int side) {\n        this.side = side;\n    }\n\n    @Override\n    public int getArea() { return side * side; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 35,
+          "subsections": []
+        },
+        {
+          "id": "interface-segregation-principle",
+          "heading": "Interface Segregation Principle",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "ISP states that no client should be forced to depend on methods it does not use. Fat interfaces create unnecessary coupling and make implementations harder to maintain."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// BAD: Fat interface forces implementations to handle irrelevant methods\ninterface Worker {\n  work(): void;\n  eat(): void;\n  sleep(): void;\n  attendMeeting(): void;\n  writeReport(): void;\n}\n\n// A robot worker is forced to implement eat() and sleep()\nclass RobotWorker implements Worker {\n  work(): void { /* productive work */ }\n  eat(): void { throw new Error('Robots do not eat'); }  // Forced stub\n  sleep(): void { throw new Error('Robots do not sleep'); }  // Forced stub\n  attendMeeting(): void { /* join video call */ }\n  writeReport(): void { /* generate report */ }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// GOOD: Segregated interfaces — clients depend only on what they need\ninterface Workable {\n  work(): void;\n}\n\ninterface Feedable {\n  eat(): void;\n}\n\ninterface Restable {\n  sleep(): void;\n}\n\ninterface Communicable {\n  attendMeeting(): void;\n  writeReport(): void;\n}\n\nclass HumanWorker implements Workable, Feedable, Restable, Communicable {\n  work(): void { /* productive work */ }\n  eat(): void { /* lunch break */ }\n  sleep(): void { /* rest period */ }\n  attendMeeting(): void { /* join standup */ }\n  writeReport(): void { /* write status update */ }\n}\n\nclass RobotWorker implements Workable, Communicable {\n  work(): void { /* productive work */ }\n  attendMeeting(): void { /* join monitoring dashboard */ }\n  writeReport(): void { /* generate automated report */ }\n}\n\n// Functions depend only on the interface they need\nfunction assignTask(worker: Workable): void {\n  worker.work();\n}\n\nfunction scheduleLunch(worker: Feedable): void {\n  worker.eat();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        },
+        {
+          "id": "dependency-inversion-principle",
+          "heading": "Dependency Inversion Principle",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "DIP states that high-level policy should not depend on low-level detail. Both should depend on abstractions. This enables swapping implementations, testing in isolation, and evolving systems without cascading changes."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// BAD: High-level NotificationService depends directly on low-level EmailSender\npublic class NotificationService {\n    private final SmtpEmailSender emailSender;  // Concrete dependency\n\n    public NotificationService() {\n        this.emailSender = new SmtpEmailSender(\"smtp.company.com\", 587);  // Hardcoded\n    }\n\n    public void notifyUser(User user, String message) {\n        emailSender.send(user.getEmail(), \"Notification\", message);\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// GOOD: Both high-level and low-level depend on abstraction\npublic interface NotificationChannel {\n    void send(User user, String message);\n    boolean supports(NotificationType type);\n}\n\npublic class EmailNotificationChannel implements NotificationChannel {\n    private final EmailClient emailClient;\n\n    public EmailNotificationChannel(EmailClient emailClient) {\n        this.emailClient = emailClient;\n    }\n\n    @Override\n    public void send(User user, String message) {\n        emailClient.send(user.getEmail(), \"Notification\", message);\n    }\n\n    @Override\n    public boolean supports(NotificationType type) {\n        return type == NotificationType.EMAIL;\n    }\n}\n\npublic class SlackNotificationChannel implements NotificationChannel {\n    private final SlackClient slackClient;\n\n    public SlackNotificationChannel(SlackClient slackClient) {\n        this.slackClient = slackClient;\n    }\n\n    @Override\n    public void send(User user, String message) {\n        slackClient.postMessage(user.getSlackId(), message);\n    }\n\n    @Override\n    public boolean supports(NotificationType type) {\n        return type == NotificationType.SLACK;\n    }\n}\n\n// High-level service depends on abstraction, not concrete implementations\npublic class NotificationService {\n    private final List<NotificationChannel> channels;\n\n    public NotificationService(List<NotificationChannel> channels) {\n        this.channels = channels;\n    }\n\n    public void notifyUser(User user, String message, NotificationType preferredType) {\n        NotificationChannel channel = channels.stream()\n            .filter(c -> c.supports(preferredType))\n            .findFirst()\n            .orElseThrow(() -> new UnsupportedNotificationException(preferredType));\n        channel.send(user, message);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 29,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Over-engineering with premature abstraction: Applying SOLID dogmatically to simple CRUD operations creates unnecessary indirection. A straightforward service with 3 methods does not need 5 interfaces and a factory. Apply SOLID when complexity warrants it, not as a default for every class.",
+            "Confusing SRP with \"one method per class\": SRP is about one reason to change (one actor), not one function. A UserRepository with save(), findById(), findByEmail(), and delete() has a single responsibility — user persistence. Splitting each method into its own class is a misapplication.",
+            "Violating LSP through exception-based contracts: Throwing UnsupportedOperationException in interface implementations (like Collections.unmodifiableList().add()) technically violates LSP. Design interfaces that accurately represent the capabilities of all implementations.",
+            "Creating \"header interfaces\" (one interface per class): Extracting an interface for every class without considering whether multiple implementations will exist adds noise without value. Interfaces should represent meaningful abstractions with potential for multiple implementations or testing seams.",
+            "Ignoring DIP at architectural boundaries: Teams often apply DIP within a service but violate it between services by directly coupling to specific database schemas, message formats, or API contracts. DIP applies at every boundary — class, module, and service.",
+            "Rigid inheritance hierarchies instead of composition: Deep inheritance trees often violate both LSP and OCP. Prefer composition with small, focused interfaces over deep class hierarchies. The \"favor composition over inheritance\" principle directly supports SOLID."
+          ]
+        }
+      ],
+      "wordCount": 220,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Plugin architectures in IDEs and editors: VS Code's extension system exemplifies OCP — the editor is closed for modification but open for extension through a well-defined extension API. Each extension implements specific interfaces (LanguageProvider, DebugAdapter) without modifying core editor code."
+        },
+        {
+          "type": "paragraph",
+          "text": "Payment processing systems: Stripe's payment method handling demonstrates ISP and OCP. Each payment method (cards, bank transfers, wallets) implements only the interfaces relevant to its capabilities. Adding a new payment method requires no changes to existing processors."
+        },
+        {
+          "type": "paragraph",
+          "text": "Spring Framework's dependency injection: Spring's IoC container is a direct implementation of DIP. Controllers depend on service interfaces, services depend on repository interfaces, and the container wires concrete implementations at runtime. This enables testing with mocks and swapping implementations without code changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Microservice event-driven architectures: Event-driven systems apply DIP at the service level. Services publish events to abstractions (event bus) rather than calling other services directly. This decouples services and allows independent deployment and scaling."
+        },
+        {
+          "type": "paragraph",
+          "text": "Database migration strategies: When migrating from one database to another, DIP enables running both implementations simultaneously behind a repository interface. Traffic can be gradually shifted using feature flags without modifying business logic."
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the Single Responsibility Principle and give an example of a violation you have fixed in production."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: SRP states that a class should have only one reason to change, meaning it serves one actor or stakeholder. In production, I encountered a ReportService that generated reports, formatted them as PDF, and emailed them to users. When the email provider changed, we had to modify the same class that contained business logic for report generation. The fix was separating into ReportGenerator (business rules), PdfFormatter (presentation), and ReportDistributor (delivery). Each could change independently — new report types, new formats, or new delivery channels required changes to only one class."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the Liskov Substitution Principle relate to design by contract?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: LSP formalizes behavioral subtyping through contracts. A subtype must honor the base type's preconditions (it can weaken them but not strengthen them), postconditions (it can strengthen them but not weaken them), and invariants (it must preserve them). For example, if a base class method accepts any positive integer, a subtype cannot restrict it to only even numbers (strengthening preconditions). If the base guarantees a non-null return, the subtype cannot return null (weakening postconditions). Violations manifest as runtime surprises when polymorphism is used — code that works with the base type breaks with the subtype."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you intentionally violate SOLID principles, and how do you justify it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: SOLID principles are guidelines, not laws. I would violate them when the cost of abstraction exceeds the benefit. Examples include performance-critical inner loops where virtual dispatch overhead matters (violating DIP/OCP for direct calls), simple scripts or lambdas with a known short lifespan (SRP overhead not justified), and early-stage prototypes where requirements are highly uncertain (premature abstraction is worse than no abstraction). The key is making the violation conscious and documented, with a plan to refactor if the code survives past its expected lifespan."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you apply SOLID principles in a microservices architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: SOLID scales from class-level to service-level design. SRP maps to bounded contexts — each service owns one business capability. OCP maps to event-driven communication — services extend system behavior by subscribing to events without modifying publishers. LSP maps to API versioning — new API versions must be backward-compatible with clients expecting the old contract. ISP maps to API granularity — services expose focused APIs rather than monolithic endpoints. DIP maps to messaging abstractions — services communicate through message brokers rather than direct HTTP calls, decoupling deployment and scaling decisions."
+        }
+      ],
+      "wordCount": 414,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use dependency injection frameworks to enforce DIP systematically: Frameworks like Spring, Guice, or tsyringe make DIP the path of least resistance. Configure them to fail fast on missing bindings during startup rather than at runtime. Use constructor injection exclusively — it makes dependencies explicit and enables immutability.",
+            "Measure SOLID compliance with static analysis: Tools like SonarQube, NDepend, and ArchUnit can detect SRP violations (class complexity metrics), DIP violations (dependency direction checks), and ISP violations (unused interface methods). Integrate these into CI pipelines with quality gates that prevent regression.",
+            "Apply the \"newspaper metaphor\" for SRP: A class should read like a newspaper article — the name tells you the topic, the public methods tell you the headlines, and the private methods provide the details. If you cannot describe a class's responsibility in one sentence without using \"and\" or \"or,\" it likely violates SRP."
+          ]
+        }
+      ],
+      "wordCount": 142,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Clean Architecture — SOLID principles are the foundation of clean architecture's dependency rule and boundary design",
+            "Refactoring Patterns — Refactoring techniques like Extract Class and Replace Conditional with Polymorphism directly address SOLID violations",
+            "Technical Debt — SOLID violations are a primary source of design debt that compounds over time"
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// BAD: This class has two reasons to change:\n// 1. Business rules for order validation change\n// 2. Database schema or persistence mechanism changes\npublic class OrderService {\n    private final DataSource dataSource;\n\n    public OrderService(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    public Order createOrder(OrderRequest request) {\n        // Business logic\n        if (request.getItems().isEmpty()) {\n            throw new IllegalArgumentException(\"Order must have at least one item\");\n        }\n        BigDecimal total = request.getItems().stream()\n            .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n\n        if (total.compareTo(BigDecimal.valueOf(10000)) > 0) {\n            throw new OrderLimitExceededException(\"Order exceeds maximum limit\");\n        }\n\n        Order order = new Order(UUID.randomUUID(), request.getItems(), total, OrderStatus.PENDING);\n\n        // Persistence logic mixed in\n        try (Connection conn = dataSource.getConnection()) {\n            PreparedStatement stmt = conn.prepareStatement(\n                \"INSERT INTO orders (id, total, status) VALUES (?, ?, ?)\"\n            );\n            stmt.setString(1, order.getId().toString());\n            stmt.setBigDecimal(2, order.getTotal());\n            stmt.setString(3, order.getStatus().name());\n            stmt.executeUpdate();\n        } catch (SQLException e) {\n            throw new RuntimeException(\"Failed to persist order\", e);\n        }\n\n        return order;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// GOOD: Business logic isolated in domain service\npublic class OrderService {\n    private final OrderRepository orderRepository;\n    private final OrderValidator validator;\n\n    public OrderService(OrderRepository orderRepository, OrderValidator validator) {\n        this.orderRepository = orderRepository;\n        this.validator = validator;\n    }\n\n    public Order createOrder(OrderRequest request) {\n        validator.validate(request);\n        BigDecimal total = calculateTotal(request.getItems());\n        Order order = new Order(UUID.randomUUID(), request.getItems(), total, OrderStatus.PENDING);\n        orderRepository.save(order);\n        return order;\n    }\n\n    private BigDecimal calculateTotal(List<OrderItem> items) {\n        return items.stream()\n            .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n}\n\n// Persistence concern isolated\npublic class JdbcOrderRepository implements OrderRepository {\n    private final DataSource dataSource;\n\n    public JdbcOrderRepository(DataSource dataSource) {\n        this.dataSource = dataSource;\n    }\n\n    @Override\n    public void save(Order order) {\n        try (Connection conn = dataSource.getConnection()) {\n            PreparedStatement stmt = conn.prepareStatement(\n                \"INSERT INTO orders (id, total, status) VALUES (?, ?, ?)\"\n            );\n            stmt.setString(1, order.getId().toString());\n            stmt.setBigDecimal(2, order.getTotal());\n            stmt.setString(3, order.getStatus().name());\n            stmt.executeUpdate();\n        } catch (SQLException e) {\n            throw new PersistenceException(\"Failed to persist order\", e);\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// BAD: Every new payment method requires modifying this function\nfunction processPayment(payment: Payment): PaymentResult {\n  switch (payment.type) {\n    case 'credit_card':\n      return chargeCreditCard(payment.cardNumber, payment.amount);\n    case 'paypal':\n      return chargePayPal(payment.email, payment.amount);\n    case 'bank_transfer':\n      return initiateBankTransfer(payment.accountNumber, payment.amount);\n    // Adding 'crypto' requires modifying this function\n    default:\n      throw new Error(`Unsupported payment type: ${payment.type}`);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// GOOD: Open for extension via new implementations, closed for modification\ninterface PaymentProcessor {\n  supports(payment: Payment): boolean;\n  process(payment: Payment): PaymentResult;\n}\n\nclass CreditCardProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'credit_card';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.chargeCreditCard(payment.cardNumber!, payment.amount);\n  }\n\n  private chargeCreditCard(cardNumber: string, amount: number): PaymentResult {\n    // Credit card specific logic\n    return { success: true, transactionId: generateId() };\n  }\n}\n\nclass PayPalProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'paypal';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.chargePayPal(payment.email!, payment.amount);\n  }\n\n  private chargePayPal(email: string, amount: number): PaymentResult {\n    // PayPal specific logic\n    return { success: true, transactionId: generateId() };\n  }\n}\n\n// Adding crypto requires ZERO changes to existing code\nclass CryptoProcessor implements PaymentProcessor {\n  supports(payment: Payment): boolean {\n    return payment.type === 'crypto';\n  }\n\n  process(payment: Payment): PaymentResult {\n    return this.processBlockchainPayment(payment.walletAddress!, payment.amount);\n  }\n\n  private processBlockchainPayment(wallet: string, amount: number): PaymentResult {\n    return { success: true, transactionId: generateId() };\n  }\n}\n\n// Registry is closed for modification but open for extension via registration\nclass PaymentService {\n  private processors: PaymentProcessor[] = [];\n\n  register(processor: PaymentProcessor): void {\n    this.processors.push(processor);\n  }\n\n  processPayment(payment: Payment): PaymentResult {\n    const processor = this.processors.find(p => p.supports(payment));\n    if (!processor) {\n      throw new Error(`No processor registered for payment type: ${payment.type}`);\n    }\n    return processor.process(payment);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// BAD: Square violates LSP when substituted for Rectangle\n// because setWidth/setHeight have unexpected coupled behavior\npublic class Rectangle {\n    protected int width;\n    protected int height;\n\n    public void setWidth(int width) { this.width = width; }\n    public void setHeight(int height) { this.height = height; }\n    public int getArea() { return width * height; }\n}\n\npublic class Square extends Rectangle {\n    @Override\n    public void setWidth(int width) {\n        this.width = width;\n        this.height = width;  // Violates expected behavior of setWidth\n    }\n\n    @Override\n    public void setHeight(int height) {\n        this.width = height;  // Violates expected behavior of setHeight\n        this.height = height;\n    }\n}\n\n// Client code breaks with Square:\nvoid resize(Rectangle rect) {\n    rect.setWidth(5);\n    rect.setHeight(10);\n    assert rect.getArea() == 50;  // FAILS with Square (returns 100)\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// GOOD: Use composition and separate interfaces\npublic interface Shape {\n    int getArea();\n}\n\npublic class Rectangle implements Shape {\n    private final int width;\n    private final int height;\n\n    public Rectangle(int width, int height) {\n        this.width = width;\n        this.height = height;\n    }\n\n    @Override\n    public int getArea() { return width * height; }\n}\n\npublic class Square implements Shape {\n    private final int side;\n\n    public Square(int side) {\n        this.side = side;\n    }\n\n    @Override\n    public int getArea() { return side * side; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// BAD: Fat interface forces implementations to handle irrelevant methods\ninterface Worker {\n  work(): void;\n  eat(): void;\n  sleep(): void;\n  attendMeeting(): void;\n  writeReport(): void;\n}\n\n// A robot worker is forced to implement eat() and sleep()\nclass RobotWorker implements Worker {\n  work(): void { /* productive work */ }\n  eat(): void { throw new Error('Robots do not eat'); }  // Forced stub\n  sleep(): void { throw new Error('Robots do not sleep'); }  // Forced stub\n  attendMeeting(): void { /* join video call */ }\n  writeReport(): void { /* generate report */ }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// GOOD: Segregated interfaces — clients depend only on what they need\ninterface Workable {\n  work(): void;\n}\n\ninterface Feedable {\n  eat(): void;\n}\n\ninterface Restable {\n  sleep(): void;\n}\n\ninterface Communicable {\n  attendMeeting(): void;\n  writeReport(): void;\n}\n\nclass HumanWorker implements Workable, Feedable, Restable, Communicable {\n  work(): void { /* productive work */ }\n  eat(): void { /* lunch break */ }\n  sleep(): void { /* rest period */ }\n  attendMeeting(): void { /* join standup */ }\n  writeReport(): void { /* write status update */ }\n}\n\nclass RobotWorker implements Workable, Communicable {\n  work(): void { /* productive work */ }\n  attendMeeting(): void { /* join monitoring dashboard */ }\n  writeReport(): void { /* generate automated report */ }\n}\n\n// Functions depend only on the interface they need\nfunction assignTask(worker: Workable): void {\n  worker.work();\n}\n\nfunction scheduleLunch(worker: Feedable): void {\n  worker.eat();\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// BAD: High-level NotificationService depends directly on low-level EmailSender\npublic class NotificationService {\n    private final SmtpEmailSender emailSender;  // Concrete dependency\n\n    public NotificationService() {\n        this.emailSender = new SmtpEmailSender(\"smtp.company.com\", 587);  // Hardcoded\n    }\n\n    public void notifyUser(User user, String message) {\n        emailSender.send(user.getEmail(), \"Notification\", message);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// GOOD: Both high-level and low-level depend on abstraction\npublic interface NotificationChannel {\n    void send(User user, String message);\n    boolean supports(NotificationType type);\n}\n\npublic class EmailNotificationChannel implements NotificationChannel {\n    private final EmailClient emailClient;\n\n    public EmailNotificationChannel(EmailClient emailClient) {\n        this.emailClient = emailClient;\n    }\n\n    @Override\n    public void send(User user, String message) {\n        emailClient.send(user.getEmail(), \"Notification\", message);\n    }\n\n    @Override\n    public boolean supports(NotificationType type) {\n        return type == NotificationType.EMAIL;\n    }\n}\n\npublic class SlackNotificationChannel implements NotificationChannel {\n    private final SlackClient slackClient;\n\n    public SlackNotificationChannel(SlackClient slackClient) {\n        this.slackClient = slackClient;\n    }\n\n    @Override\n    public void send(User user, String message) {\n        slackClient.postMessage(user.getSlackId(), message);\n    }\n\n    @Override\n    public boolean supports(NotificationType type) {\n        return type == NotificationType.SLACK;\n    }\n}\n\n// High-level service depends on abstraction, not concrete implementations\npublic class NotificationService {\n    private final List<NotificationChannel> channels;\n\n    public NotificationService(List<NotificationChannel> channels) {\n        this.channels = channels;\n    }\n\n    public void notifyUser(User user, String message, NotificationType preferredType) {\n        NotificationChannel channel = channels.stream()\n            .filter(c -> c.supports(preferredType))\n            .findFirst()\n            .orElseThrow(() -> new UnsupportedNotificationException(preferredType));\n        channel.send(user, message);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/software-engineering/software-engineering/solid-principles.md",
+    "wordCount": 1498,
+    "sectionCount": 13
+  }
+}

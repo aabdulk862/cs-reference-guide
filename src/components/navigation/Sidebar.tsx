@@ -40,17 +40,20 @@ interface ContentManifest {
 
 /** localStorage key for persisting expanded categories */
 const NAV_STATE_KEY = 'nav-state';
-/** localStorage key for progress (visited topics) */
-const PROGRESS_KEY = 'progress';
+
+/** Category groups for sidebar organization */
+const CATEGORY_GROUPS: { label: string; icon: string; categoryIds: string[] }[] = [
+  { label: 'Core CS', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
+  { label: 'Server', icon: '⚙️', categoryIds: ['backend', 'databases', 'system-design'] },
+  { label: 'Client', icon: '🎨', categoryIds: ['frontend'] },
+  { label: 'DevOps', icon: '🚀', categoryIds: ['infrastructure'] },
+  { label: 'Quality', icon: '✅', categoryIds: ['testing', 'security', 'software-engineering'] },
+  { label: 'Career', icon: '📚', categoryIds: ['interview-prep', 'git'] },
+];
 
 interface NavState {
   expandedCategories: string[];
   expandedTopics: string[];
-}
-
-interface ProgressData {
-  completedSections?: Record<string, string[]>;
-  topicProgress?: Record<string, number>;
 }
 
 /**
@@ -64,7 +67,6 @@ export function SidebarNavigation() {
   const [manifest, setManifest] = useState<ContentManifest | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
-  const [visitedTopics, setVisitedTopics] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   // Track whether initial state has been loaded from localStorage
@@ -127,28 +129,6 @@ export function SidebarNavigation() {
       });
     }
   }, [subtopicSlug, categorySlug, topicSlug]);
-
-  // Load completed topics from manual completion state
-  useEffect(() => {
-    const completed = get<string[]>('completed-topics', []);
-    // Extract topic slugs from completion IDs (e.g., "backend/java" → "java")
-    const visited = new Set<string>();
-    for (const id of completed) {
-      // Completion IDs are like "category/topic" or "category/topic/subtopic"
-      const parts = id.split('/');
-      if (parts.length >= 2) {
-        visited.add(parts[1]); // topic slug
-      }
-    }
-    // Also check old progress data for backward compatibility
-    const progress = get<ProgressData>(PROGRESS_KEY, {});
-    if (progress.topicProgress) {
-      for (const [topicId, percentage] of Object.entries(progress.topicProgress)) {
-        if (percentage > 0) visited.add(topicId);
-      }
-    }
-    setVisitedTopics(visited);
-  }, []);
 
   // Persist expanded state (categories + topics) to localStorage
   const persistExpandedState = useCallback((categories: Set<string>, topics: Set<string>) => {
@@ -240,7 +220,21 @@ export function SidebarNavigation() {
         </Link>
       </div>
       <ul className="sidebar-category-list" role="tree">
-        {manifest.categories.map((category) => {
+        {CATEGORY_GROUPS.map((group) => {
+          const groupCategories = group.categoryIds
+            .map((id) => manifest.categories.find((c) => c.id === id))
+            .filter((c): c is ManifestCategory => c !== undefined);
+
+          if (groupCategories.length === 0) return null;
+
+          return (
+            <li key={group.label} className="sidebar-group" role="none">
+              <span className="sidebar-group__label">
+                <span className="sidebar-group__icon" aria-hidden="true">{group.icon}</span>
+                {group.label}
+              </span>
+              <ul className="sidebar-group__categories" role="group">
+                {groupCategories.map((category) => {
           const isExpanded = expandedCategories.has(category.id);
           return (
             <li
@@ -276,7 +270,6 @@ export function SidebarNavigation() {
                   role="group"
                 >
                   {category.topics.map((topic) => {
-                    const isVisited = visitedTopics.has(topic.id);
                     const topicSlugPart = topic.slug.split('/')[1] ?? topic.id;
                     const isMultiPage = topic.subtopics && topic.subtopics.length > 0;
                     const topicKey = `${category.id}/${topicSlugPart}`;
@@ -300,13 +293,6 @@ export function SidebarNavigation() {
                               aria-hidden="true"
                             >
                               ▶
-                            </span>
-                            <span
-                              className={`sidebar-topic-indicator ${isVisited ? 'visited' : 'unvisited'}`}
-                              aria-label={isVisited ? 'Visited' : 'Not visited'}
-                              title={isVisited ? 'Visited' : 'Not visited'}
-                            >
-                              {isVisited ? '✓' : '○'}
                             </span>
                             <span className="sidebar-topic-title">{topic.title}</span>
                           </button>
@@ -348,13 +334,6 @@ export function SidebarNavigation() {
                           className={`sidebar-topic-link ${isActive ? 'active' : ''}`}
                           aria-current={isActive ? 'page' : undefined}
                         >
-                          <span
-                            className={`sidebar-topic-indicator ${isVisited ? 'visited' : 'unvisited'}`}
-                            aria-label={isVisited ? 'Visited' : 'Not visited'}
-                            title={isVisited ? 'Visited' : 'Not visited'}
-                          >
-                            {isVisited ? '✓' : '○'}
-                          </span>
                           <span className="sidebar-topic-title">{topic.title}</span>
                         </Link>
                       </li>
@@ -362,6 +341,10 @@ export function SidebarNavigation() {
                   })}
                 </ul>
               )}
+            </li>
+          );
+                })}
+              </ul>
             </li>
           );
         })}

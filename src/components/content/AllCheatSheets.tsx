@@ -172,28 +172,31 @@ export function AllCheatSheets() {
               </h3>
 
               <div className="all-cheat-sheets__grid">
-                {group.topics.map((topic) => (
-                  <Link
-                    key={topic.id}
-                    to={`/topic/${group.id}/${topic.slug}?view=cheat-sheet`}
-                    className="all-cheat-sheets__card"
-                  >
-                    <span className="all-cheat-sheets__card-title">
-                      {topic.title}
-                    </span>
-                    <span className="all-cheat-sheets__card-meta">
-                      <span className="all-cheat-sheets__card-category">
-                        {group.name}
+                {group.topics.map((topic) => {
+                  const topicSlugPart = topic.slug.split('/')[1] ?? topic.slug;
+                  return (
+                    <Link
+                      key={topic.id}
+                      to={`/topic/${group.id}/${topicSlugPart}?view=cheat-sheet`}
+                      className="all-cheat-sheets__card"
+                    >
+                      <span className="all-cheat-sheets__card-title">
+                        {topic.title}
                       </span>
-                      <span className="all-cheat-sheets__card-words">
-                        {topic.wordCount > 500 ? '≤500' : topic.wordCount} words
+                      <span className="all-cheat-sheets__card-meta">
+                        <span className="all-cheat-sheets__card-category">
+                          {group.name}
+                        </span>
+                        <span className="all-cheat-sheets__card-words">
+                          {topic.wordCount > 500 ? '≤500' : topic.wordCount} words
+                        </span>
                       </span>
-                    </span>
-                    <span className="all-cheat-sheets__card-summary">
-                      {topic.sectionCount} {topic.sectionCount === 1 ? 'section' : 'sections'}
-                    </span>
-                  </Link>
-                ))}
+                      <span className="all-cheat-sheets__card-summary">
+                        {topic.sectionCount} {topic.sectionCount === 1 ? 'section' : 'sections'}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
             </section>
           ))}

@@ -1,0 +1,446 @@
+{
+  "id": "testing-test-architecture",
+  "slug": "test-architecture",
+  "title": "Test Architecture",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Test pyramid: Many fast unit tests at the base, fewer integration tests in the middle, minimal end-to-end tests at the top",
+            "Test diamond: Alternative shape where integration tests dominate for microservices with thin logic layers",
+            "Flaky test: A test that passes and fails non-deterministically without code changes — the #1 trust killer",
+            "Test isolation: Each test must be independent; parallel execution should not cause failures",
+            "CI integration: Tests gate deployments; fast tests run first, slow tests run in parallel stages",
+            "Test organization: Group by feature (vertical) or by type (horizontal); feature-based scales better",
+            "Test tagging: Label tests (@unit, @integration, @slow, @critical) for selective execution",
+            "Test ownership: Every test has an owning team; orphaned tests become unmaintained liabilities",
+            "Feedback time: Unit tests < 10s, integration tests < 2min, E2E tests < 10min for effective CI gates"
+          ]
+        }
+      ],
+      "wordCount": 135,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Test architecture decisions matter when your test suite grows beyond a few hundred tests. At that scale, unstructured test suites become slow, flaky, and expensive to maintain. Invest in test architecture when your CI pipeline takes more than 10 minutes and developers stop waiting for results, when flaky tests cause more than 5% of builds to fail without real code issues, when adding a new feature requires modifying dozens of existing tests, when developers can't determine which tests to run for their change, when test maintenance consumes more than 20% of development time, and when test failures don't clearly indicate what broke or who should fix it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Test architecture is not a one-time decision — it evolves with your system. A monolith with 50 tests needs minimal architecture. A microservices platform with 50,000 tests across 200 repositories needs sophisticated orchestration, selective execution, and distributed ownership models."
+        },
+        {
+          "type": "paragraph",
+          "text": "The goal of test architecture is to maximize confidence per unit of time. Every architectural decision should be evaluated against this metric: does this change help us ship faster with fewer production incidents?"
+        }
+      ],
+      "wordCount": 179,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "test-pyramid-implementation-with-layered-execution",
+          "heading": "Test Pyramid Implementation with Layered Execution",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A well-structured test suite separates tests by speed and scope, enabling fast feedback for common changes and thorough validation before deployment."
+            },
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# .github/workflows/test-pipeline.yml\nname: Test Pipeline\n\non:\n  pull_request:\n    branches: [main]\n  push:\n    branches: [main]\n\njobs:\n  # Layer 1: Fast gate (< 30 seconds)\n  unit-tests:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npm run test:unit -- --reporter=junit --outputFile=results/unit.xml\n      - uses: dorny/test-reporter@v1\n        if: always()\n        with:\n          name: Unit Tests\n          path: results/unit.xml\n          reporter: jest-junit\n\n  # Layer 2: Integration gate (< 3 minutes)\n  integration-tests:\n    needs: unit-tests\n    runs-on: ubuntu-latest\n    services:\n      postgres:\n        image: postgres:15-alpine\n        env:\n          POSTGRES_DB: testdb\n          POSTGRES_PASSWORD: test\n        ports:\n          - 5432:5432\n        options: >-\n          --health-cmd pg_isready\n          --health-interval 10s\n          --health-timeout 5s\n          --health-retries 5\n      redis:\n        image: redis:7-alpine\n        ports:\n          - 6379:6379\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npm run test:integration\n        env:\n          DATABASE_URL: postgresql://postgres:test@localhost:5432/testdb\n          REDIS_URL: redis://localhost:6379\n\n  # Layer 3: E2E gate (< 10 minutes, parallel shards)\n  e2e-tests:\n    needs: integration-tests\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        shard: [1, 2, 3, 4]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npx playwright install --with-deps\n      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4\n\n  # Layer 4: Performance gate (nightly, not blocking)\n  performance-tests:\n    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n    needs: e2e-tests\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci\n      - run: npm run test:performance\n      - uses: benchmark-action/github-action-benchmark@v1\n        with:\n          tool: 'customSmallerIsBetter'\n          output-file-path: results/benchmark.json\n          alert-threshold: '120%'\n          fail-on-alert: true",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "flaky-test-detection-and-quarantine-system",
+          "heading": "Flaky Test Detection and Quarantine System",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Flaky tests erode trust in the test suite. A quarantine system automatically detects, isolates, and tracks flaky tests without blocking deployments."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { describe, it, expect, beforeAll } from 'vitest';\nimport { FlakyTestTracker } from './flaky-test-tracker';\n\n// Flaky test detection middleware\nclass TestStabilityMonitor {\n  private results: Map<string, { passes: number; failures: number; lastFailure?: string }> = new Map();\n  private readonly flakyThreshold = 0.05; // 5% failure rate = flaky\n  private readonly windowSize = 100; // Last 100 runs\n\n  recordResult(testId: string, passed: boolean, errorMessage?: string): void {\n    const existing = this.results.get(testId) || { passes: 0, failures: 0 };\n    if (passed) {\n      existing.passes++;\n    } else {\n      existing.failures++;\n      existing.lastFailure = errorMessage;\n    }\n    this.results.set(testId, existing);\n  }\n\n  isFlaky(testId: string): boolean {\n    const result = this.results.get(testId);\n    if (!result) return false;\n    const total = result.passes + result.failures;\n    if (total < 10) return false; // Not enough data\n    const failureRate = result.failures / total;\n    return failureRate > 0 && failureRate < this.flakyThreshold;\n  }\n\n  getQuarantinedTests(): string[] {\n    return Array.from(this.results.entries())\n      .filter(([id]) => this.isFlaky(id))\n      .map(([id]) => id);\n  }\n\n  getFlakyReport(): FlakyReport {\n    const flaky = this.getQuarantinedTests();\n    return {\n      totalTracked: this.results.size,\n      flakyCount: flaky.length,\n      flakyTests: flaky.map((id) => ({\n        id,\n        ...this.results.get(id)!,\n        failureRate: this.results.get(id)!.failures /\n          (this.results.get(id)!.passes + this.results.get(id)!.failures),\n      })),\n    };\n  }\n}\n\ninterface FlakyReport {\n  totalTracked: number;\n  flakyCount: number;\n  flakyTests: Array<{\n    id: string;\n    passes: number;\n    failures: number;\n    failureRate: number;\n    lastFailure?: string;\n  }>;\n}\n\n// Vitest custom reporter for flaky detection\n// In vitest.config.ts:\n// reporters: ['default', './src/test-utils/flaky-reporter.ts']\nexport class FlakyReporter {\n  private tracker = new TestStabilityMonitor();\n\n  onTestResult(testPath: string, result: { passed: boolean; name: string; error?: string }): void {\n    const testId = `${testPath}::${result.name}`;\n    this.tracker.recordResult(testId, result.passed, result.error);\n  }\n\n  onRunComplete(): void {\n    const report = this.tracker.getFlakyReport();\n    if (report.flakyCount > 0) {\n      console.warn(`\\n⚠️  ${report.flakyCount} flaky tests detected:`);\n      for (const test of report.flakyTests) {\n        console.warn(`  - ${test.id} (${(test.failureRate * 100).toFixed(1)}% failure rate)`);\n      }\n    }\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        },
+        {
+          "id": "test-organization-by-feature",
+          "heading": "Test Organization by Feature",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Feature-based test organization keeps related tests together, making it easy to find tests for a given feature and understand test coverage at a glance."
+            },
+            {
+              "type": "code",
+              "language": "",
+              "code": "src/\n├── features/\n│   ├── orders/\n│   │   ├── __tests__/\n│   │   │   ├── order-service.unit.test.ts      # Unit tests\n│   │   │   ├── order-repository.int.test.ts    # Integration tests\n│   │   │   ├── order-api.e2e.test.ts           # E2E tests\n│   │   │   ├── order-pricing.property.test.ts  # Property tests\n│   │   │   └── fixtures/\n│   │   │       ├── order-builder.ts            # Test data factory\n│   │   │       └── sample-orders.json          # Fixture data\n│   │   ├── order-service.ts\n│   │   ├── order-repository.ts\n│   │   └── order-controller.ts\n│   ├── payments/\n│   │   ├── __tests__/\n│   │   │   ├── payment-processor.unit.test.ts\n│   │   │   ├── stripe-integration.int.test.ts\n│   │   │   └── fixtures/\n│   │   │       └── payment-builder.ts\n│   │   ├── payment-processor.ts\n│   │   └── stripe-client.ts",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// vitest.config.ts — Selective test execution by type\nimport { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Default: run all tests\n    include: ['src/**/*.test.ts'],\n\n    // Named configurations for selective execution\n    typecheck: {\n      enabled: true,\n    },\n  },\n});\n\n// package.json scripts for layered execution\n// \"test:unit\": \"vitest run --include='**/*.unit.test.ts'\",\n// \"test:integration\": \"vitest run --include='**/*.int.test.ts'\",\n// \"test:e2e\": \"vitest run --include='**/*.e2e.test.ts'\",\n// \"test:property\": \"vitest run --include='**/*.property.test.ts'\",\n// \"test:all\": \"vitest run\",\n// \"test:affected\": \"vitest run --changed HEAD~1\",",
+              "runnable": false
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        },
+        {
+          "id": "test-impact-analysis-for-selective-execution",
+          "heading": "Test Impact Analysis for Selective Execution",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "In large codebases, running all tests on every change is wasteful. Test impact analysis determines which tests are affected by a code change and runs only those."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { execSync } from 'child_process';\nimport * as path from 'path';\n\ninterface TestImpactMap {\n  [sourceFile: string]: string[]; // source file -> test files that cover it\n}\n\nclass TestImpactAnalyzer {\n  private impactMap: TestImpactMap;\n\n  constructor(coverageDataPath: string) {\n    // Load coverage data from previous full run\n    this.impactMap = this.buildImpactMap(coverageDataPath);\n  }\n\n  /**\n   * Given a list of changed files, returns the minimal set of tests to run.\n   */\n  getAffectedTests(changedFiles: string[]): string[] {\n    const affectedTests = new Set<string>();\n\n    for (const file of changedFiles) {\n      const normalized = path.resolve(file);\n      const tests = this.impactMap[normalized] || [];\n      for (const test of tests) {\n        affectedTests.add(test);\n      }\n\n      // If the changed file IS a test, include it directly\n      if (file.includes('.test.') || file.includes('.spec.')) {\n        affectedTests.add(normalized);\n      }\n    }\n\n    return Array.from(affectedTests);\n  }\n\n  /**\n   * Gets changed files from git diff against the base branch.\n   */\n  getChangedFiles(baseBranch: string = 'main'): string[] {\n    const output = execSync(`git diff --name-only ${baseBranch}...HEAD`, {\n      encoding: 'utf-8',\n    });\n    return output.trim().split('\\n').filter(Boolean);\n  }\n\n  private buildImpactMap(coverageDataPath: string): TestImpactMap {\n    // Parse Istanbul/V8 coverage data to build source -> test mapping\n    // Each test file's coverage report tells us which source files it touched\n    const map: TestImpactMap = {};\n    // Implementation reads coverage JSON and inverts the mapping\n    return map;\n  }\n}\n\n// Usage in CI:\n// const analyzer = new TestImpactAnalyzer('./coverage/coverage-final.json');\n// const changed = analyzer.getChangedFiles('main');\n// const testsToRun = analyzer.getAffectedTests(changed);\n// execSync(`vitest run ${testsToRun.join(' ')}`);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 27,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-inverted-test-pyramid-ice-cream-cone",
+          "heading": "1. Inverted Test Pyramid (Ice Cream Cone)",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Many teams end up with few unit tests, few integration tests, and many slow E2E tests — the \"ice cream cone\" anti-pattern. This happens when testing is an afterthought added at the UI level. The result is a slow, flaky, expensive test suite that provides poor failure localization. Fix by pushing test coverage down: for every E2E test, ask \"could this be caught by a unit or integration test instead?\""
+            }
+          ],
+          "wordCount": 70,
+          "subsections": []
+        },
+        {
+          "id": "2-treating-all-tests-as-equal-priority",
+          "heading": "2. Treating All Tests as Equal Priority",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Not all tests provide equal value. A test for a payment calculation is more critical than a test for a tooltip position. Without prioritization, teams spend equal effort maintaining low-value tests while critical paths remain under-tested. Tag tests by criticality (@critical, @standard, @nice-to-have) and allocate maintenance effort accordingly."
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        },
+        {
+          "id": "3-no-ownership-model-for-tests",
+          "heading": "3. No Ownership Model for Tests",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When nobody owns a test, nobody fixes it when it breaks. Orphaned tests accumulate, get disabled, and eventually the suite provides false confidence. Assign test ownership to feature teams using CODEOWNERS files or test metadata. When a team is dissolved, explicitly reassign their tests."
+            }
+          ],
+          "wordCount": 44,
+          "subsections": []
+        },
+        {
+          "id": "4-coupling-tests-to-implementation-details",
+          "heading": "4. Coupling Tests to Implementation Details",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Tests that verify internal method calls, private state, or execution order break on every refactor without catching real bugs. This creates a \"test tax\" where refactoring costs double — once for the code, once for the tests. Test through public interfaces and verify observable behavior, not implementation mechanics."
+            }
+          ],
+          "wordCount": 48,
+          "subsections": []
+        },
+        {
+          "id": "5-ignoring-test-maintenance-cost",
+          "heading": "5. Ignoring Test Maintenance Cost",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Every test has an ongoing maintenance cost: updating when requirements change, debugging when it fails, and understanding when onboarding new developers. Tests that are hard to understand, have complex setup, or test trivial behavior have negative ROI. Regularly prune tests that cost more to maintain than the confidence they provide."
+            }
+          ],
+          "wordCount": 50,
+          "subsections": []
+        },
+        {
+          "id": "6-flaky-tests-left-unfixed",
+          "heading": "6. Flaky Tests Left Unfixed",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A single flaky test that fails 5% of the time will fail in 40% of CI runs with 10 test files. Teams that tolerate flaky tests train developers to ignore failures, which means real failures also get ignored. Establish a zero-tolerance policy: flaky tests are either fixed within 48 hours or quarantined (moved to a non-blocking suite) until fixed."
+            }
+          ],
+          "wordCount": 59,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "monorepo-test-orchestration-at-scale",
+          "heading": "Monorepo Test Orchestration at Scale",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A fintech company with 15 services in a monorepo uses Nx-based test impact analysis to run only affected tests on each PR. The full suite takes 45 minutes; affected-only execution averages 4 minutes. They maintain a nightly full-suite run to catch transitive dependency issues. Test ownership is enforced through CODEOWNERS — each service team owns their tests and is paged when their tests fail on main."
+            }
+          ],
+          "wordCount": 66,
+          "subsections": []
+        },
+        {
+          "id": "microservices-contract-testing-pipeline",
+          "heading": "Microservices Contract Testing Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A platform with 80 microservices uses Pact broker as the central contract registry. Each service's CI pipeline publishes consumer contracts and verifies provider contracts independently. The \"can-i-deploy\" check prevents deployments that would break consumers. This replaced a fragile staging environment where all 80 services had to be deployed together for integration testing."
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        },
+        {
+          "id": "mobile-app-test-architecture",
+          "heading": "Mobile App Test Architecture",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A mobile banking app uses a three-tier architecture: unit tests run on every commit (2 seconds), integration tests run on PR creation (90 seconds with local mocks), and device farm tests run before release (20 minutes across 30 device configurations). Flaky device tests are automatically retried twice before failing. A weekly stability report identifies tests with >2% flake rate for investigation."
+            }
+          ],
+          "wordCount": 61,
+          "subsections": []
+        },
+        {
+          "id": "database-migration-testing-pipeline",
+          "heading": "Database Migration Testing Pipeline",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A SaaS platform tests database migrations in a dedicated pipeline stage. Each migration runs against a production-schema snapshot, verifies forward migration, runs the application's integration tests against the new schema, then verifies rollback. This caught a migration that would have locked a 500M-row table for 3 hours in production — the test detected the lock duration exceeded the 30-second threshold."
+            }
+          ],
+          "wordCount": 60,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Describe the test pyramid and when you might deviate from it."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The test pyramid recommends many fast unit tests at the base, fewer integration tests in the middle, and minimal E2E tests at the top. The rationale is that lower-level tests are faster, more reliable, and provide better failure localization. You deviate from the pyramid when your system is primarily integration logic with thin business rules (microservices that mostly transform and route data) — here a \"test diamond\" with more integration tests makes sense. You also deviate for UI-heavy applications where component tests (between unit and E2E) provide the best confidence-to-cost ratio. The pyramid is a heuristic, not a rule — optimize for confidence per unit of time, not for shape."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle flaky tests in a large codebase?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A systematic approach with four components. Detection: Track pass/fail history per test across CI runs; any test with >0% and <100% pass rate over 50 runs is flaky. Quarantine: Automatically move detected flaky tests to a non-blocking suite so they don't block deployments or train developers to ignore failures. Root cause analysis: Common causes are timing dependencies (use explicit waits, not sleeps), shared state (ensure test isolation), external service instability (use deterministic test doubles), and resource contention (avoid port/file conflicts). Prevention: Code review checklist items for test determinism, CI that runs new tests 10x before merging to detect flakiness early, and a team SLO on flaky test count (e.g., \"fewer than 5 quarantined tests at any time\")."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you decide what level of testing to use for a given feature?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Apply the \"confidence per cost\" heuristic. For each behavior you need to verify, ask: what's the cheapest test that gives me confidence this works? Pure calculation logic → unit test (fast, precise). Database query correctness → integration test (needs real DB). User workflow across pages → E2E test (needs full stack). API contract between services → contract test (no full deployment needed). The decision factors are: how fast is the feedback loop, how reliable is the test, how well does it localize failures, and how expensive is it to maintain. A common mistake is testing everything at the E2E level \"because it's most realistic\" — this gives slow feedback, poor localization, and high flake rates."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you structure tests in a monorepo with multiple services?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three key principles. Locality: tests live next to the code they test, not in a separate tests/ tree. Each service has its own test suite that can run independently. Selective execution: use dependency graph analysis (Nx, Turborepo, Bazel) to run only tests affected by changed code. A change to Service A's internal logic shouldn't trigger Service B's tests. Shared infrastructure: common test utilities (builders, fixtures, custom matchers) live in a shared package that all services depend on. Contract tests between services live in a dedicated package that both producer and consumer CI pipelines execute. The goal is that each team can run their tests in under 5 minutes locally while the full suite runs in CI with intelligent parallelization."
+        }
+      ],
+      "wordCount": 515,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "implement-test-quality-metrics-dashboard",
+          "heading": "Implement Test Quality Metrics Dashboard",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Track metrics beyond pass/fail: test execution time trends (catch tests getting slower), flaky test count over time, coverage by feature area, time-to-feedback for each pipeline stage, and test-to-code ratio by team. Surface these in a dashboard that teams review weekly. When test execution time increases 20% month-over-month, investigate before it becomes a crisis."
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        },
+        {
+          "id": "use-test-sharding-for-parallel-ci-execution",
+          "heading": "Use Test Sharding for Parallel CI Execution",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Split your test suite across multiple CI runners using deterministic sharding. Each shard runs a subset of tests in parallel, reducing wall-clock time proportionally. Vitest supports --shard=1/4 natively. For custom sharding, hash test file paths and assign to shards deterministically so the same test always runs on the same shard (enabling per-shard caching)."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Deterministic test sharding\nfunction getShardForTest(testPath: string, totalShards: number): number {\n  let hash = 0;\n  for (let i = 0; i < testPath.length; i++) {\n    const char = testPath.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash = hash & hash; // Convert to 32-bit integer\n  }\n  return Math.abs(hash) % totalShards;\n}\n\n// Balance shards by execution time, not just count\nfunction balanceShards(\n  tests: Array<{ path: string; avgDuration: number }>,\n  shardCount: number\n): string[][] {\n  // Sort by duration descending (longest first)\n  const sorted = [...tests].sort((a, b) => b.avgDuration - a.avgDuration);\n  const shards: Array<{ tests: string[]; totalDuration: number }> = Array.from(\n    { length: shardCount },\n    () => ({ tests: [], totalDuration: 0 })\n  );\n\n  // Greedy assignment: add each test to the lightest shard\n  for (const test of sorted) {\n    const lightest = shards.reduce((min, shard) =>\n      shard.totalDuration < min.totalDuration ? shard : min\n    );\n    lightest.tests.push(test.path);\n    lightest.totalDuration += test.avgDuration;\n  }\n\n  return shards.map((s) => s.tests);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        },
+        {
+          "id": "establish-test-slos",
+          "heading": "Establish Test SLOs",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Define Service Level Objectives for your test suite: \"Unit tests complete in under 30 seconds\", \"Integration tests complete in under 3 minutes\", \"Flaky test count stays below 5\", \"Test coverage on critical paths stays above 90%\". Alert when SLOs are breached. This prevents gradual degradation where the suite gets 10% slower each quarter until it's unusable."
+            }
+          ],
+          "wordCount": 56,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Unit Testing — The foundation layer of the test pyramid",
+            "Integration Testing — The middle layer that verifies component interactions",
+            "Property-Based Testing — Advanced technique for exploring edge cases within any test layer",
+            "Mocking Strategies — How test doubles enable isolation at each pyramid level"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "yaml",
+      "code": "# .github/workflows/test-pipeline.yml\nname: Test Pipeline\n\non:\n  pull_request:\n    branches: [main]\n  push:\n    branches: [main]\n\njobs:\n  # Layer 1: Fast gate (< 30 seconds)\n  unit-tests:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npm run test:unit -- --reporter=junit --outputFile=results/unit.xml\n      - uses: dorny/test-reporter@v1\n        if: always()\n        with:\n          name: Unit Tests\n          path: results/unit.xml\n          reporter: jest-junit\n\n  # Layer 2: Integration gate (< 3 minutes)\n  integration-tests:\n    needs: unit-tests\n    runs-on: ubuntu-latest\n    services:\n      postgres:\n        image: postgres:15-alpine\n        env:\n          POSTGRES_DB: testdb\n          POSTGRES_PASSWORD: test\n        ports:\n          - 5432:5432\n        options: >-\n          --health-cmd pg_isready\n          --health-interval 10s\n          --health-timeout 5s\n          --health-retries 5\n      redis:\n        image: redis:7-alpine\n        ports:\n          - 6379:6379\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npm run test:integration\n        env:\n          DATABASE_URL: postgresql://postgres:test@localhost:5432/testdb\n          REDIS_URL: redis://localhost:6379\n\n  # Layer 3: E2E gate (< 10 minutes, parallel shards)\n  e2e-tests:\n    needs: integration-tests\n    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        shard: [1, 2, 3, 4]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'npm'\n      - run: npm ci\n      - run: npx playwright install --with-deps\n      - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4\n\n  # Layer 4: Performance gate (nightly, not blocking)\n  performance-tests:\n    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n    needs: e2e-tests\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci\n      - run: npm run test:performance\n      - uses: benchmark-action/github-action-benchmark@v1\n        with:\n          tool: 'customSmallerIsBetter'\n          output-file-path: results/benchmark.json\n          alert-threshold: '120%'\n          fail-on-alert: true",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { describe, it, expect, beforeAll } from 'vitest';\nimport { FlakyTestTracker } from './flaky-test-tracker';\n\n// Flaky test detection middleware\nclass TestStabilityMonitor {\n  private results: Map<string, { passes: number; failures: number; lastFailure?: string }> = new Map();\n  private readonly flakyThreshold = 0.05; // 5% failure rate = flaky\n  private readonly windowSize = 100; // Last 100 runs\n\n  recordResult(testId: string, passed: boolean, errorMessage?: string): void {\n    const existing = this.results.get(testId) || { passes: 0, failures: 0 };\n    if (passed) {\n      existing.passes++;\n    } else {\n      existing.failures++;\n      existing.lastFailure = errorMessage;\n    }\n    this.results.set(testId, existing);\n  }\n\n  isFlaky(testId: string): boolean {\n    const result = this.results.get(testId);\n    if (!result) return false;\n    const total = result.passes + result.failures;\n    if (total < 10) return false; // Not enough data\n    const failureRate = result.failures / total;\n    return failureRate > 0 && failureRate < this.flakyThreshold;\n  }\n\n  getQuarantinedTests(): string[] {\n    return Array.from(this.results.entries())\n      .filter(([id]) => this.isFlaky(id))\n      .map(([id]) => id);\n  }\n\n  getFlakyReport(): FlakyReport {\n    const flaky = this.getQuarantinedTests();\n    return {\n      totalTracked: this.results.size,\n      flakyCount: flaky.length,\n      flakyTests: flaky.map((id) => ({\n        id,\n        ...this.results.get(id)!,\n        failureRate: this.results.get(id)!.failures /\n          (this.results.get(id)!.passes + this.results.get(id)!.failures),\n      })),\n    };\n  }\n}\n\ninterface FlakyReport {\n  totalTracked: number;\n  flakyCount: number;\n  flakyTests: Array<{\n    id: string;\n    passes: number;\n    failures: number;\n    failureRate: number;\n    lastFailure?: string;\n  }>;\n}\n\n// Vitest custom reporter for flaky detection\n// In vitest.config.ts:\n// reporters: ['default', './src/test-utils/flaky-reporter.ts']\nexport class FlakyReporter {\n  private tracker = new TestStabilityMonitor();\n\n  onTestResult(testPath: string, result: { passed: boolean; name: string; error?: string }): void {\n    const testId = `${testPath}::${result.name}`;\n    this.tracker.recordResult(testId, result.passed, result.error);\n  }\n\n  onRunComplete(): void {\n    const report = this.tracker.getFlakyReport();\n    if (report.flakyCount > 0) {\n      console.warn(`\\n⚠️  ${report.flakyCount} flaky tests detected:`);\n      for (const test of report.flakyTests) {\n        console.warn(`  - ${test.id} (${(test.failureRate * 100).toFixed(1)}% failure rate)`);\n      }\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "src/\n├── features/\n│   ├── orders/\n│   │   ├── __tests__/\n│   │   │   ├── order-service.unit.test.ts      # Unit tests\n│   │   │   ├── order-repository.int.test.ts    # Integration tests\n│   │   │   ├── order-api.e2e.test.ts           # E2E tests\n│   │   │   ├── order-pricing.property.test.ts  # Property tests\n│   │   │   └── fixtures/\n│   │   │       ├── order-builder.ts            # Test data factory\n│   │   │       └── sample-orders.json          # Fixture data\n│   │   ├── order-service.ts\n│   │   ├── order-repository.ts\n│   │   └── order-controller.ts\n│   ├── payments/\n│   │   ├── __tests__/\n│   │   │   ├── payment-processor.unit.test.ts\n│   │   │   ├── stripe-integration.int.test.ts\n│   │   │   └── fixtures/\n│   │   │       └── payment-builder.ts\n│   │   ├── payment-processor.ts\n│   │   └── stripe-client.ts",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// vitest.config.ts — Selective test execution by type\nimport { defineConfig } from 'vitest/config';\n\nexport default defineConfig({\n  test: {\n    // Default: run all tests\n    include: ['src/**/*.test.ts'],\n\n    // Named configurations for selective execution\n    typecheck: {\n      enabled: true,\n    },\n  },\n});\n\n// package.json scripts for layered execution\n// \"test:unit\": \"vitest run --include='**/*.unit.test.ts'\",\n// \"test:integration\": \"vitest run --include='**/*.int.test.ts'\",\n// \"test:e2e\": \"vitest run --include='**/*.e2e.test.ts'\",\n// \"test:property\": \"vitest run --include='**/*.property.test.ts'\",\n// \"test:all\": \"vitest run\",\n// \"test:affected\": \"vitest run --changed HEAD~1\",",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { execSync } from 'child_process';\nimport * as path from 'path';\n\ninterface TestImpactMap {\n  [sourceFile: string]: string[]; // source file -> test files that cover it\n}\n\nclass TestImpactAnalyzer {\n  private impactMap: TestImpactMap;\n\n  constructor(coverageDataPath: string) {\n    // Load coverage data from previous full run\n    this.impactMap = this.buildImpactMap(coverageDataPath);\n  }\n\n  /**\n   * Given a list of changed files, returns the minimal set of tests to run.\n   */\n  getAffectedTests(changedFiles: string[]): string[] {\n    const affectedTests = new Set<string>();\n\n    for (const file of changedFiles) {\n      const normalized = path.resolve(file);\n      const tests = this.impactMap[normalized] || [];\n      for (const test of tests) {\n        affectedTests.add(test);\n      }\n\n      // If the changed file IS a test, include it directly\n      if (file.includes('.test.') || file.includes('.spec.')) {\n        affectedTests.add(normalized);\n      }\n    }\n\n    return Array.from(affectedTests);\n  }\n\n  /**\n   * Gets changed files from git diff against the base branch.\n   */\n  getChangedFiles(baseBranch: string = 'main'): string[] {\n    const output = execSync(`git diff --name-only ${baseBranch}...HEAD`, {\n      encoding: 'utf-8',\n    });\n    return output.trim().split('\\n').filter(Boolean);\n  }\n\n  private buildImpactMap(coverageDataPath: string): TestImpactMap {\n    // Parse Istanbul/V8 coverage data to build source -> test mapping\n    // Each test file's coverage report tells us which source files it touched\n    const map: TestImpactMap = {};\n    // Implementation reads coverage JSON and inverts the mapping\n    return map;\n  }\n}\n\n// Usage in CI:\n// const analyzer = new TestImpactAnalyzer('./coverage/coverage-final.json');\n// const changed = analyzer.getChangedFiles('main');\n// const testsToRun = analyzer.getAffectedTests(changed);\n// execSync(`vitest run ${testsToRun.join(' ')}`);",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Deterministic test sharding\nfunction getShardForTest(testPath: string, totalShards: number): number {\n  let hash = 0;\n  for (let i = 0; i < testPath.length; i++) {\n    const char = testPath.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash = hash & hash; // Convert to 32-bit integer\n  }\n  return Math.abs(hash) % totalShards;\n}\n\n// Balance shards by execution time, not just count\nfunction balanceShards(\n  tests: Array<{ path: string; avgDuration: number }>,\n  shardCount: number\n): string[][] {\n  // Sort by duration descending (longest first)\n  const sorted = [...tests].sort((a, b) => b.avgDuration - a.avgDuration);\n  const shards: Array<{ tests: string[]; totalDuration: number }> = Array.from(\n    { length: shardCount },\n    () => ({ tests: [], totalDuration: 0 })\n  );\n\n  // Greedy assignment: add each test to the lightest shard\n  for (const test of sorted) {\n    const lightest = shards.reduce((min, shard) =>\n      shard.totalDuration < min.totalDuration ? shard : min\n    );\n    lightest.tests.push(test.path);\n    lightest.totalDuration += test.avgDuration;\n  }\n\n  return shards.map((s) => s.tests);\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/testing/test-architecture.md",
+    "wordCount": 1687,
+    "sectionCount": 25
+  }
+}

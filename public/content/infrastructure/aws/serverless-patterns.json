@@ -1,0 +1,295 @@
+{
+  "id": "aws-serverless-patterns",
+  "slug": "serverless-patterns",
+  "title": "Serverless Patterns",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Lambda cold starts: 100-500ms for Python/Node.js, 1-10s for Java/C# (JVM/CLR initialization)",
+            "Provisioned concurrency eliminates cold starts at ~$0.015/GB-hour; use for latency-sensitive paths only",
+            "Step Functions standard workflows cost 0.025 per 1000 state transitions; Express workflows cost 0.00001667 per GB-second",
+            "Lambda@Edge runs at CloudFront edge locations with 5-second timeout; CloudFront Functions run at 218+ PoPs with 1ms max execution",
+            "API Gateway WebSocket connections support up to 2 hours idle timeout and 500,000 concurrent connections per account",
+            "Lambda Destinations route async invocation results (success/failure) to SQS, SNS, Lambda, or EventBridge without custom error handling code",
+            "EventBridge processes events with sub-second latency and supports content-based filtering with 28+ AWS service integrations",
+            "Lambda SnapStart reduces Java cold starts from 5-10s to under 200ms by pre-initializing and snapshotting the execution environment"
+          ]
+        }
+      ],
+      "wordCount": 126,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Serverless patterns are ideal when you want to minimize operational overhead, pay only for actual compute consumption, and scale automatically from zero to thousands of concurrent executions. Choose serverless for event-driven workloads with variable traffic patterns — API backends that spike during business hours, file processing triggered by uploads, scheduled data transformations, and webhook handlers. Serverless excels at glue logic between managed services: transforming data between S3 and a database, processing messages from queues, responding to infrastructure events, and orchestrating multi-step workflows. Avoid serverless for long-running computations exceeding 15 minutes, workloads requiring persistent connections (WebSocket servers with complex state), applications needing sub-10ms latency guarantees (cold starts are unavoidable without provisioned concurrency), or high-throughput steady-state workloads where reserved EC2 capacity is more cost-effective. The break-even point typically occurs around 40-60% sustained utilization — above that, containers or EC2 become cheaper."
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "event-driven-lambda-with-dead-letter-queue",
+          "heading": "Event-Driven Lambda with Dead Letter Queue",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// AWS CDK infrastructure definition\nimport * as cdk from 'aws-cdk-lib';\nimport * as lambda from 'aws-cdk-lib/aws-lambda';\nimport * as sqs from 'aws-cdk-lib/aws-sqs';\nimport * as eventsources from 'aws-cdk-lib/aws-lambda-event-sources';\n\nexport class OrderProcessingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string) {\n    super(scope, id);\n\n    const dlq = new sqs.Queue(this, 'OrderDLQ', {\n      queueName: 'order-processing-dlq',\n      retentionPeriod: cdk.Duration.days(14),\n    });\n\n    const orderQueue = new sqs.Queue(this, 'OrderQueue', {\n      queueName: 'order-processing',\n      visibilityTimeout: cdk.Duration.seconds(900), // 6x Lambda timeout\n      deadLetterQueue: {\n        queue: dlq,\n        maxReceiveCount: 3,\n      },\n    });\n\n    const processor = new lambda.Function(this, 'OrderProcessor', {\n      runtime: lambda.Runtime.NODEJS_20_X,\n      handler: 'index.handler',\n      code: lambda.Code.fromAsset('lambda/order-processor'),\n      timeout: cdk.Duration.seconds(150),\n      memorySize: 1024,\n      reservedConcurrentExecutions: 50,\n      environment: {\n        TABLE_NAME: 'orders',\n        IDEMPOTENCY_TABLE: 'idempotency-store',\n      },\n      tracing: lambda.Tracing.ACTIVE,\n    });\n\n    processor.addEventSource(new eventsources.SqsEventSource(orderQueue, {\n      batchSize: 10,\n      maxBatchingWindow: cdk.Duration.seconds(5),\n      reportBatchItemFailures: true,\n    }));\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "lambda-handler-with-idempotency-and-structured-logging",
+          "heading": "Lambda Handler with Idempotency and Structured Logging",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { Logger } from '@aws-lambda-powertools/logger';\nimport { Tracer } from '@aws-lambda-powertools/tracer';\nimport { Idempotency } from '@aws-lambda-powertools/idempotency';\nimport { DynamoDBPersistenceLayer } from '@aws-lambda-powertools/idempotency/dynamodb';\nimport { SQSEvent, SQSBatchResponse } from 'aws-lambda';\n\nconst logger = new Logger({ serviceName: 'order-processor' });\nconst tracer = new Tracer({ serviceName: 'order-processor' });\n\nconst persistenceStore = new DynamoDBPersistenceLayer({\n  tableName: process.env.IDEMPOTENCY_TABLE!,\n});\n\ninterface OrderEvent {\n  orderId: string;\n  customerId: string;\n  items: Array<{ sku: string; quantity: number; price: number }>;\n  total: number;\n}\n\nexport const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {\n  const batchItemFailures: Array<{ itemIdentifier: string }> = [];\n\n  for (const record of event.Records) {\n    const segment = tracer.getSegment();\n    const subsegment = segment?.addNewSubsegment('processOrder');\n\n    try {\n      const order: OrderEvent = JSON.parse(record.body);\n      logger.info('Processing order', { orderId: order.orderId });\n\n      await processOrderIdempotent(order);\n\n      logger.info('Order processed successfully', {\n        orderId: order.orderId,\n        itemCount: order.items.length,\n      });\n    } catch (error) {\n      logger.error('Failed to process order', { error, messageId: record.messageId });\n      batchItemFailures.push({ itemIdentifier: record.messageId });\n    } finally {\n      subsegment?.close();\n    }\n  }\n\n  return { batchItemFailures };\n};\n\nconst processOrderIdempotent = Idempotency.handler(\n  async (order: OrderEvent) => {\n    // Business logic: validate inventory, charge payment, update status\n    await validateInventory(order.items);\n    await chargePayment(order.customerId, order.total);\n    await updateOrderStatus(order.orderId, 'confirmed');\n  },\n  { persistenceStore }\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "step-functions-workflow-for-order-saga",
+          "heading": "Step Functions Workflow for Order Saga",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "json",
+              "code": "{\n  \"Comment\": \"Order processing saga with compensation\",\n  \"StartAt\": \"ReserveInventory\",\n  \"States\": {\n    \"ReserveInventory\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:reserve-inventory\",\n      \"ResultPath\": \"$.inventoryReservation\",\n      \"Catch\": [{\n        \"ErrorEquals\": [\"InsufficientInventoryError\"],\n        \"Next\": \"NotifyOutOfStock\",\n        \"ResultPath\": \"$.error\"\n      }],\n      \"Next\": \"ProcessPayment\"\n    },\n    \"ProcessPayment\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:process-payment\",\n      \"ResultPath\": \"$.paymentResult\",\n      \"Catch\": [{\n        \"ErrorEquals\": [\"PaymentDeclinedError\"],\n        \"Next\": \"ReleaseInventory\",\n        \"ResultPath\": \"$.error\"\n      }],\n      \"Next\": \"ConfirmOrder\"\n    },\n    \"ConfirmOrder\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:confirm-order\",\n      \"End\": true\n    },\n    \"ReleaseInventory\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:release-inventory\",\n      \"Comment\": \"Compensation: release reserved inventory on payment failure\",\n      \"Next\": \"NotifyPaymentFailed\"\n    },\n    \"NotifyPaymentFailed\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:sns:us-east-1:123456789:order-failures\",\n      \"End\": true\n    },\n    \"NotifyOutOfStock\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:sns:us-east-1:123456789:inventory-alerts\",\n      \"End\": true\n    }\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "eventbridge-with-content-based-routing",
+          "heading": "EventBridge with Content-Based Routing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import * as cdk from 'aws-cdk-lib';\nimport * as events from 'aws-cdk-lib/aws-events';\nimport * as targets from 'aws-cdk-lib/aws-events-targets';\nimport * as lambda from 'aws-cdk-lib/aws-lambda';\n\nexport class EventRoutingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string) {\n    super(scope, id);\n\n    const bus = new events.EventBus(this, 'AppEventBus', {\n      eventBusName: 'ecommerce-events',\n    });\n\n    // Route high-value orders to priority processing\n    new events.Rule(this, 'HighValueOrderRule', {\n      eventBus: bus,\n      eventPattern: {\n        source: ['ecommerce.orders'],\n        detailType: ['OrderCreated'],\n        detail: {\n          total: [{ numeric: ['>=', 1000] }],\n          customerTier: ['premium', 'enterprise'],\n        },\n      },\n      targets: [new targets.LambdaFunction(priorityProcessor)],\n    });\n\n    // Route inventory events to warehouse system\n    new events.Rule(this, 'InventoryRule', {\n      eventBus: bus,\n      eventPattern: {\n        source: ['ecommerce.inventory'],\n        detailType: ['StockLevelChanged'],\n        detail: {\n          currentStock: [{ numeric: ['<=', 10] }],\n        },\n      },\n      targets: [\n        new targets.LambdaFunction(reorderFunction),\n        new targets.SqsQueue(warehouseAlertQueue),\n      ],\n    });\n\n    // Archive all events for replay capability\n    new events.Archive(this, 'EventArchive', {\n      sourceEventBus: bus,\n      eventPattern: { source: [{ prefix: 'ecommerce' }] },\n      retention: cdk.Duration.days(90),\n    });\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "serverless-api-with-lambda-function-urls",
+          "heading": "Serverless API with Lambda Function URLs",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import json\nimport os\nfrom functools import wraps\nfrom typing import Callable\n\ndef cors_headers(func: Callable) -> Callable:\n    \"\"\"Decorator to add CORS headers to Lambda Function URL responses.\"\"\"\n    @wraps(func)\n    def wrapper(event, context):\n        response = func(event, context)\n        response['headers'] = {\n            **response.get('headers', {}),\n            'Access-Control-Allow-Origin': os.environ.get('ALLOWED_ORIGIN', '*'),\n            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',\n            'Access-Control-Allow-Headers': 'Content-Type, Authorization',\n        }\n        return response\n    return wrapper\n\n@cors_headers\ndef handler(event, context):\n    \"\"\"Lambda Function URL handler with path-based routing.\"\"\"\n    method = event['requestContext']['http']['method']\n    path = event['requestContext']['http']['path']\n\n    if method == 'OPTIONS':\n        return {'statusCode': 204, 'body': ''}\n\n    routes = {\n        ('GET', '/api/products'): list_products,\n        ('GET', '/api/products/{id}'): get_product,\n        ('POST', '/api/products'): create_product,\n    }\n\n    # Match route with path parameters\n    for (route_method, route_path), handler_func in routes.items():\n        if method == route_method and match_path(path, route_path):\n            params = extract_params(path, route_path)\n            return handler_func(event, params)\n\n    return {\n        'statusCode': 404,\n        'body': json.dumps({'error': 'Not found'}),\n        'headers': {'Content-Type': 'application/json'}\n    }",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Cold start death spiral in VPC Lambdas: Functions in a VPC require ENI attachment, adding 5-10 seconds to cold starts. This compounds under burst traffic — 100 concurrent cold starts each needing an ENI can exhaust subnet IP addresses. Use VPC endpoints for AWS services and only place functions in VPC when accessing private resources like RDS",
+            "Ignoring Lambda execution environment reuse: Global variables persist between invocations in the same execution environment. Database connections initialized outside the handler are reused (good for performance), but mutable state can leak between requests if not carefully managed. Always reset request-specific state inside the handler",
+            "Step Functions state size limits: Each state can pass a maximum of 256KB between transitions. Large payloads must be stored in S3 with only a reference passed through the workflow. Failing to account for this causes runtime failures on large orders or batch operations",
+            "EventBridge rule explosion: Creating one rule per customer or per entity leads to thousands of rules that are hard to manage and slow to update. Use content-based filtering within a single rule with pattern matching instead of proliferating rules",
+            "Synchronous Lambda chains: Calling Lambda from Lambda synchronously (invoke with RequestResponse) creates tight coupling, multiplies latency, and wastes money paying for the caller to wait. Use asynchronous patterns: SQS, SNS, EventBridge, or Step Functions for orchestration",
+            "Underestimating DynamoDB costs in serverless: On-demand DynamoDB pricing (1.25 per million writes, 0.25 per million reads) seems cheap until a Lambda bug creates a retry storm. A single misconfigured function processing 1000 messages/second with 3 DynamoDB writes each costs $324/day in writes alone",
+            "Not configuring Lambda Destinations: Without destinations, async Lambda failures are silently lost unless you manually implement error handling. Configure failure destinations to SQS DLQ for every async function to capture and replay failed events"
+          ]
+        }
+      ],
+      "wordCount": 297,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Image Processing Pipeline: A media company processes user-uploaded images through a serverless pipeline. S3 upload triggers a Lambda that validates the image format and size, then publishes to EventBridge. Separate rules route to different processing functions: thumbnail generation (128x128, 256x256, 512x512), EXIF data extraction, content moderation via Rekognition, and metadata indexing to DynamoDB. Step Functions orchestrate the parallel processing and aggregate results, writing final processed assets back to S3 with CloudFront invalidation. The system handles 0 to 50,000 uploads per hour with zero provisioned infrastructure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Real-Time Fraud Detection: A fintech startup uses Lambda to evaluate transactions in real-time. API Gateway receives payment requests, triggers a Lambda that queries DynamoDB for customer spending patterns (last 24 hours, 7 days, 30 days), runs rule-based checks, and calls a SageMaker endpoint for ML-based anomaly detection. Decisions are made within 200ms using provisioned concurrency on the evaluation Lambda. Suspicious transactions route through Step Functions for human review workflows with 15-minute SLA timers that auto-escalate."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-Tenant Webhook Processing: A SaaS platform processes webhooks from 10,000+ customer integrations. Each webhook hits API Gateway, which routes to a Lambda that validates signatures, normalizes payloads across different provider formats (Stripe, GitHub, Twilio), and publishes to a per-tenant EventBridge bus partition. Downstream consumers process events at their own pace via SQS queues with per-tenant concurrency limits, preventing one noisy tenant from starving others."
+        }
+      ],
+      "wordCount": 224,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle Lambda cold starts in a latency-sensitive production API?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Multiple strategies layered together: First, use provisioned concurrency for the most latency-sensitive paths — this keeps pre-initialized execution environments warm and eliminates cold starts entirely, at a cost of ~$0.015/GB-hour. Second, choose lightweight runtimes (Node.js or Python over Java) for API-facing functions where cold start matters. Third, minimize deployment package size — use Lambda layers for shared dependencies and tree-shake unused code. Fourth, for Java specifically, use Lambda SnapStart which pre-initializes the JVM and creates a cached snapshot, reducing cold starts from 5-10s to under 200ms. Fifth, keep functions warm with scheduled CloudWatch Events pinging every 5 minutes as a cost-effective alternative to provisioned concurrency for low-traffic functions. The architectural answer is to design systems so cold starts don't matter — use async processing where possible so users never wait on a cold function."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the saga pattern implementation using Step Functions."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The saga pattern manages distributed transactions across microservices by defining a sequence of local transactions with compensating actions for each step. In Step Functions, each state represents a service call (reserve inventory, charge payment, ship order). If any step fails, the workflow executes compensating transactions in reverse order (refund payment, release inventory). Implementation details: use Catch blocks on each Task state to route to compensation states. Store intermediate results in the Step Functions execution context using ResultPath. For long-running sagas, use Standard Workflows (up to 1 year execution). Key considerations: compensating actions must be idempotent since they may execute multiple times due to retries. Use DynamoDB conditional writes to prevent double-compensation. Monitor saga completion rates and compensation frequency as business health metrics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose EventBridge over SNS for event routing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: EventBridge when you need content-based filtering on event payload fields (not just message attributes), schema registry and discovery, event replay from archives, cross-account event routing, or integration with SaaS providers (Shopify, Zendesk, Auth0). SNS when you need raw throughput (SNS handles millions of publishes/second vs EventBridge's soft limit of 10,000 events/second per region), mobile push notifications, SMS delivery, or simple topic-based fan-out without complex filtering. The architectural distinction: SNS is a notification service optimized for fan-out delivery, while EventBridge is an event bus optimized for routing and filtering. In practice, many architectures use both — SNS for high-throughput internal messaging and EventBridge for cross-service event routing with complex rules."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you debug and observe serverless applications in production?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Structured logging with correlation IDs propagated through all service calls — use AWS Lambda Powertools which automatically captures Lambda context, adds tracing, and formats logs for CloudWatch Insights queries. Enable X-Ray tracing on all Lambda functions and API Gateway stages to visualize request flows across services. Create CloudWatch dashboards with key metrics: invocation count, error rate, duration percentiles (p50, p95, p99), concurrent executions, and throttles. Set up composite alarms that trigger on error rate AND invocation count (avoid alerting on a single failure in low-traffic functions). Use CloudWatch Logs Insights for ad-hoc investigation with queries like filter @message like /ERROR/ | stats count(*) by bin(5m). For Step Functions, enable execution history and use the visual workflow inspector to identify which state failed and why."
+        }
+      ],
+      "wordCount": 537,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Set reserved concurrency on every Lambda function to prevent a single function from consuming your account's 1000 concurrent execution limit. Critical functions get reserved concurrency; non-critical functions share the unreserved pool. This prevents a batch processing function from starving your API handlers",
+            "Use Lambda Powertools (available for Python, TypeScript, Java, .NET) for structured logging, distributed tracing, idempotency, and feature flags. It adds minimal cold start overhead (~50ms) while providing production-grade observability out of the box",
+            "Implement circuit breakers for downstream calls using a DynamoDB-backed state table. When a downstream service fails 5 consecutive times, open the circuit and return cached/default responses for 30 seconds before retrying. This prevents cascade failures in serverless architectures where retry storms can amplify outages",
+            "Configure EventBridge DLQ for every rule — failed event deliveries are silently dropped by default. Attach an SQS DLQ to each rule target to capture delivery failures for investigation and replay",
+            "Monitor Lambda cost per invocation using CloudWatch embedded metrics. Track EstimatedCost = (memoryAllocated/1024) * billedDuration * $0.0000166667 per invocation. Alert when cost-per-invocation exceeds baseline by 3x, which often indicates infinite loops or retry storms"
+          ]
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AWS Core Services — Foundation services that serverless patterns build upon",
+            "Infrastructure as Code — Deploying serverless infrastructure with CDK, SAM, and Terraform",
+            "Cloud Architecture Patterns — Broader architectural patterns including serverless in multi-region designs",
+            "Messaging Patterns — Event-driven architecture and async communication patterns"
+          ]
+        }
+      ],
+      "wordCount": 44,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "// AWS CDK infrastructure definition\nimport * as cdk from 'aws-cdk-lib';\nimport * as lambda from 'aws-cdk-lib/aws-lambda';\nimport * as sqs from 'aws-cdk-lib/aws-sqs';\nimport * as eventsources from 'aws-cdk-lib/aws-lambda-event-sources';\n\nexport class OrderProcessingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string) {\n    super(scope, id);\n\n    const dlq = new sqs.Queue(this, 'OrderDLQ', {\n      queueName: 'order-processing-dlq',\n      retentionPeriod: cdk.Duration.days(14),\n    });\n\n    const orderQueue = new sqs.Queue(this, 'OrderQueue', {\n      queueName: 'order-processing',\n      visibilityTimeout: cdk.Duration.seconds(900), // 6x Lambda timeout\n      deadLetterQueue: {\n        queue: dlq,\n        maxReceiveCount: 3,\n      },\n    });\n\n    const processor = new lambda.Function(this, 'OrderProcessor', {\n      runtime: lambda.Runtime.NODEJS_20_X,\n      handler: 'index.handler',\n      code: lambda.Code.fromAsset('lambda/order-processor'),\n      timeout: cdk.Duration.seconds(150),\n      memorySize: 1024,\n      reservedConcurrentExecutions: 50,\n      environment: {\n        TABLE_NAME: 'orders',\n        IDEMPOTENCY_TABLE: 'idempotency-store',\n      },\n      tracing: lambda.Tracing.ACTIVE,\n    });\n\n    processor.addEventSource(new eventsources.SqsEventSource(orderQueue, {\n      batchSize: 10,\n      maxBatchingWindow: cdk.Duration.seconds(5),\n      reportBatchItemFailures: true,\n    }));\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { Logger } from '@aws-lambda-powertools/logger';\nimport { Tracer } from '@aws-lambda-powertools/tracer';\nimport { Idempotency } from '@aws-lambda-powertools/idempotency';\nimport { DynamoDBPersistenceLayer } from '@aws-lambda-powertools/idempotency/dynamodb';\nimport { SQSEvent, SQSBatchResponse } from 'aws-lambda';\n\nconst logger = new Logger({ serviceName: 'order-processor' });\nconst tracer = new Tracer({ serviceName: 'order-processor' });\n\nconst persistenceStore = new DynamoDBPersistenceLayer({\n  tableName: process.env.IDEMPOTENCY_TABLE!,\n});\n\ninterface OrderEvent {\n  orderId: string;\n  customerId: string;\n  items: Array<{ sku: string; quantity: number; price: number }>;\n  total: number;\n}\n\nexport const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {\n  const batchItemFailures: Array<{ itemIdentifier: string }> = [];\n\n  for (const record of event.Records) {\n    const segment = tracer.getSegment();\n    const subsegment = segment?.addNewSubsegment('processOrder');\n\n    try {\n      const order: OrderEvent = JSON.parse(record.body);\n      logger.info('Processing order', { orderId: order.orderId });\n\n      await processOrderIdempotent(order);\n\n      logger.info('Order processed successfully', {\n        orderId: order.orderId,\n        itemCount: order.items.length,\n      });\n    } catch (error) {\n      logger.error('Failed to process order', { error, messageId: record.messageId });\n      batchItemFailures.push({ itemIdentifier: record.messageId });\n    } finally {\n      subsegment?.close();\n    }\n  }\n\n  return { batchItemFailures };\n};\n\nconst processOrderIdempotent = Idempotency.handler(\n  async (order: OrderEvent) => {\n    // Business logic: validate inventory, charge payment, update status\n    await validateInventory(order.items);\n    await chargePayment(order.customerId, order.total);\n    await updateOrderStatus(order.orderId, 'confirmed');\n  },\n  { persistenceStore }\n);",
+      "runnable": false
+    },
+    {
+      "language": "json",
+      "code": "{\n  \"Comment\": \"Order processing saga with compensation\",\n  \"StartAt\": \"ReserveInventory\",\n  \"States\": {\n    \"ReserveInventory\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:reserve-inventory\",\n      \"ResultPath\": \"$.inventoryReservation\",\n      \"Catch\": [{\n        \"ErrorEquals\": [\"InsufficientInventoryError\"],\n        \"Next\": \"NotifyOutOfStock\",\n        \"ResultPath\": \"$.error\"\n      }],\n      \"Next\": \"ProcessPayment\"\n    },\n    \"ProcessPayment\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:process-payment\",\n      \"ResultPath\": \"$.paymentResult\",\n      \"Catch\": [{\n        \"ErrorEquals\": [\"PaymentDeclinedError\"],\n        \"Next\": \"ReleaseInventory\",\n        \"ResultPath\": \"$.error\"\n      }],\n      \"Next\": \"ConfirmOrder\"\n    },\n    \"ConfirmOrder\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:confirm-order\",\n      \"End\": true\n    },\n    \"ReleaseInventory\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:lambda:us-east-1:123456789:function:release-inventory\",\n      \"Comment\": \"Compensation: release reserved inventory on payment failure\",\n      \"Next\": \"NotifyPaymentFailed\"\n    },\n    \"NotifyPaymentFailed\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:sns:us-east-1:123456789:order-failures\",\n      \"End\": true\n    },\n    \"NotifyOutOfStock\": {\n      \"Type\": \"Task\",\n      \"Resource\": \"arn:aws:sns:us-east-1:123456789:inventory-alerts\",\n      \"End\": true\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import * as cdk from 'aws-cdk-lib';\nimport * as events from 'aws-cdk-lib/aws-events';\nimport * as targets from 'aws-cdk-lib/aws-events-targets';\nimport * as lambda from 'aws-cdk-lib/aws-lambda';\n\nexport class EventRoutingStack extends cdk.Stack {\n  constructor(scope: cdk.App, id: string) {\n    super(scope, id);\n\n    const bus = new events.EventBus(this, 'AppEventBus', {\n      eventBusName: 'ecommerce-events',\n    });\n\n    // Route high-value orders to priority processing\n    new events.Rule(this, 'HighValueOrderRule', {\n      eventBus: bus,\n      eventPattern: {\n        source: ['ecommerce.orders'],\n        detailType: ['OrderCreated'],\n        detail: {\n          total: [{ numeric: ['>=', 1000] }],\n          customerTier: ['premium', 'enterprise'],\n        },\n      },\n      targets: [new targets.LambdaFunction(priorityProcessor)],\n    });\n\n    // Route inventory events to warehouse system\n    new events.Rule(this, 'InventoryRule', {\n      eventBus: bus,\n      eventPattern: {\n        source: ['ecommerce.inventory'],\n        detailType: ['StockLevelChanged'],\n        detail: {\n          currentStock: [{ numeric: ['<=', 10] }],\n        },\n      },\n      targets: [\n        new targets.LambdaFunction(reorderFunction),\n        new targets.SqsQueue(warehouseAlertQueue),\n      ],\n    });\n\n    // Archive all events for replay capability\n    new events.Archive(this, 'EventArchive', {\n      sourceEventBus: bus,\n      eventPattern: { source: [{ prefix: 'ecommerce' }] },\n      retention: cdk.Duration.days(90),\n    });\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import json\nimport os\nfrom functools import wraps\nfrom typing import Callable\n\ndef cors_headers(func: Callable) -> Callable:\n    \"\"\"Decorator to add CORS headers to Lambda Function URL responses.\"\"\"\n    @wraps(func)\n    def wrapper(event, context):\n        response = func(event, context)\n        response['headers'] = {\n            **response.get('headers', {}),\n            'Access-Control-Allow-Origin': os.environ.get('ALLOWED_ORIGIN', '*'),\n            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',\n            'Access-Control-Allow-Headers': 'Content-Type, Authorization',\n        }\n        return response\n    return wrapper\n\n@cors_headers\ndef handler(event, context):\n    \"\"\"Lambda Function URL handler with path-based routing.\"\"\"\n    method = event['requestContext']['http']['method']\n    path = event['requestContext']['http']['path']\n\n    if method == 'OPTIONS':\n        return {'statusCode': 204, 'body': ''}\n\n    routes = {\n        ('GET', '/api/products'): list_products,\n        ('GET', '/api/products/{id}'): get_product,\n        ('POST', '/api/products'): create_product,\n    }\n\n    # Match route with path parameters\n    for (route_method, route_path), handler_func in routes.items():\n        if method == route_method and match_path(path, route_path):\n            params = extract_params(path, route_path)\n            return handler_func(event, params)\n\n    return {\n        'statusCode': 404,\n        'body': json.dumps({'error': 'Not found'}),\n        'headers': {'Content-Type': 'application/json'}\n    }",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [
+    {
+      "expression": "0.025 per 1000 state transitions; Express workflows cost ",
+      "display": "inline"
+    },
+    {
+      "expression": "1.25 per million writes, ",
+      "display": "inline"
+    }
+  ],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/aws/serverless-patterns.md",
+    "wordCount": 1551,
+    "sectionCount": 13
+  }
+}

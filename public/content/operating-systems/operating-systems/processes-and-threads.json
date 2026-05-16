@@ -1,0 +1,282 @@
+{
+  "id": "operating-systems-processes-and-threads",
+  "slug": "processes-and-threads",
+  "title": "Processes and Threads",
+  "category": "Operating Systems",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A process is an instance of a running program with its own address space, file descriptors, signal handlers, and at least one thread of execution",
+            "Process states follow the lifecycle: New → Ready → Running → Waiting → Terminated; the kernel scheduler transitions processes between states",
+            "A thread is the smallest unit of CPU scheduling — threads within a process share the address space and resources but have independent stacks and register contexts",
+            "Context switch cost includes saving/restoring registers, updating the PCB, TLB flush (for process switches), and cache pollution — typically 1-10 microseconds",
+            "Linux uses a 1:1 threading model where each user thread maps to a kernel thread (task_struct), scheduled independently by CFS",
+            "The clone() system call creates both processes and threads on Linux, with flags controlling which resources are shared (CLONE_VM, CLONE_FILES, CLONE_SIGHAND)",
+            "Thread pools amortize thread creation cost and bound concurrency; size them to match available cores for CPU-bound work or higher for I/O-bound work",
+            "IPC mechanisms (pipes, shared memory, sockets, message queues, signals) enable communication between isolated processes"
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding processes and threads is essential when designing any concurrent or parallel system. You need this knowledge when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Sizing thread pools for web servers, database connection pools, or background job processors — undersized pools cause request queuing, oversized pools cause excessive context switching",
+            "Choosing between processes and threads for your application architecture — processes provide fault isolation (a crash in one doesn't kill others) while threads provide efficient shared-state communication",
+            "Debugging production issues like high CPU usage from excessive context switches, thread starvation from lock contention, or zombie processes from missing wait() calls",
+            "Designing microservice communication — selecting between shared memory (fastest, same-host only), Unix domain sockets (fast, bidirectional), or TCP sockets (network-capable)",
+            "Configuring container resource limits — understanding how cgroups CPU shares and quotas interact with the kernel scheduler to throttle or prioritize containers",
+            "Implementing graceful shutdown — handling SIGTERM to drain in-flight requests, waiting for worker threads to complete, and cleaning up child processes"
+          ]
+        }
+      ],
+      "wordCount": 156,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "thread-safe-producer-consumer-queue-with-condition-variables-java",
+          "heading": "Thread-Safe Producer-Consumer Queue with Condition Variables (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.LinkedList;\nimport java.util.Queue;\nimport java.util.concurrent.locks.Condition;\nimport java.util.concurrent.locks.ReentrantLock;\n\npublic class BoundedBlockingQueue<T> {\n    private final Queue<T> queue;\n    private final int capacity;\n    private final ReentrantLock lock;\n    private final Condition notFull;\n    private final Condition notEmpty;\n\n    public BoundedBlockingQueue(int capacity) {\n        this.capacity = capacity;\n        this.queue = new LinkedList<>();\n        this.lock = new ReentrantLock();\n        this.notFull = lock.newCondition();\n        this.notEmpty = lock.newCondition();\n    }\n\n    public void put(T item) throws InterruptedException {\n        lock.lock();\n        try {\n            while (queue.size() == capacity) {\n                notFull.await();  // Release lock and wait\n            }\n            queue.offer(item);\n            notEmpty.signal();  // Wake one waiting consumer\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public T take() throws InterruptedException {\n        lock.lock();\n        try {\n            while (queue.isEmpty()) {\n                notEmpty.await();  // Release lock and wait\n            }\n            T item = queue.poll();\n            notFull.signal();  // Wake one waiting producer\n            return item;\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public int size() {\n        lock.lock();\n        try {\n            return queue.size();\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "posix-thread-creation-and-joining-c",
+          "heading": "POSIX Thread Creation and Joining (C)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <pthread.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n\n#define NUM_THREADS 4\n#define WORK_ITEMS 1000\n\ntypedef struct {\n    int thread_id;\n    int start;\n    int end;\n    long result;\n} ThreadWork;\n\nvoid *compute_partial_sum(void *arg) {\n    ThreadWork *work = (ThreadWork *)arg;\n    long sum = 0;\n    \n    for (int i = work->start; i < work->end; i++) {\n        sum += i * i;  // Compute sum of squares\n    }\n    \n    work->result = sum;\n    printf(\"Thread %d computed partial sum [%d, %d): %ld\\n\",\n           work->thread_id, work->start, work->end, sum);\n    \n    return NULL;\n}\n\nint main() {\n    pthread_t threads[NUM_THREADS];\n    ThreadWork work[NUM_THREADS];\n    int chunk_size = WORK_ITEMS / NUM_THREADS;\n    \n    // Create threads with divided work\n    for (int i = 0; i < NUM_THREADS; i++) {\n        work[i].thread_id = i;\n        work[i].start = i * chunk_size;\n        work[i].end = (i == NUM_THREADS - 1) ? WORK_ITEMS : (i + 1) * chunk_size;\n        work[i].result = 0;\n        \n        int rc = pthread_create(&threads[i], NULL, compute_partial_sum, &work[i]);\n        if (rc != 0) {\n            fprintf(stderr, \"Failed to create thread %d: %d\\n\", i, rc);\n            exit(EXIT_FAILURE);\n        }\n    }\n    \n    // Join all threads and aggregate results\n    long total = 0;\n    for (int i = 0; i < NUM_THREADS; i++) {\n        pthread_join(threads[i], NULL);\n        total += work[i].result;\n    }\n    \n    printf(\"Total sum of squares [0, %d): %ld\\n\", WORK_ITEMS, total);\n    return 0;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "process-fork-and-ipc-via-pipe-c",
+          "heading": "Process Fork and IPC via Pipe (C)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <string.h>\n\nint main() {\n    int pipefd[2];  // pipefd[0] = read end, pipefd[1] = write end\n    pid_t pid;\n    \n    if (pipe(pipefd) == -1) {\n        perror(\"pipe\");\n        exit(EXIT_FAILURE);\n    }\n    \n    pid = fork();\n    if (pid == -1) {\n        perror(\"fork\");\n        exit(EXIT_FAILURE);\n    }\n    \n    if (pid == 0) {\n        // Child process: read from pipe\n        close(pipefd[1]);  // Close unused write end\n        \n        char buffer[256];\n        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1);\n        if (bytes_read > 0) {\n            buffer[bytes_read] = '\\0';\n            printf(\"Child (PID %d) received: %s\\n\", getpid(), buffer);\n        }\n        \n        close(pipefd[0]);\n        exit(EXIT_SUCCESS);\n    } else {\n        // Parent process: write to pipe\n        close(pipefd[0]);  // Close unused read end\n        \n        const char *message = \"Hello from parent process!\";\n        write(pipefd[1], message, strlen(message));\n        printf(\"Parent (PID %d) sent message to child (PID %d)\\n\", getpid(), pid);\n        \n        close(pipefd[1]);\n        \n        // Wait for child to finish (prevents zombie)\n        int status;\n        waitpid(pid, &status, 0);\n        printf(\"Child exited with status %d\\n\", WEXITSTATUS(status));\n    }\n    \n    return 0;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "thread-pool-implementation-python",
+          "heading": "Thread Pool Implementation (Python)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import threading\nimport queue\nimport time\nfrom typing import Callable, Any\nfrom dataclasses import dataclass\n\n@dataclass\nclass WorkItem:\n    func: Callable\n    args: tuple\n    kwargs: dict\n    future: 'Future'\n\nclass Future:\n    def __init__(self):\n        self._result = None\n        self._exception = None\n        self._done = threading.Event()\n    \n    def set_result(self, result):\n        self._result = result\n        self._done.set()\n    \n    def set_exception(self, exc):\n        self._exception = exc\n        self._done.set()\n    \n    def result(self, timeout=None):\n        self._done.wait(timeout)\n        if self._exception:\n            raise self._exception\n        return self._result\n\nclass ThreadPool:\n    \"\"\"Fixed-size thread pool with work-stealing queue.\"\"\"\n    \n    def __init__(self, num_workers: int, queue_size: int = 1000):\n        self._work_queue = queue.Queue(maxsize=queue_size)\n        self._workers = []\n        self._shutdown = False\n        \n        for i in range(num_workers):\n            t = threading.Thread(target=self._worker_loop, name=f\"pool-worker-{i}\", daemon=True)\n            t.start()\n            self._workers.append(t)\n    \n    def _worker_loop(self):\n        while not self._shutdown:\n            try:\n                item = self._work_queue.get(timeout=1.0)\n            except queue.Empty:\n                continue\n            \n            try:\n                result = item.func(*item.args, **item.kwargs)\n                item.future.set_result(result)\n            except Exception as e:\n                item.future.set_exception(e)\n            finally:\n                self._work_queue.task_done()\n    \n    def submit(self, func: Callable, *args, **kwargs) -> Future:\n        if self._shutdown:\n            raise RuntimeError(\"Pool is shut down\")\n        future = Future()\n        item = WorkItem(func=func, args=args, kwargs=kwargs, future=future)\n        self._work_queue.put(item)\n        return future\n    \n    def shutdown(self, wait=True):\n        self._shutdown = True\n        if wait:\n            self._work_queue.join()\n            for t in self._workers:\n                t.join(timeout=5.0)\n\n# Usage\npool = ThreadPool(num_workers=4)\nfutures = [pool.submit(time.sleep, 0.1) for _ in range(20)]\nfor f in futures:\n    f.result()\npool.shutdown()",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Zombie processes from missing wait()/waitpid(): When a child process terminates, it remains in the process table as a zombie until the parent calls wait() to collect its exit status. If the parent never waits, zombies accumulate and eventually exhaust the PID space. In long-running daemons, use SIGCHLD handlers with waitpid(-1, &status, WNOHANG) in a loop, or set SIGCHLD to SIG_IGN to auto-reap children. In containerized environments, use an init process (tini, dumb-init) as PID 1 to reap orphaned zombies.",
+            "Thread pool sizing mismatch: Oversized thread pools for CPU-bound work cause excessive context switching — each switch wastes 1-10μs plus cache pollution. Undersized pools for I/O-bound work leave CPUs idle while threads block on I/O. Rule of thumb: CPU-bound pools = number of cores; I/O-bound pools = cores × (1 + wait_time/compute_time). Profile with vmstat (cs column) and /proc/pid/status (voluntary vs involuntary context switches) to validate sizing.",
+            "Race conditions from unsynchronized shared state: Multiple threads reading and writing shared variables without synchronization leads to torn reads, lost updates, and corrupted data structures. The compiler and CPU reorder memory operations for performance, making bugs non-deterministic and architecture-dependent. Always protect shared mutable state with locks, atomics, or message passing. Use ThreadSanitizer (-fsanitize=thread) during testing to detect races.",
+            "Deadlock from fork() in multithreaded programs: When a multithreaded process calls fork(), only the calling thread exists in the child. If another thread held a lock (malloc's internal lock, for example) at fork time, that lock is permanently held in the child, causing deadlock on the next allocation. Use pthread_atfork() handlers or avoid fork() in multithreaded programs — prefer posix_spawn() which combines fork+exec atomically.",
+            "Signal handling in multithreaded programs: Signals are delivered to an arbitrary thread in the process (except thread-directed signals). If multiple threads have different signal masks or handlers, behavior becomes unpredictable. Best practice: block all signals in worker threads and dedicate one thread to signal handling using sigwait(). This converts asynchronous signals into synchronous events that are easier to reason about.",
+            "File descriptor leaks across fork/exec: After fork(), the child inherits all open file descriptors. If the child calls exec() without closing unnecessary FDs, those resources remain held by the new program. Use O_CLOEXEC flag when opening files, or call fcntl(fd, F_SETFD, FD_CLOEXEC) on existing descriptors. Monitor with ls /proc/pid/fd | wc -l and alert when approaching ulimit."
+          ]
+        }
+      ],
+      "wordCount": 385,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Web server request handling (Nginx/Apache): Nginx uses a multi-process, event-driven architecture — a master process manages worker processes, each handling thousands of connections via epoll without threading. Apache's prefork MPM uses one process per connection (isolation but high memory), while its event MPM uses threads with async I/O. The choice reflects the fundamental process-vs-thread tradeoff: isolation versus efficiency.",
+            "Container orchestration (Kubernetes): Each container runs as a process (or process tree) in isolated namespaces. The kubelet monitors container processes via cgroups, restarts crashed containers (process exit detection), and enforces resource limits. Understanding process hierarchies, signal propagation, and PID namespaces is essential for debugging container lifecycle issues like graceful shutdown failures.",
+            "Database connection pooling (HikariCP, PgBouncer): Connection pools maintain a fixed number of threads/processes with established database connections, amortizing connection setup cost (TCP handshake, TLS negotiation, authentication). Pool sizing follows Little's Law: pool_size = throughput × average_latency. Oversized pools cause database contention; undersized pools cause application queuing. HikariCP defaults to cores × 2 + 1 for mixed workloads.",
+            "JVM thread management: The JVM maps Java threads 1:1 to OS kernel threads. Virtual threads (Project Loom, Java 21+) implement M:N threading — millions of virtual threads multiplexed onto a small carrier thread pool. This eliminates the thread-per-request scalability limit without requiring reactive programming. Understanding the OS threading model explains why virtual threads dramatically reduce memory overhead (no 1MB stack per thread).",
+            "CI/CD pipeline execution (Jenkins, GitHub Actions): Build systems fork child processes for each build step (compile, test, deploy). Process isolation ensures a failing step doesn't corrupt the build environment. Process groups and session leaders enable killing an entire build pipeline (kill -TERM -pgid) on timeout. Cgroups limit resource consumption per build to prevent noisy-neighbor effects on shared build agents."
+          ]
+        }
+      ],
+      "wordCount": 287,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between a process and a thread. When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A process has its own address space, file descriptors, and signal handlers, providing strong isolation but expensive creation (~10ms) and communication (requires IPC). Threads share the process address space and resources, enabling fast communication through shared memory but requiring explicit synchronization and offering no fault isolation. Choose processes when you need security boundaries (web server handling untrusted code), fault isolation (a crash in one worker shouldn't kill others), or different privilege levels. Choose threads when you need shared state (in-memory caches, connection pools), low-latency communication, or when memory overhead matters (threads share code/data segments). Modern architectures often combine both: multiple processes for fault domains with multiple threads per process for parallelism."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is a context switch and what makes it expensive?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A context switch saves the current execution context (registers, program counter, stack pointer, floating-point state) to the process/thread control block and loads another context. The direct cost is 1-5μs for register save/restore and kernel bookkeeping. The indirect costs dominate: TLB flush on process switches invalidates cached address translations (subsequent memory accesses incur page table walks), CPU cache pollution means the new process starts with cold caches (L1/L2/L3 misses), and branch predictor state is lost. For threads within the same process, TLB flush is avoided (shared address space), making thread switches cheaper. Minimize context switches by sizing thread pools appropriately, using I/O multiplexing instead of thread-per-connection, and pinning latency-sensitive threads to dedicated cores."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does fork() work and what is copy-on-write?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: fork() creates a new process that is an exact copy of the parent — same code, data, heap, stack, and open file descriptors. With copy-on-write (COW), the kernel doesn't actually copy physical memory pages. Instead, both parent and child share the same physical pages marked read-only. When either process writes to a shared page, the MMU triggers a page fault, the kernel allocates a new physical frame, copies the page content, and updates the writer's page table to point to the new frame. This makes fork() nearly O(1) regardless of process memory size (only page table entries are copied, not data). COW is why fork()+exec() is efficient for spawning new programs — most pages are never written before exec() replaces the address space entirely."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Describe the IPC mechanisms available on Linux and their tradeoffs."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Pipes provide unidirectional byte streams between related processes (64KB kernel buffer, simple but limited to parent-child). Named pipes (FIFOs) extend pipes to unrelated processes via filesystem paths. Shared memory (mmap MAP_SHARED or shm_open) is the fastest IPC — zero-copy data exchange through mapped memory regions, but requires explicit synchronization (semaphores/futexes). Unix domain sockets provide bidirectional, connection-oriented communication with the socket API, faster than TCP loopback (no network stack overhead), and support file descriptor passing (SCM_RIGHTS). Message queues (POSIX mq_*) provide structured, prioritized messages with built-in synchronization. Signals are asynchronous notifications carrying minimal data (signal number only), used for control flow rather than data transfer. Choose shared memory for maximum throughput (databases, multimedia), Unix sockets for general-purpose bidirectional communication, and pipes for simple streaming between related processes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What are zombie and orphan processes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A zombie process has terminated but its parent hasn't called wait() to collect its exit status. It occupies a process table entry (storing exit code, resource usage stats) but consumes no CPU or memory. Zombies accumulate if the parent ignores SIGCHLD or never waits, eventually exhausting the PID space. Fix by calling waitpid() in a SIGCHLD handler or setting SIGCHLD to SIG_IGN. An orphan process is a running process whose parent has terminated. The kernel re-parents orphans to PID 1 (init/systemd), which periodically calls wait() to reap them. In containers, if PID 1 doesn't reap children (common with application processes as PID 1), zombies accumulate — this is why container init processes (tini) exist."
+        }
+      ],
+      "wordCount": 648,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor context switch rates with vmstat and pidstat: High involuntary context switches (visible in vmstat cs column or pidstat -w) indicate CPU contention — more runnable threads than cores. Track per-process switches via /proc/pid/status (voluntary_ctxt_switches for I/O waits, nonvoluntary_ctxt_switches for preemption). If involuntary switches are high, reduce thread pool sizes or add CPU capacity. Target: involuntary switches should be less than 10% of voluntary switches for well-tuned services.",
+            "Use process groups for clean shutdown: When spawning child processes, create a process group (setpgid) so you can signal the entire group with kill(-pgid, SIGTERM). This ensures all descendants receive the termination signal, preventing orphaned processes. In systemd services, use KillMode=control-group to kill all processes in the service's cgroup on stop. Set TimeoutStopSec to allow graceful drain before SIGKILL.",
+            "Pin latency-sensitive threads to dedicated cores: Use taskset or pthread_setaffinity_np() to bind critical threads to specific CPU cores, eliminating migration overhead and improving cache locality. Combine with isolcpus kernel parameter to prevent the scheduler from placing other tasks on those cores. This technique is standard in HFT systems and real-time audio processing where microsecond-level jitter matters.",
+            "Configure appropriate thread stack sizes: Default thread stack size is typically 8MB (Linux) but most threads use far less. For applications with thousands of threads, reduce stack size with pthread_attr_setstacksize() or ulimit -s to reduce virtual memory consumption. Java's -Xss flag controls thread stack size (default 512KB-1MB). Monitor actual stack usage with /proc/pid/maps to find the right minimum."
+          ]
+        }
+      ],
+      "wordCount": 241,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Concurrency Primitives — Synchronization mechanisms for coordinating thread access to shared resources",
+            "Memory Management — Virtual memory and address space management that enables process isolation",
+            "I/O and Scheduling — CPU scheduling algorithms and I/O models that determine how processes share system resources"
+          ]
+        }
+      ],
+      "wordCount": 42,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.LinkedList;\nimport java.util.Queue;\nimport java.util.concurrent.locks.Condition;\nimport java.util.concurrent.locks.ReentrantLock;\n\npublic class BoundedBlockingQueue<T> {\n    private final Queue<T> queue;\n    private final int capacity;\n    private final ReentrantLock lock;\n    private final Condition notFull;\n    private final Condition notEmpty;\n\n    public BoundedBlockingQueue(int capacity) {\n        this.capacity = capacity;\n        this.queue = new LinkedList<>();\n        this.lock = new ReentrantLock();\n        this.notFull = lock.newCondition();\n        this.notEmpty = lock.newCondition();\n    }\n\n    public void put(T item) throws InterruptedException {\n        lock.lock();\n        try {\n            while (queue.size() == capacity) {\n                notFull.await();  // Release lock and wait\n            }\n            queue.offer(item);\n            notEmpty.signal();  // Wake one waiting consumer\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public T take() throws InterruptedException {\n        lock.lock();\n        try {\n            while (queue.isEmpty()) {\n                notEmpty.await();  // Release lock and wait\n            }\n            T item = queue.poll();\n            notFull.signal();  // Wake one waiting producer\n            return item;\n        } finally {\n            lock.unlock();\n        }\n    }\n\n    public int size() {\n        lock.lock();\n        try {\n            return queue.size();\n        } finally {\n            lock.unlock();\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "c",
+      "code": "#include <pthread.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n\n#define NUM_THREADS 4\n#define WORK_ITEMS 1000\n\ntypedef struct {\n    int thread_id;\n    int start;\n    int end;\n    long result;\n} ThreadWork;\n\nvoid *compute_partial_sum(void *arg) {\n    ThreadWork *work = (ThreadWork *)arg;\n    long sum = 0;\n    \n    for (int i = work->start; i < work->end; i++) {\n        sum += i * i;  // Compute sum of squares\n    }\n    \n    work->result = sum;\n    printf(\"Thread %d computed partial sum [%d, %d): %ld\\n\",\n           work->thread_id, work->start, work->end, sum);\n    \n    return NULL;\n}\n\nint main() {\n    pthread_t threads[NUM_THREADS];\n    ThreadWork work[NUM_THREADS];\n    int chunk_size = WORK_ITEMS / NUM_THREADS;\n    \n    // Create threads with divided work\n    for (int i = 0; i < NUM_THREADS; i++) {\n        work[i].thread_id = i;\n        work[i].start = i * chunk_size;\n        work[i].end = (i == NUM_THREADS - 1) ? WORK_ITEMS : (i + 1) * chunk_size;\n        work[i].result = 0;\n        \n        int rc = pthread_create(&threads[i], NULL, compute_partial_sum, &work[i]);\n        if (rc != 0) {\n            fprintf(stderr, \"Failed to create thread %d: %d\\n\", i, rc);\n            exit(EXIT_FAILURE);\n        }\n    }\n    \n    // Join all threads and aggregate results\n    long total = 0;\n    for (int i = 0; i < NUM_THREADS; i++) {\n        pthread_join(threads[i], NULL);\n        total += work[i].result;\n    }\n    \n    printf(\"Total sum of squares [0, %d): %ld\\n\", WORK_ITEMS, total);\n    return 0;\n}",
+      "runnable": false
+    },
+    {
+      "language": "c",
+      "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <string.h>\n\nint main() {\n    int pipefd[2];  // pipefd[0] = read end, pipefd[1] = write end\n    pid_t pid;\n    \n    if (pipe(pipefd) == -1) {\n        perror(\"pipe\");\n        exit(EXIT_FAILURE);\n    }\n    \n    pid = fork();\n    if (pid == -1) {\n        perror(\"fork\");\n        exit(EXIT_FAILURE);\n    }\n    \n    if (pid == 0) {\n        // Child process: read from pipe\n        close(pipefd[1]);  // Close unused write end\n        \n        char buffer[256];\n        ssize_t bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1);\n        if (bytes_read > 0) {\n            buffer[bytes_read] = '\\0';\n            printf(\"Child (PID %d) received: %s\\n\", getpid(), buffer);\n        }\n        \n        close(pipefd[0]);\n        exit(EXIT_SUCCESS);\n    } else {\n        // Parent process: write to pipe\n        close(pipefd[0]);  // Close unused read end\n        \n        const char *message = \"Hello from parent process!\";\n        write(pipefd[1], message, strlen(message));\n        printf(\"Parent (PID %d) sent message to child (PID %d)\\n\", getpid(), pid);\n        \n        close(pipefd[1]);\n        \n        // Wait for child to finish (prevents zombie)\n        int status;\n        waitpid(pid, &status, 0);\n        printf(\"Child exited with status %d\\n\", WEXITSTATUS(status));\n    }\n    \n    return 0;\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import threading\nimport queue\nimport time\nfrom typing import Callable, Any\nfrom dataclasses import dataclass\n\n@dataclass\nclass WorkItem:\n    func: Callable\n    args: tuple\n    kwargs: dict\n    future: 'Future'\n\nclass Future:\n    def __init__(self):\n        self._result = None\n        self._exception = None\n        self._done = threading.Event()\n    \n    def set_result(self, result):\n        self._result = result\n        self._done.set()\n    \n    def set_exception(self, exc):\n        self._exception = exc\n        self._done.set()\n    \n    def result(self, timeout=None):\n        self._done.wait(timeout)\n        if self._exception:\n            raise self._exception\n        return self._result\n\nclass ThreadPool:\n    \"\"\"Fixed-size thread pool with work-stealing queue.\"\"\"\n    \n    def __init__(self, num_workers: int, queue_size: int = 1000):\n        self._work_queue = queue.Queue(maxsize=queue_size)\n        self._workers = []\n        self._shutdown = False\n        \n        for i in range(num_workers):\n            t = threading.Thread(target=self._worker_loop, name=f\"pool-worker-{i}\", daemon=True)\n            t.start()\n            self._workers.append(t)\n    \n    def _worker_loop(self):\n        while not self._shutdown:\n            try:\n                item = self._work_queue.get(timeout=1.0)\n            except queue.Empty:\n                continue\n            \n            try:\n                result = item.func(*item.args, **item.kwargs)\n                item.future.set_result(result)\n            except Exception as e:\n                item.future.set_exception(e)\n            finally:\n                self._work_queue.task_done()\n    \n    def submit(self, func: Callable, *args, **kwargs) -> Future:\n        if self._shutdown:\n            raise RuntimeError(\"Pool is shut down\")\n        future = Future()\n        item = WorkItem(func=func, args=args, kwargs=kwargs, future=future)\n        self._work_queue.put(item)\n        return future\n    \n    def shutdown(self, wait=True):\n        self._shutdown = True\n        if wait:\n            self._work_queue.join()\n            for t in self._workers:\n                t.join(timeout=5.0)\n\n# Usage\npool = ThreadPool(num_workers=4)\nfutures = [pool.submit(time.sleep, 0.1) for _ in range(20)]\nfor f in futures:\n    f.result()\npool.shutdown()",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/operating-systems/processes-and-threads.md",
+    "wordCount": 1931,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,433 @@
+{
+  "id": "testing-property-based-testing",
+  "slug": "property-based-testing",
+  "title": "Property-Based Testing",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Core idea: Instead of writing specific examples, define properties that must hold for all valid inputs — the framework generates hundreds of random inputs automatically",
+            "Generators: Composable functions that produce random values of a specific type (integers, strings, arrays, custom objects)",
+            "Shrinking: When a test fails, the framework automatically reduces the failing input to the smallest example that still triggers the failure",
+            "Invariants: Universal truths about your code — \"sorting never changes array length\", \"encode then decode returns original\"",
+            "Frameworks: fast-check (TypeScript/JS), Hypothesis (Python), QuickCheck (Haskell), jqwik (Java), PropEr (Erlang)",
+            "Iteration count: Minimum 100 iterations per property; 1000+ for critical paths",
+            "Stateful testing: Model-based testing that generates sequences of operations and verifies state consistency",
+            "Seed reproducibility: Failed tests record a seed value that reproduces the exact same random sequence for debugging"
+          ]
+        }
+      ],
+      "wordCount": 131,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Property-based testing excels where example-based tests fall short — when the input space is large, edge cases are non-obvious, and correctness can be expressed as universal invariants rather than specific input-output pairs."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use property-based testing for serialization and deserialization roundtrips where decode(encode(x)) === x must hold for all valid inputs, for mathematical and financial calculations where algebraic properties (commutativity, associativity, distributivity) must be preserved, for parsers and compilers where well-formed input must always produce valid output, for data structure operations where invariants (sorted order, balanced height, size consistency) must hold after any sequence of operations, for idempotent operations where applying the operation twice produces the same result as applying it once, and for state machines where any valid sequence of transitions must leave the system in a consistent state."
+        },
+        {
+          "type": "paragraph",
+          "text": "Property-based testing is particularly valuable when you discover a bug — write a property that would have caught it, and the generator will explore similar edge cases you haven't thought of. It's also invaluable for testing codec implementations, compression algorithms, and any function with a mathematical specification."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid property-based testing for UI behavior, integration tests with external services, or scenarios where the \"property\" is just restating the implementation logic. If your property is f(x) === myImplementation(x), you're testing nothing."
+        }
+      ],
+      "wordCount": 208,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "roundtrip-properties-with-fast-check",
+          "heading": "Roundtrip Properties with fast-check",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The roundtrip property is the most common and powerful pattern: if you can encode and decode, then decoding an encoded value must return the original. This single property replaces dozens of example-based tests."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { serialize, deserialize } from './json-codec';\nimport { compress, decompress } from './compression';\nimport { encrypt, decrypt } from './crypto';\n\ndescribe('Serialization Properties', () => {\n  it('should roundtrip any valid user object', () => {\n    const userArbitrary = fc.record({\n      id: fc.uuid(),\n      name: fc.string({ minLength: 1, maxLength: 100 }),\n      email: fc.emailAddress(),\n      age: fc.integer({ min: 0, max: 150 }),\n      roles: fc.array(fc.constantFrom('admin', 'user', 'moderator'), { minLength: 1, maxLength: 5 }),\n      metadata: fc.dictionary(\n        fc.string({ minLength: 1, maxLength: 20 }),\n        fc.oneof(fc.string(), fc.integer(), fc.boolean())\n      ),\n      createdAt: fc.date({ min: new Date('2000-01-01'), max: new Date('2030-12-31') }),\n    });\n\n    fc.assert(\n      fc.property(userArbitrary, (user) => {\n        const serialized = serialize(user);\n        const deserialized = deserialize(serialized);\n\n        expect(deserialized).toEqual(user);\n      }),\n      { numRuns: 500 }\n    );\n  });\n\n  it('should roundtrip compression for any byte sequence', () => {\n    fc.assert(\n      fc.property(\n        fc.uint8Array({ minLength: 0, maxLength: 10000 }),\n        (data) => {\n          const compressed = compress(data);\n          const decompressed = decompress(compressed);\n\n          expect(decompressed).toEqual(data);\n          // Bonus property: compressed size should not exceed original + overhead\n          expect(compressed.length).toBeLessThanOrEqual(data.length + 64);\n        }\n      ),\n      { numRuns: 200 }\n    );\n  });\n\n  it('should roundtrip encryption for any plaintext', () => {\n    const key = 'test-encryption-key-32-bytes!!!';\n\n    fc.assert(\n      fc.property(fc.string({ minLength: 0, maxLength: 5000 }), (plaintext) => {\n        const encrypted = encrypt(plaintext, key);\n        const decrypted = decrypt(encrypted, key);\n\n        expect(decrypted).toBe(plaintext);\n        // Encrypted output should differ from plaintext (unless empty)\n        if (plaintext.length > 0) {\n          expect(encrypted).not.toBe(plaintext);\n        }\n      }),\n      { numRuns: 300 }\n    );\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 33,
+          "subsections": []
+        },
+        {
+          "id": "custom-generators-and-shrinking",
+          "heading": "Custom Generators and Shrinking",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Building domain-specific generators lets you test with realistic data that satisfies your business constraints. Good generators produce values that exercise edge cases naturally."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { PriceCalculator } from './price-calculator';\nimport { Money, Currency } from './money';\n\n// Custom generator for monetary amounts\nconst moneyArbitrary = (currency: Currency = 'USD'): fc.Arbitrary<Money> =>\n  fc.record({\n    amount: fc.integer({ min: 0, max: 999999999 }), // Cents to avoid floating point\n    currency: fc.constant(currency),\n  });\n\n// Custom generator for a shopping cart\nconst cartItemArbitrary = fc.record({\n  productId: fc.uuid(),\n  name: fc.string({ minLength: 1, maxLength: 50 }),\n  unitPrice: moneyArbitrary(),\n  quantity: fc.integer({ min: 1, max: 100 }),\n  taxRate: fc.double({ min: 0, max: 0.25, noNaN: true }),\n});\n\nconst cartArbitrary = fc.record({\n  items: fc.array(cartItemArbitrary, { minLength: 1, maxLength: 20 }),\n  discountPercent: fc.double({ min: 0, max: 0.5, noNaN: true }),\n  shippingCents: fc.integer({ min: 0, max: 5000 }),\n});\n\ndescribe('PriceCalculator Properties', () => {\n  const calculator = new PriceCalculator();\n\n  it('total should never be negative', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const total = calculator.calculateTotal(cart);\n        expect(total.amount).toBeGreaterThanOrEqual(0);\n      })\n    );\n  });\n\n  it('total should equal sum of line items minus discount plus shipping plus tax', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const total = calculator.calculateTotal(cart);\n        const subtotal = cart.items.reduce(\n          (sum, item) => sum + item.unitPrice.amount * item.quantity,\n          0\n        );\n        const discount = Math.floor(subtotal * cart.discountPercent);\n        const afterDiscount = subtotal - discount;\n        const tax = cart.items.reduce(\n          (sum, item) =>\n            sum + Math.floor(item.unitPrice.amount * item.quantity * item.taxRate),\n          0\n        );\n        const expected = afterDiscount + tax + cart.shippingCents;\n\n        expect(total.amount).toBe(expected);\n      })\n    );\n  });\n\n  it('adding an item should never decrease the total', () => {\n    fc.assert(\n      fc.property(cartArbitrary, cartItemArbitrary, (cart, newItem) => {\n        const totalBefore = calculator.calculateTotal(cart);\n        const cartWithItem = { ...cart, items: [...cart.items, newItem] };\n        const totalAfter = calculator.calculateTotal(cartWithItem);\n\n        expect(totalAfter.amount).toBeGreaterThanOrEqual(totalBefore.amount);\n      })\n    );\n  });\n\n  it('zero discount should equal no discount applied', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const withDiscount = calculator.calculateTotal({ ...cart, discountPercent: 0 });\n        const withoutDiscount = calculator.calculateTotal({ ...cart, discountPercent: 0 });\n\n        expect(withDiscount.amount).toBe(withoutDiscount.amount);\n      })\n    );\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        },
+        {
+          "id": "stateful-testing-with-model-based-approach",
+          "heading": "Stateful Testing with Model-Based Approach",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Stateful property-based testing generates random sequences of operations and verifies that the system under test behaves identically to a simplified model. This catches bugs that only manifest after specific operation sequences."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import fc from 'fast-check';\nimport { describe, it } from 'vitest';\nimport { BoundedQueue } from './bounded-queue';\n\n// Model: a simple array-based queue for comparison\nclass QueueModel {\n  private items: number[] = [];\n  constructor(private capacity: number) {}\n\n  enqueue(item: number): boolean {\n    if (this.items.length >= this.capacity) return false;\n    this.items.push(item);\n    return true;\n  }\n\n  dequeue(): number | undefined {\n    return this.items.shift();\n  }\n\n  peek(): number | undefined {\n    return this.items[0];\n  }\n\n  get size(): number {\n    return this.items.length;\n  }\n\n  get isEmpty(): boolean {\n    return this.items.length === 0;\n  }\n\n  get isFull(): boolean {\n    return this.items.length >= this.capacity;\n  }\n}\n\n// Define commands that operate on both model and real implementation\nclass EnqueueCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  constructor(readonly value: number) {}\n\n  check(model: Readonly<QueueModel>): boolean {\n    return true; // Always applicable\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    const modelResult = model.enqueue(this.value);\n    const realResult = real.enqueue(this.value);\n\n    // Both should agree on whether enqueue succeeded\n    expect(realResult).toBe(modelResult);\n    // Size should match\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return `enqueue(${this.value})`;\n  }\n}\n\nclass DequeueCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(model: Readonly<QueueModel>): boolean {\n    return true; // Test behavior on both empty and non-empty\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    const modelResult = model.dequeue();\n    const realResult = real.dequeue();\n\n    expect(realResult).toBe(modelResult);\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return 'dequeue()';\n  }\n}\n\nclass PeekCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(): boolean {\n    return true;\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    expect(real.peek()).toBe(model.peek());\n    // Peek should not modify size\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return 'peek()';\n  }\n}\n\nclass SizeCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(): boolean {\n    return true;\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    expect(real.size).toBe(model.size);\n    expect(real.isEmpty).toBe(model.isEmpty);\n    expect(real.isFull).toBe(model.isFull);\n  }\n\n  toString(): string {\n    return 'checkSize()';\n  }\n}\n\ndescribe('BoundedQueue Stateful Properties', () => {\n  it('should behave identically to the array-based model under any operation sequence', () => {\n    const capacity = 5;\n\n    const allCommands = [\n      fc.integer({ min: -100, max: 100 }).map((v) => new EnqueueCommand(v)),\n      fc.constant(new DequeueCommand()),\n      fc.constant(new PeekCommand()),\n      fc.constant(new SizeCommand()),\n    ];\n\n    fc.assert(\n      fc.property(fc.commands(allCommands, { maxCommands: 100 }), (cmds) => {\n        const model = new QueueModel(capacity);\n        const real = new BoundedQueue<number>(capacity);\n\n        fc.modelRun(() => ({ model, real }), cmds);\n      }),\n      { numRuns: 1000 }\n    );\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 31,
+          "subsections": []
+        },
+        {
+          "id": "invariant-properties-for-data-structures",
+          "heading": "Invariant Properties for Data Structures",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { SortedSet } from './sorted-set';\n\ndescribe('SortedSet Invariants', () => {\n  it('should always maintain sorted order after any sequence of insertions', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: -10000, max: 10000 }), { maxLength: 200 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const elements = set.toArray();\n          for (let i = 1; i < elements.length; i++) {\n            expect(elements[i]).toBeGreaterThan(elements[i - 1]);\n          }\n        }\n      )\n    );\n  });\n\n  it('should never contain duplicates', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 50 }), { maxLength: 100 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const elements = set.toArray();\n          const uniqueElements = new Set(elements);\n          expect(elements.length).toBe(uniqueElements.size);\n        }\n      )\n    );\n  });\n\n  it('size should equal number of unique values inserted', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 100 }), { maxLength: 200 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const expectedSize = new Set(values).size;\n          expect(set.size).toBe(expectedSize);\n        }\n      )\n    );\n  });\n\n  it('contains should return true for all inserted values', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer(), { minLength: 1, maxLength: 100 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          for (const v of values) {\n            expect(set.contains(v)).toBe(true);\n          }\n        }\n      )\n    );\n  });\n\n  it('delete should remove element and maintain sorted order', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 50 }), { minLength: 2, maxLength: 50 }),\n        fc.nat(),\n        (values, indexSeed) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          // Delete a random element that exists\n          const elements = set.toArray();\n          const toDelete = elements[indexSeed % elements.length];\n          set.delete(toDelete);\n\n          expect(set.contains(toDelete)).toBe(false);\n          // Still sorted\n          const remaining = set.toArray();\n          for (let i = 1; i < remaining.length; i++) {\n            expect(remaining[i]).toBeGreaterThan(remaining[i - 1]);\n          }\n        }\n      )\n    );\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-writing-properties-that-restate-the-implementation",
+          "heading": "1. Writing Properties That Restate the Implementation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The most common mistake is writing a property that mirrors the production code logic. If your property is expect(sort(arr)).toEqual(arr.slice().sort()), you're testing JavaScript's sort against your sort — not verifying correctness. Instead, test observable properties: output is sorted, output has same length, output contains same elements."
+            }
+          ],
+          "wordCount": 45,
+          "subsections": []
+        },
+        {
+          "id": "2-generators-that-dont-cover-edge-cases",
+          "heading": "2. Generators That Don't Cover Edge Cases",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Default generators may not produce the edge cases that trigger bugs. An integer generator might never produce 0, Number.MAX_SAFE_INTEGER, or negative numbers unless configured. Always configure generator bounds explicitly and consider using fc.oneof to mix edge cases with random values."
+            }
+          ],
+          "wordCount": 40,
+          "subsections": []
+        },
+        {
+          "id": "3-ignoring-shrinking-quality",
+          "heading": "3. Ignoring Shrinking Quality",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When a property fails with a complex input, shrinking reduces it to the minimal failing case. But custom generators with fc.filter or fc.map can produce poor shrinking because the shrinker doesn't understand your domain constraints. Prefer fc.record and built-in combinators over fc.filter when possible — they shrink more effectively."
+            }
+          ],
+          "wordCount": 49,
+          "subsections": []
+        },
+        {
+          "id": "4-too-few-iterations",
+          "heading": "4. Too Few Iterations",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Running 10 iterations gives false confidence. Property-based tests derive their power from volume. Use at least 100 iterations for basic properties, 500+ for complex state machines, and 1000+ for security-sensitive code. The cost is milliseconds of execution time; the benefit is discovering edge cases that would take years of manual testing."
+            }
+          ],
+          "wordCount": 51,
+          "subsections": []
+        },
+        {
+          "id": "5-non-deterministic-properties",
+          "heading": "5. Non-Deterministic Properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Properties that depend on timing, random seeds outside the framework, or external state produce flaky results. Every property must be a pure function of its generated inputs. If you need randomness, let the framework provide it through generators — don't use Math.random() inside properties."
+            }
+          ],
+          "wordCount": 44,
+          "subsections": []
+        },
+        {
+          "id": "6-overly-constrained-generators",
+          "heading": "6. Overly Constrained Generators",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Using fc.filter to reject 99% of generated values wastes computation and may cause the framework to give up. If you need values satisfying complex constraints, build generators that produce valid values by construction rather than filtering invalid ones. For example, generate a sorted array by generating an array and sorting it, rather than generating random arrays and filtering unsorted ones."
+            }
+          ],
+          "wordCount": 60,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "json-parser-validation",
+          "heading": "JSON Parser Validation",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A JSON parser library uses property-based testing to verify that any valid JSON value can be parsed and re-serialized to produce equivalent output. The generator produces nested objects, arrays, strings with Unicode escapes, numbers at precision boundaries, and deeply nested structures. This approach discovered a bug where the parser failed on strings containing \\u0000 (null character) — an edge case no developer thought to test manually."
+            }
+          ],
+          "wordCount": 66,
+          "subsections": []
+        },
+        {
+          "id": "distributed-consensus-protocol",
+          "heading": "Distributed Consensus Protocol",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A Raft implementation uses stateful property-based testing to verify safety properties: no two leaders in the same term, committed entries are never lost, and the log matching property holds. The generator produces sequences of network partitions, message delays, and node crashes. Testing found a subtle bug where a specific partition-heal-partition sequence caused a committed entry to be overwritten — a scenario that would take months to reproduce in production."
+            }
+          ],
+          "wordCount": 69,
+          "subsections": []
+        },
+        {
+          "id": "financial-calculation-engine",
+          "heading": "Financial Calculation Engine",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A trading platform uses property-based testing to verify that position calculations satisfy algebraic properties: buying then selling the same quantity returns to the original position, fees are always non-negative, and margin requirements are monotonically increasing with position size. Generators produce realistic trade sequences with varying lot sizes, prices, and fee structures. This caught a rounding error that accumulated over thousands of trades, causing a $0.01 discrepancy per trade that would have cost millions annually."
+            }
+          ],
+          "wordCount": 74,
+          "subsections": []
+        },
+        {
+          "id": "compiler-optimization-pass",
+          "heading": "Compiler Optimization Pass",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A compiler team tests optimization passes by generating random valid ASTs, applying the optimization, and verifying that the optimized program produces the same output as the original for all inputs. This \"equivalence modulo optimization\" property caught a bug where constant folding incorrectly handled integer overflow in a specific combination of nested arithmetic expressions."
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between property-based testing and example-based testing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Example-based testing verifies specific input-output pairs chosen by the developer: \"given input X, expect output Y.\" Property-based testing verifies universal invariants across randomly generated inputs: \"for all valid inputs, property P holds.\" Example-based tests are precise but limited to cases the developer anticipates. Property-based tests explore the input space broadly and discover edge cases the developer didn't consider. They complement each other — use examples for specific business rules and regression tests, use properties for universal invariants and boundary exploration. The key insight is that properties describe what the code should do without specifying how, making them resilient to refactoring."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does shrinking work and why is it important?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When a property fails, the initial counterexample is often large and complex (a 500-element array, a deeply nested object). Shrinking systematically reduces the failing input while preserving the failure. For integers, it tries values closer to zero. For arrays, it removes elements and shrinks remaining ones. For records, it shrinks each field independently. The result is the minimal failing example — often revealing the exact boundary condition that triggers the bug. Without shrinking, you'd spend hours manually reducing a 500-element failing array to discover that the bug only requires 3 specific elements. Good shrinking is what makes property-based testing practical for debugging, not just detection."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you choose what properties to test?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Start with these categories. Roundtrip properties: encode/decode, serialize/deserialize, compress/decompress — the inverse operation recovers the original. Invariant properties: sorting preserves length, insertion into a BST maintains sorted order, any valid state transition leaves the system in a valid state. Algebraic properties: commutativity (a + b === b + a), associativity, idempotency (f(f(x)) === f(x)). Comparison with oracle: test your optimized implementation against a known-correct but slow reference implementation. Hard to prove, easy to verify: it's hard to compute the shortest path, but easy to verify that a claimed shortest path is actually a valid path with the claimed cost. The key is identifying properties that are independent of implementation details."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is stateful property-based testing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Stateful testing generates random sequences of operations (commands) and verifies that the system under test behaves consistently with a simplified model after each operation. You define a model (often a simple data structure like a Map or Array), define commands that operate on both the model and the real system, and let the framework generate thousands of random command sequences. After each command, you assert that the real system's observable state matches the model. This catches bugs that only manifest after specific operation sequences — like a cache that returns stale data only after an insert-delete-insert sequence with specific keys. It's particularly powerful for testing concurrent data structures, databases, and stateful protocols."
+        }
+      ],
+      "wordCount": 467,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "seed-management-for-reproducibility",
+          "heading": "Seed Management for Reproducibility",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Every property-based test framework records the random seed that produced a failure. Store this seed in your test configuration or CI logs so you can reproduce failures deterministically. In fast-check, use the seed option to replay a specific run. In CI, log the seed on every run — when a test fails intermittently, you can reproduce it locally with the exact seed from the failing build."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Reproduce a specific failure\nfc.assert(\n  fc.property(fc.integer(), (n) => {\n    // ... property\n  }),\n  { seed: 1234567890, path: '4:2:1' } // Exact reproduction\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 66,
+          "subsections": []
+        },
+        {
+          "id": "combine-with-coverage-guided-fuzzing",
+          "heading": "Combine with Coverage-Guided Fuzzing",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "For security-critical code, combine property-based testing with coverage-guided fuzzing. Property-based testing explores the input space randomly; fuzzing uses code coverage feedback to guide exploration toward uncovered branches. Tools like jsfuzz or AFL can be configured to use your property assertions as the oracle. This hybrid approach finds deeper bugs than either technique alone."
+            }
+          ],
+          "wordCount": 53,
+          "subsections": []
+        },
+        {
+          "id": "performance-properties",
+          "heading": "Performance Properties",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Beyond correctness, test performance properties: \"sorting n elements takes less than n*log(n)*constant operations\", \"lookup in the hash map takes less than 10 probes for load factor < 0.75\". These properties catch performance regressions that correctness tests miss. Use fc.statistics to monitor the distribution of generated inputs and ensure you're testing realistic workloads."
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Unit Testing — Property-based tests complement example-based unit tests by exploring edge cases automatically",
+            "Test Architecture — Where property-based tests fit in the test pyramid and CI pipeline",
+            "Mocking Strategies — How to structure dependencies for property-based testability"
+          ]
+        }
+      ],
+      "wordCount": 38,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { serialize, deserialize } from './json-codec';\nimport { compress, decompress } from './compression';\nimport { encrypt, decrypt } from './crypto';\n\ndescribe('Serialization Properties', () => {\n  it('should roundtrip any valid user object', () => {\n    const userArbitrary = fc.record({\n      id: fc.uuid(),\n      name: fc.string({ minLength: 1, maxLength: 100 }),\n      email: fc.emailAddress(),\n      age: fc.integer({ min: 0, max: 150 }),\n      roles: fc.array(fc.constantFrom('admin', 'user', 'moderator'), { minLength: 1, maxLength: 5 }),\n      metadata: fc.dictionary(\n        fc.string({ minLength: 1, maxLength: 20 }),\n        fc.oneof(fc.string(), fc.integer(), fc.boolean())\n      ),\n      createdAt: fc.date({ min: new Date('2000-01-01'), max: new Date('2030-12-31') }),\n    });\n\n    fc.assert(\n      fc.property(userArbitrary, (user) => {\n        const serialized = serialize(user);\n        const deserialized = deserialize(serialized);\n\n        expect(deserialized).toEqual(user);\n      }),\n      { numRuns: 500 }\n    );\n  });\n\n  it('should roundtrip compression for any byte sequence', () => {\n    fc.assert(\n      fc.property(\n        fc.uint8Array({ minLength: 0, maxLength: 10000 }),\n        (data) => {\n          const compressed = compress(data);\n          const decompressed = decompress(compressed);\n\n          expect(decompressed).toEqual(data);\n          // Bonus property: compressed size should not exceed original + overhead\n          expect(compressed.length).toBeLessThanOrEqual(data.length + 64);\n        }\n      ),\n      { numRuns: 200 }\n    );\n  });\n\n  it('should roundtrip encryption for any plaintext', () => {\n    const key = 'test-encryption-key-32-bytes!!!';\n\n    fc.assert(\n      fc.property(fc.string({ minLength: 0, maxLength: 5000 }), (plaintext) => {\n        const encrypted = encrypt(plaintext, key);\n        const decrypted = decrypt(encrypted, key);\n\n        expect(decrypted).toBe(plaintext);\n        // Encrypted output should differ from plaintext (unless empty)\n        if (plaintext.length > 0) {\n          expect(encrypted).not.toBe(plaintext);\n        }\n      }),\n      { numRuns: 300 }\n    );\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { PriceCalculator } from './price-calculator';\nimport { Money, Currency } from './money';\n\n// Custom generator for monetary amounts\nconst moneyArbitrary = (currency: Currency = 'USD'): fc.Arbitrary<Money> =>\n  fc.record({\n    amount: fc.integer({ min: 0, max: 999999999 }), // Cents to avoid floating point\n    currency: fc.constant(currency),\n  });\n\n// Custom generator for a shopping cart\nconst cartItemArbitrary = fc.record({\n  productId: fc.uuid(),\n  name: fc.string({ minLength: 1, maxLength: 50 }),\n  unitPrice: moneyArbitrary(),\n  quantity: fc.integer({ min: 1, max: 100 }),\n  taxRate: fc.double({ min: 0, max: 0.25, noNaN: true }),\n});\n\nconst cartArbitrary = fc.record({\n  items: fc.array(cartItemArbitrary, { minLength: 1, maxLength: 20 }),\n  discountPercent: fc.double({ min: 0, max: 0.5, noNaN: true }),\n  shippingCents: fc.integer({ min: 0, max: 5000 }),\n});\n\ndescribe('PriceCalculator Properties', () => {\n  const calculator = new PriceCalculator();\n\n  it('total should never be negative', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const total = calculator.calculateTotal(cart);\n        expect(total.amount).toBeGreaterThanOrEqual(0);\n      })\n    );\n  });\n\n  it('total should equal sum of line items minus discount plus shipping plus tax', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const total = calculator.calculateTotal(cart);\n        const subtotal = cart.items.reduce(\n          (sum, item) => sum + item.unitPrice.amount * item.quantity,\n          0\n        );\n        const discount = Math.floor(subtotal * cart.discountPercent);\n        const afterDiscount = subtotal - discount;\n        const tax = cart.items.reduce(\n          (sum, item) =>\n            sum + Math.floor(item.unitPrice.amount * item.quantity * item.taxRate),\n          0\n        );\n        const expected = afterDiscount + tax + cart.shippingCents;\n\n        expect(total.amount).toBe(expected);\n      })\n    );\n  });\n\n  it('adding an item should never decrease the total', () => {\n    fc.assert(\n      fc.property(cartArbitrary, cartItemArbitrary, (cart, newItem) => {\n        const totalBefore = calculator.calculateTotal(cart);\n        const cartWithItem = { ...cart, items: [...cart.items, newItem] };\n        const totalAfter = calculator.calculateTotal(cartWithItem);\n\n        expect(totalAfter.amount).toBeGreaterThanOrEqual(totalBefore.amount);\n      })\n    );\n  });\n\n  it('zero discount should equal no discount applied', () => {\n    fc.assert(\n      fc.property(cartArbitrary, (cart) => {\n        const withDiscount = calculator.calculateTotal({ ...cart, discountPercent: 0 });\n        const withoutDiscount = calculator.calculateTotal({ ...cart, discountPercent: 0 });\n\n        expect(withDiscount.amount).toBe(withoutDiscount.amount);\n      })\n    );\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import fc from 'fast-check';\nimport { describe, it } from 'vitest';\nimport { BoundedQueue } from './bounded-queue';\n\n// Model: a simple array-based queue for comparison\nclass QueueModel {\n  private items: number[] = [];\n  constructor(private capacity: number) {}\n\n  enqueue(item: number): boolean {\n    if (this.items.length >= this.capacity) return false;\n    this.items.push(item);\n    return true;\n  }\n\n  dequeue(): number | undefined {\n    return this.items.shift();\n  }\n\n  peek(): number | undefined {\n    return this.items[0];\n  }\n\n  get size(): number {\n    return this.items.length;\n  }\n\n  get isEmpty(): boolean {\n    return this.items.length === 0;\n  }\n\n  get isFull(): boolean {\n    return this.items.length >= this.capacity;\n  }\n}\n\n// Define commands that operate on both model and real implementation\nclass EnqueueCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  constructor(readonly value: number) {}\n\n  check(model: Readonly<QueueModel>): boolean {\n    return true; // Always applicable\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    const modelResult = model.enqueue(this.value);\n    const realResult = real.enqueue(this.value);\n\n    // Both should agree on whether enqueue succeeded\n    expect(realResult).toBe(modelResult);\n    // Size should match\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return `enqueue(${this.value})`;\n  }\n}\n\nclass DequeueCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(model: Readonly<QueueModel>): boolean {\n    return true; // Test behavior on both empty and non-empty\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    const modelResult = model.dequeue();\n    const realResult = real.dequeue();\n\n    expect(realResult).toBe(modelResult);\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return 'dequeue()';\n  }\n}\n\nclass PeekCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(): boolean {\n    return true;\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    expect(real.peek()).toBe(model.peek());\n    // Peek should not modify size\n    expect(real.size).toBe(model.size);\n  }\n\n  toString(): string {\n    return 'peek()';\n  }\n}\n\nclass SizeCommand implements fc.Command<QueueModel, BoundedQueue<number>> {\n  check(): boolean {\n    return true;\n  }\n\n  run(model: QueueModel, real: BoundedQueue<number>): void {\n    expect(real.size).toBe(model.size);\n    expect(real.isEmpty).toBe(model.isEmpty);\n    expect(real.isFull).toBe(model.isFull);\n  }\n\n  toString(): string {\n    return 'checkSize()';\n  }\n}\n\ndescribe('BoundedQueue Stateful Properties', () => {\n  it('should behave identically to the array-based model under any operation sequence', () => {\n    const capacity = 5;\n\n    const allCommands = [\n      fc.integer({ min: -100, max: 100 }).map((v) => new EnqueueCommand(v)),\n      fc.constant(new DequeueCommand()),\n      fc.constant(new PeekCommand()),\n      fc.constant(new SizeCommand()),\n    ];\n\n    fc.assert(\n      fc.property(fc.commands(allCommands, { maxCommands: 100 }), (cmds) => {\n        const model = new QueueModel(capacity);\n        const real = new BoundedQueue<number>(capacity);\n\n        fc.modelRun(() => ({ model, real }), cmds);\n      }),\n      { numRuns: 1000 }\n    );\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import fc from 'fast-check';\nimport { describe, it, expect } from 'vitest';\nimport { SortedSet } from './sorted-set';\n\ndescribe('SortedSet Invariants', () => {\n  it('should always maintain sorted order after any sequence of insertions', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: -10000, max: 10000 }), { maxLength: 200 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const elements = set.toArray();\n          for (let i = 1; i < elements.length; i++) {\n            expect(elements[i]).toBeGreaterThan(elements[i - 1]);\n          }\n        }\n      )\n    );\n  });\n\n  it('should never contain duplicates', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 50 }), { maxLength: 100 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const elements = set.toArray();\n          const uniqueElements = new Set(elements);\n          expect(elements.length).toBe(uniqueElements.size);\n        }\n      )\n    );\n  });\n\n  it('size should equal number of unique values inserted', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 100 }), { maxLength: 200 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          const expectedSize = new Set(values).size;\n          expect(set.size).toBe(expectedSize);\n        }\n      )\n    );\n  });\n\n  it('contains should return true for all inserted values', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer(), { minLength: 1, maxLength: 100 }),\n        (values) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          for (const v of values) {\n            expect(set.contains(v)).toBe(true);\n          }\n        }\n      )\n    );\n  });\n\n  it('delete should remove element and maintain sorted order', () => {\n    fc.assert(\n      fc.property(\n        fc.array(fc.integer({ min: 0, max: 50 }), { minLength: 2, maxLength: 50 }),\n        fc.nat(),\n        (values, indexSeed) => {\n          const set = new SortedSet<number>();\n          for (const v of values) {\n            set.insert(v);\n          }\n\n          // Delete a random element that exists\n          const elements = set.toArray();\n          const toDelete = elements[indexSeed % elements.length];\n          set.delete(toDelete);\n\n          expect(set.contains(toDelete)).toBe(false);\n          // Still sorted\n          const remaining = set.toArray();\n          for (let i = 1; i < remaining.length; i++) {\n            expect(remaining[i]).toBeGreaterThan(remaining[i - 1]);\n          }\n        }\n      )\n    );\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Reproduce a specific failure\nfc.assert(\n  fc.property(fc.integer(), (n) => {\n    // ... property\n  }),\n  { seed: 1234567890, path: '4:2:1' } // Exact reproduction\n);",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/testing/property-based-testing.md",
+    "wordCount": 1653,
+    "sectionCount": 25
+  }
+}

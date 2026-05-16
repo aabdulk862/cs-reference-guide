@@ -1,0 +1,266 @@
+{
+  "id": "aws-cloud-architecture-patterns",
+  "slug": "cloud-architecture-patterns",
+  "title": "Cloud Architecture Patterns",
+  "category": "Infrastructure",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AWS Well-Architected Framework has 6 pillars: Operational Excellence, Security, Reliability, Performance Efficiency, Cost Optimization, Sustainability",
+            "RTO (Recovery Time Objective) defines maximum acceptable downtime; RPO (Recovery Point Objective) defines maximum acceptable data loss",
+            "Multi-region active-active adds 2-3x infrastructure cost but provides sub-minute failover with near-zero data loss",
+            "Reserved Instances save 30-72% over On-Demand; Savings Plans offer similar discounts with more flexibility across instance families",
+            "The \"blast radius\" principle: isolate failure domains so a single component failure cannot cascade to the entire system",
+            "Auto Scaling responds to demand in 1-3 minutes; predictive scaling uses ML to pre-provision capacity 5 minutes before anticipated load",
+            "S3 Cross-Region Replication provides 15-minute RPO for object storage; DynamoDB Global Tables offer sub-second replication",
+            "Cost allocation tags enable per-team, per-service, and per-environment cost attribution — enforce via SCP tag policies"
+          ]
+        }
+      ],
+      "wordCount": 132,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Cloud architecture patterns apply whenever you are designing systems that must operate reliably at scale in production. Multi-region architecture is necessary when your SLA requires 99.99%+ availability (single-region AWS provides 99.99% for most services, but correlated failures during regional outages can violate this), when regulatory requirements mandate data residency with failover capabilities, or when you serve a global user base requiring sub-100ms latency. Disaster recovery planning is essential for any system where data loss or extended downtime has material business impact — financial transactions, healthcare records, e-commerce during peak seasons. Cost optimization patterns matter from day one but become critical as cloud spend exceeds $50K/month, where even 10% savings represents meaningful budget recovery. The Well-Architected Framework review should be conducted quarterly for production workloads and before any major architectural change, using it as a structured checklist rather than aspirational guidance."
+        }
+      ],
+      "wordCount": 140,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "multi-region-active-passive-with-route-53-failover",
+          "heading": "Multi-Region Active-Passive with Route 53 Failover",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "hcl",
+              "code": "# Terraform: Multi-region infrastructure with automated failover\nprovider \"aws\" {\n  alias  = \"primary\"\n  region = \"us-east-1\"\n}\n\nprovider \"aws\" {\n  alias  = \"secondary\"\n  region = \"us-west-2\"\n}\n\n# Primary region ALB\nresource \"aws_lb\" \"primary\" {\n  provider           = aws.primary\n  name               = \"api-primary\"\n  internal           = false\n  load_balancer_type = \"application\"\n  subnets            = module.vpc_primary.public_subnet_ids\n}\n\n# Secondary region ALB (warm standby)\nresource \"aws_lb\" \"secondary\" {\n  provider           = aws.secondary\n  name               = \"api-secondary\"\n  internal           = false\n  load_balancer_type = \"application\"\n  subnets            = module.vpc_secondary.public_subnet_ids\n}\n\n# Route 53 health check on primary\nresource \"aws_route53_health_check\" \"primary\" {\n  fqdn              = aws_lb.primary.dns_name\n  port              = 443\n  type              = \"HTTPS\"\n  resource_path     = \"/health\"\n  failure_threshold = 3\n  request_interval  = 10\n\n  tags = {\n    Name = \"primary-health-check\"\n  }\n}\n\n# DNS failover routing\nresource \"aws_route53_record\" \"api_primary\" {\n  zone_id = var.hosted_zone_id\n  name    = \"api.example.com\"\n  type    = \"A\"\n\n  alias {\n    name                   = aws_lb.primary.dns_name\n    zone_id                = aws_lb.primary.zone_id\n    evaluate_target_health = true\n  }\n\n  failover_routing_policy {\n    type = \"PRIMARY\"\n  }\n\n  health_check_id = aws_route53_health_check.primary.id\n  set_identifier  = \"primary\"\n}\n\nresource \"aws_route53_record\" \"api_secondary\" {\n  zone_id = var.hosted_zone_id\n  name    = \"api.example.com\"\n  type    = \"A\"\n\n  alias {\n    name                   = aws_lb.secondary.dns_name\n    zone_id                = aws_lb.secondary.zone_id\n    evaluate_target_health = true\n  }\n\n  failover_routing_policy {\n    type = \"SECONDARY\"\n  }\n\n  set_identifier = \"secondary\"\n}\n\n# RDS Cross-Region Read Replica for DR\nresource \"aws_db_instance\" \"replica\" {\n  provider               = aws.secondary\n  replicate_source_db    = aws_db_instance.primary.arn\n  instance_class         = \"db.r6g.large\"\n  storage_encrypted      = true\n  multi_az               = true\n  backup_retention_period = 7\n\n  tags = {\n    Name = \"api-db-dr-replica\"\n    Role = \"disaster-recovery\"\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cost-optimization-spot-fleet-with-fallback",
+          "heading": "Cost Optimization: Spot Fleet with Fallback",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import boto3\nfrom datetime import datetime, timedelta\n\nec2 = boto3.client('ec2')\ncloudwatch = boto3.client('cloudwatch')\n\ndef create_cost_optimized_fleet(\n    desired_capacity: int,\n    instance_types: list[str],\n    subnet_ids: list[str]\n) -> dict:\n    \"\"\"Create a Spot Fleet with On-Demand fallback for cost optimization.\"\"\"\n    \n    launch_template_configs = []\n    for instance_type in instance_types:\n        for subnet_id in subnet_ids:\n            launch_template_configs.append({\n                'LaunchTemplateSpecification': {\n                    'LaunchTemplateId': 'lt-0123456789abcdef0',\n                    'Version': '$Latest'\n                },\n                'Overrides': [{\n                    'InstanceType': instance_type,\n                    'SubnetId': subnet_id,\n                    'WeightedCapacity': 1.0\n                }]\n            })\n\n    response = ec2.request_spot_fleet(\n        SpotFleetRequestConfig={\n            'IamFleetRole': 'arn:aws:iam::123456789:role/spot-fleet-role',\n            'TargetCapacity': desired_capacity,\n            'OnDemandTargetCapacity': max(2, desired_capacity // 5),  # 20% On-Demand baseline\n            'SpotPrice': '0.50',\n            'AllocationStrategy': 'capacityOptimized',  # Lowest interruption probability\n            'LaunchTemplateConfigs': launch_template_configs,\n            'InstanceInterruptionBehavior': 'terminate',\n            'ReplaceUnhealthyInstances': True,\n            'TerminateInstancesWithExpiration': True,\n            'Type': 'maintain',\n            'ExcessCapacityTerminationPolicy': 'default',\n            'OnDemandAllocationStrategy': 'lowestPrice',\n            'TagSpecifications': [{\n                'ResourceType': 'instance',\n                'Tags': [\n                    {'Key': 'Fleet', 'Value': 'cost-optimized'},\n                    {'Key': 'CostCenter', 'Value': 'engineering'}\n                ]\n            }]\n        }\n    )\n    return response\n\n\ndef get_cost_anomalies(days_back: int = 7) -> list[dict]:\n    \"\"\"Detect cost anomalies using CloudWatch metrics.\"\"\"\n    ce = boto3.client('ce')\n    \n    end_date = datetime.now().strftime('%Y-%m-%d')\n    start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')\n    \n    response = ce.get_anomalies(\n        DateInterval={'StartDate': start_date, 'EndDate': end_date},\n        TotalImpact={'NumericOperator': 'GREATER_THAN_OR_EQUAL', 'StartValue': 100},\n        MaxResults=20\n    )\n    \n    anomalies = []\n    for anomaly in response['Anomalies']:\n        anomalies.append({\n            'service': anomaly['RootCauses'][0]['Service'] if anomaly['RootCauses'] else 'Unknown',\n            'impact': anomaly['Impact']['TotalImpact'],\n            'start': anomaly['AnomalyStartDate'],\n            'status': anomaly['AnomalyStatus']\n        })\n    \n    return anomalies",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "disaster-recovery-automated-failover-with-lambda",
+          "heading": "Disaster Recovery: Automated Failover with Lambda",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import boto3\nimport json\nimport logging\nfrom typing import Literal\n\nlogger = logging.getLogger()\nlogger.setLevel(logging.INFO)\n\nrds = boto3.client('rds')\nroute53 = boto3.client('route53')\nsns = boto3.client('sns')\necs = boto3.client('ecs')\n\nDR_CONFIG = {\n    'primary_region': 'us-east-1',\n    'secondary_region': 'us-west-2',\n    'db_cluster_id': 'api-database',\n    'replica_cluster_id': 'api-database-replica',\n    'hosted_zone_id': 'Z1234567890',\n    'domain': 'api.example.com',\n    'ecs_cluster': 'api-cluster',\n    'ecs_service': 'api-service',\n    'notification_topic': 'arn:aws:sns:us-east-1:123456789:dr-notifications'\n}\n\ndef handler(event, context):\n    \"\"\"\n    Automated DR failover triggered by CloudWatch alarm.\n    Steps: Promote replica → Scale ECS → Update DNS → Notify\n    \"\"\"\n    action = event.get('action', 'failover')\n    \n    if action == 'failover':\n        execute_failover()\n    elif action == 'failback':\n        execute_failback()\n    elif action == 'validate':\n        validate_dr_readiness()\n\ndef execute_failover():\n    \"\"\"Execute full failover to secondary region.\"\"\"\n    logger.info(\"Starting DR failover procedure\")\n    \n    # Step 1: Promote RDS read replica to standalone\n    logger.info(\"Promoting RDS replica to primary\")\n    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])\n    rds_secondary.promote_read_replica_db_cluster(\n        DBClusterIdentifier=DR_CONFIG['replica_cluster_id']\n    )\n    \n    # Step 2: Scale up ECS service in secondary region\n    logger.info(\"Scaling ECS service in DR region\")\n    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])\n    ecs_secondary.update_service(\n        cluster=DR_CONFIG['ecs_cluster'],\n        service=DR_CONFIG['ecs_service'],\n        desiredCount=10  # Match production capacity\n    )\n    \n    # Step 3: Update Route 53 to point to secondary\n    logger.info(\"Updating DNS to secondary region\")\n    route53.change_resource_record_sets(\n        HostedZoneId=DR_CONFIG['hosted_zone_id'],\n        ChangeBatch={\n            'Comment': 'DR failover - routing to secondary region',\n            'Changes': [{\n                'Action': 'UPSERT',\n                'ResourceRecordSet': {\n                    'Name': DR_CONFIG['domain'],\n                    'Type': 'A',\n                    'AliasTarget': {\n                        'HostedZoneId': 'Z35SXDOTRQ7X7K',  # us-west-2 ALB zone\n                        'DNSName': 'api-secondary-alb.us-west-2.elb.amazonaws.com',\n                        'EvaluateTargetHealth': True\n                    }\n                }\n            }]\n        }\n    )\n    \n    # Step 4: Notify operations team\n    sns.publish(\n        TopicArn=DR_CONFIG['notification_topic'],\n        Subject='DR FAILOVER EXECUTED',\n        Message=json.dumps({\n            'event': 'failover_complete',\n            'primary_region': DR_CONFIG['primary_region'],\n            'active_region': DR_CONFIG['secondary_region'],\n            'timestamp': str(context.get_remaining_time_in_millis())\n        })\n    )\n    \n    logger.info(\"Failover complete - traffic now routing to secondary region\")\n\ndef validate_dr_readiness():\n    \"\"\"Validate DR infrastructure is ready for failover.\"\"\"\n    checks = []\n    \n    # Check replica lag\n    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])\n    instances = rds_secondary.describe_db_instances(\n        DBInstanceIdentifier=DR_CONFIG['replica_cluster_id']\n    )\n    replica_lag = instances['DBInstances'][0].get('ReplicaLag', 999)\n    checks.append({\n        'check': 'replica_lag_seconds',\n        'value': replica_lag,\n        'healthy': replica_lag < 60\n    })\n    \n    # Check ECS task health in DR region\n    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])\n    services = ecs_secondary.describe_services(\n        cluster=DR_CONFIG['ecs_cluster'],\n        services=[DR_CONFIG['ecs_service']]\n    )\n    running_count = services['services'][0]['runningCount']\n    checks.append({\n        'check': 'dr_ecs_running_tasks',\n        'value': running_count,\n        'healthy': running_count >= 2\n    })\n    \n    all_healthy = all(c['healthy'] for c in checks)\n    logger.info(f\"DR readiness: {'READY' if all_healthy else 'NOT READY'}\", extra={'checks': checks})\n    \n    return {'ready': all_healthy, 'checks': checks}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "well-architected-review-automated-compliance-checks",
+          "heading": "Well-Architected Review: Automated Compliance Checks",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "import boto3\nfrom dataclasses import dataclass\nfrom enum import Enum\n\nclass Severity(Enum):\n    CRITICAL = \"critical\"\n    HIGH = \"high\"\n    MEDIUM = \"medium\"\n    LOW = \"low\"\n\n@dataclass\nclass Finding:\n    pillar: str\n    check: str\n    severity: Severity\n    resource: str\n    recommendation: str\n\ndef run_reliability_checks() -> list[Finding]:\n    \"\"\"Automated Well-Architected reliability pillar checks.\"\"\"\n    findings = []\n    ec2 = boto3.client('ec2')\n    rds = boto3.client('rds')\n    elbv2 = boto3.client('elbv2')\n    \n    # Check: RDS Multi-AZ enabled for production databases\n    db_instances = rds.describe_db_instances()\n    for db in db_instances['DBInstances']:\n        tags = {t['Key']: t['Value'] for t in \n                rds.list_tags_for_resource(ResourceArn=db['DBInstanceArn'])['TagList']}\n        \n        if tags.get('Environment') == 'production' and not db['MultiAZ']:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='RDS Multi-AZ',\n                severity=Severity.CRITICAL,\n                resource=db['DBInstanceIdentifier'],\n                recommendation='Enable Multi-AZ for production databases to survive AZ failures'\n            ))\n    \n    # Check: ALB spans multiple AZs\n    load_balancers = elbv2.describe_load_balancers()\n    for lb in load_balancers['LoadBalancers']:\n        az_count = len(lb['AvailabilityZones'])\n        if az_count < 2:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='ALB Multi-AZ',\n                severity=Severity.HIGH,\n                resource=lb['LoadBalancerName'],\n                recommendation=f'ALB only spans {az_count} AZ(s). Deploy across 3+ AZs for resilience'\n            ))\n    \n    # Check: Auto Scaling groups have appropriate min capacity\n    asg = boto3.client('autoscaling')\n    groups = asg.describe_auto_scaling_groups()\n    for group in groups['AutoScalingGroups']:\n        if group['MinSize'] < 2:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='ASG Minimum Capacity',\n                severity=Severity.MEDIUM,\n                resource=group['AutoScalingGroupName'],\n                recommendation='Set minimum capacity >= 2 for production ASGs to survive instance failures'\n            ))\n    \n    return findings\n\ndef run_cost_optimization_checks() -> list[Finding]:\n    \"\"\"Automated Well-Architected cost optimization checks.\"\"\"\n    findings = []\n    ec2 = boto3.client('ec2')\n    ce = boto3.client('ce')\n    \n    # Check: Unattached EBS volumes\n    volumes = ec2.describe_volumes(Filters=[{'Name': 'status', 'Values': ['available']}])\n    for vol in volumes['Volumes']:\n        size_gb = vol['Size']\n        monthly_cost = size_gb * 0.10  # gp3 pricing\n        if monthly_cost > 5:\n            findings.append(Finding(\n                pillar='Cost Optimization',\n                check='Unattached EBS Volumes',\n                severity=Severity.MEDIUM,\n                resource=vol['VolumeId'],\n                recommendation=f'{size_gb}GB unattached volume costing ~${monthly_cost:.2f}/month. Delete or snapshot and remove.'\n            ))\n    \n    # Check: Idle EC2 instances (CPU < 5% for 7 days)\n    cloudwatch = boto3.client('cloudwatch')\n    instances = ec2.describe_instances(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])\n    \n    for reservation in instances['Reservations']:\n        for instance in reservation['Instances']:\n            # Query average CPU over 7 days\n            metrics = cloudwatch.get_metric_statistics(\n                Namespace='AWS/EC2',\n                MetricName='CPUUtilization',\n                Dimensions=[{'Name': 'InstanceId', 'Value': instance['InstanceId']}],\n                StartTime='2024-01-08T00:00:00Z',\n                EndTime='2024-01-15T00:00:00Z',\n                Period=604800,\n                Statistics=['Average']\n            )\n            if metrics['Datapoints'] and metrics['Datapoints'][0]['Average'] < 5.0:\n                findings.append(Finding(\n                    pillar='Cost Optimization',\n                    check='Idle EC2 Instances',\n                    severity=Severity.HIGH,\n                    resource=instance['InstanceId'],\n                    recommendation='Instance averaging <5% CPU over 7 days. Consider rightsizing or terminating.'\n                ))\n    \n    return findings",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Single-region \"high availability\": Multi-AZ within a single region protects against hardware and AZ failures but not against regional outages, service-level incidents, or configuration errors that affect all AZs simultaneously. True disaster recovery requires cross-region replication",
+            "Untested disaster recovery: DR plans that exist only in documentation fail when needed. Without regular failover drills (monthly or quarterly), teams discover issues during actual incidents — stale AMIs, expired credentials, missing DNS configurations, or services that cannot start without dependencies in the primary region",
+            "Over-engineering for availability: Not every service needs 99.99% availability. A batch reporting system running once daily does not need multi-region active-active architecture. Match your architecture investment to actual business requirements and SLA commitments",
+            "Reserved Instance commitment without usage analysis: Purchasing 3-year Reserved Instances based on current usage without accounting for planned migrations, instance type changes, or workload reduction leads to stranded commitments. Start with 1-year terms and Savings Plans for flexibility",
+            "Ignoring data transfer costs: Inter-region data transfer (0.02/GB), NAT Gateway processing (0.045/GB), and cross-AZ traffic ($0.01/GB) often exceed compute costs for data-intensive applications. Architect to minimize cross-boundary data movement — use VPC endpoints, keep compute near data, and compress before transfer",
+            "Failover without failback planning: Teams focus on failing over to DR but neglect the failback process, which is often more complex. Failback requires re-synchronizing data that accumulated in the DR region back to primary, validating data integrity, and coordinating the DNS switch back — all without a second outage",
+            "Cost optimization as an afterthought: Waiting until the monthly bill arrives to optimize costs means months of waste. Implement cost controls from day one: budgets with alerts, tagging enforcement, automated shutdown of non-production resources outside business hours, and right-sizing recommendations reviewed weekly"
+          ]
+        }
+      ],
+      "wordCount": 283,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Global E-Commerce Platform: A retailer serves customers across North America, Europe, and Asia-Pacific using active-active multi-region architecture. Each region runs a full application stack with DynamoDB Global Tables providing sub-second replication of product catalog and inventory data. Route 53 latency-based routing directs users to the nearest region. During the 2023 us-east-1 incident, traffic automatically shifted to us-west-2 and eu-west-1 within 45 seconds, with zero customer-visible impact. The architecture costs 2.5x a single-region deployment but generates $2M/hour during peak sales — even 5 minutes of downtime exceeds the annual multi-region premium."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial Services Compliance: A bank operates under regulatory requirements mandating 4-hour RTO and 1-hour RPO for core banking systems. They implement a pilot light DR strategy: RDS cross-region read replicas with 15-minute replication lag, pre-built AMIs in the DR region, and CloudFormation templates that can launch the full application stack in 45 minutes. Quarterly DR drills validate the process end-to-end, with results reported to regulators. Cost optimization uses Reserved Instances for the primary region's steady-state workload (70% savings) and On-Demand for the DR region that only runs during drills and actual failovers."
+        },
+        {
+          "type": "paragraph",
+          "text": "SaaS Cost Optimization Journey: A B2B SaaS company reduced their 180K/month AWS bill to 95K through systematic optimization. Phase 1: right-sizing (identified 40% of EC2 instances were over-provisioned using CloudWatch CPU/memory metrics). Phase 2: purchasing (Savings Plans for baseline compute, Spot for batch processing). Phase 3: architectural (replaced always-on ECS services with Lambda for low-traffic APIs, implemented S3 Intelligent-Tiering for 2PB data lake, scheduled non-production environments to run only during business hours). Phase 4: governance (implemented cost allocation tags, per-team budgets with automated alerts, and weekly cost review meetings with engineering leads)."
+        }
+      ],
+      "wordCount": 274,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Design a disaster recovery strategy for a system requiring 15-minute RTO and 5-minute RPO."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: This requires a warm standby or hot standby approach. For 5-minute RPO: use RDS with synchronous cross-region replication (Aurora Global Database provides <1 second replication lag) or DynamoDB Global Tables for NoSQL data. For 15-minute RTO: maintain pre-provisioned infrastructure in the DR region — ECS tasks running at minimum scale (2 tasks), pre-warmed ALB, and Route 53 health checks with 10-second intervals and 3-failure threshold (triggers failover in 30 seconds). The failover sequence: Route 53 detects primary unhealthy → DNS failover to secondary ALB → ECS auto-scaling increases task count from 2 to production level (takes 2-3 minutes for container startup). Total failover time: ~3-4 minutes. Key design decisions: Aurora Global Database over standard RDS replication for the RPO requirement, pre-provisioned (not just pre-configured) compute in DR for the RTO requirement, and automated failover via Route 53 rather than manual runbook execution."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you reduce a $500K/month AWS bill by 40% without impacting performance?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Systematic approach across four dimensions. First, right-sizing (typically 15-25% savings): analyze CloudWatch metrics for CPU, memory, network, and disk I/O across all EC2 and RDS instances. Instances consistently below 40% utilization get downsized. Use AWS Compute Optimizer recommendations. Second, purchasing commitments (20-30% savings): buy 1-year Savings Plans covering 70% of steady-state compute (the predictable baseline), use Spot for fault-tolerant workloads (batch, CI/CD, dev environments). Third, architectural optimization (10-20% savings): implement auto-scaling with aggressive scale-in policies, schedule non-production environments (dev/staging) to shut down outside business hours (saves 65% on those environments), move infrequently accessed S3 data to Intelligent-Tiering or Glacier, replace NAT Gateways with VPC endpoints for AWS service traffic. Fourth, waste elimination: delete unattached EBS volumes, remove unused Elastic IPs, clean up old snapshots, terminate zombie instances. Track progress with weekly cost reports broken down by service and team using cost allocation tags."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the trade-offs between active-active and active-passive multi-region architectures."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Active-active: both regions serve production traffic simultaneously. Advantages — near-zero RTO (traffic shifts instantly), better latency for geographically distributed users, full capacity always available. Disadvantages — 2x+ infrastructure cost, data consistency challenges (conflict resolution for concurrent writes), complex deployment coordination (must deploy to all regions atomically or handle version skew), and testing complexity (must validate cross-region interactions). Active-passive: primary region handles all traffic, secondary is standby. Advantages — simpler data model (single writer), lower cost (DR region runs at minimum capacity), simpler deployments. Disadvantages — non-zero RTO (must detect failure, promote replica, scale up compute, update DNS), potential data loss during failover (RPO depends on replication lag), and DR infrastructure may have undiscovered issues since it rarely handles real traffic. Choose active-active when: RTO must be <1 minute, you serve global users needing low latency, or the cost of downtime exceeds the infrastructure premium. Choose active-passive when: RTO of 5-30 minutes is acceptable, your data model doesn't support multi-writer, or cost constraints prevent running full capacity in two regions."
+        }
+      ],
+      "wordCount": 496,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement automated cost anomaly detection using AWS Cost Anomaly Detection or custom CloudWatch metrics. Alert when daily spend exceeds 120% of the trailing 7-day average. This catches runaway resources (forgotten load tests, infinite loops creating resources, compromised credentials spinning up crypto miners) within hours rather than waiting for the monthly bill",
+            "Run chaos engineering experiments using AWS Fault Injection Simulator to validate resilience assumptions. Start with controlled experiments: terminate a single instance, inject latency on a dependency, or simulate an AZ failure. Graduate to more aggressive tests: regional failover, database failover, and network partition between services. Document findings and fix gaps before they become incidents",
+            "Use AWS Organizations SCPs to enforce architectural guardrails: prevent launching instances in unapproved regions, require encryption on all storage resources, block public S3 bucket creation, and restrict instance types to approved families. This prevents well-intentioned developers from accidentally creating non-compliant or expensive resources",
+            "Implement progressive deployment across regions — never deploy to all regions simultaneously. Use a canary region (lowest traffic) first, monitor for 30 minutes, then roll to the next region. This limits blast radius for bad deployments and gives time to detect issues before they affect your highest-traffic regions"
+          ]
+        }
+      ],
+      "wordCount": 196,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "AWS Core Services — Individual service capabilities that these patterns compose",
+            "Infrastructure as Code — Implementing multi-region and DR infrastructure reproducibly",
+            "Serverless Patterns — Serverless architectures within cloud patterns",
+            "Security — Security pillar of the Well-Architected Framework in depth"
+          ]
+        }
+      ],
+      "wordCount": 39,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "hcl",
+      "code": "# Terraform: Multi-region infrastructure with automated failover\nprovider \"aws\" {\n  alias  = \"primary\"\n  region = \"us-east-1\"\n}\n\nprovider \"aws\" {\n  alias  = \"secondary\"\n  region = \"us-west-2\"\n}\n\n# Primary region ALB\nresource \"aws_lb\" \"primary\" {\n  provider           = aws.primary\n  name               = \"api-primary\"\n  internal           = false\n  load_balancer_type = \"application\"\n  subnets            = module.vpc_primary.public_subnet_ids\n}\n\n# Secondary region ALB (warm standby)\nresource \"aws_lb\" \"secondary\" {\n  provider           = aws.secondary\n  name               = \"api-secondary\"\n  internal           = false\n  load_balancer_type = \"application\"\n  subnets            = module.vpc_secondary.public_subnet_ids\n}\n\n# Route 53 health check on primary\nresource \"aws_route53_health_check\" \"primary\" {\n  fqdn              = aws_lb.primary.dns_name\n  port              = 443\n  type              = \"HTTPS\"\n  resource_path     = \"/health\"\n  failure_threshold = 3\n  request_interval  = 10\n\n  tags = {\n    Name = \"primary-health-check\"\n  }\n}\n\n# DNS failover routing\nresource \"aws_route53_record\" \"api_primary\" {\n  zone_id = var.hosted_zone_id\n  name    = \"api.example.com\"\n  type    = \"A\"\n\n  alias {\n    name                   = aws_lb.primary.dns_name\n    zone_id                = aws_lb.primary.zone_id\n    evaluate_target_health = true\n  }\n\n  failover_routing_policy {\n    type = \"PRIMARY\"\n  }\n\n  health_check_id = aws_route53_health_check.primary.id\n  set_identifier  = \"primary\"\n}\n\nresource \"aws_route53_record\" \"api_secondary\" {\n  zone_id = var.hosted_zone_id\n  name    = \"api.example.com\"\n  type    = \"A\"\n\n  alias {\n    name                   = aws_lb.secondary.dns_name\n    zone_id                = aws_lb.secondary.zone_id\n    evaluate_target_health = true\n  }\n\n  failover_routing_policy {\n    type = \"SECONDARY\"\n  }\n\n  set_identifier = \"secondary\"\n}\n\n# RDS Cross-Region Read Replica for DR\nresource \"aws_db_instance\" \"replica\" {\n  provider               = aws.secondary\n  replicate_source_db    = aws_db_instance.primary.arn\n  instance_class         = \"db.r6g.large\"\n  storage_encrypted      = true\n  multi_az               = true\n  backup_retention_period = 7\n\n  tags = {\n    Name = \"api-db-dr-replica\"\n    Role = \"disaster-recovery\"\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import boto3\nfrom datetime import datetime, timedelta\n\nec2 = boto3.client('ec2')\ncloudwatch = boto3.client('cloudwatch')\n\ndef create_cost_optimized_fleet(\n    desired_capacity: int,\n    instance_types: list[str],\n    subnet_ids: list[str]\n) -> dict:\n    \"\"\"Create a Spot Fleet with On-Demand fallback for cost optimization.\"\"\"\n    \n    launch_template_configs = []\n    for instance_type in instance_types:\n        for subnet_id in subnet_ids:\n            launch_template_configs.append({\n                'LaunchTemplateSpecification': {\n                    'LaunchTemplateId': 'lt-0123456789abcdef0',\n                    'Version': '$Latest'\n                },\n                'Overrides': [{\n                    'InstanceType': instance_type,\n                    'SubnetId': subnet_id,\n                    'WeightedCapacity': 1.0\n                }]\n            })\n\n    response = ec2.request_spot_fleet(\n        SpotFleetRequestConfig={\n            'IamFleetRole': 'arn:aws:iam::123456789:role/spot-fleet-role',\n            'TargetCapacity': desired_capacity,\n            'OnDemandTargetCapacity': max(2, desired_capacity // 5),  # 20% On-Demand baseline\n            'SpotPrice': '0.50',\n            'AllocationStrategy': 'capacityOptimized',  # Lowest interruption probability\n            'LaunchTemplateConfigs': launch_template_configs,\n            'InstanceInterruptionBehavior': 'terminate',\n            'ReplaceUnhealthyInstances': True,\n            'TerminateInstancesWithExpiration': True,\n            'Type': 'maintain',\n            'ExcessCapacityTerminationPolicy': 'default',\n            'OnDemandAllocationStrategy': 'lowestPrice',\n            'TagSpecifications': [{\n                'ResourceType': 'instance',\n                'Tags': [\n                    {'Key': 'Fleet', 'Value': 'cost-optimized'},\n                    {'Key': 'CostCenter', 'Value': 'engineering'}\n                ]\n            }]\n        }\n    )\n    return response\n\n\ndef get_cost_anomalies(days_back: int = 7) -> list[dict]:\n    \"\"\"Detect cost anomalies using CloudWatch metrics.\"\"\"\n    ce = boto3.client('ce')\n    \n    end_date = datetime.now().strftime('%Y-%m-%d')\n    start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')\n    \n    response = ce.get_anomalies(\n        DateInterval={'StartDate': start_date, 'EndDate': end_date},\n        TotalImpact={'NumericOperator': 'GREATER_THAN_OR_EQUAL', 'StartValue': 100},\n        MaxResults=20\n    )\n    \n    anomalies = []\n    for anomaly in response['Anomalies']:\n        anomalies.append({\n            'service': anomaly['RootCauses'][0]['Service'] if anomaly['RootCauses'] else 'Unknown',\n            'impact': anomaly['Impact']['TotalImpact'],\n            'start': anomaly['AnomalyStartDate'],\n            'status': anomaly['AnomalyStatus']\n        })\n    \n    return anomalies",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import boto3\nimport json\nimport logging\nfrom typing import Literal\n\nlogger = logging.getLogger()\nlogger.setLevel(logging.INFO)\n\nrds = boto3.client('rds')\nroute53 = boto3.client('route53')\nsns = boto3.client('sns')\necs = boto3.client('ecs')\n\nDR_CONFIG = {\n    'primary_region': 'us-east-1',\n    'secondary_region': 'us-west-2',\n    'db_cluster_id': 'api-database',\n    'replica_cluster_id': 'api-database-replica',\n    'hosted_zone_id': 'Z1234567890',\n    'domain': 'api.example.com',\n    'ecs_cluster': 'api-cluster',\n    'ecs_service': 'api-service',\n    'notification_topic': 'arn:aws:sns:us-east-1:123456789:dr-notifications'\n}\n\ndef handler(event, context):\n    \"\"\"\n    Automated DR failover triggered by CloudWatch alarm.\n    Steps: Promote replica → Scale ECS → Update DNS → Notify\n    \"\"\"\n    action = event.get('action', 'failover')\n    \n    if action == 'failover':\n        execute_failover()\n    elif action == 'failback':\n        execute_failback()\n    elif action == 'validate':\n        validate_dr_readiness()\n\ndef execute_failover():\n    \"\"\"Execute full failover to secondary region.\"\"\"\n    logger.info(\"Starting DR failover procedure\")\n    \n    # Step 1: Promote RDS read replica to standalone\n    logger.info(\"Promoting RDS replica to primary\")\n    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])\n    rds_secondary.promote_read_replica_db_cluster(\n        DBClusterIdentifier=DR_CONFIG['replica_cluster_id']\n    )\n    \n    # Step 2: Scale up ECS service in secondary region\n    logger.info(\"Scaling ECS service in DR region\")\n    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])\n    ecs_secondary.update_service(\n        cluster=DR_CONFIG['ecs_cluster'],\n        service=DR_CONFIG['ecs_service'],\n        desiredCount=10  # Match production capacity\n    )\n    \n    # Step 3: Update Route 53 to point to secondary\n    logger.info(\"Updating DNS to secondary region\")\n    route53.change_resource_record_sets(\n        HostedZoneId=DR_CONFIG['hosted_zone_id'],\n        ChangeBatch={\n            'Comment': 'DR failover - routing to secondary region',\n            'Changes': [{\n                'Action': 'UPSERT',\n                'ResourceRecordSet': {\n                    'Name': DR_CONFIG['domain'],\n                    'Type': 'A',\n                    'AliasTarget': {\n                        'HostedZoneId': 'Z35SXDOTRQ7X7K',  # us-west-2 ALB zone\n                        'DNSName': 'api-secondary-alb.us-west-2.elb.amazonaws.com',\n                        'EvaluateTargetHealth': True\n                    }\n                }\n            }]\n        }\n    )\n    \n    # Step 4: Notify operations team\n    sns.publish(\n        TopicArn=DR_CONFIG['notification_topic'],\n        Subject='DR FAILOVER EXECUTED',\n        Message=json.dumps({\n            'event': 'failover_complete',\n            'primary_region': DR_CONFIG['primary_region'],\n            'active_region': DR_CONFIG['secondary_region'],\n            'timestamp': str(context.get_remaining_time_in_millis())\n        })\n    )\n    \n    logger.info(\"Failover complete - traffic now routing to secondary region\")\n\ndef validate_dr_readiness():\n    \"\"\"Validate DR infrastructure is ready for failover.\"\"\"\n    checks = []\n    \n    # Check replica lag\n    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])\n    instances = rds_secondary.describe_db_instances(\n        DBInstanceIdentifier=DR_CONFIG['replica_cluster_id']\n    )\n    replica_lag = instances['DBInstances'][0].get('ReplicaLag', 999)\n    checks.append({\n        'check': 'replica_lag_seconds',\n        'value': replica_lag,\n        'healthy': replica_lag < 60\n    })\n    \n    # Check ECS task health in DR region\n    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])\n    services = ecs_secondary.describe_services(\n        cluster=DR_CONFIG['ecs_cluster'],\n        services=[DR_CONFIG['ecs_service']]\n    )\n    running_count = services['services'][0]['runningCount']\n    checks.append({\n        'check': 'dr_ecs_running_tasks',\n        'value': running_count,\n        'healthy': running_count >= 2\n    })\n    \n    all_healthy = all(c['healthy'] for c in checks)\n    logger.info(f\"DR readiness: {'READY' if all_healthy else 'NOT READY'}\", extra={'checks': checks})\n    \n    return {'ready': all_healthy, 'checks': checks}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "import boto3\nfrom dataclasses import dataclass\nfrom enum import Enum\n\nclass Severity(Enum):\n    CRITICAL = \"critical\"\n    HIGH = \"high\"\n    MEDIUM = \"medium\"\n    LOW = \"low\"\n\n@dataclass\nclass Finding:\n    pillar: str\n    check: str\n    severity: Severity\n    resource: str\n    recommendation: str\n\ndef run_reliability_checks() -> list[Finding]:\n    \"\"\"Automated Well-Architected reliability pillar checks.\"\"\"\n    findings = []\n    ec2 = boto3.client('ec2')\n    rds = boto3.client('rds')\n    elbv2 = boto3.client('elbv2')\n    \n    # Check: RDS Multi-AZ enabled for production databases\n    db_instances = rds.describe_db_instances()\n    for db in db_instances['DBInstances']:\n        tags = {t['Key']: t['Value'] for t in \n                rds.list_tags_for_resource(ResourceArn=db['DBInstanceArn'])['TagList']}\n        \n        if tags.get('Environment') == 'production' and not db['MultiAZ']:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='RDS Multi-AZ',\n                severity=Severity.CRITICAL,\n                resource=db['DBInstanceIdentifier'],\n                recommendation='Enable Multi-AZ for production databases to survive AZ failures'\n            ))\n    \n    # Check: ALB spans multiple AZs\n    load_balancers = elbv2.describe_load_balancers()\n    for lb in load_balancers['LoadBalancers']:\n        az_count = len(lb['AvailabilityZones'])\n        if az_count < 2:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='ALB Multi-AZ',\n                severity=Severity.HIGH,\n                resource=lb['LoadBalancerName'],\n                recommendation=f'ALB only spans {az_count} AZ(s). Deploy across 3+ AZs for resilience'\n            ))\n    \n    # Check: Auto Scaling groups have appropriate min capacity\n    asg = boto3.client('autoscaling')\n    groups = asg.describe_auto_scaling_groups()\n    for group in groups['AutoScalingGroups']:\n        if group['MinSize'] < 2:\n            findings.append(Finding(\n                pillar='Reliability',\n                check='ASG Minimum Capacity',\n                severity=Severity.MEDIUM,\n                resource=group['AutoScalingGroupName'],\n                recommendation='Set minimum capacity >= 2 for production ASGs to survive instance failures'\n            ))\n    \n    return findings\n\ndef run_cost_optimization_checks() -> list[Finding]:\n    \"\"\"Automated Well-Architected cost optimization checks.\"\"\"\n    findings = []\n    ec2 = boto3.client('ec2')\n    ce = boto3.client('ce')\n    \n    # Check: Unattached EBS volumes\n    volumes = ec2.describe_volumes(Filters=[{'Name': 'status', 'Values': ['available']}])\n    for vol in volumes['Volumes']:\n        size_gb = vol['Size']\n        monthly_cost = size_gb * 0.10  # gp3 pricing\n        if monthly_cost > 5:\n            findings.append(Finding(\n                pillar='Cost Optimization',\n                check='Unattached EBS Volumes',\n                severity=Severity.MEDIUM,\n                resource=vol['VolumeId'],\n                recommendation=f'{size_gb}GB unattached volume costing ~${monthly_cost:.2f}/month. Delete or snapshot and remove.'\n            ))\n    \n    # Check: Idle EC2 instances (CPU < 5% for 7 days)\n    cloudwatch = boto3.client('cloudwatch')\n    instances = ec2.describe_instances(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])\n    \n    for reservation in instances['Reservations']:\n        for instance in reservation['Instances']:\n            # Query average CPU over 7 days\n            metrics = cloudwatch.get_metric_statistics(\n                Namespace='AWS/EC2',\n                MetricName='CPUUtilization',\n                Dimensions=[{'Name': 'InstanceId', 'Value': instance['InstanceId']}],\n                StartTime='2024-01-08T00:00:00Z',\n                EndTime='2024-01-15T00:00:00Z',\n                Period=604800,\n                Statistics=['Average']\n            )\n            if metrics['Datapoints'] and metrics['Datapoints'][0]['Average'] < 5.0:\n                findings.append(Finding(\n                    pillar='Cost Optimization',\n                    check='Idle EC2 Instances',\n                    severity=Severity.HIGH,\n                    resource=instance['InstanceId'],\n                    recommendation='Instance averaging <5% CPU over 7 days. Consider rightsizing or terminating.'\n                ))\n    \n    return findings",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [
+    {
+      "expression": "0.02/GB), NAT Gateway processing (",
+      "display": "inline"
+    },
+    {
+      "expression": "180K/month AWS bill to ",
+      "display": "inline"
+    }
+  ],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/aws/cloud-architecture-patterns.md",
+    "wordCount": 1560,
+    "sectionCount": 12
+  }
+}

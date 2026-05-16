@@ -1,0 +1,438 @@
+{
+  "id": "unit-testing-mocking-strategies",
+  "slug": "mocking-strategies",
+  "title": "Mocking Strategies",
+  "category": "Testing",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Mock: A test double that records interactions and can verify expectations (was this method called with these arguments?)",
+            "Stub: A test double that returns predetermined responses without verifying interactions",
+            "Spy: Wraps the real implementation, allowing real behavior while recording calls for verification",
+            "Fake: A working implementation with shortcuts (in-memory database, local file system instead of S3)",
+            "Dummy: A placeholder object passed to satisfy a parameter requirement but never actually used",
+            "Dependency Injection: Design pattern that makes code testable by accepting dependencies as parameters rather than creating them internally",
+            "Over-mocking: Anti-pattern where excessive mocking makes tests tautological — they verify the mock setup, not real behavior",
+            "Mock boundary: Mock at architectural boundaries (ports/adapters), not between internal collaborators"
+          ]
+        }
+      ],
+      "wordCount": 116,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Mocking is a tool for controlling test boundaries — it lets you isolate the unit under test from its dependencies. Use mocking when the real dependency is slow (network calls, database queries, file I/O), non-deterministic (current time, random numbers, external API responses), expensive (paid APIs, rate-limited services), unavailable in test environments (production-only services, hardware devices), or has side effects you don't want in tests (sending emails, charging credit cards, deleting data)."
+        },
+        {
+          "type": "paragraph",
+          "text": "The critical decision is where to draw the mock boundary. Mock at the architectural boundary between your code and the external world — the interface between your domain logic and infrastructure. Don't mock between internal collaborators within the same bounded context. If class A calls class B and both are part of your domain logic, test them together. If class A calls an external payment gateway through an interface, mock that interface."
+        },
+        {
+          "type": "paragraph",
+          "text": "The rule of thumb: if you own both sides of the interaction and they change together, don't mock between them. If one side is external, unstable, or owned by another team, mock it."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid mocking when the real dependency is fast and deterministic (pure functions, in-memory data structures), when the mock would be more complex than the real implementation, when you're testing the integration itself (use integration tests instead), and when mocking would hide bugs at the boundary (serialization errors, network timeouts, connection pool exhaustion)."
+        }
+      ],
+      "wordCount": 228,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "test-doubles-taxonomy-in-practice",
+          "heading": "Test Doubles Taxonomy in Practice",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Understanding when to use each type of test double is fundamental to writing effective tests. Each type serves a different purpose and provides different guarantees."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { describe, it, expect, vi } from 'vitest';\n\n// --- INTERFACES (the boundaries we mock at) ---\ninterface EmailService {\n  send(to: string, subject: string, body: string): Promise<boolean>;\n  getDeliveryStatus(messageId: string): Promise<'delivered' | 'bounced' | 'pending'>;\n}\n\ninterface UserRepository {\n  findById(id: string): Promise<User | null>;\n  save(user: User): Promise<User>;\n  findByEmail(email: string): Promise<User | null>;\n}\n\ninterface Clock {\n  now(): Date;\n}\n\n// --- STUB: Returns canned responses, no verification ---\nclass StubEmailService implements EmailService {\n  async send(): Promise<boolean> {\n    return true; // Always succeeds\n  }\n  async getDeliveryStatus(): Promise<'delivered' | 'bounced' | 'pending'> {\n    return 'delivered'; // Always delivered\n  }\n}\n\n// --- FAKE: Working implementation with shortcuts ---\nclass FakeUserRepository implements UserRepository {\n  private users: Map<string, User> = new Map();\n  private nextId = 1;\n\n  async findById(id: string): Promise<User | null> {\n    return this.users.get(id) || null;\n  }\n\n  async save(user: User): Promise<User> {\n    const saved = { ...user, id: user.id || `user-${this.nextId++}` };\n    this.users.set(saved.id, saved);\n    return saved;\n  }\n\n  async findByEmail(email: string): Promise<User | null> {\n    for (const user of this.users.values()) {\n      if (user.email === email) return user;\n    }\n    return null;\n  }\n\n  // Test helper: seed data\n  seed(users: User[]): void {\n    for (const user of users) {\n      this.users.set(user.id, user);\n    }\n  }\n\n  // Test helper: inspect state\n  getAll(): User[] {\n    return Array.from(this.users.values());\n  }\n}\n\n// --- MOCK: Records interactions for verification ---\ndescribe('PasswordResetService', () => {\n  it('should send reset email and record the attempt', async () => {\n    // Mock: we care that send() was called with specific arguments\n    const mockEmail: EmailService = {\n      send: vi.fn().mockResolvedValue(true),\n      getDeliveryStatus: vi.fn().mockResolvedValue('delivered'),\n    };\n    const fakeRepo = new FakeUserRepository();\n    fakeRepo.seed([{ id: 'user-1', email: 'john@example.com', name: 'John' }]);\n\n    const service = new PasswordResetService(fakeRepo, mockEmail);\n    await service.requestReset('john@example.com');\n\n    // Verify the interaction (mock behavior)\n    expect(mockEmail.send).toHaveBeenCalledWith(\n      'john@example.com',\n      'Password Reset Request',\n      expect.stringContaining('reset your password')\n    );\n    expect(mockEmail.send).toHaveBeenCalledTimes(1);\n  });\n\n  it('should not send email for non-existent user (security)', async () => {\n    const mockEmail: EmailService = {\n      send: vi.fn().mockResolvedValue(true),\n      getDeliveryStatus: vi.fn(),\n    };\n    const fakeRepo = new FakeUserRepository(); // Empty — no users\n\n    const service = new PasswordResetService(fakeRepo, mockEmail);\n    // Should not throw (don't reveal user existence)\n    await service.requestReset('nobody@example.com');\n\n    // Verify NO email was sent\n    expect(mockEmail.send).not.toHaveBeenCalled();\n  });\n});\n\n// --- SPY: Real implementation + recording ---\ndescribe('AuditLogger with Spy', () => {\n  it('should log to real logger while recording calls', () => {\n    const realLogger = new ConsoleAuditLogger();\n    const spy = vi.spyOn(realLogger, 'log');\n\n    const service = new UserService(realLogger);\n    service.deleteUser('user-123');\n\n    // Real logging happened AND we can verify it\n    expect(spy).toHaveBeenCalledWith('USER_DELETED', { userId: 'user-123' });\n    spy.mockRestore();\n  });\n});\n\n// --- CLOCK STUB: Controlling time ---\ndescribe('TokenExpiration with Clock stub', () => {\n  it('should expire tokens after 24 hours', () => {\n    const fixedClock: Clock = {\n      now: () => new Date('2024-06-15T10:00:00Z'),\n    };\n\n    const tokenService = new TokenService(fixedClock);\n    const token = tokenService.createToken('user-1');\n\n    // Advance clock by 25 hours\n    fixedClock.now = () => new Date('2024-06-16T11:00:00Z');\n\n    expect(tokenService.isValid(token)).toBe(false);\n  });\n\n  it('should accept tokens within 24 hours', () => {\n    const fixedClock: Clock = {\n      now: () => new Date('2024-06-15T10:00:00Z'),\n    };\n\n    const tokenService = new TokenService(fixedClock);\n    const token = tokenService.createToken('user-1');\n\n    // Advance clock by 23 hours\n    fixedClock.now = () => new Date('2024-06-16T09:00:00Z');\n\n    expect(tokenService.isValid(token)).toBe(true);\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        },
+        {
+          "id": "dependency-injection-for-testability",
+          "heading": "Dependency Injection for Testability",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Dependency injection is the architectural pattern that makes mocking possible. Without DI, code creates its own dependencies internally, making them impossible to replace in tests."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// BAD: Hard-coded dependency — untestable without real SMTP server\npublic class NotificationService {\n    public void notifyUser(String userId, String message) {\n        // Creates its own dependency — can't mock this\n        SmtpClient client = new SmtpClient(\"smtp.company.com\", 587);\n        User user = new UserDao().findById(userId); // Another hard-coded dep\n        client.send(user.getEmail(), \"Notification\", message);\n    }\n}\n\n// GOOD: Dependencies injected — fully testable\npublic class NotificationService {\n    private final EmailSender emailSender;\n    private final UserRepository userRepository;\n    private final NotificationTemplateEngine templateEngine;\n\n    // Constructor injection: dependencies are explicit and replaceable\n    public NotificationService(\n            EmailSender emailSender,\n            UserRepository userRepository,\n            NotificationTemplateEngine templateEngine) {\n        this.emailSender = emailSender;\n        this.userRepository = userRepository;\n        this.templateEngine = templateEngine;\n    }\n\n    public NotificationResult notifyUser(String userId, String message) {\n        User user = userRepository.findById(userId)\n            .orElseThrow(() -> new UserNotFoundException(userId));\n\n        String rendered = templateEngine.render(\"notification\", Map.of(\n            \"userName\", user.getName(),\n            \"message\", message\n        ));\n\n        boolean sent = emailSender.send(\n            user.getEmail(),\n            \"Notification\",\n            rendered\n        );\n\n        return new NotificationResult(sent, user.getEmail());\n    }\n}\n\n// Test with injected mocks\n@ExtendWith(MockitoExtension.class)\nclass NotificationServiceTest {\n\n    @Mock private EmailSender emailSender;\n    @Mock private UserRepository userRepository;\n    @Mock private NotificationTemplateEngine templateEngine;\n    @InjectMocks private NotificationService service;\n\n    @Test\n    @DisplayName(\"should send rendered notification to user email\")\n    void sendNotification() {\n        // Arrange\n        User user = new User(\"user-1\", \"Alice\", \"alice@example.com\");\n        when(userRepository.findById(\"user-1\")).thenReturn(Optional.of(user));\n        when(templateEngine.render(eq(\"notification\"), anyMap()))\n            .thenReturn(\"<p>Hello Alice, you have a message</p>\");\n        when(emailSender.send(anyString(), anyString(), anyString())).thenReturn(true);\n\n        // Act\n        NotificationResult result = service.notifyUser(\"user-1\", \"Your order shipped\");\n\n        // Assert\n        assertThat(result.isSent()).isTrue();\n        assertThat(result.getRecipient()).isEqualTo(\"alice@example.com\");\n\n        verify(emailSender).send(\n            eq(\"alice@example.com\"),\n            eq(\"Notification\"),\n            contains(\"Hello Alice\")\n        );\n    }\n\n    @Test\n    @DisplayName(\"should throw when user not found\")\n    void userNotFound() {\n        when(userRepository.findById(\"ghost\")).thenReturn(Optional.empty());\n\n        assertThatThrownBy(() -> service.notifyUser(\"ghost\", \"message\"))\n            .isInstanceOf(UserNotFoundException.class)\n            .hasMessageContaining(\"ghost\");\n\n        // Verify no email was sent\n        verifyNoInteractions(emailSender);\n    }\n\n    @Test\n    @DisplayName(\"should return failure result when email sending fails\")\n    void emailSendingFails() {\n        User user = new User(\"user-1\", \"Alice\", \"alice@example.com\");\n        when(userRepository.findById(\"user-1\")).thenReturn(Optional.of(user));\n        when(templateEngine.render(anyString(), anyMap())).thenReturn(\"content\");\n        when(emailSender.send(anyString(), anyString(), anyString())).thenReturn(false);\n\n        NotificationResult result = service.notifyUser(\"user-1\", \"message\");\n\n        assertThat(result.isSent()).isFalse();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 25,
+          "subsections": []
+        },
+        {
+          "id": "over-mocking-anti-pattern-and-solution",
+          "heading": "Over-Mocking Anti-Pattern and Solution",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When tests mock everything, they test the mock configuration rather than real behavior. The test passes regardless of whether the production code is correct."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// ❌ OVER-MOCKED: This test verifies nothing useful\ndescribe('OrderProcessor - over-mocked', () => {\n  it('should process order', async () => {\n    const mockValidator = { validate: vi.fn().mockReturnValue({ valid: true }) };\n    const mockPricer = { calculate: vi.fn().mockReturnValue(99.99) };\n    const mockRepo = { save: vi.fn().mockResolvedValue({ id: 'order-1' }) };\n    const mockNotifier = { notify: vi.fn().mockResolvedValue(undefined) };\n\n    const processor = new OrderProcessor(mockValidator, mockPricer, mockRepo, mockNotifier);\n    const result = await processor.process({ items: [{ id: 'p1', qty: 1 }] });\n\n    // These assertions just verify the mocks were called — not that the logic is correct\n    expect(mockValidator.validate).toHaveBeenCalled();\n    expect(mockPricer.calculate).toHaveBeenCalled();\n    expect(mockRepo.save).toHaveBeenCalled();\n    expect(result.id).toBe('order-1'); // Just echoing the mock return value\n  });\n});\n\n// ✅ BETTER: Mock only external boundaries, test real logic\ndescribe('OrderProcessor - properly bounded', () => {\n  it('should calculate correct total with tax and apply business rules', async () => {\n    // Real validator and pricer (they're pure logic, no external deps)\n    const validator = new OrderValidator();\n    const pricer = new OrderPricer(taxRatesByState);\n\n    // Mock only the external boundaries\n    const fakeRepo = new InMemoryOrderRepository();\n    const mockNotifier = { notify: vi.fn().mockResolvedValue(undefined) };\n\n    const processor = new OrderProcessor(validator, pricer, fakeRepo, mockNotifier);\n\n    const result = await processor.process({\n      items: [\n        { id: 'p1', qty: 2, unitPrice: 25.00 },\n        { id: 'p2', qty: 1, unitPrice: 49.99 },\n      ],\n      state: 'OR', // Oregon: no sales tax\n      customerId: 'cust-1',\n    });\n\n    // Now we're testing REAL behavior\n    expect(result.subtotal).toBe(99.99);\n    expect(result.tax).toBe(0); // Oregon has no sales tax\n    expect(result.total).toBe(99.99);\n    expect(result.status).toBe('confirmed');\n\n    // Verify the order was persisted with correct data\n    const saved = await fakeRepo.findById(result.id);\n    expect(saved).not.toBeNull();\n    expect(saved!.total).toBe(99.99);\n  });\n\n  it('should reject order when validation fails', async () => {\n    const validator = new OrderValidator(); // Real validation logic\n    const pricer = new OrderPricer(taxRatesByState);\n    const fakeRepo = new InMemoryOrderRepository();\n    const mockNotifier = { notify: vi.fn() };\n\n    const processor = new OrderProcessor(validator, pricer, fakeRepo, mockNotifier);\n\n    // Empty items should fail validation\n    await expect(\n      processor.process({ items: [], state: 'CA', customerId: 'cust-1' })\n    ).rejects.toThrow('Order must contain at least one item');\n\n    // Nothing should be saved\n    expect(fakeRepo.getAll()).toHaveLength(0);\n    expect(mockNotifier.notify).not.toHaveBeenCalled();\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 24,
+          "subsections": []
+        },
+        {
+          "id": "module-level-mocking-for-legacy-code",
+          "heading": "Module-Level Mocking for Legacy Code",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When working with legacy code that uses module-level imports instead of dependency injection, framework-level mocking provides a way to intercept dependencies."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { describe, it, expect, vi, beforeEach } from 'vitest';\n\n// Mock the module before importing the code under test\nvi.mock('./external-api-client', () => ({\n  ExternalApiClient: {\n    fetchUserProfile: vi.fn(),\n    updateUserPreferences: vi.fn(),\n  },\n}));\n\nvi.mock('./cache-service', () => ({\n  cacheService: {\n    get: vi.fn(),\n    set: vi.fn(),\n    invalidate: vi.fn(),\n  },\n}));\n\nimport { ExternalApiClient } from './external-api-client';\nimport { cacheService } from './cache-service';\nimport { UserProfileService } from './user-profile-service';\n\ndescribe('UserProfileService (legacy module mocking)', () => {\n  beforeEach(() => {\n    vi.clearAllMocks();\n  });\n\n  it('should return cached profile when available', async () => {\n    const cachedProfile = { id: 'user-1', name: 'Alice', tier: 'premium' };\n    vi.mocked(cacheService.get).mockResolvedValue(cachedProfile);\n\n    const service = new UserProfileService();\n    const profile = await service.getProfile('user-1');\n\n    expect(profile).toEqual(cachedProfile);\n    expect(ExternalApiClient.fetchUserProfile).not.toHaveBeenCalled();\n  });\n\n  it('should fetch from API and cache when not in cache', async () => {\n    const apiProfile = { id: 'user-1', name: 'Alice', tier: 'premium' };\n    vi.mocked(cacheService.get).mockResolvedValue(null);\n    vi.mocked(ExternalApiClient.fetchUserProfile).mockResolvedValue(apiProfile);\n\n    const service = new UserProfileService();\n    const profile = await service.getProfile('user-1');\n\n    expect(profile).toEqual(apiProfile);\n    expect(ExternalApiClient.fetchUserProfile).toHaveBeenCalledWith('user-1');\n    expect(cacheService.set).toHaveBeenCalledWith(\n      'profile:user-1',\n      apiProfile,\n      expect.objectContaining({ ttl: 3600 })\n    );\n  });\n\n  it('should invalidate cache on profile update', async () => {\n    vi.mocked(ExternalApiClient.updateUserPreferences).mockResolvedValue({ success: true });\n\n    const service = new UserProfileService();\n    await service.updatePreferences('user-1', { theme: 'dark' });\n\n    expect(cacheService.invalidate).toHaveBeenCalledWith('profile:user-1');\n  });\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 21,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "1-mocking-what-you-dont-own",
+          "heading": "1. Mocking What You Don't Own",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Mocking third-party libraries directly (mocking axios.get, fs.readFile, or pg.query) couples your tests to the library's API. When the library updates, your mocks break even though your code still works. Instead, wrap third-party libraries in your own adapter interface and mock that interface. Your adapter is stable; the library behind it can change without affecting tests."
+            }
+          ],
+          "wordCount": 55,
+          "subsections": []
+        },
+        {
+          "id": "2-mock-setup-thats-more-complex-than-production-code",
+          "heading": "2. Mock Setup That's More Complex Than Production Code",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "If your test's mock setup is 50 lines and the production code is 10 lines, the test is testing the wrong thing. Complex mock setups indicate either over-mocking (mock fewer things) or a design problem (the unit has too many dependencies). Refactor the production code to have fewer, more focused dependencies."
+            }
+          ],
+          "wordCount": 51,
+          "subsections": []
+        },
+        {
+          "id": "3-verifying-interaction-order-when-order-doesnt-matter",
+          "heading": "3. Verifying Interaction Order When Order Doesn't Matter",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Tests that assert mockA was called before mockB are brittle when the order is an implementation detail, not a requirement. Only verify call order when it's semantically meaningful (e.g., \"validate before save\" or \"reserve inventory before charging payment\"). For independent operations, verify they were both called without asserting order."
+            }
+          ],
+          "wordCount": 49,
+          "subsections": []
+        },
+        {
+          "id": "4-not-resetting-mocks-between-tests",
+          "heading": "4. Not Resetting Mocks Between Tests",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Mocks that accumulate state across tests cause order-dependent failures. A mock that records \"called 3 times\" in Test A will show \"called 4 times\" in Test B if not reset. Always use beforeEach(() => vi.clearAllMocks()) or equivalent. This is the mock equivalent of shared mutable state."
+            }
+          ],
+          "wordCount": 46,
+          "subsections": []
+        },
+        {
+          "id": "5-mocking-concrete-classes-instead-of-interfaces",
+          "heading": "5. Mocking Concrete Classes Instead of Interfaces",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Mocking a concrete class requires the mock to replicate all methods, including ones irrelevant to the test. Mocking an interface requires only the methods the test cares about. Design with interfaces at boundaries: PaymentGateway interface rather than StripeClient class. This makes tests focused and production code swappable."
+            }
+          ],
+          "wordCount": 47,
+          "subsections": []
+        },
+        {
+          "id": "6-using-mocks-to-test-private-behavior",
+          "heading": "6. Using Mocks to Test Private Behavior",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "If you need to mock an internal collaborator to test a private method's behavior, you're testing at the wrong level. Either test through the public interface (which exercises the private method indirectly) or extract the private logic into its own unit with a public interface. Mocking internals creates tests that break on every refactor."
+            }
+          ],
+          "wordCount": 54,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "payment-processing-with-multiple-gateways",
+          "heading": "Payment Processing with Multiple Gateways",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A payment service supports Stripe, PayPal, and bank transfers. Each gateway has a different API, different error codes, and different retry semantics. The service uses a PaymentGateway interface with implementations for each provider. Tests mock the gateway interface to verify business logic (retry on transient failure, fail fast on invalid card, idempotency key handling) without hitting real payment APIs. A separate integration test suite runs against Stripe's test mode to verify the adapter implementation."
+            }
+          ],
+          "wordCount": 74,
+          "subsections": []
+        },
+        {
+          "id": "event-driven-architecture-testing",
+          "heading": "Event-Driven Architecture Testing",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A microservice publishes domain events to Kafka. Unit tests use a fake event publisher (in-memory list) to verify that the correct events are published with correct payloads after each operation. The fake captures published events for assertion without requiring a running Kafka cluster. Integration tests verify the real Kafka publisher serializes events correctly and handles broker unavailability."
+            }
+          ],
+          "wordCount": 57,
+          "subsections": []
+        },
+        {
+          "id": "external-api-rate-limiting",
+          "heading": "External API Rate Limiting",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A service integrates with a rate-limited third-party API (100 requests/minute). Tests use a mock that simulates rate limit responses (HTTP 429 with Retry-After header) to verify the client's backoff logic, request queuing, and circuit breaker behavior. Testing this with the real API would be slow, expensive, and non-deterministic. The mock provides precise control over failure scenarios."
+            }
+          ],
+          "wordCount": 56,
+          "subsections": []
+        },
+        {
+          "id": "feature-flag-service",
+          "heading": "Feature Flag Service",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A feature flag system controls which users see new features. Tests use a stub flag service that returns predetermined flag values, enabling tests to verify behavior under different flag combinations without connecting to LaunchDarkly or Split. This lets tests cover all flag permutations (feature on/off, percentage rollout, user targeting) deterministically."
+            }
+          ],
+          "wordCount": 50,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: When should you use a mock versus a stub versus a fake?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Use a stub when you need to control what a dependency returns but don't care how it's called — you're testing the unit's logic given specific inputs from its dependencies. Use a mock when the interaction itself is the behavior you're testing — \"did we send the email?\", \"did we publish the event?\", \"did we call the payment gateway with the correct amount?\" Use a fake when you need a working implementation that's simpler than production — an in-memory database, a local file system instead of S3, a synchronous event bus instead of Kafka. Fakes provide the most realistic behavior but require maintenance as the interface evolves. The decision heuristic: if you're testing what your code does with a response, use a stub. If you're testing that your code sends the right request, use a mock. If you need realistic multi-step interactions, use a fake."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the \"don't mock what you don't own\" principle?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: This principle says you should not mock third-party APIs directly (axios, pg, AWS SDK). Instead, create your own adapter interface that wraps the third-party library, and mock your adapter. The reasons: third-party APIs change between versions, breaking your mocks even when your code is fine. Your mocks might not accurately represent the library's actual behavior (edge cases, error formats). And mocking at your adapter boundary forces you to define a clean interface that encapsulates the third-party complexity. In practice: don't mock axios.get('/users'). Instead, create UserApiClient.getUsers() that uses axios internally, and mock UserApiClient. Your adapter is stable; the library behind it can change without affecting tests."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you avoid over-mocking in unit tests?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Three strategies. First, mock only at architectural boundaries — between your domain logic and external infrastructure (databases, APIs, message queues, file systems). Don't mock between internal collaborators that change together. Second, use fakes instead of mocks for complex interactions — an in-memory repository is more realistic than a mock that returns canned responses. Third, if a test requires more than 3 mocks, reconsider the design — the unit under test might have too many responsibilities. Extract collaborators, push logic into pure functions that need no mocking, or test at a higher level where fewer boundaries need mocking. The goal is tests that verify real behavior, not tests that verify you configured mocks correctly."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does dependency injection improve testability?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Dependency injection makes dependencies explicit and replaceable. Without DI, a class creates its own dependencies internally (new SmtpClient(...), DriverManager.getConnection(...)), making them impossible to replace in tests. With DI, dependencies are passed in through constructors or method parameters, allowing tests to substitute test doubles. DI also improves design by making coupling visible — if a constructor takes 8 parameters, the class clearly has too many responsibilities. In production, a DI container (Spring, Guice, tsyringe) wires real implementations. In tests, you wire test doubles manually or with @Mock annotations. The key insight: DI isn't about frameworks — it's about designing code where dependencies flow inward through explicit interfaces rather than being reached for through global state or direct construction."
+        }
+      ],
+      "wordCount": 524,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "create-shared-test-double-libraries",
+          "heading": "Create Shared Test Double Libraries",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "For interfaces used across many test files (UserRepository, EventPublisher, Clock), create reusable test doubles in a shared test utilities package. This prevents each test file from reimplementing the same fakes and ensures consistent behavior across the test suite. When the interface changes, update the shared fake once instead of 50 test files."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// src/test-utils/fakes.ts — Shared across all test files\nexport class FakeUserRepository implements UserRepository {\n  private store = new Map<string, User>();\n\n  async findById(id: string): Promise<User | null> {\n    return this.store.get(id) ?? null;\n  }\n\n  async save(user: User): Promise<User> {\n    this.store.set(user.id, user);\n    return user;\n  }\n\n  // Test helpers\n  seed(users: User[]): void {\n    users.forEach((u) => this.store.set(u.id, u));\n  }\n\n  reset(): void {\n    this.store.clear();\n  }\n\n  getAll(): User[] {\n    return Array.from(this.store.values());\n  }\n}\n\nexport class FakeEventBus implements EventBus {\n  private published: DomainEvent[] = [];\n\n  async publish(event: DomainEvent): Promise<void> {\n    this.published.push(event);\n  }\n\n  // Test helpers\n  getPublished(): DomainEvent[] {\n    return [...this.published];\n  }\n\n  getPublishedOfType<T extends DomainEvent>(type: string): T[] {\n    return this.published.filter((e) => e.type === type) as T[];\n  }\n\n  reset(): void {\n    this.published = [];\n  }\n}\n\nexport class FakeClock implements Clock {\n  private current: Date;\n\n  constructor(initial: Date = new Date('2024-01-01T00:00:00Z')) {\n    this.current = initial;\n  }\n\n  now(): Date {\n    return new Date(this.current);\n  }\n\n  advance(ms: number): void {\n    this.current = new Date(this.current.getTime() + ms);\n  }\n\n  advanceMinutes(minutes: number): void {\n    this.advance(minutes * 60 * 1000);\n  }\n\n  advanceHours(hours: number): void {\n    this.advance(hours * 60 * 60 * 1000);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 52,
+          "subsections": []
+        },
+        {
+          "id": "use-contract-tests-to-validate-test-doubles",
+          "heading": "Use Contract Tests to Validate Test Doubles",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "A dangerous failure mode is when your test double diverges from the real implementation. The mock returns { data: [...] } but the real API returns { results: [...] }. Contract tests verify that your fakes and stubs behave identically to the real implementation for a defined set of scenarios. Run these contract tests against both the fake and the real implementation — if they both pass, your fake is trustworthy."
+            }
+          ],
+          "wordCount": 71,
+          "subsections": []
+        },
+        {
+          "id": "prefer-narrow-interfaces-for-mockability",
+          "heading": "Prefer Narrow Interfaces for Mockability",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Instead of depending on a broad interface with 20 methods (only 2 of which you use), depend on a narrow interface with just the methods you need. This follows the Interface Segregation Principle and makes mocking trivial — you only need to implement 2 methods in your test double instead of 20. It also makes dependencies explicit: the narrow interface documents exactly what capabilities the unit actually needs."
+            }
+          ],
+          "wordCount": 68,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Unit Testing — Mocking is primarily used within unit tests to achieve isolation",
+            "Integration Testing — When to stop mocking and test with real dependencies",
+            "Test Architecture — How mock boundaries align with architectural boundaries in the test pyramid",
+            "Property-Based Testing — Generating diverse inputs for mocked dependency responses"
+          ]
+        }
+      ],
+      "wordCount": 49,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import { describe, it, expect, vi } from 'vitest';\n\n// --- INTERFACES (the boundaries we mock at) ---\ninterface EmailService {\n  send(to: string, subject: string, body: string): Promise<boolean>;\n  getDeliveryStatus(messageId: string): Promise<'delivered' | 'bounced' | 'pending'>;\n}\n\ninterface UserRepository {\n  findById(id: string): Promise<User | null>;\n  save(user: User): Promise<User>;\n  findByEmail(email: string): Promise<User | null>;\n}\n\ninterface Clock {\n  now(): Date;\n}\n\n// --- STUB: Returns canned responses, no verification ---\nclass StubEmailService implements EmailService {\n  async send(): Promise<boolean> {\n    return true; // Always succeeds\n  }\n  async getDeliveryStatus(): Promise<'delivered' | 'bounced' | 'pending'> {\n    return 'delivered'; // Always delivered\n  }\n}\n\n// --- FAKE: Working implementation with shortcuts ---\nclass FakeUserRepository implements UserRepository {\n  private users: Map<string, User> = new Map();\n  private nextId = 1;\n\n  async findById(id: string): Promise<User | null> {\n    return this.users.get(id) || null;\n  }\n\n  async save(user: User): Promise<User> {\n    const saved = { ...user, id: user.id || `user-${this.nextId++}` };\n    this.users.set(saved.id, saved);\n    return saved;\n  }\n\n  async findByEmail(email: string): Promise<User | null> {\n    for (const user of this.users.values()) {\n      if (user.email === email) return user;\n    }\n    return null;\n  }\n\n  // Test helper: seed data\n  seed(users: User[]): void {\n    for (const user of users) {\n      this.users.set(user.id, user);\n    }\n  }\n\n  // Test helper: inspect state\n  getAll(): User[] {\n    return Array.from(this.users.values());\n  }\n}\n\n// --- MOCK: Records interactions for verification ---\ndescribe('PasswordResetService', () => {\n  it('should send reset email and record the attempt', async () => {\n    // Mock: we care that send() was called with specific arguments\n    const mockEmail: EmailService = {\n      send: vi.fn().mockResolvedValue(true),\n      getDeliveryStatus: vi.fn().mockResolvedValue('delivered'),\n    };\n    const fakeRepo = new FakeUserRepository();\n    fakeRepo.seed([{ id: 'user-1', email: 'john@example.com', name: 'John' }]);\n\n    const service = new PasswordResetService(fakeRepo, mockEmail);\n    await service.requestReset('john@example.com');\n\n    // Verify the interaction (mock behavior)\n    expect(mockEmail.send).toHaveBeenCalledWith(\n      'john@example.com',\n      'Password Reset Request',\n      expect.stringContaining('reset your password')\n    );\n    expect(mockEmail.send).toHaveBeenCalledTimes(1);\n  });\n\n  it('should not send email for non-existent user (security)', async () => {\n    const mockEmail: EmailService = {\n      send: vi.fn().mockResolvedValue(true),\n      getDeliveryStatus: vi.fn(),\n    };\n    const fakeRepo = new FakeUserRepository(); // Empty — no users\n\n    const service = new PasswordResetService(fakeRepo, mockEmail);\n    // Should not throw (don't reveal user existence)\n    await service.requestReset('nobody@example.com');\n\n    // Verify NO email was sent\n    expect(mockEmail.send).not.toHaveBeenCalled();\n  });\n});\n\n// --- SPY: Real implementation + recording ---\ndescribe('AuditLogger with Spy', () => {\n  it('should log to real logger while recording calls', () => {\n    const realLogger = new ConsoleAuditLogger();\n    const spy = vi.spyOn(realLogger, 'log');\n\n    const service = new UserService(realLogger);\n    service.deleteUser('user-123');\n\n    // Real logging happened AND we can verify it\n    expect(spy).toHaveBeenCalledWith('USER_DELETED', { userId: 'user-123' });\n    spy.mockRestore();\n  });\n});\n\n// --- CLOCK STUB: Controlling time ---\ndescribe('TokenExpiration with Clock stub', () => {\n  it('should expire tokens after 24 hours', () => {\n    const fixedClock: Clock = {\n      now: () => new Date('2024-06-15T10:00:00Z'),\n    };\n\n    const tokenService = new TokenService(fixedClock);\n    const token = tokenService.createToken('user-1');\n\n    // Advance clock by 25 hours\n    fixedClock.now = () => new Date('2024-06-16T11:00:00Z');\n\n    expect(tokenService.isValid(token)).toBe(false);\n  });\n\n  it('should accept tokens within 24 hours', () => {\n    const fixedClock: Clock = {\n      now: () => new Date('2024-06-15T10:00:00Z'),\n    };\n\n    const tokenService = new TokenService(fixedClock);\n    const token = tokenService.createToken('user-1');\n\n    // Advance clock by 23 hours\n    fixedClock.now = () => new Date('2024-06-16T09:00:00Z');\n\n    expect(tokenService.isValid(token)).toBe(true);\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// BAD: Hard-coded dependency — untestable without real SMTP server\npublic class NotificationService {\n    public void notifyUser(String userId, String message) {\n        // Creates its own dependency — can't mock this\n        SmtpClient client = new SmtpClient(\"smtp.company.com\", 587);\n        User user = new UserDao().findById(userId); // Another hard-coded dep\n        client.send(user.getEmail(), \"Notification\", message);\n    }\n}\n\n// GOOD: Dependencies injected — fully testable\npublic class NotificationService {\n    private final EmailSender emailSender;\n    private final UserRepository userRepository;\n    private final NotificationTemplateEngine templateEngine;\n\n    // Constructor injection: dependencies are explicit and replaceable\n    public NotificationService(\n            EmailSender emailSender,\n            UserRepository userRepository,\n            NotificationTemplateEngine templateEngine) {\n        this.emailSender = emailSender;\n        this.userRepository = userRepository;\n        this.templateEngine = templateEngine;\n    }\n\n    public NotificationResult notifyUser(String userId, String message) {\n        User user = userRepository.findById(userId)\n            .orElseThrow(() -> new UserNotFoundException(userId));\n\n        String rendered = templateEngine.render(\"notification\", Map.of(\n            \"userName\", user.getName(),\n            \"message\", message\n        ));\n\n        boolean sent = emailSender.send(\n            user.getEmail(),\n            \"Notification\",\n            rendered\n        );\n\n        return new NotificationResult(sent, user.getEmail());\n    }\n}\n\n// Test with injected mocks\n@ExtendWith(MockitoExtension.class)\nclass NotificationServiceTest {\n\n    @Mock private EmailSender emailSender;\n    @Mock private UserRepository userRepository;\n    @Mock private NotificationTemplateEngine templateEngine;\n    @InjectMocks private NotificationService service;\n\n    @Test\n    @DisplayName(\"should send rendered notification to user email\")\n    void sendNotification() {\n        // Arrange\n        User user = new User(\"user-1\", \"Alice\", \"alice@example.com\");\n        when(userRepository.findById(\"user-1\")).thenReturn(Optional.of(user));\n        when(templateEngine.render(eq(\"notification\"), anyMap()))\n            .thenReturn(\"<p>Hello Alice, you have a message</p>\");\n        when(emailSender.send(anyString(), anyString(), anyString())).thenReturn(true);\n\n        // Act\n        NotificationResult result = service.notifyUser(\"user-1\", \"Your order shipped\");\n\n        // Assert\n        assertThat(result.isSent()).isTrue();\n        assertThat(result.getRecipient()).isEqualTo(\"alice@example.com\");\n\n        verify(emailSender).send(\n            eq(\"alice@example.com\"),\n            eq(\"Notification\"),\n            contains(\"Hello Alice\")\n        );\n    }\n\n    @Test\n    @DisplayName(\"should throw when user not found\")\n    void userNotFound() {\n        when(userRepository.findById(\"ghost\")).thenReturn(Optional.empty());\n\n        assertThatThrownBy(() -> service.notifyUser(\"ghost\", \"message\"))\n            .isInstanceOf(UserNotFoundException.class)\n            .hasMessageContaining(\"ghost\");\n\n        // Verify no email was sent\n        verifyNoInteractions(emailSender);\n    }\n\n    @Test\n    @DisplayName(\"should return failure result when email sending fails\")\n    void emailSendingFails() {\n        User user = new User(\"user-1\", \"Alice\", \"alice@example.com\");\n        when(userRepository.findById(\"user-1\")).thenReturn(Optional.of(user));\n        when(templateEngine.render(anyString(), anyMap())).thenReturn(\"content\");\n        when(emailSender.send(anyString(), anyString(), anyString())).thenReturn(false);\n\n        NotificationResult result = service.notifyUser(\"user-1\", \"message\");\n\n        assertThat(result.isSent()).isFalse();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// ❌ OVER-MOCKED: This test verifies nothing useful\ndescribe('OrderProcessor - over-mocked', () => {\n  it('should process order', async () => {\n    const mockValidator = { validate: vi.fn().mockReturnValue({ valid: true }) };\n    const mockPricer = { calculate: vi.fn().mockReturnValue(99.99) };\n    const mockRepo = { save: vi.fn().mockResolvedValue({ id: 'order-1' }) };\n    const mockNotifier = { notify: vi.fn().mockResolvedValue(undefined) };\n\n    const processor = new OrderProcessor(mockValidator, mockPricer, mockRepo, mockNotifier);\n    const result = await processor.process({ items: [{ id: 'p1', qty: 1 }] });\n\n    // These assertions just verify the mocks were called — not that the logic is correct\n    expect(mockValidator.validate).toHaveBeenCalled();\n    expect(mockPricer.calculate).toHaveBeenCalled();\n    expect(mockRepo.save).toHaveBeenCalled();\n    expect(result.id).toBe('order-1'); // Just echoing the mock return value\n  });\n});\n\n// ✅ BETTER: Mock only external boundaries, test real logic\ndescribe('OrderProcessor - properly bounded', () => {\n  it('should calculate correct total with tax and apply business rules', async () => {\n    // Real validator and pricer (they're pure logic, no external deps)\n    const validator = new OrderValidator();\n    const pricer = new OrderPricer(taxRatesByState);\n\n    // Mock only the external boundaries\n    const fakeRepo = new InMemoryOrderRepository();\n    const mockNotifier = { notify: vi.fn().mockResolvedValue(undefined) };\n\n    const processor = new OrderProcessor(validator, pricer, fakeRepo, mockNotifier);\n\n    const result = await processor.process({\n      items: [\n        { id: 'p1', qty: 2, unitPrice: 25.00 },\n        { id: 'p2', qty: 1, unitPrice: 49.99 },\n      ],\n      state: 'OR', // Oregon: no sales tax\n      customerId: 'cust-1',\n    });\n\n    // Now we're testing REAL behavior\n    expect(result.subtotal).toBe(99.99);\n    expect(result.tax).toBe(0); // Oregon has no sales tax\n    expect(result.total).toBe(99.99);\n    expect(result.status).toBe('confirmed');\n\n    // Verify the order was persisted with correct data\n    const saved = await fakeRepo.findById(result.id);\n    expect(saved).not.toBeNull();\n    expect(saved!.total).toBe(99.99);\n  });\n\n  it('should reject order when validation fails', async () => {\n    const validator = new OrderValidator(); // Real validation logic\n    const pricer = new OrderPricer(taxRatesByState);\n    const fakeRepo = new InMemoryOrderRepository();\n    const mockNotifier = { notify: vi.fn() };\n\n    const processor = new OrderProcessor(validator, pricer, fakeRepo, mockNotifier);\n\n    // Empty items should fail validation\n    await expect(\n      processor.process({ items: [], state: 'CA', customerId: 'cust-1' })\n    ).rejects.toThrow('Order must contain at least one item');\n\n    // Nothing should be saved\n    expect(fakeRepo.getAll()).toHaveLength(0);\n    expect(mockNotifier.notify).not.toHaveBeenCalled();\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { describe, it, expect, vi, beforeEach } from 'vitest';\n\n// Mock the module before importing the code under test\nvi.mock('./external-api-client', () => ({\n  ExternalApiClient: {\n    fetchUserProfile: vi.fn(),\n    updateUserPreferences: vi.fn(),\n  },\n}));\n\nvi.mock('./cache-service', () => ({\n  cacheService: {\n    get: vi.fn(),\n    set: vi.fn(),\n    invalidate: vi.fn(),\n  },\n}));\n\nimport { ExternalApiClient } from './external-api-client';\nimport { cacheService } from './cache-service';\nimport { UserProfileService } from './user-profile-service';\n\ndescribe('UserProfileService (legacy module mocking)', () => {\n  beforeEach(() => {\n    vi.clearAllMocks();\n  });\n\n  it('should return cached profile when available', async () => {\n    const cachedProfile = { id: 'user-1', name: 'Alice', tier: 'premium' };\n    vi.mocked(cacheService.get).mockResolvedValue(cachedProfile);\n\n    const service = new UserProfileService();\n    const profile = await service.getProfile('user-1');\n\n    expect(profile).toEqual(cachedProfile);\n    expect(ExternalApiClient.fetchUserProfile).not.toHaveBeenCalled();\n  });\n\n  it('should fetch from API and cache when not in cache', async () => {\n    const apiProfile = { id: 'user-1', name: 'Alice', tier: 'premium' };\n    vi.mocked(cacheService.get).mockResolvedValue(null);\n    vi.mocked(ExternalApiClient.fetchUserProfile).mockResolvedValue(apiProfile);\n\n    const service = new UserProfileService();\n    const profile = await service.getProfile('user-1');\n\n    expect(profile).toEqual(apiProfile);\n    expect(ExternalApiClient.fetchUserProfile).toHaveBeenCalledWith('user-1');\n    expect(cacheService.set).toHaveBeenCalledWith(\n      'profile:user-1',\n      apiProfile,\n      expect.objectContaining({ ttl: 3600 })\n    );\n  });\n\n  it('should invalidate cache on profile update', async () => {\n    vi.mocked(ExternalApiClient.updateUserPreferences).mockResolvedValue({ success: true });\n\n    const service = new UserProfileService();\n    await service.updatePreferences('user-1', { theme: 'dark' });\n\n    expect(cacheService.invalidate).toHaveBeenCalledWith('profile:user-1');\n  });\n});",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// src/test-utils/fakes.ts — Shared across all test files\nexport class FakeUserRepository implements UserRepository {\n  private store = new Map<string, User>();\n\n  async findById(id: string): Promise<User | null> {\n    return this.store.get(id) ?? null;\n  }\n\n  async save(user: User): Promise<User> {\n    this.store.set(user.id, user);\n    return user;\n  }\n\n  // Test helpers\n  seed(users: User[]): void {\n    users.forEach((u) => this.store.set(u.id, u));\n  }\n\n  reset(): void {\n    this.store.clear();\n  }\n\n  getAll(): User[] {\n    return Array.from(this.store.values());\n  }\n}\n\nexport class FakeEventBus implements EventBus {\n  private published: DomainEvent[] = [];\n\n  async publish(event: DomainEvent): Promise<void> {\n    this.published.push(event);\n  }\n\n  // Test helpers\n  getPublished(): DomainEvent[] {\n    return [...this.published];\n  }\n\n  getPublishedOfType<T extends DomainEvent>(type: string): T[] {\n    return this.published.filter((e) => e.type === type) as T[];\n  }\n\n  reset(): void {\n    this.published = [];\n  }\n}\n\nexport class FakeClock implements Clock {\n  private current: Date;\n\n  constructor(initial: Date = new Date('2024-01-01T00:00:00Z')) {\n    this.current = initial;\n  }\n\n  now(): Date {\n    return new Date(this.current);\n  }\n\n  advance(ms: number): void {\n    this.current = new Date(this.current.getTime() + ms);\n  }\n\n  advanceMinutes(minutes: number): void {\n    this.advance(minutes * 60 * 1000);\n  }\n\n  advanceHours(hours: number): void {\n    this.advance(hours * 60 * 60 * 1000);\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/unit-testing/mocking-strategies.md",
+    "wordCount": 1742,
+    "sectionCount": 25
+  }
+}

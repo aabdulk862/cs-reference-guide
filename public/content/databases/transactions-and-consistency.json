@@ -1,0 +1,292 @@
+{
+  "id": "sql-foundations-transactions-and-consistency",
+  "slug": "transactions-and-consistency",
+  "title": "Transactions and Consistency",
+  "category": "Databases",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "ACID properties: Atomicity (all-or-nothing), Consistency (valid state transitions), Isolation (concurrent transactions don't interfere), Durability (committed data survives failures)",
+            "Isolation levels from weakest to strongest: Read Uncommitted, Read Committed, Repeatable Read, Serializable",
+            "PostgreSQL default is Read Committed; MySQL InnoDB default is Repeatable Read",
+            "MVCC (Multi-Version Concurrency Control) provides non-blocking reads by maintaining multiple versions of each row",
+            "Distributed transactions use 2PC (Two-Phase Commit) or saga patterns for cross-service consistency",
+            "Optimistic concurrency control uses version numbers to detect conflicts at commit time",
+            "Pessimistic concurrency control uses locks (SELECT FOR UPDATE) to prevent conflicts",
+            "CAP theorem: distributed systems can provide at most two of Consistency, Availability, and Partition tolerance"
+          ]
+        }
+      ],
+      "wordCount": 106,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding transactions and consistency is critical whenever you are building systems that modify shared data, especially under concurrent access. Apply strict ACID transactions for financial operations, inventory management, and any domain where partial updates would leave the system in an invalid state. Use optimistic concurrency control for low-contention workloads where conflicts are rare (content editing, configuration updates). Use pessimistic locking for high-contention scenarios where conflicts are frequent and retry costs are high (seat reservations, auction bidding). Distributed consistency patterns (sagas, eventual consistency) are necessary in microservice architectures where data spans multiple services and databases, making traditional ACID transactions impossible. The choice between strong and eventual consistency should be driven by business requirements — not all data needs the same consistency guarantees, and over-constraining consistency limits scalability and availability."
+        }
+      ],
+      "wordCount": 128,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "transaction-isolation-levels",
+          "heading": "Transaction Isolation Levels",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Demonstrate Read Committed vs Repeatable Read behavior\n-- Session 1: Read Committed (PostgreSQL default)\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 1000\n\n-- Meanwhile, Session 2 commits: UPDATE accounts SET balance = 500 WHERE account_id = 'A001';\n\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 500 (sees committed change)\nCOMMIT;\n\n-- Session 1: Repeatable Read\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 1000\n\n-- Meanwhile, Session 2 commits: UPDATE accounts SET balance = 500 WHERE account_id = 'A001';\n\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Still returns 1000 (snapshot isolation)\n-- If we try to UPDATE the same row, we get a serialization failure:\nUPDATE accounts SET balance = balance - 100 WHERE account_id = 'A001';\n-- ERROR: could not serialize access due to concurrent update\nROLLBACK;\n\n-- Serializable isolation: prevents phantom reads and write skew\nBEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;\nSELECT SUM(balance) FROM accounts WHERE owner_id = 'user-1';  -- Returns 2000\n-- Business rule: total balance across all accounts must stay >= 1000\nUPDATE accounts SET balance = balance - 800 WHERE account_id = 'A001';\nCOMMIT;  -- May fail with serialization error if concurrent transaction also modified these accounts",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "optimistic-concurrency-control",
+          "heading": "Optimistic Concurrency Control",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// JPA entity with version field for optimistic locking\n@Entity\n@Table(name = \"products\")\npublic class Product {\n    @Id\n    private UUID id;\n\n    private String name;\n    private BigDecimal price;\n    private int stockQuantity;\n\n    @Version  // JPA manages this automatically\n    private long version;\n\n    public void decrementStock(int quantity) {\n        if (this.stockQuantity < quantity) {\n            throw new InsufficientStockException(this.id, quantity, this.stockQuantity);\n        }\n        this.stockQuantity -= quantity;\n    }\n}\n\n// Service layer with retry on optimistic lock failure\n@Service\n@RequiredArgsConstructor\npublic class InventoryService {\n\n    private final ProductRepository productRepository;\n\n    @Retryable(\n        retryFor = OptimisticLockingFailureException.class,\n        maxAttempts = 3,\n        backoff = @Backoff(delay = 100, multiplier = 2)\n    )\n    @Transactional\n    public void reserveStock(UUID productId, int quantity) {\n        Product product = productRepository.findById(productId)\n            .orElseThrow(() -> new ProductNotFoundException(productId));\n\n        product.decrementStock(quantity);\n        productRepository.save(product);\n        // If another transaction modified this product since we read it,\n        // JPA throws OptimisticLockingFailureException and @Retryable retries\n    }\n}\n\n// Manual optimistic locking with SQL\n// UPDATE products SET stock_quantity = stock_quantity - :qty, version = version + 1\n// WHERE product_id = :id AND version = :expectedVersion;\n// If affected rows = 0, another transaction modified the row → retry",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pessimistic-locking",
+          "heading": "Pessimistic Locking",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- SELECT FOR UPDATE acquires a row-level exclusive lock\n-- Other transactions attempting to lock the same rows will block until this transaction completes\nBEGIN;\nSELECT * FROM seats\nWHERE flight_id = 'FL-123' AND seat_number = '14A' AND status = 'available'\nFOR UPDATE;\n\n-- If the row exists and is available, we have an exclusive lock\nUPDATE seats SET status = 'reserved', reserved_by = 'user-456', reserved_at = NOW()\nWHERE flight_id = 'FL-123' AND seat_number = '14A';\nCOMMIT;\n\n-- SKIP LOCKED: non-blocking alternative for work queue patterns\n-- Each worker picks up unprocessed tasks without blocking on locked rows\nBEGIN;\nSELECT task_id, payload FROM task_queue\nWHERE status = 'pending'\nORDER BY priority DESC, created_at ASC\nLIMIT 10\nFOR UPDATE SKIP LOCKED;\n\nUPDATE task_queue SET status = 'processing', worker_id = 'worker-3', started_at = NOW()\nWHERE task_id IN (...selected task IDs...);\nCOMMIT;\n\n-- NOWAIT: fail immediately if lock cannot be acquired\nBEGIN;\nSELECT * FROM accounts WHERE account_id = 'A001' FOR UPDATE NOWAIT;\n-- If another transaction holds the lock: ERROR: could not obtain lock on row\n-- Application can immediately return \"resource busy\" to the user",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "distributed-saga-pattern",
+          "heading": "Distributed Saga Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Saga orchestrator for order processing across multiple services\n@Service\n@RequiredArgsConstructor\npublic class OrderSagaOrchestrator {\n\n    private final PaymentService paymentService;\n    private final InventoryService inventoryService;\n    private final ShippingService shippingService;\n    private final OrderRepository orderRepository;\n\n    @Transactional\n    public OrderResult processOrder(Order order) {\n        SagaContext context = new SagaContext(order.getId());\n\n        try {\n            // Step 1: Reserve inventory\n            InventoryReservation reservation = inventoryService.reserve(order.getItems());\n            context.addCompensation(() -> inventoryService.release(reservation.getId()));\n\n            // Step 2: Process payment\n            PaymentResult payment = paymentService.charge(order.getPaymentDetails());\n            context.addCompensation(() -> paymentService.refund(payment.getId()));\n\n            // Step 3: Schedule shipping\n            ShipmentResult shipment = shippingService.schedule(order.getShippingDetails());\n            context.addCompensation(() -> shippingService.cancel(shipment.getId()));\n\n            // All steps succeeded\n            order.setStatus(OrderStatus.CONFIRMED);\n            orderRepository.save(order);\n            return OrderResult.success(order);\n\n        } catch (Exception e) {\n            // Execute compensating transactions in reverse order\n            context.compensate();\n            order.setStatus(OrderStatus.FAILED);\n            order.setFailureReason(e.getMessage());\n            orderRepository.save(order);\n            return OrderResult.failure(order, e);\n        }\n    }\n}\n\n// Choreography-based saga with events\n@Component\n@RequiredArgsConstructor\npublic class PaymentEventHandler {\n\n    private final OrderRepository orderRepository;\n    private final EventPublisher eventPublisher;\n\n    @EventListener\n    @Transactional\n    public void handlePaymentCompleted(PaymentCompletedEvent event) {\n        Order order = orderRepository.findById(event.getOrderId())\n            .orElseThrow();\n        order.markPaymentReceived(event.getPaymentId());\n        orderRepository.save(order);\n        eventPublisher.publish(new OrderReadyForShipmentEvent(order.getId()));\n    }\n\n    @EventListener\n    @Transactional\n    public void handlePaymentFailed(PaymentFailedEvent event) {\n        Order order = orderRepository.findById(event.getOrderId())\n            .orElseThrow();\n        order.markPaymentFailed(event.getReason());\n        orderRepository.save(order);\n        // Publish compensation event\n        eventPublisher.publish(new ReleaseInventoryEvent(order.getId()));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "eventual-consistency-with-outbox-pattern",
+          "heading": "Eventual Consistency with Outbox Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "sql",
+              "code": "-- Outbox table ensures atomicity between local state change and event publishing\nCREATE TABLE outbox_events (\n    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    aggregate_type VARCHAR(100) NOT NULL,\n    aggregate_id UUID NOT NULL,\n    event_type VARCHAR(100) NOT NULL,\n    payload JSONB NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    published_at TIMESTAMP WITH TIME ZONE,  -- NULL until published\n    retry_count INTEGER DEFAULT 0\n);\n\nCREATE INDEX idx_outbox_unpublished ON outbox_events (created_at)\n    WHERE published_at IS NULL;",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Transactional outbox: write event in same transaction as state change\n@Service\n@RequiredArgsConstructor\npublic class OrderService {\n\n    private final OrderRepository orderRepository;\n    private final OutboxRepository outboxRepository;\n\n    @Transactional  // Both writes in same transaction = atomic\n    public Order createOrder(CreateOrderRequest request) {\n        Order order = Order.from(request);\n        order = orderRepository.save(order);\n\n        // Write event to outbox table (same transaction)\n        OutboxEvent event = OutboxEvent.builder()\n            .aggregateType(\"Order\")\n            .aggregateId(order.getId())\n            .eventType(\"OrderCreated\")\n            .payload(objectMapper.writeValueAsString(new OrderCreatedPayload(order)))\n            .build();\n        outboxRepository.save(event);\n\n        return order;\n    }\n}\n\n// Separate publisher polls outbox and publishes to message broker\n@Scheduled(fixedDelay = 1000)\n@Transactional\npublic void publishOutboxEvents() {\n    List<OutboxEvent> events = outboxRepository.findUnpublished(100);\n    for (OutboxEvent event : events) {\n        try {\n            kafkaTemplate.send(event.getEventType(), event.getAggregateId().toString(),\n                event.getPayload());\n            event.markPublished();\n        } catch (Exception e) {\n            event.incrementRetryCount();\n            if (event.getRetryCount() > MAX_RETRIES) {\n                event.markFailed();\n                alertService.notify(\"Outbox event failed: \" + event.getEventId());\n            }\n        }\n    }\n    outboxRepository.saveAll(events);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Long-running transactions holding locks: Transactions that perform external API calls, send emails, or do heavy computation while holding database locks block other transactions and can cause connection pool exhaustion. Keep transactions short — perform external operations outside the transaction boundary, or use the outbox pattern to decouple side effects from the database transaction.",
+            "Deadlocks from inconsistent lock ordering: When two transactions lock resources in different orders (T1 locks A then B, T2 locks B then A), deadlocks occur. Always acquire locks in a consistent, deterministic order (e.g., by primary key ascending). The database will detect and abort one transaction, but frequent deadlocks indicate a design problem.",
+            "Lost updates with Read Committed isolation: Two transactions read the same row, compute new values based on the read, and write back. The second write overwrites the first without seeing it. Use SELECT FOR UPDATE (pessimistic) or version columns (optimistic) to prevent lost updates. Repeatable Read isolation also prevents this in PostgreSQL.",
+            "Saga compensation failures: If a compensating transaction fails (e.g., refund API is down), the system is left in an inconsistent state. Implement compensation with retries, idempotency keys, and a dead-letter mechanism for manual resolution. Never assume compensation will succeed on the first attempt.",
+            "Mixing isolation levels within a workflow: Using different isolation levels for different queries within the same logical operation can lead to subtle inconsistencies. If one query sees committed data and another sees a snapshot, the application may make decisions based on contradictory views of the data. Use a consistent isolation level for all queries within a business operation.",
+            "Ignoring serialization failures: Repeatable Read and Serializable isolation levels can throw serialization errors when concurrent transactions conflict. Applications must catch these errors and retry the entire transaction from the beginning (not just the failed statement). Without retry logic, these isolation levels provide no benefit over Read Committed."
+          ]
+        }
+      ],
+      "wordCount": 306,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Banking fund transfers: A transfer between accounts requires debiting one account and crediting another atomically. Using a single database transaction with Serializable isolation ensures that concurrent transfers cannot overdraw an account. The transaction either completes both operations or neither, maintaining the invariant that total funds across all accounts remain constant.",
+            "E-commerce inventory reservation: During flash sales, thousands of concurrent requests attempt to reserve limited inventory. Pessimistic locking with SELECT FOR UPDATE on the inventory row ensures only one transaction can decrement stock at a time, preventing overselling. The short lock duration (milliseconds) keeps throughput acceptable while maintaining correctness.",
+            "Distributed order processing: An order spanning payment, inventory, and shipping services uses the saga pattern with choreography. Each service publishes domain events after completing its local transaction. If payment fails after inventory is reserved, a compensating event triggers inventory release. The outbox pattern ensures events are published reliably even if the message broker is temporarily unavailable.",
+            "Collaborative document editing: Multiple users editing the same document use optimistic concurrency with operational transformation or CRDTs. Each edit carries a version vector, and conflicts are detected and resolved automatically. The system provides eventual consistency with conflict-free convergence, prioritizing availability and partition tolerance over strict consistency."
+          ]
+        }
+      ],
+      "wordCount": 200,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between optimistic and pessimistic concurrency control."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Pessimistic control acquires locks before modifying data, preventing conflicts by blocking concurrent access. It is appropriate when conflicts are frequent and retry costs are high (seat reservations, financial transactions). Optimistic control allows concurrent access without locks, detecting conflicts at commit time via version numbers. If a conflict is detected, the transaction is retried. It is appropriate when conflicts are rare and the cost of occasional retries is lower than the cost of holding locks (content updates, configuration changes)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between Read Committed and Repeatable Read isolation?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Read Committed sees only data committed before each individual statement executes — different statements within the same transaction may see different snapshots if other transactions commit between them. Repeatable Read sees a consistent snapshot taken at the start of the transaction — all statements see the same data regardless of concurrent commits. Repeatable Read prevents non-repeatable reads and phantom reads but may throw serialization errors when concurrent transactions modify the same data."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement distributed transactions across microservices?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Avoid traditional 2PC (Two-Phase Commit) in microservices due to its blocking nature, tight coupling, and single point of failure at the coordinator. Instead, use the saga pattern: either orchestration (a central coordinator sends commands and handles responses) or choreography (services emit events and react to others' events). Each service performs its local transaction and publishes an event. If a step fails, compensating transactions undo previous steps. Use the outbox pattern to ensure atomic local-state-change-plus-event-publishing, and implement idempotent consumers to handle duplicate event delivery."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the CAP theorem and how does it apply to database selection?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The CAP theorem states that a distributed system can provide at most two of three guarantees: Consistency (all nodes see the same data), Availability (every request receives a response), and Partition tolerance (the system continues operating despite network partitions). Since network partitions are inevitable in distributed systems, the real choice is between CP (consistent but may be unavailable during partitions — traditional RDBMS, ZooKeeper) and AP (available but may return stale data during partitions — Cassandra, DynamoDB). Most modern systems offer tunable consistency, allowing different operations to choose their consistency level."
+        }
+      ],
+      "wordCount": 373,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Set statement timeouts to prevent runaway queries: Configure statement_timeout (PostgreSQL) or max_execution_time (MySQL) to kill queries that exceed expected duration. A missing WHERE clause on a DELETE or an unexpected full table scan can lock resources for minutes. Set aggressive timeouts (5-30 seconds for OLTP) and investigate any query that hits the limit.",
+            "Monitor lock contention and deadlocks: Track pg_stat_activity for queries in waiting state, and pg_locks for lock conflicts. Set up alerts for deadlock frequency (available in PostgreSQL logs) and long-held locks. High lock contention often indicates a schema design issue (too-coarse locking granularity) or a missing index causing lock escalation.",
+            "Implement idempotency for retry safety: Any operation that may be retried (due to network timeouts, serialization failures, or saga compensation) must be idempotent. Use idempotency keys stored in a dedicated table, and check for existing results before processing. This is especially critical for payment operations where duplicate charges are unacceptable.",
+            "Use advisory locks for application-level coordination: When you need to serialize access to a logical resource that does not correspond to a single database row (e.g., \"only one instance should process exports for tenant X\"), use PostgreSQL advisory locks (pg_advisory_lock). They are lightweight, do not conflict with row locks, and are automatically released at transaction end or session end."
+          ]
+        }
+      ],
+      "wordCount": 211,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Database Design Patterns — Schema design decisions that affect transaction behavior and concurrency",
+            "SQL Performance Tuning — Lock contention and transaction duration impact on query performance",
+            "MongoDB and Document Databases — MongoDB multi-document transactions and eventual consistency patterns"
+          ]
+        }
+      ],
+      "wordCount": 38,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "sql",
+      "code": "-- Demonstrate Read Committed vs Repeatable Read behavior\n-- Session 1: Read Committed (PostgreSQL default)\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 1000\n\n-- Meanwhile, Session 2 commits: UPDATE accounts SET balance = 500 WHERE account_id = 'A001';\n\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 500 (sees committed change)\nCOMMIT;\n\n-- Session 1: Repeatable Read\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Returns 1000\n\n-- Meanwhile, Session 2 commits: UPDATE accounts SET balance = 500 WHERE account_id = 'A001';\n\nSELECT balance FROM accounts WHERE account_id = 'A001';  -- Still returns 1000 (snapshot isolation)\n-- If we try to UPDATE the same row, we get a serialization failure:\nUPDATE accounts SET balance = balance - 100 WHERE account_id = 'A001';\n-- ERROR: could not serialize access due to concurrent update\nROLLBACK;\n\n-- Serializable isolation: prevents phantom reads and write skew\nBEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;\nSELECT SUM(balance) FROM accounts WHERE owner_id = 'user-1';  -- Returns 2000\n-- Business rule: total balance across all accounts must stay >= 1000\nUPDATE accounts SET balance = balance - 800 WHERE account_id = 'A001';\nCOMMIT;  -- May fail with serialization error if concurrent transaction also modified these accounts",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// JPA entity with version field for optimistic locking\n@Entity\n@Table(name = \"products\")\npublic class Product {\n    @Id\n    private UUID id;\n\n    private String name;\n    private BigDecimal price;\n    private int stockQuantity;\n\n    @Version  // JPA manages this automatically\n    private long version;\n\n    public void decrementStock(int quantity) {\n        if (this.stockQuantity < quantity) {\n            throw new InsufficientStockException(this.id, quantity, this.stockQuantity);\n        }\n        this.stockQuantity -= quantity;\n    }\n}\n\n// Service layer with retry on optimistic lock failure\n@Service\n@RequiredArgsConstructor\npublic class InventoryService {\n\n    private final ProductRepository productRepository;\n\n    @Retryable(\n        retryFor = OptimisticLockingFailureException.class,\n        maxAttempts = 3,\n        backoff = @Backoff(delay = 100, multiplier = 2)\n    )\n    @Transactional\n    public void reserveStock(UUID productId, int quantity) {\n        Product product = productRepository.findById(productId)\n            .orElseThrow(() -> new ProductNotFoundException(productId));\n\n        product.decrementStock(quantity);\n        productRepository.save(product);\n        // If another transaction modified this product since we read it,\n        // JPA throws OptimisticLockingFailureException and @Retryable retries\n    }\n}\n\n// Manual optimistic locking with SQL\n// UPDATE products SET stock_quantity = stock_quantity - :qty, version = version + 1\n// WHERE product_id = :id AND version = :expectedVersion;\n// If affected rows = 0, another transaction modified the row → retry",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- SELECT FOR UPDATE acquires a row-level exclusive lock\n-- Other transactions attempting to lock the same rows will block until this transaction completes\nBEGIN;\nSELECT * FROM seats\nWHERE flight_id = 'FL-123' AND seat_number = '14A' AND status = 'available'\nFOR UPDATE;\n\n-- If the row exists and is available, we have an exclusive lock\nUPDATE seats SET status = 'reserved', reserved_by = 'user-456', reserved_at = NOW()\nWHERE flight_id = 'FL-123' AND seat_number = '14A';\nCOMMIT;\n\n-- SKIP LOCKED: non-blocking alternative for work queue patterns\n-- Each worker picks up unprocessed tasks without blocking on locked rows\nBEGIN;\nSELECT task_id, payload FROM task_queue\nWHERE status = 'pending'\nORDER BY priority DESC, created_at ASC\nLIMIT 10\nFOR UPDATE SKIP LOCKED;\n\nUPDATE task_queue SET status = 'processing', worker_id = 'worker-3', started_at = NOW()\nWHERE task_id IN (...selected task IDs...);\nCOMMIT;\n\n-- NOWAIT: fail immediately if lock cannot be acquired\nBEGIN;\nSELECT * FROM accounts WHERE account_id = 'A001' FOR UPDATE NOWAIT;\n-- If another transaction holds the lock: ERROR: could not obtain lock on row\n-- Application can immediately return \"resource busy\" to the user",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Saga orchestrator for order processing across multiple services\n@Service\n@RequiredArgsConstructor\npublic class OrderSagaOrchestrator {\n\n    private final PaymentService paymentService;\n    private final InventoryService inventoryService;\n    private final ShippingService shippingService;\n    private final OrderRepository orderRepository;\n\n    @Transactional\n    public OrderResult processOrder(Order order) {\n        SagaContext context = new SagaContext(order.getId());\n\n        try {\n            // Step 1: Reserve inventory\n            InventoryReservation reservation = inventoryService.reserve(order.getItems());\n            context.addCompensation(() -> inventoryService.release(reservation.getId()));\n\n            // Step 2: Process payment\n            PaymentResult payment = paymentService.charge(order.getPaymentDetails());\n            context.addCompensation(() -> paymentService.refund(payment.getId()));\n\n            // Step 3: Schedule shipping\n            ShipmentResult shipment = shippingService.schedule(order.getShippingDetails());\n            context.addCompensation(() -> shippingService.cancel(shipment.getId()));\n\n            // All steps succeeded\n            order.setStatus(OrderStatus.CONFIRMED);\n            orderRepository.save(order);\n            return OrderResult.success(order);\n\n        } catch (Exception e) {\n            // Execute compensating transactions in reverse order\n            context.compensate();\n            order.setStatus(OrderStatus.FAILED);\n            order.setFailureReason(e.getMessage());\n            orderRepository.save(order);\n            return OrderResult.failure(order, e);\n        }\n    }\n}\n\n// Choreography-based saga with events\n@Component\n@RequiredArgsConstructor\npublic class PaymentEventHandler {\n\n    private final OrderRepository orderRepository;\n    private final EventPublisher eventPublisher;\n\n    @EventListener\n    @Transactional\n    public void handlePaymentCompleted(PaymentCompletedEvent event) {\n        Order order = orderRepository.findById(event.getOrderId())\n            .orElseThrow();\n        order.markPaymentReceived(event.getPaymentId());\n        orderRepository.save(order);\n        eventPublisher.publish(new OrderReadyForShipmentEvent(order.getId()));\n    }\n\n    @EventListener\n    @Transactional\n    public void handlePaymentFailed(PaymentFailedEvent event) {\n        Order order = orderRepository.findById(event.getOrderId())\n            .orElseThrow();\n        order.markPaymentFailed(event.getReason());\n        orderRepository.save(order);\n        // Publish compensation event\n        eventPublisher.publish(new ReleaseInventoryEvent(order.getId()));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "sql",
+      "code": "-- Outbox table ensures atomicity between local state change and event publishing\nCREATE TABLE outbox_events (\n    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    aggregate_type VARCHAR(100) NOT NULL,\n    aggregate_id UUID NOT NULL,\n    event_type VARCHAR(100) NOT NULL,\n    payload JSONB NOT NULL,\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),\n    published_at TIMESTAMP WITH TIME ZONE,  -- NULL until published\n    retry_count INTEGER DEFAULT 0\n);\n\nCREATE INDEX idx_outbox_unpublished ON outbox_events (created_at)\n    WHERE published_at IS NULL;",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Transactional outbox: write event in same transaction as state change\n@Service\n@RequiredArgsConstructor\npublic class OrderService {\n\n    private final OrderRepository orderRepository;\n    private final OutboxRepository outboxRepository;\n\n    @Transactional  // Both writes in same transaction = atomic\n    public Order createOrder(CreateOrderRequest request) {\n        Order order = Order.from(request);\n        order = orderRepository.save(order);\n\n        // Write event to outbox table (same transaction)\n        OutboxEvent event = OutboxEvent.builder()\n            .aggregateType(\"Order\")\n            .aggregateId(order.getId())\n            .eventType(\"OrderCreated\")\n            .payload(objectMapper.writeValueAsString(new OrderCreatedPayload(order)))\n            .build();\n        outboxRepository.save(event);\n\n        return order;\n    }\n}\n\n// Separate publisher polls outbox and publishes to message broker\n@Scheduled(fixedDelay = 1000)\n@Transactional\npublic void publishOutboxEvents() {\n    List<OutboxEvent> events = outboxRepository.findUnpublished(100);\n    for (OutboxEvent event : events) {\n        try {\n            kafkaTemplate.send(event.getEventType(), event.getAggregateId().toString(),\n                event.getPayload());\n            event.markPublished();\n        } catch (Exception e) {\n            event.incrementRetryCount();\n            if (event.getRetryCount() > MAX_RETRIES) {\n                event.markFailed();\n                alertService.notify(\"Outbox event failed: \" + event.getEventId());\n            }\n        }\n    }\n    outboxRepository.saveAll(events);\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/sql-foundations/transactions-and-consistency.md",
+    "wordCount": 1362,
+    "sectionCount": 13
+  }
+}
