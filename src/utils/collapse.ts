@@ -15,10 +15,23 @@ function countWords(text: string): number {
 }
 
 /**
+ * Calculates total word count for a section including its subsections.
+ */
+function totalWordCount(section: { wordCount: number; content: ContentNode[]; subsections?: Array<{ wordCount: number; content: ContentNode[]; subsections?: any[] }> }): number {
+  let total = section.wordCount;
+  if (section.subsections) {
+    for (const sub of section.subsections) {
+      total += totalWordCount(sub);
+    }
+  }
+  return total;
+}
+
+/**
  * Determines whether a content section should be collapsed.
  *
  * A section should collapse if:
- * - Its wordCount exceeds 300, OR
+ * - Its total wordCount (including subsections) exceeds 300, OR
  * - Its paragraph count exceeds 3
  *
  * Whichever threshold is reached first triggers collapse.
@@ -26,8 +39,9 @@ function countWords(text: string): number {
 export function shouldCollapse(section: {
   wordCount: number;
   content: ContentNode[];
+  subsections?: Array<{ wordCount: number; content: ContentNode[]; subsections?: any[] }>;
 }): boolean {
-  if (section.wordCount > 300) {
+  if (totalWordCount(section) > 300) {
     return true;
   }
   if (countParagraphs(section.content) > 3) {

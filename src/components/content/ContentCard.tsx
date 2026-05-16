@@ -233,8 +233,8 @@ export function ContentCard({ section }: ContentCardProps) {
         {visibleContent.map((node, index) => renderContentNode(node, index))}
       </div>
 
-      {/* Render subsections recursively */}
-      {section.subsections && section.subsections.length > 0 && (
+      {/* Render subsections recursively — hidden when collapsed */}
+      {showFullContent && section.subsections && section.subsections.length > 0 && (
         <div className="content-card__subsections">
           {section.subsections.map((sub) => (
             <ContentCard key={sub.id} section={sub} />

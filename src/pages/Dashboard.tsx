@@ -9,7 +9,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useBookmarks } from '@/hooks/useBookmarks';
-import { useProgress } from '@/hooks/useProgress';
 import { useDocumentMeta } from '@/hooks/useDocumentMeta';
 import { WeeklyStats } from '@/components/study/WeeklyStats';
 import { DueForReview } from '@/components/study/DueForReview';
@@ -23,7 +22,7 @@ import type { Bookmark } from '@/types/study';
 interface ManifestCategory {
   id: string;
   name: string;
-  topics: { id: string; title: string; slug: string }[];
+  topics: { id: string; title: string; slug: string; subtopics?: { id: string; slug: string; title: string }[] }[];
 }
 
 interface ContentManifest {
@@ -104,9 +103,8 @@ function RecentlyStudied({ recentTopics }: { recentTopics: RecentTopic[] }) {
 
 export default function Dashboard() {
   const { bookmarks } = useBookmarks();
-  const { progressData } = useProgress();
   const [totalTopics, setTotalTopics] = useState<number>(0);
-  const [topicsStarted, setTopicsStarted] = useState<number>(0);
+  const [topicsCompleted, setTopicsCompleted] = useState<number>(0);
   const [overallPercentage, setOverallPercentage] = useState<number>(0);
   const [recentTopics, setRecentTopics] = useState<RecentTopic[]>([]);
   const [categories, setCategories] = useState<ManifestCategory[]>([]);
@@ -123,9 +121,8 @@ export default function Dashboard() {
       try {
         const response = await fetch('/content-manifest.json');
         if (!response.ok) {
-          // Handle fetch failure gracefully — show zero values
           setTotalTopics(0);
-          setTopicsStarted(0);
+          setTopicsCompleted(0);
           setOverallPercentage(0);
           return;
         }
@@ -133,26 +130,30 @@ export default function Dashboard() {
         setTotalTopics(data.totalTopics);
         setCategories(data.categories);
 
-        // Count topics that have any progress (at least one section completed)
-        const completedCount = Object.keys(progressData.completedSections).filter(
-          (topicId) => progressData.completedSections[topicId]?.length > 0
-        ).length;
-        setTopicsStarted(completedCount);
+        // Count manually completed topics from localStorage
+        const completed = storage.get<string[]>('completed-topics', []);
+        const completedCount = completed.length;
+        setTopicsCompleted(completedCount);
 
-        // Calculate overall percentage
-        const percentage = data.totalTopics > 0
-          ? Math.round((completedCount / data.totalTopics) * 100)
+        // Calculate overall percentage based on total subtopics
+        let totalSubtopics = 0;
+        for (const cat of data.categories) {
+          for (const topic of cat.topics) {
+            totalSubtopics += (topic.subtopics?.length ?? 1);
+          }
+        }
+        const percentage = totalSubtopics > 0
+          ? Math.round((completedCount / totalSubtopics) * 100)
           : 0;
         setOverallPercentage(percentage);
       } catch {
-        // Manifest not available — leave at zero values
         setTotalTopics(0);
-        setTopicsStarted(0);
+        setTopicsCompleted(0);
         setOverallPercentage(0);
       }
     }
     loadManifest();
-  }, [progressData.completedSections]);
+  }, []);
 
   // Load recently studied topics from localStorage
   useEffect(() => {
@@ -179,8 +180,8 @@ export default function Dashboard() {
         <h3 id="progress-heading">Progress Overview</h3>
         <div className="dashboard-progress__stats">
           <div className="dashboard-progress__stat">
-            <span className="dashboard-progress__stat-value">{topicsStarted}</span>
-            <span className="dashboard-progress__stat-label">Topics Started</span>
+            <span className="dashboard-progress__stat-value">{topicsCompleted}</span>
+            <span className="dashboard-progress__stat-label">Completed</span>
           </div>
           <div className="dashboard-progress__stat">
             <span className="dashboard-progress__stat-value">{totalTopics}</span>

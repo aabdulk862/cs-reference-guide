@@ -11,7 +11,7 @@
  * Requirements: 3.3, 3.4, 3.5, 3.6, 3.7
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Breadcrumbs } from '../components/navigation/Breadcrumbs';
 import { ViewToggle } from '../components/content/ViewToggle';
@@ -26,6 +26,7 @@ import {
   type ContentView,
 } from '../utils/content-views';
 import { get, set } from '../utils/storage';
+import { useDailyGoal } from '../hooks/useDailyGoal';
 import type { ContentSection } from '../types/content';
 
 /** Shape of the topic JSON loaded at runtime */
@@ -216,6 +217,20 @@ export default function TopicPage() {
   const [activeView, setActiveView] = useState<ContentView>('full');
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // Daily goal: track time spent on page
+  const { addMinutes } = useDailyGoal();
+  const pageEntryTime = useRef<number>(Date.now());
+
+  useEffect(() => {
+    pageEntryTime.current = Date.now();
+    return () => {
+      const elapsed = Math.floor((Date.now() - pageEntryTime.current) / 60000);
+      if (elapsed >= 1) {
+        addMinutes(elapsed);
+      }
+    };
+  }, [categorySlug, topicSlug, subtopicSlug, addMinutes]);
+
   // Fetch manifest on mount
   useEffect(() => {
     let cancelled = false;
@@ -268,6 +283,22 @@ export default function TopicPage() {
             : `${categorySlug}/${topicSlug}`;
           setIsCompleted(getCompletedTopics().has(completionId));
           setLoading(false);
+
+          // Track recently studied topics
+          const recentKey = 'recent-topics';
+          const recent = get<Array<{ topicId: string; title: string; categorySlug: string; topicSlug: string; timestamp: number }>>(recentKey, []);
+          const topicIdForRecent = subtopicSlug
+            ? `${categorySlug}/${topicSlug}/${subtopicSlug}`
+            : `${categorySlug}/${topicSlug}`;
+          const filtered = recent.filter((r) => r.topicId !== topicIdForRecent);
+          filtered.unshift({
+            topicId: topicIdForRecent,
+            title: data.title,
+            categorySlug: categorySlug!,
+            topicSlug: subtopicSlug ? `${topicSlug}/${subtopicSlug}` : topicSlug!,
+            timestamp: Date.now(),
+          });
+          set(recentKey, filtered.slice(0, 10));
         }
       })
       .catch((err: Error) => {

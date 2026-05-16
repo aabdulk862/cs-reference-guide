@@ -104,15 +104,37 @@ export interface UseCommandPaletteReturn extends CommandPaletteState {
 export function useCommandPalette(
   options: UseCommandPaletteOptions = {}
 ): UseCommandPaletteReturn {
-  const { categories = [] } = options;
+  const { categories: passedCategories } = options;
   const navigate = useNavigate();
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQueryState] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [manifestCategories, setManifestCategories] = useState<Category[]>([]);
 
   /** Ref to store the element that had focus before opening */
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Load categories from manifest if not passed
+  useEffect(() => {
+    if (passedCategories && passedCategories.length > 0) {
+      setManifestCategories(passedCategories);
+      return;
+    }
+    async function loadManifest() {
+      try {
+        const response = await fetch('/content-manifest.json');
+        if (!response.ok) return;
+        const data = await response.json();
+        setManifestCategories(data.categories ?? []);
+      } catch {
+        // Manifest not available
+      }
+    }
+    loadManifest();
+  }, [passedCategories]);
+
+  const categories = passedCategories && passedCategories.length > 0 ? passedCategories : manifestCategories;
 
   // Build the full list of items
   const allItems = useMemo(() => {

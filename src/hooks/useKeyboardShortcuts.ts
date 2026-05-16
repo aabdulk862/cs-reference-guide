@@ -123,7 +123,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}):
           const currentIndex = getCurrentTopicIndex(params.categorySlug, params.topicSlug, topicsRef.current);
           if (currentIndex > 0) {
             const prev = topicsRef.current[currentIndex - 1];
-            navigate(`/topic/${prev.categorySlug}/${prev.topicSlug}`);
+            const slug = prev.topicSlug.includes('/') ? prev.topicSlug.split('/').pop()! : prev.topicSlug;
+            navigate(`/topic/${prev.categorySlug}/${slug}`);
           }
           break;
         }
@@ -134,7 +135,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}):
           const currentIdx = getCurrentTopicIndex(params.categorySlug, params.topicSlug, topicsRef.current);
           if (currentIdx >= 0 && currentIdx < topicsRef.current.length - 1) {
             const next = topicsRef.current[currentIdx + 1];
-            navigate(`/topic/${next.categorySlug}/${next.topicSlug}`);
+            const slug = next.topicSlug.includes('/') ? next.topicSlug.split('/').pop()! : next.topicSlug;
+            navigate(`/topic/${next.categorySlug}/${slug}`);
           }
           break;
         }
@@ -175,6 +177,6 @@ function getCurrentTopicIndex(
   if (!categorySlug || !topicSlug || topics.length === 0) return -1;
 
   return topics.findIndex(
-    (t) => t.categorySlug === categorySlug && t.topicSlug === topicSlug
+    (t) => t.categorySlug === categorySlug && (t.topicSlug === topicSlug || t.topicSlug === `${categorySlug}/${topicSlug}`)
   );
 }
