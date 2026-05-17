@@ -220,33 +220,50 @@ public class SubsetSum {
 }
 ```
 
-```python
-def can_partition(nums: list[int]) -> bool:
-    """Can array be split into two equal-sum subsets?"""
-    total = sum(nums)
-    if total % 2 != 0:
-        return False
-    target = total // 2
-    dp = [False] * (target + 1)
-    dp[0] = True
+```java
+public class KnapsackVariants {
+    /**
+     * Can array be split into two equal-sum subsets?
+     * Reduces to subset sum with target = totalSum / 2.
+     * Time: O(n * sum/2), Space: O(sum/2)
+     */
+    public static boolean canPartition(int[] nums) {
+        int total = 0;
+        for (int num : nums) total += num;
+        if (total % 2 != 0) return false;
 
-    for num in nums:
-        for s in range(target, num - 1, -1):
-            dp[s] = dp[s] or dp[s - num]
+        int target = total / 2;
+        boolean[] dp = new boolean[target + 1];
+        dp[0] = true;
 
-    return dp[target]
+        for (int num : nums) {
+            for (int s = target; s >= num; s--) {
+                dp[s] = dp[s] || dp[s - num];
+            }
+        }
+        return dp[target];
+    }
 
-def min_coins(coins: list[int], amount: int) -> int:
-    """Minimum coins to make amount. Returns -1 if impossible."""
-    dp = [float('inf')] * (amount + 1)
-    dp[0] = 0
+    /**
+     * Minimum coins to make amount. Returns -1 if impossible.
+     * Unbounded knapsack variant (coins can be reused).
+     * Time: O(coins * amount), Space: O(amount)
+     */
+    public static int minCoins(int[] coins, int amount) {
+        int[] dp = new int[amount + 1];
+        Arrays.fill(dp, Integer.MAX_VALUE);
+        dp[0] = 0;
 
-    for i in range(1, amount + 1):
-        for coin in coins:
-            if coin <= i:
-                dp[i] = min(dp[i], dp[i - coin] + 1)
-
-    return dp[amount] if dp[amount] != float('inf') else -1
+        for (int i = 1; i <= amount; i++) {
+            for (int coin : coins) {
+                if (coin <= i && dp[i - coin] != Integer.MAX_VALUE) {
+                    dp[i] = Math.min(dp[i], dp[i - coin] + 1);
+                }
+            }
+        }
+        return dp[amount] == Integer.MAX_VALUE ? -1 : dp[amount];
+    }
+}
 ```
 
 ## Common Pitfalls

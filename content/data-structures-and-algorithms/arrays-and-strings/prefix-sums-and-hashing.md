@@ -148,31 +148,42 @@ public class PrefixSum2D {
 }
 ```
 
-```python
-class PrefixSum2D:
-    """2D prefix sum for O(1) rectangular region queries."""
+```java
+/**
+ * Alternative 2D prefix sum implementation using static methods.
+ * Demonstrates the inclusion-exclusion principle for rectangular queries.
+ */
+public class PrefixSum2DStatic {
+    /**
+     * Build 2D prefix sum from matrix.
+     * Returns (rows+1) x (cols+1) array with zero-padding.
+     */
+    public static long[][] build(int[][] matrix) {
+        int rows = matrix.length, cols = matrix[0].length;
+        long[][] prefix = new long[rows + 1][cols + 1];
 
-    def __init__(self, matrix: list[list[int]]):
-        rows, cols = len(matrix), len(matrix[0])
-        self.prefix = [[0] * (cols + 1) for _ in range(rows + 1)]
+        for (int i = 1; i <= rows; i++) {
+            for (int j = 1; j <= cols; j++) {
+                prefix[i][j] = matrix[i - 1][j - 1]
+                    + prefix[i - 1][j]
+                    + prefix[i][j - 1]
+                    - prefix[i - 1][j - 1];
+            }
+        }
+        return prefix;
+    }
 
-        for i in range(1, rows + 1):
-            for j in range(1, cols + 1):
-                self.prefix[i][j] = (
-                    matrix[i - 1][j - 1]
-                    + self.prefix[i - 1][j]
-                    + self.prefix[i][j - 1]
-                    - self.prefix[i - 1][j - 1]
-                )
-
-    def region_sum(self, r1: int, c1: int, r2: int, c2: int) -> int:
-        """Sum of elements in rectangle (r1,c1) to (r2,c2) inclusive."""
-        return (
-            self.prefix[r2 + 1][c2 + 1]
-            - self.prefix[r1][c2 + 1]
-            - self.prefix[r2 + 1][c1]
-            + self.prefix[r1][c1]
-        )
+    /**
+     * Query sum of rectangle (r1,c1) to (r2,c2) inclusive.
+     * Uses inclusion-exclusion on the prefix array.
+     */
+    public static long regionSum(long[][] prefix, int r1, int c1, int r2, int c2) {
+        return prefix[r2 + 1][c2 + 1]
+            - prefix[r1][c2 + 1]
+            - prefix[r2 + 1][c1]
+            + prefix[r1][c1];
+    }
+}
 ```
 
 ### Hash Map Patterns for Array Problems
@@ -239,44 +250,66 @@ public class HashMapPatterns {
 }
 ```
 
-```python
-from collections import defaultdict
+```java
+import java.util.*;
+import java.util.stream.Collectors;
 
-def two_sum(nums: list[int], target: int) -> tuple[int, int] | None:
-    """Find indices of two numbers summing to target. O(n) time."""
-    seen: dict[int, int] = {}
-    for i, num in enumerate(nums):
-        complement = target - num
-        if complement in seen:
-            return (seen[complement], i)
-        seen[num] = i
-    return None
+public class HashMapPatternsAlt {
+    /**
+     * Two Sum: find indices of two numbers that sum to target.
+     * Time: O(n), Space: O(n)
+     */
+    public static int[] twoSum(int[] nums, int target) {
+        Map<Integer, Integer> seen = new HashMap<>();
+        for (int i = 0; i < nums.length; i++) {
+            int complement = target - nums[i];
+            if (seen.containsKey(complement)) {
+                return new int[]{seen.get(complement), i};
+            }
+            seen.put(nums[i], i);
+        }
+        return null;
+    }
 
-def longest_subarray_with_sum(nums: list[int], k: int) -> int:
-    """Longest subarray with sum equal to k. Handles negatives."""
-    first_occurrence: dict[int, int] = {0: -1}
-    current_sum = 0
-    max_len = 0
+    /**
+     * Longest subarray with sum equal to k. Handles negatives.
+     * Stores first occurrence of each prefix sum.
+     * Time: O(n), Space: O(n)
+     */
+    public static int longestSubarrayWithSum(int[] nums, int k) {
+        Map<Long, Integer> firstOccurrence = new HashMap<>();
+        firstOccurrence.put(0L, -1);
+        long currentSum = 0;
+        int maxLen = 0;
 
-    for i, num in enumerate(nums):
-        current_sum += num
-        if current_sum - k in first_occurrence:
-            max_len = max(max_len, i - first_occurrence[current_sum - k])
-        if current_sum not in first_occurrence:
-            first_occurrence[current_sum] = i
+        for (int i = 0; i < nums.length; i++) {
+            currentSum += nums[i];
+            if (firstOccurrence.containsKey(currentSum - k)) {
+                maxLen = Math.max(maxLen, i - firstOccurrence.get(currentSum - k));
+            }
+            firstOccurrence.putIfAbsent(currentSum, i);
+        }
+        return maxLen;
+    }
 
-    return max_len
+    /**
+     * Group elements by their frequency. O(n) time.
+     * Returns map of frequency -> list of elements with that frequency.
+     */
+    public static Map<Integer, List<Integer>> groupByFrequency(int[] nums) {
+        Map<Integer, Integer> freq = new HashMap<>();
+        for (int num : nums) {
+            freq.merge(num, 1, Integer::sum);
+        }
 
-def group_by_frequency(nums: list[int]) -> dict[int, list[int]]:
-    """Group elements by their frequency. O(n) time."""
-    freq: dict[int, int] = defaultdict(int)
-    for num in nums:
-        freq[num] += 1
-
-    groups: dict[int, list[int]] = defaultdict(list)
-    for num, count in freq.items():
-        groups[count].append(num)
-    return dict(groups)
+        Map<Integer, List<Integer>> groups = new HashMap<>();
+        for (Map.Entry<Integer, Integer> entry : freq.entrySet()) {
+            groups.computeIfAbsent(entry.getValue(), k -> new ArrayList<>())
+                  .add(entry.getKey());
+        }
+        return groups;
+    }
+}
 ```
 
 ## Common Pitfalls

@@ -1,0 +1,275 @@
+{
+  "id": "processes-and-memory-memory-management",
+  "slug": "memory-management",
+  "title": "Memory Management",
+  "category": "Operating Systems",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Virtual memory gives each process a private, contiguous address space (48-bit on x86-64 = 256TB) mapped to physical frames via page tables",
+            "x86-64 uses 4-level page tables (PGD → PUD → PMD → PTE), each level indexing 512 entries with 9 bits of the virtual address",
+            "The TLB (Translation Lookaside Buffer) caches recent virtual-to-physical translations; a TLB miss costs 10-100 cycles for a page table walk vs 1 cycle for a hit",
+            "Huge pages (2MB or 1GB) reduce TLB pressure by covering more address space per entry — critical for large heaps (JVM, databases)",
+            "Copy-on-write (COW) makes fork() O(1) by sharing physical pages until a write triggers duplication",
+            "The page cache buffers disk I/O in unused RAM; Linux dynamically grows/shrinks it based on memory pressure",
+            "OOM killer terminates processes when physical memory + swap is exhausted, selecting victims by oom_score (memory usage, age, privilege)",
+            "Kernel uses buddy allocation for page frames and slab allocation for fixed-size kernel objects (task_struct, inode, dentry)",
+            "User-space allocators (glibc ptmalloc2, jemalloc, tcmalloc) subdivide kernel-provided chunks using thread-local caches and size-class bins"
+          ]
+        }
+      ],
+      "wordCount": 176,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Deep understanding of memory management is required when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Tuning JVM garbage collection — GC interacts with virtual memory (huge pages reduce TLB misses during heap traversal, swapped-out pages cause GC pauses, G1/ZGC use mmap tricks for concurrent compaction)",
+            "Diagnosing memory leaks and fragmentation — distinguishing between virtual memory growth (harmless address space expansion) and RSS growth (actual physical memory consumption), understanding why free() doesn't always return memory to the OS",
+            "Configuring container memory limits — setting cgroup memory.max, understanding the difference between anonymous memory (heap/stack) and page cache (reclaimable), preventing OOM kills",
+            "Optimizing database buffer pools — choosing between OS page cache and application-managed buffers (O_DIRECT), configuring huge pages for large buffer pools, understanding NUMA effects on memory access latency",
+            "Building memory-mapped data structures — using mmap for persistent data structures, shared memory IPC, or memory-mapped files that exceed physical RAM",
+            "Performance profiling — interpreting perf counters for TLB misses, page faults, cache misses, and understanding NUMA topology effects"
+          ]
+        }
+      ],
+      "wordCount": 159,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "virtual-memory-page-table-walk-simulation-java",
+          "heading": "Virtual Memory Page Table Walk Simulation (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class PageTableSimulation {\n    private static final int PAGE_SIZE = 4096;\n    private static final int ENTRIES_PER_TABLE = 512;\n    private static final long PTE_PRESENT = 1L;\n    private static final long PTE_WRITABLE = 1L << 1;\n    private static final long PTE_USER = 1L << 2;\n    private static final long PTE_ACCESSED = 1L << 5;\n    private static final long PTE_DIRTY = 1L << 6;\n    private static final long PTE_ADDR_MASK = 0x000FFFFFFFFFF000L;\n\n    // Simulated page table: each level is an array of 512 entries\n    // Entry stores either a \"pointer\" (index into table pool) or physical address + flags\n    private final long[][] tablePool;\n    private int nextTable = 0;\n    private long pageFaults = 0;\n    private long translations = 0;\n\n    public PageTableSimulation(int maxTables) {\n        this.tablePool = new long[maxTables][ENTRIES_PER_TABLE];\n    }\n\n    // Extract indices from 48-bit virtual address\n    static int pgdIndex(long va) { return (int) ((va >> 39) & 0x1FF); }\n    static int pudIndex(long va) { return (int) ((va >> 30) & 0x1FF); }\n    static int pmdIndex(long va) { return (int) ((va >> 21) & 0x1FF); }\n    static int pteIndex(long va) { return (int) ((va >> 12) & 0x1FF); }\n    static long pageOffset(long va) { return va & 0xFFF; }\n\n    // Allocate a new page table, returns its index in the pool\n    private int allocPageTable() {\n        int idx = nextTable++;\n        java.util.Arrays.fill(tablePool[idx], 0);\n        return idx;\n    }\n\n    // Map a virtual page to a physical frame\n    public void mapPage(int pgdIdx, long vaddr, long paddr, long flags) {\n        long entry;\n\n        // Walk/create PGD -> PUD\n        entry = tablePool[pgdIdx][pgdIndex(vaddr)];\n        int pudIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pudIdx = allocPageTable();\n            tablePool[pgdIdx][pgdIndex(vaddr)] = ((long) pudIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pudIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Walk/create PUD -> PMD\n        entry = tablePool[pudIdx][pudIndex(vaddr)];\n        int pmdIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pmdIdx = allocPageTable();\n            tablePool[pudIdx][pudIndex(vaddr)] = ((long) pmdIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pmdIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Walk/create PMD -> PTE\n        entry = tablePool[pmdIdx][pmdIndex(vaddr)];\n        int pteIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pteIdx = allocPageTable();\n            tablePool[pmdIdx][pmdIndex(vaddr)] = ((long) pteIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pteIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Set the final PTE\n        tablePool[pteIdx][pteIndex(vaddr)] = (paddr & PTE_ADDR_MASK) | flags | PTE_PRESENT;\n    }\n\n    // Translate virtual address to physical address\n    public long translate(int pgdIdx, long vaddr) {\n        translations++;\n\n        long entry = tablePool[pgdIdx][pgdIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pudIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pudIdx][pudIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pmdIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pmdIdx][pmdIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pteIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pteIdx][pteIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        // Mark accessed\n        tablePool[pteIdx][pteIndex(vaddr)] |= PTE_ACCESSED;\n\n        return (entry & PTE_ADDR_MASK) | pageOffset(vaddr);\n    }\n\n    public long getPageFaults() { return pageFaults; }\n    public long getTranslations() { return translations; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "memory-mapped-file-io-java",
+          "heading": "Memory-Mapped File I/O (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.*;\nimport java.nio.*;\nimport java.nio.channels.FileChannel;\nimport java.nio.charset.StandardCharsets;\nimport java.nio.file.*;\n\n// Memory-mapped file for a simple key-value store\npublic class MappedHashTable {\n    private static final int KEY_SIZE = 64;\n    private static final int VALUE_SIZE = 256;\n    private static final int ENTRY_SIZE = KEY_SIZE + VALUE_SIZE + 4 + 1; // key + value + hash + occupied\n\n    private final MappedByteBuffer buffer;\n    private final int capacity;\n    private final FileChannel channel;\n\n    public MappedHashTable(Path path, int capacity, boolean create) throws IOException {\n        this.capacity = capacity;\n        long size = 8L + (long) capacity * ENTRY_SIZE; // count(4) + capacity(4) + entries\n\n        if (create) {\n            this.channel = FileChannel.open(path,\n                    StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);\n            // Extend file to required size\n            channel.truncate(size);\n            // Force file to be the right size\n            ByteBuffer zero = ByteBuffer.allocate(1);\n            channel.write(zero, size - 1);\n        } else {\n            this.channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);\n        }\n\n        // Map file into memory\n        this.buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, size);\n\n        if (create) {\n            buffer.putInt(0, 0);         // count = 0\n            buffer.putInt(4, capacity);  // capacity\n        }\n    }\n\n    public void put(String key, String value) {\n        int hash = key.hashCode();\n        int index = Math.abs(hash) % capacity;\n\n        int offset = 8 + index * ENTRY_SIZE;\n        byte[] keyBytes = new byte[KEY_SIZE];\n        byte[] valBytes = new byte[VALUE_SIZE];\n        System.arraycopy(key.getBytes(StandardCharsets.UTF_8), 0, keyBytes, 0,\n                Math.min(key.length(), KEY_SIZE));\n        System.arraycopy(value.getBytes(StandardCharsets.UTF_8), 0, valBytes, 0,\n                Math.min(value.length(), VALUE_SIZE));\n\n        buffer.position(offset);\n        buffer.put(keyBytes);\n        buffer.put(valBytes);\n        buffer.putInt(hash);\n        buffer.put((byte) 1); // occupied\n\n        // Increment count\n        buffer.putInt(0, buffer.getInt(0) + 1);\n    }\n\n    // Changes are automatically persisted to disk via page cache\n    // Use force() for explicit durability guarantees\n    public void sync() {\n        buffer.force(); // Equivalent to msync - blocks until written to disk\n    }\n\n    public void close() throws IOException {\n        channel.close();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-memory-allocator-with-free-list-java",
+          "heading": "Custom Memory Allocator with Free List (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.nio.ByteBuffer;\n\npublic class ArenaAllocator {\n    private static final int ARENA_SIZE = 1024 * 1024; // 1MB arena\n    private static final int ALIGNMENT = 16;\n    private static final int BLOCK_HEADER_SIZE = align(16); // size(8) + next(4) + free(1) padded\n\n    private final ByteBuffer arena;\n    private int freeListHead; // Offset of first free block\n    private long allocated = 0;\n    private long peakAllocated = 0;\n\n    private static int align(int size) {\n        return (size + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);\n    }\n\n    public ArenaAllocator() {\n        // Allocate direct buffer (off-heap, similar to mmap anonymous)\n        this.arena = ByteBuffer.allocateDirect(ARENA_SIZE);\n\n        // Initialize free list with single large block\n        freeListHead = 0;\n        setBlockSize(0, ARENA_SIZE - BLOCK_HEADER_SIZE);\n        setBlockNext(0, -1); // -1 = null\n        setBlockFree(0, true);\n    }\n\n    // Block header layout: [size: long (8)] [next: int (4)] [free: byte (1)]\n    private long getBlockSize(int offset) { return arena.getLong(offset); }\n    private void setBlockSize(int offset, long size) { arena.putLong(offset, size); }\n    private int getBlockNext(int offset) { return arena.getInt(offset + 8); }\n    private void setBlockNext(int offset, int next) { arena.putInt(offset + 8, next); }\n    private boolean isBlockFree(int offset) { return arena.get(offset + 12) != 0; }\n    private void setBlockFree(int offset, boolean free) { arena.put(offset + 12, (byte) (free ? 1 : 0)); }\n\n    public int alloc(int requestedSize) {\n        int size = align(requestedSize);\n\n        // First-fit search through free list\n        int prev = -1;\n        int curr = freeListHead;\n\n        while (curr != -1) {\n            if (isBlockFree(curr) && getBlockSize(curr) >= size) {\n                long currSize = getBlockSize(curr);\n\n                // Split block if remainder is large enough\n                if (currSize >= size + BLOCK_HEADER_SIZE + ALIGNMENT) {\n                    int newBlock = curr + BLOCK_HEADER_SIZE + size;\n                    setBlockSize(newBlock, currSize - size - BLOCK_HEADER_SIZE);\n                    setBlockNext(newBlock, getBlockNext(curr));\n                    setBlockFree(newBlock, true);\n\n                    setBlockSize(curr, size);\n                    setBlockNext(curr, newBlock);\n                }\n\n                setBlockFree(curr, false);\n                allocated += getBlockSize(curr);\n                if (allocated > peakAllocated) peakAllocated = allocated;\n\n                return curr + BLOCK_HEADER_SIZE; // Return offset past header\n            }\n            prev = curr;\n            curr = getBlockNext(curr);\n        }\n\n        return -1; // Out of memory\n    }\n\n    public void free(int ptr) {\n        if (ptr < 0) return;\n\n        int block = ptr - BLOCK_HEADER_SIZE;\n        setBlockFree(block, true);\n        allocated -= getBlockSize(block);\n\n        // Coalesce adjacent free blocks\n        int curr = freeListHead;\n        while (curr != -1) {\n            int next = getBlockNext(curr);\n            if (isBlockFree(curr) && next != -1 && isBlockFree(next)) {\n                setBlockSize(curr, getBlockSize(curr) + BLOCK_HEADER_SIZE + getBlockSize(next));\n                setBlockNext(curr, getBlockNext(next));\n                continue; // Check again in case of multiple adjacent free blocks\n            }\n            curr = getBlockNext(curr);\n        }\n    }\n\n    public long getAllocated() { return allocated; }\n    public long getPeakAllocated() { return peakAllocated; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "lru-page-replacement-simulation-java",
+          "heading": "LRU Page Replacement Simulation (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\n\npublic class LRUPageCache {\n    /**Simulates OS page cache with LRU eviction policy.*/\n\n    enum PageState { CLEAN, DIRTY }\n\n    static class PageFrame {\n        final int pageNumber;\n        PageState state;\n        int accessCount;\n\n        PageFrame(int pageNumber, PageState state) {\n            this.pageNumber = pageNumber;\n            this.state = state;\n            this.accessCount = 1;\n        }\n    }\n\n    private final int numFrames;\n    private final LinkedHashMap<Integer, PageFrame> frames;\n    private int pageFaults = 0;\n    private int diskWrites = 0;\n    private int totalAccesses = 0;\n\n    public LRUPageCache(int numFrames) {\n        this.numFrames = numFrames;\n        // LinkedHashMap with accessOrder=true provides LRU ordering\n        this.frames = new LinkedHashMap<>(numFrames, 0.75f, true);\n    }\n\n    /** Access a page. Returns true if page was in cache (hit). */\n    public boolean access(int pageNumber, boolean write) {\n        totalAccesses++;\n\n        if (frames.containsKey(pageNumber)) {\n            // Cache hit: LinkedHashMap moves to end on access (most recently used)\n            PageFrame frame = frames.get(pageNumber);\n            frame.accessCount++;\n            if (write) frame.state = PageState.DIRTY;\n            return true;\n        }\n\n        // Cache miss: page fault\n        pageFaults++;\n\n        // Evict LRU page if cache is full\n        if (frames.size() >= numFrames) {\n            evictLru();\n        }\n\n        // Load new page\n        PageState state = write ? PageState.DIRTY : PageState.CLEAN;\n        frames.put(pageNumber, new PageFrame(pageNumber, state));\n        return false;\n    }\n\n    private void evictLru() {\n        // The first entry in a LinkedHashMap with accessOrder=true is the LRU\n        Iterator<Map.Entry<Integer, PageFrame>> iter = frames.entrySet().iterator();\n        if (iter.hasNext()) {\n            Map.Entry<Integer, PageFrame> entry = iter.next();\n            if (entry.getValue().state == PageState.DIRTY) {\n                diskWrites++; // Must write back dirty page\n            }\n            iter.remove();\n        }\n    }\n\n    public double hitRate() {\n        if (totalAccesses == 0) return 0.0;\n        return 1.0 - ((double) pageFaults / totalAccesses);\n    }\n\n    public Map<String, Object> stats() {\n        Map<String, Object> s = new LinkedHashMap<>();\n        s.put(\"total_accesses\", totalAccesses);\n        s.put(\"page_faults\", pageFaults);\n        s.put(\"disk_writes\", diskWrites);\n        s.put(\"hit_rate\", String.format(\"%.2f%%\", hitRate() * 100));\n        s.put(\"frames_used\", frames.size());\n        return s;\n    }\n\n    // Simulate a workload\n    public static void main(String[] args) {\n        LRUPageCache cache = new LRUPageCache(4);\n        // Locality-heavy access pattern\n        int[] accesses = {1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5, 1, 2, 3};\n        for (int page : accesses) {\n            boolean hit = cache.access(page, page % 2 == 0);\n            String status = hit ? \"HIT\" : \"MISS\";\n            System.out.printf(\"Access page %d: %s%n\", page, status);\n        }\n\n        System.out.println(\"\\nStats: \" + cache.stats());\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Confusing virtual memory size (VSZ) with physical memory usage (RSS): A process can have a large virtual address space (mapped but uncommitted memory, memory-mapped files, shared libraries) while using little physical RAM. RSS (Resident Set Size) shows actual physical pages in use. Monitoring VSZ for memory leaks gives false alarms; monitor RSS and PSS (Proportional Set Size, which accounts for shared pages). Use smaps_rollup for accurate per-process memory accounting in containerized environments.",
+            "Memory fragmentation in long-running services: After many allocation/deallocation cycles, the heap becomes fragmented — free memory exists but not in contiguous chunks large enough for new allocations. This causes RSS to grow even though logical usage is stable. glibc's ptmalloc2 is particularly prone to fragmentation with certain allocation patterns. Mitigations: use jemalloc or tcmalloc (better fragmentation resistance), periodically call malloc_trim(), or redesign to use arena/pool allocators for same-sized objects.",
+            "Transparent Huge Pages (THP) causing latency spikes: THP automatically promotes 4KB pages to 2MB huge pages, which reduces TLB misses but can cause latency spikes during compaction (the kernel must find 512 contiguous free pages). Databases (Redis, MongoDB) and latency-sensitive services often disable THP (echo never > /sys/kernel/mm/transparent_hugepage/enabled) and use explicit hugetlbfs instead, which pre-allocates huge pages at boot time.",
+            "OOM killer targeting the wrong process: When the system runs out of memory, the OOM killer selects a victim based on oom_score (primarily memory usage). It might kill your database instead of a runaway batch job. Protect critical processes with oom_score_adj = -1000 (never kill) and set appropriate cgroup memory limits so containers are killed before the host OOM killer activates. Monitor /proc/meminfo MemAvailable and set alerts at 10-15% remaining.",
+            "Swap thrashing destroying performance: When working set exceeds physical memory, the system pages out to swap (disk), and subsequent accesses trigger page faults requiring disk reads (milliseconds vs nanoseconds for RAM). This creates a death spiral where the system spends all time swapping instead of computing. Production systems often set vm.swappiness=1 or disable swap entirely, relying on cgroup memory limits and OOM killing for memory pressure handling. Monitor with vmstat (si/so columns) and page fault rates.",
+            "NUMA-unaware memory allocation: On multi-socket servers, memory access latency depends on which NUMA node the memory is allocated from. Accessing remote-node memory costs 1.5-2x local access latency. Applications that allocate memory on one node but access it from threads on another node suffer significant performance degradation. Use numactl --membind or set_mempolicy() for NUMA-aware allocation. Monitor with numastat for cross-node access patterns."
+          ]
+        }
+      ],
+      "wordCount": 408,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JVM garbage collection and OS interaction: The JVM's garbage collector traverses the entire heap, touching every live object's header. With a 32GB heap using 4KB pages, that's 8 million TLB entries needed — far exceeding typical TLB capacity (1024-2048 entries). Huge pages (2MB) reduce this to ~16K entries, dramatically reducing GC pause times. ZGC uses colored pointers and memory mapping tricks (multiple virtual addresses mapping to the same physical page) for concurrent compaction without stop-the-world pauses.",
+            "Database buffer pool management: PostgreSQL's shared_buffers and MySQL's InnoDB buffer pool manage their own page caches in shared memory. They use O_DIRECT to bypass the OS page cache (avoiding double-buffering), implement custom eviction policies (clock sweep for PostgreSQL, LRU with midpoint insertion for InnoDB), and use huge pages for the buffer pool. Understanding the interaction between application buffers, OS page cache, and physical memory is critical for database tuning.",
+            "Container memory limits and OOM behavior: Kubernetes memory limits map to cgroup memory.max. When a container exceeds its limit, the cgroup OOM killer terminates a process within that cgroup (not the host OOM killer). The page cache counts against the cgroup limit, so a container doing heavy file I/O may OOM even with low heap usage. Set memory.high (soft limit with throttling) below memory.max to provide backpressure. Monitor container_memory_working_set_bytes (RSS + active page cache) rather than just RSS.",
+            "Redis memory management: Redis stores all data in memory and uses jemalloc for allocation. Memory fragmentation (mem_fragmentation_ratio > 1.5) indicates jemalloc cannot efficiently reuse freed memory. Redis 4.0+ includes active defragmentation that moves allocations to reduce fragmentation. Understanding virtual memory helps explain why Redis RSS doesn't decrease after deleting keys (freed pages may not be returned to OS) and why fork-based persistence (RDB snapshots) temporarily doubles memory usage due to COW page duplication under write-heavy workloads.",
+            "Memory-mapped databases (LMDB, RocksDB): LMDB maps the entire database file into virtual memory, relying on the OS page cache for caching and the MMU for access. This eliminates application-level buffer management complexity and enables zero-copy reads. The database can be larger than physical RAM — the OS transparently pages in/out as needed. However, this approach makes performance dependent on OS page cache behavior and can suffer from page fault storms under memory pressure."
+          ]
+        }
+      ],
+      "wordCount": 372,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the 4-level page table structure on x86-64 and why it exists."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: x86-64 uses 48 bits of virtual address space (256TB), divided into 4 levels of page tables: PGD (Page Global Directory), PUD (Page Upper Directory), PMD (Page Middle Directory), and PTE (Page Table Entry). Each level uses 9 bits of the virtual address to index into a 512-entry table, with the final 12 bits as the page offset (4KB pages). The hierarchical structure exists because a flat page table for 48-bit addresses would require 512GB of memory per process. With hierarchical tables, only populated regions of the address space need page table pages allocated — a process using 100MB might only need a few hundred page table pages rather than millions. Each entry contains the physical address of the next level (or the final frame) plus permission bits (present, writable, user-accessible, no-execute)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the TLB and why do huge pages improve performance?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The TLB is a hardware cache in the CPU that stores recent virtual-to-physical address translations, avoiding the expensive 4-level page table walk (10-100 cycles) on every memory access. A typical L1 TLB has 64-128 entries and the L2 TLB has 1024-2048 entries. With 4KB pages, 2048 TLB entries cover only 8MB of address space — insufficient for applications with large working sets (databases, JVMs). Huge pages (2MB) allow each TLB entry to cover 512x more memory, so 2048 entries cover 4GB. This dramatically reduces TLB miss rates for applications with large, randomly-accessed memory regions. The tradeoff is increased internal fragmentation (allocating 2MB when you need 8KB wastes memory) and higher allocation cost (finding contiguous 2MB physical regions)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the OOM killer work and how do you protect critical processes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When the system exhausts physical memory and swap, the OOM killer selects a process to terminate based on oom_score (0-1000). The score is primarily based on the process's memory consumption as a proportion of total memory, adjusted by oom_score_adj (-1000 to +1000). Higher scores mean more likely to be killed. To protect critical processes: set oom_score_adj to -1000 (OOM_SCORE_ADJ_MIN) which makes the process unkillable by OOM. In containerized environments, set cgroup memory limits so the cgroup-level OOM killer activates before the system-wide one. Monitor /proc/meminfo MemAvailable and set alerts. Best practice: don't rely on OOM killer — use memory limits, monitoring, and backpressure to prevent OOM conditions entirely."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain copy-on-write and its implications for fork()."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Copy-on-write (COW) is an optimization where fork() doesn't copy the parent's physical memory pages. Instead, both parent and child share the same physical frames, with page table entries marked read-only. When either process writes to a shared page, the MMU triggers a protection fault, the kernel allocates a new frame, copies the original page content, updates the writer's page table entry to point to the new frame with write permission, and resumes execution. This makes fork() nearly O(1) regardless of process size. Implications: fork() in a process with a 32GB heap is fast (only page tables are copied, ~6MB for 32GB), but if the child writes to many pages (e.g., Redis during RDB save under write-heavy load), physical memory usage temporarily doubles. This is why Redis can OOM during background saves even with memory limits set to half of available RAM."
+        }
+      ],
+      "wordCount": 548,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use cgroups v2 memory.high for graceful degradation: Set memory.high below memory.max to throttle the process (slow down allocations) before hitting the hard limit that triggers OOM kill. This gives the application time to shed load or free caches. Monitor memory.events for high/max/oom counters. Example: memory.max=4G, memory.high=3.5G gives 500MB of throttling buffer before hard kill.",
+            "Monitor page fault rates to detect swap pressure: Track major page faults (requiring disk I/O) via /proc/pid/stat field 12 or perf stat -e page-faults. A sudden increase in major faults indicates the working set exceeds physical memory and pages are being loaded from swap. Correlate with vmstat si/so (swap in/out) columns. For latency-sensitive services, any major page faults in steady state indicate a memory sizing problem.",
+            "Pre-fault memory for latency-sensitive applications: After mmap() or malloc() of large regions, the memory isn't physically allocated until first access (demand paging). This causes page faults during request processing, adding latency jitter. Pre-fault by touching every page at startup: memset(ptr, 0, size) or use MAP_POPULATE with mmap(). JVMs use -XX:+AlwaysPreTouch to pre-fault the entire heap at startup, trading slower startup for consistent runtime latency.",
+            "Configure NUMA-aware memory allocation for multi-socket systems: On dual-socket servers, memory access to the remote NUMA node costs 40-100ns more than local access. Use numactl --localalloc to keep allocations on the local node, or --interleave=all for workloads that access memory from all cores equally. Monitor with numastat -p <pid> to detect excessive remote-node allocations. Database buffer pools should be NUMA-interleaved since all cores access the shared buffer."
+          ]
+        }
+      ],
+      "wordCount": 251,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Processes and Threads — Process address spaces and fork/exec rely on virtual memory and COW",
+            "File Systems — The page cache bridges memory management and file I/O, buffering disk data in RAM",
+            "I/O and Scheduling — Memory-mapped I/O and page faults interact with the I/O subsystem"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class PageTableSimulation {\n    private static final int PAGE_SIZE = 4096;\n    private static final int ENTRIES_PER_TABLE = 512;\n    private static final long PTE_PRESENT = 1L;\n    private static final long PTE_WRITABLE = 1L << 1;\n    private static final long PTE_USER = 1L << 2;\n    private static final long PTE_ACCESSED = 1L << 5;\n    private static final long PTE_DIRTY = 1L << 6;\n    private static final long PTE_ADDR_MASK = 0x000FFFFFFFFFF000L;\n\n    // Simulated page table: each level is an array of 512 entries\n    // Entry stores either a \"pointer\" (index into table pool) or physical address + flags\n    private final long[][] tablePool;\n    private int nextTable = 0;\n    private long pageFaults = 0;\n    private long translations = 0;\n\n    public PageTableSimulation(int maxTables) {\n        this.tablePool = new long[maxTables][ENTRIES_PER_TABLE];\n    }\n\n    // Extract indices from 48-bit virtual address\n    static int pgdIndex(long va) { return (int) ((va >> 39) & 0x1FF); }\n    static int pudIndex(long va) { return (int) ((va >> 30) & 0x1FF); }\n    static int pmdIndex(long va) { return (int) ((va >> 21) & 0x1FF); }\n    static int pteIndex(long va) { return (int) ((va >> 12) & 0x1FF); }\n    static long pageOffset(long va) { return va & 0xFFF; }\n\n    // Allocate a new page table, returns its index in the pool\n    private int allocPageTable() {\n        int idx = nextTable++;\n        java.util.Arrays.fill(tablePool[idx], 0);\n        return idx;\n    }\n\n    // Map a virtual page to a physical frame\n    public void mapPage(int pgdIdx, long vaddr, long paddr, long flags) {\n        long entry;\n\n        // Walk/create PGD -> PUD\n        entry = tablePool[pgdIdx][pgdIndex(vaddr)];\n        int pudIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pudIdx = allocPageTable();\n            tablePool[pgdIdx][pgdIndex(vaddr)] = ((long) pudIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pudIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Walk/create PUD -> PMD\n        entry = tablePool[pudIdx][pudIndex(vaddr)];\n        int pmdIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pmdIdx = allocPageTable();\n            tablePool[pudIdx][pudIndex(vaddr)] = ((long) pmdIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pmdIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Walk/create PMD -> PTE\n        entry = tablePool[pmdIdx][pmdIndex(vaddr)];\n        int pteIdx;\n        if ((entry & PTE_PRESENT) == 0) {\n            pteIdx = allocPageTable();\n            tablePool[pmdIdx][pmdIndex(vaddr)] = ((long) pteIdx << 12) | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n        } else {\n            pteIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        }\n\n        // Set the final PTE\n        tablePool[pteIdx][pteIndex(vaddr)] = (paddr & PTE_ADDR_MASK) | flags | PTE_PRESENT;\n    }\n\n    // Translate virtual address to physical address\n    public long translate(int pgdIdx, long vaddr) {\n        translations++;\n\n        long entry = tablePool[pgdIdx][pgdIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pudIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pudIdx][pudIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pmdIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pmdIdx][pmdIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        int pteIdx = (int) ((entry & PTE_ADDR_MASK) >> 12);\n        entry = tablePool[pteIdx][pteIndex(vaddr)];\n        if ((entry & PTE_PRESENT) == 0) { pageFaults++; return 0; }\n\n        // Mark accessed\n        tablePool[pteIdx][pteIndex(vaddr)] |= PTE_ACCESSED;\n\n        return (entry & PTE_ADDR_MASK) | pageOffset(vaddr);\n    }\n\n    public long getPageFaults() { return pageFaults; }\n    public long getTranslations() { return translations; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.*;\nimport java.nio.*;\nimport java.nio.channels.FileChannel;\nimport java.nio.charset.StandardCharsets;\nimport java.nio.file.*;\n\n// Memory-mapped file for a simple key-value store\npublic class MappedHashTable {\n    private static final int KEY_SIZE = 64;\n    private static final int VALUE_SIZE = 256;\n    private static final int ENTRY_SIZE = KEY_SIZE + VALUE_SIZE + 4 + 1; // key + value + hash + occupied\n\n    private final MappedByteBuffer buffer;\n    private final int capacity;\n    private final FileChannel channel;\n\n    public MappedHashTable(Path path, int capacity, boolean create) throws IOException {\n        this.capacity = capacity;\n        long size = 8L + (long) capacity * ENTRY_SIZE; // count(4) + capacity(4) + entries\n\n        if (create) {\n            this.channel = FileChannel.open(path,\n                    StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);\n            // Extend file to required size\n            channel.truncate(size);\n            // Force file to be the right size\n            ByteBuffer zero = ByteBuffer.allocate(1);\n            channel.write(zero, size - 1);\n        } else {\n            this.channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);\n        }\n\n        // Map file into memory\n        this.buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, size);\n\n        if (create) {\n            buffer.putInt(0, 0);         // count = 0\n            buffer.putInt(4, capacity);  // capacity\n        }\n    }\n\n    public void put(String key, String value) {\n        int hash = key.hashCode();\n        int index = Math.abs(hash) % capacity;\n\n        int offset = 8 + index * ENTRY_SIZE;\n        byte[] keyBytes = new byte[KEY_SIZE];\n        byte[] valBytes = new byte[VALUE_SIZE];\n        System.arraycopy(key.getBytes(StandardCharsets.UTF_8), 0, keyBytes, 0,\n                Math.min(key.length(), KEY_SIZE));\n        System.arraycopy(value.getBytes(StandardCharsets.UTF_8), 0, valBytes, 0,\n                Math.min(value.length(), VALUE_SIZE));\n\n        buffer.position(offset);\n        buffer.put(keyBytes);\n        buffer.put(valBytes);\n        buffer.putInt(hash);\n        buffer.put((byte) 1); // occupied\n\n        // Increment count\n        buffer.putInt(0, buffer.getInt(0) + 1);\n    }\n\n    // Changes are automatically persisted to disk via page cache\n    // Use force() for explicit durability guarantees\n    public void sync() {\n        buffer.force(); // Equivalent to msync - blocks until written to disk\n    }\n\n    public void close() throws IOException {\n        channel.close();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.nio.ByteBuffer;\n\npublic class ArenaAllocator {\n    private static final int ARENA_SIZE = 1024 * 1024; // 1MB arena\n    private static final int ALIGNMENT = 16;\n    private static final int BLOCK_HEADER_SIZE = align(16); // size(8) + next(4) + free(1) padded\n\n    private final ByteBuffer arena;\n    private int freeListHead; // Offset of first free block\n    private long allocated = 0;\n    private long peakAllocated = 0;\n\n    private static int align(int size) {\n        return (size + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1);\n    }\n\n    public ArenaAllocator() {\n        // Allocate direct buffer (off-heap, similar to mmap anonymous)\n        this.arena = ByteBuffer.allocateDirect(ARENA_SIZE);\n\n        // Initialize free list with single large block\n        freeListHead = 0;\n        setBlockSize(0, ARENA_SIZE - BLOCK_HEADER_SIZE);\n        setBlockNext(0, -1); // -1 = null\n        setBlockFree(0, true);\n    }\n\n    // Block header layout: [size: long (8)] [next: int (4)] [free: byte (1)]\n    private long getBlockSize(int offset) { return arena.getLong(offset); }\n    private void setBlockSize(int offset, long size) { arena.putLong(offset, size); }\n    private int getBlockNext(int offset) { return arena.getInt(offset + 8); }\n    private void setBlockNext(int offset, int next) { arena.putInt(offset + 8, next); }\n    private boolean isBlockFree(int offset) { return arena.get(offset + 12) != 0; }\n    private void setBlockFree(int offset, boolean free) { arena.put(offset + 12, (byte) (free ? 1 : 0)); }\n\n    public int alloc(int requestedSize) {\n        int size = align(requestedSize);\n\n        // First-fit search through free list\n        int prev = -1;\n        int curr = freeListHead;\n\n        while (curr != -1) {\n            if (isBlockFree(curr) && getBlockSize(curr) >= size) {\n                long currSize = getBlockSize(curr);\n\n                // Split block if remainder is large enough\n                if (currSize >= size + BLOCK_HEADER_SIZE + ALIGNMENT) {\n                    int newBlock = curr + BLOCK_HEADER_SIZE + size;\n                    setBlockSize(newBlock, currSize - size - BLOCK_HEADER_SIZE);\n                    setBlockNext(newBlock, getBlockNext(curr));\n                    setBlockFree(newBlock, true);\n\n                    setBlockSize(curr, size);\n                    setBlockNext(curr, newBlock);\n                }\n\n                setBlockFree(curr, false);\n                allocated += getBlockSize(curr);\n                if (allocated > peakAllocated) peakAllocated = allocated;\n\n                return curr + BLOCK_HEADER_SIZE; // Return offset past header\n            }\n            prev = curr;\n            curr = getBlockNext(curr);\n        }\n\n        return -1; // Out of memory\n    }\n\n    public void free(int ptr) {\n        if (ptr < 0) return;\n\n        int block = ptr - BLOCK_HEADER_SIZE;\n        setBlockFree(block, true);\n        allocated -= getBlockSize(block);\n\n        // Coalesce adjacent free blocks\n        int curr = freeListHead;\n        while (curr != -1) {\n            int next = getBlockNext(curr);\n            if (isBlockFree(curr) && next != -1 && isBlockFree(next)) {\n                setBlockSize(curr, getBlockSize(curr) + BLOCK_HEADER_SIZE + getBlockSize(next));\n                setBlockNext(curr, getBlockNext(next));\n                continue; // Check again in case of multiple adjacent free blocks\n            }\n            curr = getBlockNext(curr);\n        }\n    }\n\n    public long getAllocated() { return allocated; }\n    public long getPeakAllocated() { return peakAllocated; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.util.*;\n\npublic class LRUPageCache {\n    /**Simulates OS page cache with LRU eviction policy.*/\n\n    enum PageState { CLEAN, DIRTY }\n\n    static class PageFrame {\n        final int pageNumber;\n        PageState state;\n        int accessCount;\n\n        PageFrame(int pageNumber, PageState state) {\n            this.pageNumber = pageNumber;\n            this.state = state;\n            this.accessCount = 1;\n        }\n    }\n\n    private final int numFrames;\n    private final LinkedHashMap<Integer, PageFrame> frames;\n    private int pageFaults = 0;\n    private int diskWrites = 0;\n    private int totalAccesses = 0;\n\n    public LRUPageCache(int numFrames) {\n        this.numFrames = numFrames;\n        // LinkedHashMap with accessOrder=true provides LRU ordering\n        this.frames = new LinkedHashMap<>(numFrames, 0.75f, true);\n    }\n\n    /** Access a page. Returns true if page was in cache (hit). */\n    public boolean access(int pageNumber, boolean write) {\n        totalAccesses++;\n\n        if (frames.containsKey(pageNumber)) {\n            // Cache hit: LinkedHashMap moves to end on access (most recently used)\n            PageFrame frame = frames.get(pageNumber);\n            frame.accessCount++;\n            if (write) frame.state = PageState.DIRTY;\n            return true;\n        }\n\n        // Cache miss: page fault\n        pageFaults++;\n\n        // Evict LRU page if cache is full\n        if (frames.size() >= numFrames) {\n            evictLru();\n        }\n\n        // Load new page\n        PageState state = write ? PageState.DIRTY : PageState.CLEAN;\n        frames.put(pageNumber, new PageFrame(pageNumber, state));\n        return false;\n    }\n\n    private void evictLru() {\n        // The first entry in a LinkedHashMap with accessOrder=true is the LRU\n        Iterator<Map.Entry<Integer, PageFrame>> iter = frames.entrySet().iterator();\n        if (iter.hasNext()) {\n            Map.Entry<Integer, PageFrame> entry = iter.next();\n            if (entry.getValue().state == PageState.DIRTY) {\n                diskWrites++; // Must write back dirty page\n            }\n            iter.remove();\n        }\n    }\n\n    public double hitRate() {\n        if (totalAccesses == 0) return 0.0;\n        return 1.0 - ((double) pageFaults / totalAccesses);\n    }\n\n    public Map<String, Object> stats() {\n        Map<String, Object> s = new LinkedHashMap<>();\n        s.put(\"total_accesses\", totalAccesses);\n        s.put(\"page_faults\", pageFaults);\n        s.put(\"disk_writes\", diskWrites);\n        s.put(\"hit_rate\", String.format(\"%.2f%%\", hitRate() * 100));\n        s.put(\"frames_used\", frames.size());\n        return s;\n    }\n\n    // Simulate a workload\n    public static void main(String[] args) {\n        LRUPageCache cache = new LRUPageCache(4);\n        // Locality-heavy access pattern\n        int[] accesses = {1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5, 1, 2, 3};\n        for (int page : accesses) {\n            boolean hit = cache.access(page, page % 2 == 0);\n            String status = hit ? \"HIT\" : \"MISS\";\n            System.out.printf(\"Access page %d: %s%n\", page, status);\n        }\n\n        System.out.println(\"\\nStats: \" + cache.stats());\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/processes-and-memory/memory-management.md",
+    "wordCount": 1960,
+    "sectionCount": 12
+  }
+}

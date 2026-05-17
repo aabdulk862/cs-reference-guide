@@ -1,0 +1,403 @@
+{
+  "id": "infrastructure-security-network-security",
+  "slug": "network-security",
+  "title": "Network Security",
+  "category": "Security",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Network Security",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Network security encompasses the policies, technologies, and practices designed to protect the integrity, confidentiality, and availability of data as it traverses networks. In modern distributed systems, the network is both the connective tissue enabling microservices communication and the primary attack surface that adversaries exploit. The traditional perimeter-based security model — where everything inside the firewall is trusted — has been replaced by zero-trust architectures that verify every request regardless of its origin."
+        },
+        {
+          "type": "paragraph",
+          "text": "For software engineers building production systems, network security knowledge is essential for designing secure service meshes, configuring cloud networking, implementing DDoS mitigation, and passing system design interviews that probe defense-in-depth strategies. This guide covers firewalls, VPNs, zero-trust architecture, DDoS mitigation, and intrusion detection systems — the network-layer defenses that complement application-level security."
+        }
+      ],
+      "wordCount": 124,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Firewall — Network device or software that filters traffic based on rules (IP, port, protocol); operates at L3/L4 (network/transport) or L7 (application layer)",
+            "VPN (Virtual Private Network) — Encrypted tunnel between endpoints; provides confidentiality and network-level access control for remote users or site-to-site connectivity",
+            "Zero Trust — Security model where no network location is inherently trusted; every request is authenticated, authorized, and encrypted regardless of origin",
+            "DDoS Mitigation — Techniques to absorb or deflect volumetric, protocol, and application-layer denial-of-service attacks",
+            "IDS/IPS — Intrusion Detection/Prevention Systems that monitor network traffic for malicious patterns and optionally block threats in real-time",
+            "mTLS (Mutual TLS) — Both client and server present certificates, providing bidirectional authentication for service-to-service communication",
+            "Network Segmentation — Dividing networks into isolated zones to limit lateral movement after a breach",
+            "WAF (Web Application Firewall) — L7 firewall that inspects HTTP traffic for application-layer attacks (SQLi, XSS, SSRF)",
+            "SASE (Secure Access Service Edge) — Cloud-delivered convergence of networking (SD-WAN) and security (CASB, FWaaS, ZTNA) services"
+          ]
+        }
+      ],
+      "wordCount": 163,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Firewalls and Security Groups:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Restricting inbound traffic to only necessary ports and protocols",
+            "Implementing network segmentation between application tiers (web, app, database)",
+            "Blocking egress traffic to prevent data exfiltration and C2 communication",
+            "Cloud environments (AWS Security Groups, Azure NSGs, GCP Firewall Rules)"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "VPN:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Remote employee access to internal corporate resources",
+            "Site-to-site connectivity between data centers or cloud regions",
+            "Securing traffic over untrusted networks (public WiFi)",
+            "Compliance requirements mandating encrypted network access"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Zero Trust Architecture:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Cloud-native applications where the network perimeter is undefined",
+            "Organizations with remote/hybrid workforces",
+            "Microservices architectures where service-to-service trust must be explicit",
+            "Environments with high-value assets requiring continuous verification"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "DDoS Mitigation:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Public-facing web applications and APIs",
+            "DNS infrastructure",
+            "Gaming servers and real-time communication platforms",
+            "Any service where availability is a business-critical requirement"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "IDS/IPS:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitoring east-west traffic within data centers for lateral movement",
+            "Detecting known attack signatures and anomalous behavior patterns",
+            "Compliance requirements (PCI DSS requires IDS/IPS for cardholder data environments)",
+            "Providing forensic data for incident response"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "mTLS:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Service-to-service communication in microservices (service mesh)",
+            "API integrations with partners requiring strong mutual authentication",
+            "Zero-trust environments where network location doesn't imply trust",
+            "Financial and healthcare systems requiring non-repudiation"
+          ]
+        }
+      ],
+      "wordCount": 187,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-1-zero-trust-service-to-service-authentication-with-mtls",
+          "heading": "Example 1: Zero Trust Service-to-Service Authentication with mTLS",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import https from 'https';\nimport fs from 'fs';\nimport tls from 'tls';\n\n// Server configuration with mTLS (requires client certificate)\nconst serverOptions: https.ServerOptions = {\n  // Server's own certificate and key\n  cert: fs.readFileSync('/etc/certs/server.crt'),\n  key: fs.readFileSync('/etc/certs/server.key'),\n\n  // CA certificate(s) to validate client certificates against\n  ca: fs.readFileSync('/etc/certs/ca.crt'),\n\n  // CRITICAL: Require client certificate (mTLS)\n  requestCert: true,\n  rejectUnauthorized: true,\n\n  // Minimum TLS version\n  minVersion: 'TLSv1.3',\n\n  // Restrict cipher suites\n  ciphers: [\n    'TLS_AES_256_GCM_SHA384',\n    'TLS_CHACHA20_POLY1305_SHA256',\n    'TLS_AES_128_GCM_SHA256',\n  ].join(':'),\n};\n\nconst server = https.createServer(serverOptions, (req, res) => {\n  // Extract client identity from certificate\n  const clientCert = (req.socket as tls.TLSSocket).getPeerCertificate();\n\n  // Verify client identity (beyond just certificate validity)\n  const clientService = clientCert.subject.CN; // e.g., \"payment-service\"\n  const clientOrg = clientCert.subject.O;\n\n  // Authorization: check if this service is allowed to call this endpoint\n  if (!isAuthorized(clientService, req.method, req.url)) {\n    res.writeHead(403);\n    res.end(JSON.stringify({ error: 'Service not authorized for this endpoint' }));\n    return;\n  }\n\n  // Log for audit trail\n  console.log(`Request from ${clientService} (${clientOrg}): ${req.method} ${req.url}`);\n\n  // Process request...\n  res.writeHead(200);\n  res.end(JSON.stringify({ status: 'ok' }));\n});\n\n// Client configuration for mTLS requests\nasync function callService(url: string, data: object): Promise<Response> {\n  const agent = new https.Agent({\n    cert: fs.readFileSync('/etc/certs/client.crt'),\n    key: fs.readFileSync('/etc/certs/client.key'),\n    ca: fs.readFileSync('/etc/certs/ca.crt'),\n    minVersion: 'TLSv1.3',\n  });\n\n  return fetch(url, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify(data),\n    // @ts-ignore - Node.js fetch supports agent\n    agent: agent,\n  });\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-2-network-policy-configuration-kubernetes",
+          "heading": "Example 2: Network Policy Configuration (Kubernetes)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# Kubernetes NetworkPolicy: Default deny all ingress and egress\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: default-deny-all\n  namespace: production\nspec:\n  podSelector: {} # Applies to all pods in namespace\n  policyTypes:\n    - Ingress\n    - Egress\n\n---\n# Allow specific service-to-service communication\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: allow-api-to-database\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: postgres\n      tier: database\n  policyTypes:\n    - Ingress\n  ingress:\n    - from:\n        - podSelector:\n            matchLabels:\n              app: api-server\n              tier: backend\n        - namespaceSelector:\n            matchLabels:\n              environment: production\n      ports:\n        - protocol: TCP\n          port: 5432\n\n---\n# Allow egress only to specific external services\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: api-server-egress\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: api-server\n  policyTypes:\n    - Egress\n  egress:\n    # Allow DNS resolution\n    - to:\n        - namespaceSelector:\n            matchLabels:\n              kubernetes.io/metadata.name: kube-system\n          podSelector:\n            matchLabels:\n              k8s-app: kube-dns\n      ports:\n        - protocol: UDP\n          port: 53\n    # Allow database access\n    - to:\n        - podSelector:\n            matchLabels:\n              app: postgres\n      ports:\n        - protocol: TCP\n          port: 5432\n    # Allow external payment API\n    - to:\n        - ipBlock:\n            cidr: 203.0.113.0/24 # Payment provider IP range\n      ports:\n        - protocol: TCP\n          port: 443",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-3-rate-limiting-and-ddos-protection-at-application-layer",
+          "heading": "Example 3: Rate Limiting and DDoS Protection at Application Layer",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';\nimport Redis from 'ioredis';\n\nconst redis = new Redis(process.env.REDIS_URL);\n\n// Layered rate limiting strategy\nclass DDoSProtection {\n  // Layer 1: Global rate limit (all requests)\n  private globalLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:global',\n    points: 10000,        // 10,000 requests\n    duration: 1,          // per second\n    blockDuration: 60,    // block for 60 seconds if exceeded\n  });\n\n  // Layer 2: Per-IP rate limit\n  private ipLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:ip',\n    points: 100,          // 100 requests\n    duration: 60,         // per minute\n    blockDuration: 300,   // block for 5 minutes\n  });\n\n  // Layer 3: Per-user rate limit (authenticated)\n  private userLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:user',\n    points: 1000,         // 1000 requests\n    duration: 3600,       // per hour\n    blockDuration: 3600,  // block for 1 hour\n  });\n\n  // Layer 4: Endpoint-specific limits (login, signup)\n  private authLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:auth',\n    points: 5,            // 5 attempts\n    duration: 900,        // per 15 minutes\n    blockDuration: 900,   // block for 15 minutes\n  });\n\n  // Sliding window with burst protection\n  private burstLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:burst',\n    points: 20,           // 20 requests\n    duration: 1,          // per second (burst)\n    blockDuration: 10,    // block for 10 seconds\n  });\n\n  async middleware(req: Request, res: Response, next: NextFunction) {\n    const clientIP = this.getClientIP(req);\n    const userId = req.user?.id;\n\n    try {\n      // Check global limit first\n      await this.globalLimiter.consume('global');\n\n      // Check burst limit\n      await this.burstLimiter.consume(clientIP);\n\n      // Check IP limit\n      await this.ipLimiter.consume(clientIP);\n\n      // Check user limit if authenticated\n      if (userId) {\n        await this.userLimiter.consume(userId);\n      }\n\n      // Check auth endpoint limit\n      if (req.path.startsWith('/auth/')) {\n        await this.authLimiter.consume(clientIP);\n      }\n\n      next();\n    } catch (rateLimiterRes) {\n      // Set retry-after header\n      const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000);\n      res.set('Retry-After', String(retryAfter));\n      res.set('X-RateLimit-Remaining', '0');\n\n      res.status(429).json({\n        error: 'Too many requests',\n        retryAfter: retryAfter,\n      });\n    }\n  }\n\n  private getClientIP(req: Request): string {\n    // Trust X-Forwarded-For only from known load balancers\n    const trustedProxies = ['10.0.0.0/8', '172.16.0.0/12'];\n    const remoteAddr = req.socket.remoteAddress;\n\n    if (this.isFromTrustedProxy(remoteAddr, trustedProxies)) {\n      const forwarded = req.headers['x-forwarded-for'];\n      if (forwarded) {\n        return (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',')[0].trim();\n      }\n    }\n    return remoteAddr || 'unknown';\n  }\n\n  private isFromTrustedProxy(ip: string | undefined, cidrs: string[]): boolean {\n    if (!ip) return false;\n    // CIDR matching implementation\n    return cidrs.some(cidr => isInCIDR(ip, cidr));\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-4-waf-rules-configuration-aws-waf",
+          "heading": "Example 4: WAF Rules Configuration (AWS WAF)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { WAFv2Client, CreateWebACLCommand } from '@aws-sdk/client-wafv2';\n\n// Infrastructure-as-code WAF configuration\nconst wafConfig = {\n  Name: 'production-web-acl',\n  Scope: 'REGIONAL',\n  DefaultAction: { Allow: {} },\n  Rules: [\n    // Rule 1: AWS Managed Rules - Common Rule Set\n    {\n      Name: 'AWSManagedRulesCommonRuleSet',\n      Priority: 1,\n      Statement: {\n        ManagedRuleGroupStatement: {\n          VendorName: 'AWS',\n          Name: 'AWSManagedRulesCommonRuleSet',\n          ExcludedRules: [], // Override specific rules if needed\n        },\n      },\n      OverrideAction: { None: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'CommonRuleSet',\n      },\n    },\n    // Rule 2: SQL Injection protection\n    {\n      Name: 'AWSManagedRulesSQLiRuleSet',\n      Priority: 2,\n      Statement: {\n        ManagedRuleGroupStatement: {\n          VendorName: 'AWS',\n          Name: 'AWSManagedRulesSQLiRuleSet',\n        },\n      },\n      OverrideAction: { None: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'SQLiRuleSet',\n      },\n    },\n    // Rule 3: Rate-based rule (DDoS protection)\n    {\n      Name: 'RateLimit',\n      Priority: 3,\n      Statement: {\n        RateBasedStatement: {\n          Limit: 2000, // 2000 requests per 5-minute window per IP\n          AggregateKeyType: 'IP',\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'RateLimit',\n      },\n    },\n    // Rule 4: Geo-blocking (block specific countries)\n    {\n      Name: 'GeoBlock',\n      Priority: 4,\n      Statement: {\n        GeoMatchStatement: {\n          CountryCodes: ['KP', 'IR', 'SY'], // Sanctioned countries\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'GeoBlock',\n      },\n    },\n    // Rule 5: Custom rule - block requests with suspicious headers\n    {\n      Name: 'BlockSuspiciousUserAgents',\n      Priority: 5,\n      Statement: {\n        ByteMatchStatement: {\n          SearchString: 'sqlmap',\n          FieldToMatch: { SingleHeader: { Name: 'user-agent' } },\n          TextTransformations: [{ Priority: 0, Type: 'LOWERCASE' }],\n          PositionalConstraint: 'CONTAINS',\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'SuspiciousUA',\n      },\n    },\n  ],\n};",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-5-intrusion-detection-with-network-traffic-analysis",
+          "heading": "Example 5: Intrusion Detection with Network Traffic Analysis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Simplified network anomaly detection using connection patterns\nimport java.time.Instant;\nimport java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\n\n/** Track connection patterns per source IP. */\nclass ConnectionMetrics {\n    int totalConnections = 0;\n    Set<String> uniqueDestinations = new HashSet<>();\n    Set<Integer> portsScanned = new HashSet<>();\n    long bytesTransferred = 0;\n    int failedConnections = 0;\n    long firstSeen = System.currentTimeMillis();\n    long lastSeen = System.currentTimeMillis();\n}\n\n/** Simple network intrusion detection system. */\npublic class NetworkIDS {\n\n    private final Map<String, ConnectionMetrics> metrics = new ConcurrentHashMap<>();\n    private final List<Alert> alerts = new ArrayList<>();\n\n    // Detection thresholds\n    private static final int PORT_SCAN_THRESHOLD = 20;          // ports in 60 seconds\n    private static final int CONNECTION_RATE_THRESHOLD = 100;   // connections per minute\n    private static final int LATERAL_MOVEMENT_THRESHOLD = 10;   // unique internal destinations\n    private static final long DATA_EXFIL_THRESHOLD = 100_000_000L; // 100MB outbound\n\n    /** Process a network connection event and check for anomalies. */\n    public List<Alert> processConnection(ConnectionEvent event) {\n        List<Alert> detectedAlerts = new ArrayList<>();\n        ConnectionMetrics m = metrics.computeIfAbsent(event.getSourceIp(), k -> new ConnectionMetrics());\n\n        m.totalConnections++;\n        m.uniqueDestinations.add(event.getDestIp());\n        m.portsScanned.add(event.getDestPort());\n        m.bytesTransferred += event.getBytesSent();\n        m.lastSeen = System.currentTimeMillis();\n\n        if (!event.isSuccess()) {\n            m.failedConnections++;\n        }\n\n        // Detection: Port scanning\n        long windowMs = m.lastSeen - m.firstSeen;\n        if (windowMs < 60_000 && m.portsScanned.size() > PORT_SCAN_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"HIGH\", \"PORT_SCAN\", event.getSourceIp(),\n                String.format(\"Port scan detected: %d ports in %ds\",\n                    m.portsScanned.size(), windowMs / 1000)\n            ));\n        }\n\n        // Detection: Lateral movement (many internal destinations)\n        long internalDests = m.uniqueDestinations.stream()\n                .filter(this::isInternal).count();\n        if (internalDests > LATERAL_MOVEMENT_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"CRITICAL\", \"LATERAL_MOVEMENT\", event.getSourceIp(),\n                String.format(\"Possible lateral movement: %d internal hosts contacted\",\n                    internalDests)\n            ));\n        }\n\n        // Detection: Data exfiltration (large outbound transfer)\n        if (!isInternal(event.getDestIp()) && m.bytesTransferred > DATA_EXFIL_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"CRITICAL\", \"DATA_EXFILTRATION\", event.getSourceIp(),\n                String.format(\"Large outbound transfer: %.1fMB\",\n                    m.bytesTransferred / 1_000_000.0)\n            ));\n        }\n\n        // Detection: Brute force (high failure rate)\n        if (m.failedConnections > 10\n                && (double) m.failedConnections / m.totalConnections > 0.8) {\n            detectedAlerts.add(new Alert(\n                \"HIGH\", \"BRUTE_FORCE\", event.getSourceIp(),\n                String.format(\"High failure rate: %d/%d\",\n                    m.failedConnections, m.totalConnections)\n            ));\n        }\n\n        return detectedAlerts;\n    }\n\n    /** Check if IP is in internal network ranges. */\n    private boolean isInternal(String ip) {\n        String[] parts = ip.split(\"\\\\.\");\n        int first = Integer.parseInt(parts[0]);\n        int second = Integer.parseInt(parts[1]);\n        return first == 10\n                || (first == 172 && second >= 16 && second <= 31)\n                || (first == 192 && second == 168);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Relying solely on perimeter firewalls (castle-and-moat model). Once an attacker breaches the perimeter (via phishing, compromised credentials, or supply chain attack), they have unrestricted lateral movement. Implement network segmentation, micro-segmentation, and zero-trust principles so that internal services still require authentication and authorization."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Overly permissive security group rules. Rules like \"allow all traffic from 0.0.0.0/0\" or \"allow all ports from VPC CIDR\" negate the purpose of security groups. Follow the principle of least privilege: allow only specific ports from specific sources. Regularly audit and remove unused rules. Use infrastructure-as-code to prevent manual drift."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Not encrypting east-west traffic. Many organizations encrypt north-south traffic (client to server) but leave internal service-to-service communication unencrypted. An attacker who gains access to the internal network can sniff all inter-service traffic. Implement mTLS via service mesh (Istio, Linkerd) for all internal communication."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Trusting X-Forwarded-For headers without validation. The X-Forwarded-For header can be spoofed by clients. Only trust it when the immediate connection comes from a known load balancer or proxy. Configure your application to only read XFF from trusted proxy IPs, and always use the rightmost untrusted entry (the one your proxy added)."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Implementing VPN as the sole access control. VPN provides network-level access but doesn't enforce application-level authorization. A compromised VPN credential gives full network access to all internal resources. Layer VPN with identity-aware proxies (BeyondCorp model), MFA, device posture checks, and per-application authorization."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Not monitoring DNS traffic. DNS is commonly used for data exfiltration (DNS tunneling) and command-and-control communication because it's rarely blocked or inspected. Monitor DNS query patterns for: unusually long domain names, high query volumes to single domains, TXT record queries to suspicious domains, and queries to newly registered domains."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Ignoring egress filtering. Most organizations focus on ingress (blocking inbound attacks) but neglect egress (blocking outbound communication). Without egress filtering, compromised systems can freely communicate with C2 servers, exfiltrate data, and download additional malware. Implement egress firewalls that allow only necessary outbound connections."
+        }
+      ],
+      "wordCount": 327,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Google BeyondCorp (Zero Trust Pioneer): Google eliminated their corporate VPN entirely, replacing it with an identity-aware proxy that evaluates every request based on user identity, device health, and context. Employees access internal applications from any network (coffee shop, home, office) with the same security posture. Each request is authenticated via SSO, authorized based on role and resource sensitivity, and the device must pass health checks (encrypted disk, up-to-date OS, managed device). This model inspired the industry-wide shift toward zero-trust architecture."
+        },
+        {
+          "type": "paragraph",
+          "text": "Cloudflare DDoS mitigation: Cloudflare's Anycast network absorbs DDoS attacks by distributing traffic across 300+ data centers globally. When a volumetric attack hits, traffic is spread across the entire network rather than concentrated on the origin. Layer 3/4 attacks are filtered at the edge using BGP Flowspec rules and stateless packet filtering. Layer 7 attacks are mitigated using JavaScript challenges, CAPTCHA, and behavioral analysis that distinguishes bots from legitimate users. Their network can absorb attacks exceeding 100 Tbps."
+        },
+        {
+          "type": "paragraph",
+          "text": "Netflix's security architecture: Netflix implements defense in depth across their AWS infrastructure: VPC segmentation isolates services into security zones, security groups enforce micro-segmentation at the instance level, and their custom \"Repokid\" tool automatically right-sizes IAM permissions based on actual usage. Their \"Chaos Monkey\" approach extends to security with \"Security Monkey\" that continuously audits configurations for drift from security baselines."
+        },
+        {
+          "type": "paragraph",
+          "text": "Financial services network isolation: Banks implement strict network segmentation between trading systems, customer-facing applications, and back-office systems. Each zone has dedicated firewalls with explicit allow rules. Cross-zone communication requires approval and is logged for compliance. Payment card environments (PCI DSS scope) are isolated in dedicated network segments with additional monitoring and access controls. Hardware-based network encryption (MACsec) protects data center interconnects."
+        }
+      ],
+      "wordCount": 277,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain zero-trust architecture. How does it differ from traditional perimeter security, and what are the implementation challenges?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Traditional perimeter security (castle-and-moat) trusts everything inside the network boundary and focuses defenses on the edge. Zero trust assumes breach — no network location is inherently trusted. Every request must be authenticated (who), authorized (what they can access), and encrypted (confidentiality), regardless of whether it originates from inside or outside the network. Implementation requires: (1) Strong identity for all users and services (mTLS, OIDC). (2) Device health verification (is the device managed, patched, encrypted?). (3) Micro-segmentation (network policies limiting lateral movement). (4) Continuous verification (not just at login, but on every request). (5) Least-privilege access (just-in-time, just-enough access). Challenges include: legacy applications that can't support modern auth, performance overhead of per-request verification, complexity of managing fine-grained policies at scale, and organizational resistance to removing VPN-based access."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you design a DDoS mitigation strategy for a global web application?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A comprehensive DDoS strategy operates at multiple layers: (1) Network layer (L3/L4): Use Anycast routing to distribute traffic globally, implement BGP blackholing for volumetric attacks, and deploy scrubbing centers (Cloudflare, AWS Shield Advanced) that filter malicious traffic before it reaches origin servers. (2) Transport layer: SYN flood protection via SYN cookies, connection rate limiting per source IP, and TCP state table overflow protection. (3) Application layer (L7): Rate limiting per IP/user/endpoint, CAPTCHA challenges for suspicious patterns, JavaScript proof-of-work challenges that bots can't solve, and behavioral analysis distinguishing legitimate users from bots. (4) Architecture: Auto-scaling to absorb traffic spikes, CDN caching to reduce origin load, and geographic load balancing. (5) Preparation: Maintain runbooks, establish relationships with ISPs for upstream filtering, and regularly test mitigation procedures. The key trade-off is between aggressive filtering (may block legitimate users) and permissive policies (may allow attack traffic through)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is mTLS and when would you use it instead of one-way TLS? What are the operational challenges?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Standard TLS (one-way) only authenticates the server to the client — the client verifies the server's certificate but the server doesn't verify the client's identity at the TLS layer. mTLS (mutual TLS) adds client certificate authentication — both parties present and verify certificates. Use mTLS for: service-to-service communication in microservices (replacing API keys), zero-trust environments where network location doesn't imply trust, and B2B API integrations requiring strong mutual authentication. Operational challenges include: certificate lifecycle management (issuance, rotation, revocation) at scale, debugging TLS handshake failures (certificate chain issues, expired certs), performance overhead of additional TLS handshake round-trips, and the need for a robust PKI infrastructure (internal CA, certificate automation via cert-manager or Vault). Service meshes (Istio, Linkerd) simplify mTLS by handling certificate management transparently via sidecar proxies."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you secure a Kubernetes cluster's network? Describe the layers of network security you would implement."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Kubernetes network security operates at multiple layers: (1) Pod-level: NetworkPolicies define allowed ingress/egress per pod using label selectors. Start with default-deny-all and explicitly allow required communication paths. (2) Service mesh: Istio/Linkerd provides mTLS between all pods automatically, plus L7 authorization policies (allow service A to call service B's /api/orders endpoint only). (3) Node-level: Host firewalls (iptables/nftables) restrict traffic to/from nodes. Separate control plane nodes from worker nodes. (4) Cluster-level: API server access restricted to authorized networks, RBAC for kubectl access, admission controllers validating pod security. (5) External: Ingress controllers with WAF integration, DDoS protection at the load balancer, and egress gateways controlling outbound traffic. (6) DNS: CoreDNS policies preventing DNS exfiltration, and external DNS resolution only through controlled egress points."
+        }
+      ],
+      "wordCount": 588,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Implement network observability before enforcement. Before deploying restrictive network policies, run in audit/monitor mode to understand actual traffic patterns. Tools like Cilium Hubble, Calico flow logs, or VPC Flow Logs reveal which services communicate with which, on what ports, and at what volume. Use this data to build accurate allow-lists rather than guessing and breaking production traffic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Automate certificate rotation with short-lived certificates. Long-lived certificates (1+ year) accumulate risk and create operational emergencies when they expire unexpectedly. Use automated certificate management (cert-manager in Kubernetes, ACME/Let's Encrypt for public certs, HashiCorp Vault PKI for internal certs) with short lifetimes (24-72 hours for service certificates). Short-lived certificates reduce the impact of key compromise and eliminate the need for CRL/OCSP revocation checking."
+        },
+        {
+          "type": "paragraph",
+          "text": "Design for graceful degradation during DDoS attacks. Your DDoS mitigation strategy should include degraded-mode operation: serve cached content when origin is overwhelmed, implement priority queuing (authenticated users get priority over anonymous), shed non-critical traffic (analytics, recommendations) to preserve core functionality, and have pre-configured \"under attack\" pages that load without backend dependencies."
+        }
+      ],
+      "wordCount": 170,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Web Application Security — Application-layer attacks (XSS, CSRF, SQLi) that network security complements but cannot fully prevent",
+            "Container Security — Kubernetes network policies, pod security, and service mesh configurations that implement network security in containerized environments",
+            "Cryptography Fundamentals — TLS, certificate management, and encryption protocols that network security depends on"
+          ]
+        }
+      ],
+      "wordCount": 50,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import https from 'https';\nimport fs from 'fs';\nimport tls from 'tls';\n\n// Server configuration with mTLS (requires client certificate)\nconst serverOptions: https.ServerOptions = {\n  // Server's own certificate and key\n  cert: fs.readFileSync('/etc/certs/server.crt'),\n  key: fs.readFileSync('/etc/certs/server.key'),\n\n  // CA certificate(s) to validate client certificates against\n  ca: fs.readFileSync('/etc/certs/ca.crt'),\n\n  // CRITICAL: Require client certificate (mTLS)\n  requestCert: true,\n  rejectUnauthorized: true,\n\n  // Minimum TLS version\n  minVersion: 'TLSv1.3',\n\n  // Restrict cipher suites\n  ciphers: [\n    'TLS_AES_256_GCM_SHA384',\n    'TLS_CHACHA20_POLY1305_SHA256',\n    'TLS_AES_128_GCM_SHA256',\n  ].join(':'),\n};\n\nconst server = https.createServer(serverOptions, (req, res) => {\n  // Extract client identity from certificate\n  const clientCert = (req.socket as tls.TLSSocket).getPeerCertificate();\n\n  // Verify client identity (beyond just certificate validity)\n  const clientService = clientCert.subject.CN; // e.g., \"payment-service\"\n  const clientOrg = clientCert.subject.O;\n\n  // Authorization: check if this service is allowed to call this endpoint\n  if (!isAuthorized(clientService, req.method, req.url)) {\n    res.writeHead(403);\n    res.end(JSON.stringify({ error: 'Service not authorized for this endpoint' }));\n    return;\n  }\n\n  // Log for audit trail\n  console.log(`Request from ${clientService} (${clientOrg}): ${req.method} ${req.url}`);\n\n  // Process request...\n  res.writeHead(200);\n  res.end(JSON.stringify({ status: 'ok' }));\n});\n\n// Client configuration for mTLS requests\nasync function callService(url: string, data: object): Promise<Response> {\n  const agent = new https.Agent({\n    cert: fs.readFileSync('/etc/certs/client.crt'),\n    key: fs.readFileSync('/etc/certs/client.key'),\n    ca: fs.readFileSync('/etc/certs/ca.crt'),\n    minVersion: 'TLSv1.3',\n  });\n\n  return fetch(url, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify(data),\n    // @ts-ignore - Node.js fetch supports agent\n    agent: agent,\n  });\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# Kubernetes NetworkPolicy: Default deny all ingress and egress\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: default-deny-all\n  namespace: production\nspec:\n  podSelector: {} # Applies to all pods in namespace\n  policyTypes:\n    - Ingress\n    - Egress\n\n---\n# Allow specific service-to-service communication\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: allow-api-to-database\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: postgres\n      tier: database\n  policyTypes:\n    - Ingress\n  ingress:\n    - from:\n        - podSelector:\n            matchLabels:\n              app: api-server\n              tier: backend\n        - namespaceSelector:\n            matchLabels:\n              environment: production\n      ports:\n        - protocol: TCP\n          port: 5432\n\n---\n# Allow egress only to specific external services\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: api-server-egress\n  namespace: production\nspec:\n  podSelector:\n    matchLabels:\n      app: api-server\n  policyTypes:\n    - Egress\n  egress:\n    # Allow DNS resolution\n    - to:\n        - namespaceSelector:\n            matchLabels:\n              kubernetes.io/metadata.name: kube-system\n          podSelector:\n            matchLabels:\n              k8s-app: kube-dns\n      ports:\n        - protocol: UDP\n          port: 53\n    # Allow database access\n    - to:\n        - podSelector:\n            matchLabels:\n              app: postgres\n      ports:\n        - protocol: TCP\n          port: 5432\n    # Allow external payment API\n    - to:\n        - ipBlock:\n            cidr: 203.0.113.0/24 # Payment provider IP range\n      ports:\n        - protocol: TCP\n          port: 443",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';\nimport Redis from 'ioredis';\n\nconst redis = new Redis(process.env.REDIS_URL);\n\n// Layered rate limiting strategy\nclass DDoSProtection {\n  // Layer 1: Global rate limit (all requests)\n  private globalLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:global',\n    points: 10000,        // 10,000 requests\n    duration: 1,          // per second\n    blockDuration: 60,    // block for 60 seconds if exceeded\n  });\n\n  // Layer 2: Per-IP rate limit\n  private ipLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:ip',\n    points: 100,          // 100 requests\n    duration: 60,         // per minute\n    blockDuration: 300,   // block for 5 minutes\n  });\n\n  // Layer 3: Per-user rate limit (authenticated)\n  private userLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:user',\n    points: 1000,         // 1000 requests\n    duration: 3600,       // per hour\n    blockDuration: 3600,  // block for 1 hour\n  });\n\n  // Layer 4: Endpoint-specific limits (login, signup)\n  private authLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:auth',\n    points: 5,            // 5 attempts\n    duration: 900,        // per 15 minutes\n    blockDuration: 900,   // block for 15 minutes\n  });\n\n  // Sliding window with burst protection\n  private burstLimiter = new RateLimiterRedis({\n    storeClient: redis,\n    keyPrefix: 'rl:burst',\n    points: 20,           // 20 requests\n    duration: 1,          // per second (burst)\n    blockDuration: 10,    // block for 10 seconds\n  });\n\n  async middleware(req: Request, res: Response, next: NextFunction) {\n    const clientIP = this.getClientIP(req);\n    const userId = req.user?.id;\n\n    try {\n      // Check global limit first\n      await this.globalLimiter.consume('global');\n\n      // Check burst limit\n      await this.burstLimiter.consume(clientIP);\n\n      // Check IP limit\n      await this.ipLimiter.consume(clientIP);\n\n      // Check user limit if authenticated\n      if (userId) {\n        await this.userLimiter.consume(userId);\n      }\n\n      // Check auth endpoint limit\n      if (req.path.startsWith('/auth/')) {\n        await this.authLimiter.consume(clientIP);\n      }\n\n      next();\n    } catch (rateLimiterRes) {\n      // Set retry-after header\n      const retryAfter = Math.ceil(rateLimiterRes.msBeforeNext / 1000);\n      res.set('Retry-After', String(retryAfter));\n      res.set('X-RateLimit-Remaining', '0');\n\n      res.status(429).json({\n        error: 'Too many requests',\n        retryAfter: retryAfter,\n      });\n    }\n  }\n\n  private getClientIP(req: Request): string {\n    // Trust X-Forwarded-For only from known load balancers\n    const trustedProxies = ['10.0.0.0/8', '172.16.0.0/12'];\n    const remoteAddr = req.socket.remoteAddress;\n\n    if (this.isFromTrustedProxy(remoteAddr, trustedProxies)) {\n      const forwarded = req.headers['x-forwarded-for'];\n      if (forwarded) {\n        return (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',')[0].trim();\n      }\n    }\n    return remoteAddr || 'unknown';\n  }\n\n  private isFromTrustedProxy(ip: string | undefined, cidrs: string[]): boolean {\n    if (!ip) return false;\n    // CIDR matching implementation\n    return cidrs.some(cidr => isInCIDR(ip, cidr));\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { WAFv2Client, CreateWebACLCommand } from '@aws-sdk/client-wafv2';\n\n// Infrastructure-as-code WAF configuration\nconst wafConfig = {\n  Name: 'production-web-acl',\n  Scope: 'REGIONAL',\n  DefaultAction: { Allow: {} },\n  Rules: [\n    // Rule 1: AWS Managed Rules - Common Rule Set\n    {\n      Name: 'AWSManagedRulesCommonRuleSet',\n      Priority: 1,\n      Statement: {\n        ManagedRuleGroupStatement: {\n          VendorName: 'AWS',\n          Name: 'AWSManagedRulesCommonRuleSet',\n          ExcludedRules: [], // Override specific rules if needed\n        },\n      },\n      OverrideAction: { None: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'CommonRuleSet',\n      },\n    },\n    // Rule 2: SQL Injection protection\n    {\n      Name: 'AWSManagedRulesSQLiRuleSet',\n      Priority: 2,\n      Statement: {\n        ManagedRuleGroupStatement: {\n          VendorName: 'AWS',\n          Name: 'AWSManagedRulesSQLiRuleSet',\n        },\n      },\n      OverrideAction: { None: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'SQLiRuleSet',\n      },\n    },\n    // Rule 3: Rate-based rule (DDoS protection)\n    {\n      Name: 'RateLimit',\n      Priority: 3,\n      Statement: {\n        RateBasedStatement: {\n          Limit: 2000, // 2000 requests per 5-minute window per IP\n          AggregateKeyType: 'IP',\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'RateLimit',\n      },\n    },\n    // Rule 4: Geo-blocking (block specific countries)\n    {\n      Name: 'GeoBlock',\n      Priority: 4,\n      Statement: {\n        GeoMatchStatement: {\n          CountryCodes: ['KP', 'IR', 'SY'], // Sanctioned countries\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'GeoBlock',\n      },\n    },\n    // Rule 5: Custom rule - block requests with suspicious headers\n    {\n      Name: 'BlockSuspiciousUserAgents',\n      Priority: 5,\n      Statement: {\n        ByteMatchStatement: {\n          SearchString: 'sqlmap',\n          FieldToMatch: { SingleHeader: { Name: 'user-agent' } },\n          TextTransformations: [{ Priority: 0, Type: 'LOWERCASE' }],\n          PositionalConstraint: 'CONTAINS',\n        },\n      },\n      Action: { Block: {} },\n      VisibilityConfig: {\n        SampledRequestsEnabled: true,\n        CloudWatchMetricsEnabled: true,\n        MetricName: 'SuspiciousUA',\n      },\n    },\n  ],\n};",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Simplified network anomaly detection using connection patterns\nimport java.time.Instant;\nimport java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\n\n/** Track connection patterns per source IP. */\nclass ConnectionMetrics {\n    int totalConnections = 0;\n    Set<String> uniqueDestinations = new HashSet<>();\n    Set<Integer> portsScanned = new HashSet<>();\n    long bytesTransferred = 0;\n    int failedConnections = 0;\n    long firstSeen = System.currentTimeMillis();\n    long lastSeen = System.currentTimeMillis();\n}\n\n/** Simple network intrusion detection system. */\npublic class NetworkIDS {\n\n    private final Map<String, ConnectionMetrics> metrics = new ConcurrentHashMap<>();\n    private final List<Alert> alerts = new ArrayList<>();\n\n    // Detection thresholds\n    private static final int PORT_SCAN_THRESHOLD = 20;          // ports in 60 seconds\n    private static final int CONNECTION_RATE_THRESHOLD = 100;   // connections per minute\n    private static final int LATERAL_MOVEMENT_THRESHOLD = 10;   // unique internal destinations\n    private static final long DATA_EXFIL_THRESHOLD = 100_000_000L; // 100MB outbound\n\n    /** Process a network connection event and check for anomalies. */\n    public List<Alert> processConnection(ConnectionEvent event) {\n        List<Alert> detectedAlerts = new ArrayList<>();\n        ConnectionMetrics m = metrics.computeIfAbsent(event.getSourceIp(), k -> new ConnectionMetrics());\n\n        m.totalConnections++;\n        m.uniqueDestinations.add(event.getDestIp());\n        m.portsScanned.add(event.getDestPort());\n        m.bytesTransferred += event.getBytesSent();\n        m.lastSeen = System.currentTimeMillis();\n\n        if (!event.isSuccess()) {\n            m.failedConnections++;\n        }\n\n        // Detection: Port scanning\n        long windowMs = m.lastSeen - m.firstSeen;\n        if (windowMs < 60_000 && m.portsScanned.size() > PORT_SCAN_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"HIGH\", \"PORT_SCAN\", event.getSourceIp(),\n                String.format(\"Port scan detected: %d ports in %ds\",\n                    m.portsScanned.size(), windowMs / 1000)\n            ));\n        }\n\n        // Detection: Lateral movement (many internal destinations)\n        long internalDests = m.uniqueDestinations.stream()\n                .filter(this::isInternal).count();\n        if (internalDests > LATERAL_MOVEMENT_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"CRITICAL\", \"LATERAL_MOVEMENT\", event.getSourceIp(),\n                String.format(\"Possible lateral movement: %d internal hosts contacted\",\n                    internalDests)\n            ));\n        }\n\n        // Detection: Data exfiltration (large outbound transfer)\n        if (!isInternal(event.getDestIp()) && m.bytesTransferred > DATA_EXFIL_THRESHOLD) {\n            detectedAlerts.add(new Alert(\n                \"CRITICAL\", \"DATA_EXFILTRATION\", event.getSourceIp(),\n                String.format(\"Large outbound transfer: %.1fMB\",\n                    m.bytesTransferred / 1_000_000.0)\n            ));\n        }\n\n        // Detection: Brute force (high failure rate)\n        if (m.failedConnections > 10\n                && (double) m.failedConnections / m.totalConnections > 0.8) {\n            detectedAlerts.add(new Alert(\n                \"HIGH\", \"BRUTE_FORCE\", event.getSourceIp(),\n                String.format(\"High failure rate: %d/%d\",\n                    m.failedConnections, m.totalConnections)\n            ));\n        }\n\n        return detectedAlerts;\n    }\n\n    /** Check if IP is in internal network ranges. */\n    private boolean isInternal(String ip) {\n        String[] parts = ip.split(\"\\\\.\");\n        int first = Integer.parseInt(parts[0]);\n        int second = Integer.parseInt(parts[1]);\n        return first == 10\n                || (first == 172 && second >= 16 && second <= 31)\n                || (first == 192 && second == 168);\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/infrastructure-security/network-security.md",
+    "wordCount": 1886,
+    "sectionCount": 14
+  }
+}

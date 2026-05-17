@@ -293,44 +293,59 @@ public class RotatedArraySearch {
 }
 ```
 
-```python
-from bisect import bisect_left, bisect_right
+```java
+public class BinarySearchPatterns {
+    /**
+     * Search in rotated sorted array. O(log n) time.
+     * Determines which half is sorted and narrows accordingly.
+     */
+    public static int searchRotated(int[] nums, int target) {
+        int left = 0, right = nums.length - 1;
 
-def search_rotated(nums: list[int], target: int) -> int:
-    """Search in rotated sorted array. O(log n) time."""
-    left, right = 0, len(nums) - 1
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (nums[mid] == target) return mid;
 
-    while left <= right:
-        mid = (left + right) // 2
-        if nums[mid] == target:
-            return mid
+            if (nums[left] <= nums[mid]) {  // Left half sorted
+                if (nums[left] <= target && target < nums[mid]) {
+                    right = mid - 1;
+                } else {
+                    left = mid + 1;
+                }
+            } else {  // Right half sorted
+                if (nums[mid] < target && target <= nums[right]) {
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }
+        }
+        return -1;
+    }
 
-        if nums[left] <= nums[mid]:  # Left half sorted
-            if nums[left] <= target < nums[mid]:
-                right = mid - 1
-            else:
-                left = mid + 1
-        else:  # Right half sorted
-            if nums[mid] < target <= nums[right]:
-                left = mid + 1
-            else:
-                right = mid - 1
+    /**
+     * Binary search on answer: minimum speed to eat all bananas in h hours.
+     * Predicate: can finish all piles at speed 'mid' within h hours?
+     */
+    public static int minEatingSpeed(int[] piles, int h) {
+        int left = 1, right = 0;
+        for (int pile : piles) right = Math.max(right, pile);
 
-    return -1
-
-def min_eating_speed(piles: list[int], h: int) -> int:
-    """Binary search on answer: minimum speed to eat all bananas in h hours."""
-    left, right = 1, max(piles)
-
-    while left < right:
-        mid = (left + right) // 2
-        hours = sum((pile + mid - 1) // mid for pile in piles)
-        if hours <= h:
-            right = mid
-        else:
-            left = mid + 1
-
-    return left
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            int hours = 0;
+            for (int pile : piles) {
+                hours += (pile + mid - 1) / mid;  // Ceiling division
+            }
+            if (hours <= h) {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        return left;
+    }
+}
 ```
 
 ## Common Pitfalls

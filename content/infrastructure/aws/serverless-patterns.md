@@ -241,52 +241,77 @@ export class EventRoutingStack extends cdk.Stack {
 
 ### Serverless API with Lambda Function URLs
 
-```python
-import json
-import os
-from functools import wraps
-from typing import Callable
+```typescript
+import { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from 'aws-lambda';
 
-def cors_headers(func: Callable) -> Callable:
-    """Decorator to add CORS headers to Lambda Function URL responses."""
-    @wraps(func)
-    def wrapper(event, context):
-        response = func(event, context)
-        response['headers'] = {
-            **response.get('headers', {}),
-            'Access-Control-Allow-Origin': os.environ.get('ALLOWED_ORIGIN', '*'),
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        }
-        return response
-    return wrapper
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
 
-@cors_headers
-def handler(event, context):
-    """Lambda Function URL handler with path-based routing."""
-    method = event['requestContext']['http']['method']
-    path = event['requestContext']['http']['path']
+function addCorsHeaders(response: APIGatewayProxyResultV2): APIGatewayProxyResultV2 {
+  const resp = response as { statusCode: number; headers?: Record<string, string>; body?: string };
+  resp.headers = {
+    ...resp.headers,
+    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+  return resp;
+}
 
-    if method == 'OPTIONS':
-        return {'statusCode': 204, 'body': ''}
+type RouteHandler = (event: APIGatewayProxyEventV2, params: Record<string, string>) => APIGatewayProxyResultV2;
 
-    routes = {
-        ('GET', '/api/products'): list_products,
-        ('GET', '/api/products/{id}'): get_product,
-        ('POST', '/api/products'): create_product,
+const routes: Map<string, RouteHandler> = new Map([
+  ['GET /api/products', listProducts],
+  ['GET /api/products/{id}', getProduct],
+  ['POST /api/products', createProduct],
+]);
+
+export const handler = async (
+  event: APIGatewayProxyEventV2,
+  context: Context
+): Promise<APIGatewayProxyResultV2> => {
+  // Lambda Function URL handler with path-based routing
+  const method = event.requestContext.http.method;
+  const path = event.requestContext.http.path;
+
+  if (method === 'OPTIONS') {
+    return addCorsHeaders({ statusCode: 204, body: '' });
+  }
+
+  for (const [routeKey, handlerFunc] of routes) {
+    const [routeMethod, routePath] = routeKey.split(' ');
+    if (method === routeMethod && matchPath(path, routePath)) {
+      const params = extractParams(path, routePath);
+      return addCorsHeaders(handlerFunc(event, params));
     }
+  }
 
-    # Match route with path parameters
-    for (route_method, route_path), handler_func in routes.items():
-        if method == route_method and match_path(path, route_path):
-            params = extract_params(path, route_path)
-            return handler_func(event, params)
+  return addCorsHeaders({
+    statusCode: 404,
+    body: JSON.stringify({ error: 'Not found' }),
+    headers: { 'Content-Type': 'application/json' }
+  });
+};
 
-    return {
-        'statusCode': 404,
-        'body': json.dumps({'error': 'Not found'}),
-        'headers': {'Content-Type': 'application/json'}
+function matchPath(actual: string, template: string): boolean {
+  const actualParts = actual.split('/');
+  const templateParts = template.split('/');
+  if (actualParts.length !== templateParts.length) return false;
+  return templateParts.every((part, i) =>
+    part.startsWith('{') || part === actualParts[i]
+  );
+}
+
+function extractParams(actual: string, template: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const actualParts = actual.split('/');
+  const templateParts = template.split('/');
+  templateParts.forEach((part, i) => {
+    if (part.startsWith('{') && part.endsWith('}')) {
+      params[part.slice(1, -1)] = actualParts[i];
     }
+  });
+  return params;
+}
 ```
 
 ## Common Pitfalls

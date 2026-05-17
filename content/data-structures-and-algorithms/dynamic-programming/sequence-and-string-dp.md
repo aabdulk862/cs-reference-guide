@@ -112,25 +112,35 @@ public class LCS {
 }
 ```
 
-```python
-def lcs_length(s1: str, s2: str) -> int:
-    """Longest Common Subsequence length. O(n*m) time, O(m) space."""
-    if len(s1) < len(s2):
-        s1, s2 = s2, s1  # Optimize space by iterating over shorter string
+```java
+/**
+ * Space-optimized LCS using two rows.
+ * Swaps shorter string to inner loop for O(min(n,m)) space.
+ */
+public class LCSOptimized {
+    public static int lcsLength(String s1, String s2) {
+        // Ensure s2 is the shorter string for space optimization
+        if (s1.length() < s2.length()) {
+            String temp = s1; s1 = s2; s2 = temp;
+        }
 
-    m = len(s2)
-    prev = [0] * (m + 1)
-    curr = [0] * (m + 1)
+        int m = s2.length();
+        int[] prev = new int[m + 1];
+        int[] curr = new int[m + 1];
 
-    for i in range(1, len(s1) + 1):
-        for j in range(1, m + 1):
-            if s1[i - 1] == s2[j - 1]:
-                curr[j] = prev[j - 1] + 1
-            else:
-                curr[j] = max(prev[j], curr[j - 1])
-        prev, curr = curr, [0] * (m + 1)
-
-    return prev[m]
+        for (int i = 1; i <= s1.length(); i++) {
+            for (int j = 1; j <= m; j++) {
+                if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
+                    curr[j] = prev[j - 1] + 1;
+                } else {
+                    curr[j] = Math.max(prev[j], curr[j - 1]);
+                }
+            }
+            int[] temp = prev; prev = curr; curr = new int[m + 1];
+        }
+        return prev[m];
+    }
+}
 ```
 
 ### Edit Distance (Levenshtein Distance)

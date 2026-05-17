@@ -19,432 +19,662 @@ Redis excels as a caching layer, session store, rate limiter, real-time leaderbo
 
 ### Caching Patterns with Cache-Aside and Write-Through
 
-```python
-import redis
-import json
-import hashlib
-from typing import Optional, Any, Callable
-from functools import wraps
-from datetime import timedelta
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.params.SetParams;
+import redis.clients.jedis.resps.ScanResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-r = redis.Redis(host='redis-cluster.internal', port=6379, decode_responses=True,
-                socket_connect_timeout=2, socket_timeout=1, retry_on_timeout=True)
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
-class CacheManager:
-    """Production cache manager with multiple strategies."""
+// Connection setup with pooling and timeouts
+JedisPoolConfig poolConfig = new JedisPoolConfig();
+poolConfig.setMaxTotal(50);
+JedisPool pool = new JedisPool(poolConfig, "redis-cluster.internal", 6379, 2000, 1000);
 
-    def __init__(self, redis_client: redis.Redis, prefix: str = "cache"):
-        self.redis = redis_client
-        self.prefix = prefix
+ObjectMapper mapper = new ObjectMapper();
 
-    def cache_aside(self, key: str, ttl: timedelta, fetch_fn: Callable[[], Any]) -> Any:
-        """Cache-aside (lazy loading): check cache first, fetch on miss."""
-        cache_key = f"{self.prefix}:{key}"
+/**
+ * Production cache manager with multiple strategies.
+ */
+public class CacheManager {
 
-        # Try cache first
-        cached = self.redis.get(cache_key)
-        if cached is not None:
-            return json.loads(cached)
+    private final JedisPool jedisPool;
+    private final String prefix;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-        # Cache miss: fetch from source
-        value = fetch_fn()
-        if value is not None:
-            self.redis.setex(cache_key, int(ttl.total_seconds()), json.dumps(value))
+    public CacheManager(JedisPool jedisPool, String prefix) {
+        this.jedisPool = jedisPool;
+        this.prefix = prefix;
+    }
 
-        return value
+    /** Cache-aside (lazy loading): check cache first, fetch on miss. */
+    public <T> T cacheAside(String key, Duration ttl, Supplier<T> fetchFn, Class<T> type) {
+        String cacheKey = prefix + ":" + key;
 
-    def write_through(self, key: str, value: Any, ttl: timedelta, persist_fn: Callable[[Any], None]):
-        """Write-through: update cache and database together."""
-        cache_key = f"{self.prefix}:{key}"
+        try (Jedis jedis = jedisPool.getResource()) {
+            // Try cache first
+            String cached = jedis.get(cacheKey);
+            if (cached != null) {
+                return mapper.readValue(cached, type);
+            }
 
-        # Write to database first (source of truth)
-        persist_fn(value)
+            // Cache miss: fetch from source
+            T value = fetchFn.get();
+            if (value != null) {
+                jedis.setex(cacheKey, (int) ttl.getSeconds(), mapper.writeValueAsString(value));
+            }
+            return value;
+        } catch (Exception e) {
+            throw new RuntimeException("Cache operation failed", e);
+        }
+    }
 
-        # Then update cache
-        self.redis.setex(cache_key, int(ttl.total_seconds()), json.dumps(value))
+    /** Write-through: update cache and database together. */
+    public <T> void writeThrough(String key, T value, Duration ttl, Consumer<T> persistFn) {
+        String cacheKey = prefix + ":" + key;
 
-    def cache_stampede_protection(self, key: str, ttl: timedelta, fetch_fn: Callable[[], Any],
-                                   lock_timeout: int = 5) -> Optional[Any]:
-        """Prevent cache stampede using distributed lock."""
-        cache_key = f"{self.prefix}:{key}"
-        lock_key = f"{self.prefix}:lock:{key}"
+        // Write to database first (source of truth)
+        persistFn.accept(value);
 
-        cached = self.redis.get(cache_key)
-        if cached is not None:
-            return json.loads(cached)
+        // Then update cache
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.setex(cacheKey, (int) ttl.getSeconds(), mapper.writeValueAsString(value));
+        } catch (Exception e) {
+            throw new RuntimeException("Cache write-through failed", e);
+        }
+    }
 
-        # Acquire lock to prevent multiple concurrent fetches
-        acquired = self.redis.set(lock_key, "1", nx=True, ex=lock_timeout)
-        if acquired:
-            try:
-                value = fetch_fn()
-                if value is not None:
-                    self.redis.setex(cache_key, int(ttl.total_seconds()), json.dumps(value))
-                return value
-            finally:
-                self.redis.delete(lock_key)
-        else:
-            # Another process is fetching; wait and retry
-            import time
-            time.sleep(0.1)
-            cached = self.redis.get(cache_key)
-            return json.loads(cached) if cached else None
+    /** Prevent cache stampede using distributed lock. */
+    public <T> Optional<T> cacheStampedeProtection(String key, Duration ttl,
+                                                    Supplier<T> fetchFn, Class<T> type,
+                                                    int lockTimeoutSeconds) {
+        String cacheKey = prefix + ":" + key;
+        String lockKey = prefix + ":lock:" + key;
 
-    def invalidate(self, pattern: str):
-        """Invalidate cache entries matching a pattern."""
-        cursor = 0
-        while True:
-            cursor, keys = self.redis.scan(cursor, match=f"{self.prefix}:{pattern}", count=100)
-            if keys:
-                self.redis.delete(*keys)
-            if cursor == 0:
-                break
+        try (Jedis jedis = jedisPool.getResource()) {
+            String cached = jedis.get(cacheKey);
+            if (cached != null) {
+                return Optional.of(mapper.readValue(cached, type));
+            }
 
+            // Acquire lock to prevent multiple concurrent fetches
+            String acquired = jedis.set(lockKey, "1",
+                    SetParams.setParams().nx().ex(lockTimeoutSeconds));
+            if ("OK".equals(acquired)) {
+                try {
+                    T value = fetchFn.get();
+                    if (value != null) {
+                        jedis.setex(cacheKey, (int) ttl.getSeconds(),
+                                mapper.writeValueAsString(value));
+                    }
+                    return Optional.ofNullable(value);
+                } finally {
+                    jedis.del(lockKey);
+                }
+            } else {
+                // Another process is fetching; wait and retry
+                Thread.sleep(100);
+                cached = jedis.get(cacheKey);
+                return cached != null ? Optional.of(mapper.readValue(cached, type))
+                                      : Optional.empty();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Cache stampede protection failed", e);
+        }
+    }
 
-# Decorator for function-level caching
-def cached(ttl_seconds: int = 300, key_prefix: str = "fn"):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # Generate cache key from function name and arguments
-            key_data = f"{func.__name__}:{args}:{sorted(kwargs.items())}"
-            cache_key = f"{key_prefix}:{hashlib.md5(key_data.encode()).hexdigest()}"
+    /** Invalidate cache entries matching a pattern. */
+    public void invalidate(String pattern) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            String cursor = "0";
+            do {
+                ScanResult<String> result = jedis.scan(cursor,
+                        new redis.clients.jedis.params.ScanParams()
+                                .match(prefix + ":" + pattern).count(100));
+                cursor = result.getCursor();
+                if (!result.getResult().isEmpty()) {
+                    jedis.del(result.getResult().toArray(new String[0]));
+                }
+            } while (!"0".equals(cursor));
+        }
+    }
+}
 
-            cached_result = r.get(cache_key)
-            if cached_result is not None:
-                return json.loads(cached_result)
+// Function-level caching utility
+public class CachedFunction {
 
-            result = func(*args, **kwargs)
-            r.setex(cache_key, ttl_seconds, json.dumps(result))
-            return result
-        return wrapper
-    return decorator
+    private final JedisPool jedisPool;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-@cached(ttl_seconds=60)
-def get_user_profile(user_id: str) -> dict:
-    """Expensive database query, cached for 60 seconds."""
-    return db.query("SELECT * FROM users WHERE id = %s", user_id)
+    public CachedFunction(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
+    }
+
+    /** Execute function with caching based on key derived from arguments. */
+    public <T> T execute(String functionName, int ttlSeconds, String keyPrefix,
+                         Supplier<T> function, Class<T> type, Object... args) {
+        // Generate cache key from function name and arguments
+        String keyData = functionName + ":" + java.util.Arrays.toString(args);
+        String hash = md5(keyData);
+        String cacheKey = keyPrefix + ":" + hash;
+
+        try (Jedis jedis = jedisPool.getResource()) {
+            String cachedResult = jedis.get(cacheKey);
+            if (cachedResult != null) {
+                return mapper.readValue(cachedResult, type);
+            }
+
+            T result = function.get();
+            jedis.setex(cacheKey, ttlSeconds, mapper.writeValueAsString(result));
+            return result;
+        } catch (Exception e) {
+            throw new RuntimeException("Cached function execution failed", e);
+        }
+    }
+
+    private String md5(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+// Usage: expensive database query, cached for 60 seconds
+CachedFunction cachedFn = new CachedFunction(pool);
+Map<String, Object> profile = cachedFn.execute("getUserProfile", 60, "fn",
+        () -> db.query("SELECT * FROM users WHERE id = ?", userId), Map.class, userId);
 ```
 
 ### Rate Limiting with Sliding Window
 
-```python
-import redis
-import time
-from typing import Tuple
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.resps.Tuple;
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+import java.util.*;
 
-class RateLimiter:
-    """Sliding window rate limiter using Redis sorted sets."""
+/**
+ * Sliding window rate limiter using Redis sorted sets.
+ */
+public class RateLimiter {
 
-    def __init__(self, redis_client: redis.Redis):
-        self.redis = redis_client
+    private final JedisPool jedisPool;
 
-    def is_allowed(self, identifier: str, max_requests: int, window_seconds: int) -> Tuple[bool, dict]:
-        """
-        Check if request is allowed under rate limit.
-        Returns (allowed, metadata) where metadata includes remaining requests and reset time.
-        """
-        key = f"ratelimit:{identifier}"
-        now = time.time()
-        window_start = now - window_seconds
+    public RateLimiter(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
+    }
 
-        # Use pipeline for atomic operation
-        pipe = self.redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)  # Remove expired entries
-        pipe.zadd(key, {f"{now}:{id(now)}": now})    # Add current request
-        pipe.zcard(key)                               # Count requests in window
-        pipe.expire(key, window_seconds + 1)          # Set TTL for cleanup
-        results = pipe.execute()
+    /**
+     * Check if request is allowed under rate limit.
+     * Returns RateLimitResult with allowed status and metadata including remaining requests and reset time.
+     */
+    public RateLimitResult isAllowed(String identifier, int maxRequests, int windowSeconds) {
+        String key = "ratelimit:" + identifier;
+        double now = System.currentTimeMillis() / 1000.0;
+        double windowStart = now - windowSeconds;
+        String member = now + ":" + UUID.randomUUID();
 
-        current_count = results[2]
-        allowed = current_count <= max_requests
+        try (Jedis jedis = jedisPool.getResource()) {
+            // Use pipeline for atomic operation
+            Pipeline pipe = jedis.pipelined();
+            pipe.zremrangeByScore(key, 0, windowStart);  // Remove expired entries
+            pipe.zadd(key, now, member);                  // Add current request
+            pipe.zcard(key);                              // Count requests in window
+            pipe.expire(key, windowSeconds + 1);          // Set TTL for cleanup
+            List<Object> results = pipe.syncAndReturnAll();
 
-        if not allowed:
-            # Remove the request we just added since it's denied
-            pipe = self.redis.pipeline()
-            pipe.zrem(key, f"{now}:{id(now)}")
-            pipe.execute()
+            long currentCount = (Long) results.get(2);
+            boolean allowed = currentCount <= maxRequests;
 
-        # Calculate metadata for response headers
-        oldest_in_window = self.redis.zrange(key, 0, 0, withscores=True)
-        reset_time = int(oldest_in_window[0][1] + window_seconds) if oldest_in_window else int(now + window_seconds)
+            if (!allowed) {
+                // Remove the request we just added since it's denied
+                jedis.zrem(key, member);
+            }
 
-        return allowed, {
-            'limit': max_requests,
-            'remaining': max(0, max_requests - current_count),
-            'reset': reset_time,
-            'retry_after': max(0, reset_time - int(now)) if not allowed else 0,
+            // Calculate metadata for response headers
+            List<Tuple> oldestInWindow = jedis.zrangeWithScores(key, 0, 0);
+            int resetTime = !oldestInWindow.isEmpty()
+                    ? (int) (oldestInWindow.get(0).getScore() + windowSeconds)
+                    : (int) (now + windowSeconds);
+
+            Map<String, Integer> metadata = new HashMap<>();
+            metadata.put("limit", maxRequests);
+            metadata.put("remaining", (int) Math.max(0, maxRequests - currentCount));
+            metadata.put("reset", resetTime);
+            metadata.put("retry_after", !allowed ? Math.max(0, resetTime - (int) now) : 0);
+
+            return new RateLimitResult(allowed, metadata);
         }
+    }
 
-    def token_bucket(self, identifier: str, capacity: int, refill_rate: float) -> Tuple[bool, int]:
-        """
-        Token bucket algorithm using Lua script for atomicity.
-        refill_rate: tokens added per second.
-        """
-        lua_script = """
-        local key = KEYS[1]
-        local capacity = tonumber(ARGV[1])
-        local refill_rate = tonumber(ARGV[2])
-        local now = tonumber(ARGV[3])
+    /**
+     * Token bucket algorithm using Lua script for atomicity.
+     * refillRate: tokens added per second.
+     */
+    public TokenBucketResult tokenBucket(String identifier, int capacity, double refillRate) {
+        String luaScript = """
+            local key = KEYS[1]
+            local capacity = tonumber(ARGV[1])
+            local refill_rate = tonumber(ARGV[2])
+            local now = tonumber(ARGV[3])
 
-        local bucket = redis.call('HMGET', key, 'tokens', 'last_refill')
-        local tokens = tonumber(bucket[1]) or capacity
-        local last_refill = tonumber(bucket[2]) or now
+            local bucket = redis.call('HMGET', key, 'tokens', 'last_refill')
+            local tokens = tonumber(bucket[1]) or capacity
+            local last_refill = tonumber(bucket[2]) or now
 
-        -- Refill tokens based on elapsed time
-        local elapsed = now - last_refill
-        local new_tokens = math.min(capacity, tokens + (elapsed * refill_rate))
+            -- Refill tokens based on elapsed time
+            local elapsed = now - last_refill
+            local new_tokens = math.min(capacity, tokens + (elapsed * refill_rate))
 
-        if new_tokens >= 1 then
-            new_tokens = new_tokens - 1
-            redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
-            redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
-            return {1, math.floor(new_tokens)}
-        else
-            redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
-            redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
-            return {0, 0}
-        end
-        """
-        result = self.redis.eval(lua_script, 1, f"bucket:{identifier}",
-                                  capacity, refill_rate, time.time())
-        return bool(result[0]), int(result[1])
+            if new_tokens >= 1 then
+                new_tokens = new_tokens - 1
+                redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+                redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
+                return {1, math.floor(new_tokens)}
+            else
+                redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+                redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) + 1)
+                return {0, 0}
+            end
+            """;
+
+        try (Jedis jedis = jedisPool.getResource()) {
+            @SuppressWarnings("unchecked")
+            List<Long> result = (List<Long>) jedis.eval(luaScript, 1, "bucket:" + identifier,
+                    String.valueOf(capacity), String.valueOf(refillRate),
+                    String.valueOf(System.currentTimeMillis() / 1000.0));
+            return new TokenBucketResult(result.get(0) == 1, result.get(1).intValue());
+        }
+    }
+}
+
+// Result records
+record RateLimitResult(boolean allowed, Map<String, Integer> metadata) {}
+record TokenBucketResult(boolean allowed, int remainingTokens) {}
 ```
 
 ### Distributed Locking with Redlock Pattern
 
-```python
-import redis
-import time
-import uuid
-from typing import Optional
-from contextlib import contextmanager
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.params.SetParams;
 
-class DistributedLock:
-    """Redis distributed lock with automatic renewal and safety guarantees."""
+import java.util.UUID;
 
-    def __init__(self, redis_client: redis.Redis):
-        self.redis = redis_client
-        self.lock_value = str(uuid.uuid4())
+/**
+ * Redis distributed lock with automatic renewal and safety guarantees.
+ */
+public class DistributedLock implements AutoCloseable {
 
-    # Lua script ensures atomic check-and-delete (only owner can release)
-    RELEASE_SCRIPT = """
-    if redis.call('GET', KEYS[1]) == ARGV[1] then
-        return redis.call('DEL', KEYS[1])
-    else
-        return 0
-    end
-    """
+    private final JedisPool jedisPool;
+    private final String lockValue;
 
-    EXTEND_SCRIPT = """
-    if redis.call('GET', KEYS[1]) == ARGV[1] then
-        return redis.call('PEXPIRE', KEYS[1], ARGV[2])
-    else
-        return 0
-    end
-    """
+    public DistributedLock(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
+        this.lockValue = UUID.randomUUID().toString();
+    }
 
-    def acquire(self, lock_name: str, ttl_ms: int = 10000, retry_count: int = 3,
-                retry_delay_ms: int = 200) -> bool:
-        """Attempt to acquire a distributed lock with retries."""
-        key = f"lock:{lock_name}"
+    // Lua script ensures atomic check-and-delete (only owner can release)
+    private static final String RELEASE_SCRIPT = """
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+            return redis.call('DEL', KEYS[1])
+        else
+            return 0
+        end
+        """;
 
-        for attempt in range(retry_count):
-            acquired = self.redis.set(key, self.lock_value, nx=True, px=ttl_ms)
-            if acquired:
-                return True
-            time.sleep(retry_delay_ms / 1000.0)
+    private static final String EXTEND_SCRIPT = """
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+            return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+        else
+            return 0
+        end
+        """;
 
-        return False
+    /** Attempt to acquire a distributed lock with retries. */
+    public boolean acquire(String lockName, int ttlMs, int retryCount, int retryDelayMs) {
+        String key = "lock:" + lockName;
 
-    def release(self, lock_name: str) -> bool:
-        """Release lock only if we still own it (prevents releasing expired lock held by another process)."""
-        key = f"lock:{lock_name}"
-        result = self.redis.eval(self.RELEASE_SCRIPT, 1, key, self.lock_value)
-        return bool(result)
+        try (Jedis jedis = jedisPool.getResource()) {
+            for (int attempt = 0; attempt < retryCount; attempt++) {
+                String result = jedis.set(key, lockValue,
+                        SetParams.setParams().nx().px(ttlMs));
+                if ("OK".equals(result)) {
+                    return true;
+                }
+                Thread.sleep(retryDelayMs);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return false;
+    }
 
-    def extend(self, lock_name: str, additional_ms: int = 10000) -> bool:
-        """Extend lock TTL if we still own it."""
-        key = f"lock:{lock_name}"
-        result = self.redis.eval(self.EXTEND_SCRIPT, 1, key, self.lock_value, additional_ms)
-        return bool(result)
+    /** Release lock only if we still own it (prevents releasing expired lock held by another process). */
+    public boolean release(String lockName) {
+        String key = "lock:" + lockName;
+        try (Jedis jedis = jedisPool.getResource()) {
+            Object result = jedis.eval(RELEASE_SCRIPT, 1, key, lockValue);
+            return Long.valueOf(1).equals(result);
+        }
+    }
 
-    @contextmanager
-    def lock(self, lock_name: str, ttl_ms: int = 10000):
-        """Context manager for distributed locking."""
-        if not self.acquire(lock_name, ttl_ms):
-            raise LockAcquisitionError(f"Failed to acquire lock: {lock_name}")
-        try:
-            yield self
-        finally:
-            self.release(lock_name)
+    /** Extend lock TTL if we still own it. */
+    public boolean extend(String lockName, int additionalMs) {
+        String key = "lock:" + lockName;
+        try (Jedis jedis = jedisPool.getResource()) {
+            Object result = jedis.eval(EXTEND_SCRIPT, 1, key, lockValue,
+                    String.valueOf(additionalMs));
+            return Long.valueOf(1).equals(result);
+        }
+    }
 
+    /** Execute a task while holding the distributed lock. */
+    public void withLock(String lockName, int ttlMs, Runnable task) {
+        if (!acquire(lockName, ttlMs, 3, 200)) {
+            throw new LockAcquisitionException("Failed to acquire lock: " + lockName);
+        }
+        try {
+            task.run();
+        } finally {
+            release(lockName);
+        }
+    }
 
-# Usage example: preventing double-processing
-lock_manager = DistributedLock(redis.Redis())
+    @Override
+    public void close() {
+        // Pool is managed externally
+    }
+}
 
-def process_payment(order_id: str):
-    """Process payment with distributed lock to prevent double-charging."""
-    with lock_manager.lock(f"payment:{order_id}", ttl_ms=30000):
-        # Only one instance processes this payment at a time
-        if is_already_processed(order_id):
-            return  # Idempotency check
+// Custom exception for lock failures
+class LockAcquisitionException extends RuntimeException {
+    public LockAcquisitionException(String message) {
+        super(message);
+    }
+}
 
-        charge_customer(order_id)
-        mark_as_processed(order_id)
+// Usage example: preventing double-processing
+JedisPool pool = new JedisPool("localhost", 6379);
+DistributedLock lockManager = new DistributedLock(pool);
+
+public void processPayment(String orderId) {
+    /** Process payment with distributed lock to prevent double-charging. */
+    lockManager.withLock("payment:" + orderId, 30000, () -> {
+        // Only one instance processes this payment at a time
+        if (isAlreadyProcessed(orderId)) {
+            return;  // Idempotency check
+        }
+        chargeCustomer(orderId);
+        markAsProcessed(orderId);
+    });
+}
 ```
 
 ### Redis Streams for Event Processing
 
-```python
-import redis
-import time
-import json
-from typing import Optional
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.StreamEntryID;
+import redis.clients.jedis.resps.StreamEntry;
+import redis.clients.jedis.params.XAddParams;
+import redis.clients.jedis.params.XReadGroupParams;
+import redis.clients.jedis.params.XAutoClaimParams;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+import java.util.*;
+import java.util.stream.Collectors;
 
-class EventStream:
-    """Redis Streams-based event processing with consumer groups."""
+/**
+ * Redis Streams-based event processing with consumer groups.
+ */
+public class EventStream {
 
-    def __init__(self, redis_client: redis.Redis, stream_name: str):
-        self.redis = redis_client
-        self.stream = stream_name
+    private final JedisPool jedisPool;
+    private final String stream;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    def publish(self, event_type: str, data: dict) -> str:
-        """Publish event to stream. Returns the event ID."""
-        entry = {
-            'type': event_type,
-            'data': json.dumps(data),
-            'timestamp': str(time.time()),
+    public EventStream(JedisPool jedisPool, String streamName) {
+        this.jedisPool = jedisPool;
+        this.stream = streamName;
+    }
+
+    /** Publish event to stream. Returns the event ID. */
+    public String publish(String eventType, Map<String, Object> data) {
+        Map<String, String> entry = new HashMap<>();
+        entry.put("type", eventType);
+        try {
+            entry.put("data", mapper.writeValueAsString(data));
+        } catch (Exception e) {
+            throw new RuntimeException("Serialization failed", e);
         }
-        # MAXLEN ~ 10000 keeps stream bounded with approximate trimming
-        event_id = self.redis.xadd(self.stream, entry, maxlen=10000, approximate=True)
-        return event_id
+        entry.put("timestamp", String.valueOf(System.currentTimeMillis() / 1000.0));
 
-    def create_consumer_group(self, group_name: str, start_id: str = '0'):
-        """Create consumer group, starting from beginning or latest."""
-        try:
-            self.redis.xgroup_create(self.stream, group_name, start_id, mkstream=True)
-        except redis.ResponseError as e:
-            if "BUSYGROUP" not in str(e):
-                raise
+        try (Jedis jedis = jedisPool.getResource()) {
+            // MAXLEN ~ 10000 keeps stream bounded with approximate trimming
+            StreamEntryID id = jedis.xadd(stream, XAddParams.xAddParams()
+                    .maxLen(10000).approximateTrimming(), entry);
+            return id.toString();
+        }
+    }
 
-    def consume(self, group_name: str, consumer_name: str,
-                count: int = 10, block_ms: int = 5000) -> list:
-        """Read new messages from consumer group."""
-        messages = self.redis.xreadgroup(
-            groupname=group_name,
-            consumername=consumer_name,
-            streams={self.stream: '>'},  # '>' means only new messages
-            count=count,
-            block=block_ms,
-        )
+    /** Create consumer group, starting from beginning or latest. */
+    public void createConsumerGroup(String groupName, String startId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            try {
+                jedis.xgroupCreate(stream, groupName,
+                        new StreamEntryID(startId), true); // mkstream=true
+            } catch (Exception e) {
+                if (!e.getMessage().contains("BUSYGROUP")) {
+                    throw e;
+                }
+            }
+        }
+    }
 
-        if not messages:
-            return []
+    /** Read new messages from consumer group. */
+    public List<Map<String, Object>> consume(String groupName, String consumerName,
+                                              int count, int blockMs) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Map.Entry<String, StreamEntryID> streamQuery =
+                    new AbstractMap.SimpleEntry<>(stream, StreamEntryID.UNRECEIVED_ENTRY); // '>' means only new messages
 
-        events = []
-        for stream_name, entries in messages:
-            for entry_id, fields in entries:
-                events.append({
-                    'id': entry_id,
-                    'type': fields['type'],
-                    'data': json.loads(fields['data']),
-                    'timestamp': float(fields['timestamp']),
-                })
-        return events
+            @SuppressWarnings("unchecked")
+            List<Map.Entry<String, List<StreamEntry>>> messages = jedis.xreadGroup(
+                    groupName, consumerName,
+                    XReadGroupParams.xReadGroupParams().count(count).block(blockMs),
+                    streamQuery);
 
-    def acknowledge(self, group_name: str, *message_ids: str):
-        """Acknowledge processed messages."""
-        self.redis.xack(self.stream, group_name, *message_ids)
+            if (messages == null || messages.isEmpty()) {
+                return Collections.emptyList();
+            }
 
-    def claim_stale_messages(self, group_name: str, consumer_name: str,
-                              min_idle_ms: int = 60000, count: int = 10) -> list:
-        """Claim messages that have been pending too long (consumer crashed)."""
-        messages = self.redis.xautoclaim(
-            self.stream, group_name, consumer_name, min_idle_ms, start_id='0-0', count=count
-        )
-        return messages
+            List<Map<String, Object>> events = new ArrayList<>();
+            for (Map.Entry<String, List<StreamEntry>> streamMessages : messages) {
+                for (StreamEntry entry : streamMessages.getValue()) {
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("id", entry.getID().toString());
+                    event.put("type", entry.getFields().get("type"));
+                    try {
+                        event.put("data", mapper.readValue(
+                                entry.getFields().get("data"), Map.class));
+                    } catch (Exception e) {
+                        event.put("data", entry.getFields().get("data"));
+                    }
+                    event.put("timestamp",
+                            Double.parseDouble(entry.getFields().get("timestamp")));
+                    events.add(event);
+                }
+            }
+            return events;
+        }
+    }
 
+    /** Acknowledge processed messages. */
+    public void acknowledge(String groupName, String... messageIds) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            StreamEntryID[] ids = Arrays.stream(messageIds)
+                    .map(StreamEntryID::new)
+                    .toArray(StreamEntryID[]::new);
+            jedis.xack(stream, groupName, ids);
+        }
+    }
 
-# Producer
-stream = EventStream(r, 'orders')
-stream.publish('order.created', {'order_id': 'ORD-123', 'total': 99.99})
-stream.publish('order.paid', {'order_id': 'ORD-123', 'payment_id': 'PAY-456'})
+    /** Claim messages that have been pending too long (consumer crashed). */
+    public List<StreamEntry> claimStaleMessages(String groupName, String consumerName,
+                                                 long minIdleMs, int count) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Map.Entry<StreamEntryID, List<StreamEntry>> result = jedis.xautoclaim(
+                    stream, groupName, consumerName, minIdleMs,
+                    new StreamEntryID("0-0"), XAutoClaimParams.xAutoClaimParams().count(count));
+            return result.getValue();
+        }
+    }
+}
 
-# Consumer (run in separate process)
-stream.create_consumer_group('inventory-service')
+// Producer
+JedisPool pool = new JedisPool("localhost", 6379);
+EventStream stream = new EventStream(pool, "orders");
+stream.publish("order.created", Map.of("order_id", "ORD-123", "total", 99.99));
+stream.publish("order.paid", Map.of("order_id", "ORD-123", "payment_id", "PAY-456"));
 
-while True:
-    events = stream.consume('inventory-service', 'worker-1', count=10, block_ms=5000)
-    for event in events:
-        try:
-            if event['type'] == 'order.created':
-                reserve_inventory(event['data']['order_id'])
-            stream.acknowledge('inventory-service', event['id'])
-        except Exception as e:
-            # Message stays pending, will be retried or claimed by another consumer
-            log.error(f"Failed to process {event['id']}: {e}")
+// Consumer (run in separate thread/process)
+stream.createConsumerGroup("inventory-service", "0");
+
+while (true) {
+    List<Map<String, Object>> events = stream.consume(
+            "inventory-service", "worker-1", 10, 5000);
+    for (Map<String, Object> event : events) {
+        try {
+            if ("order.created".equals(event.get("type"))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) event.get("data");
+                reserveInventory((String) data.get("order_id"));
+            }
+            stream.acknowledge("inventory-service", (String) event.get("id"));
+        } catch (Exception e) {
+            // Message stays pending, will be retried or claimed by another consumer
+            log.error("Failed to process {}: {}", event.get("id"), e.getMessage());
+        }
+    }
+}
 ```
 
 ### Sorted Sets for Leaderboards and Rankings
 
-```python
-import redis
-from typing import List, Tuple, Optional
+```java
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.resps.Tuple;
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-class Leaderboard:
-    """Real-time leaderboard using Redis sorted sets."""
+/**
+ * Real-time leaderboard using Redis sorted sets.
+ */
+public class Leaderboard {
 
-    def __init__(self, redis_client: redis.Redis, name: str):
-        self.redis = redis_client
-        self.key = f"leaderboard:{name}"
+    private final JedisPool jedisPool;
+    private final String key;
 
-    def update_score(self, player_id: str, score: float):
-        """Update player score (sorted set automatically maintains order)."""
-        self.redis.zadd(self.key, {player_id: score})
+    public Leaderboard(JedisPool jedisPool, String name) {
+        this.jedisPool = jedisPool;
+        this.key = "leaderboard:" + name;
+    }
 
-    def increment_score(self, player_id: str, increment: float) -> float:
-        """Atomically increment player score and return new value."""
-        return self.redis.zincrby(self.key, increment, player_id)
+    /** Update player score (sorted set automatically maintains order). */
+    public void updateScore(String playerId, double score) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.zadd(key, score, playerId);
+        }
+    }
 
-    def get_rank(self, player_id: str) -> Optional[int]:
-        """Get player's rank (0-indexed, highest score = rank 0)."""
-        rank = self.redis.zrevrank(self.key, player_id)
-        return rank + 1 if rank is not None else None
+    /** Atomically increment player score and return new value. */
+    public double incrementScore(String playerId, double increment) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            return jedis.zincrby(key, increment, playerId);
+        }
+    }
 
-    def get_top(self, count: int = 10) -> List[Tuple[str, float]]:
-        """Get top N players with scores."""
-        return self.redis.zrevrange(self.key, 0, count - 1, withscores=True)
+    /** Get player's rank (1-indexed, highest score = rank 1). */
+    public Optional<Long> getRank(String playerId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Long rank = jedis.zrevrank(key, playerId);
+            return rank != null ? Optional.of(rank + 1) : Optional.empty();
+        }
+    }
 
-    def get_around_player(self, player_id: str, range_size: int = 5) -> List[Tuple[str, float, int]]:
-        """Get players around a specific player's rank."""
-        rank = self.redis.zrevrank(self.key, player_id)
-        if rank is None:
-            return []
+    /** Get top N players with scores. */
+    public List<Tuple> getTop(int count) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            return jedis.zrevrangeWithScores(key, 0, count - 1);
+        }
+    }
 
-        start = max(0, rank - range_size)
-        end = rank + range_size
+    /** Get players around a specific player's rank. */
+    public List<PlayerRankEntry> getAroundPlayer(String playerId, int rangeSize) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Long rank = jedis.zrevrank(key, playerId);
+            if (rank == null) {
+                return Collections.emptyList();
+            }
 
-        players = self.redis.zrevrange(self.key, start, end, withscores=True)
-        return [(player, score, start + i + 1) for i, (player, score) in enumerate(players)]
+            long start = Math.max(0, rank - rangeSize);
+            long end = rank + rangeSize;
 
-    def get_total_players(self) -> int:
-        """Get total number of players on leaderboard."""
-        return self.redis.zcard(self.key)
+            List<Tuple> players = jedis.zrevrangeWithScores(key, start, end);
+            List<PlayerRankEntry> result = new ArrayList<>();
+            for (int i = 0; i < players.size(); i++) {
+                Tuple t = players.get(i);
+                result.add(new PlayerRankEntry(
+                        t.getElement(), t.getScore(), (int) (start + i + 1)));
+            }
+            return result;
+        }
+    }
 
-    def get_percentile(self, player_id: str) -> Optional[float]:
-        """Get player's percentile ranking."""
-        rank = self.redis.zrevrank(self.key, player_id)
-        total = self.redis.zcard(self.key)
-        if rank is None or total == 0:
-            return None
-        return round((1 - rank / total) * 100, 2)
+    /** Get total number of players on leaderboard. */
+    public long getTotalPlayers() {
+        try (Jedis jedis = jedisPool.getResource()) {
+            return jedis.zcard(key);
+        }
+    }
+
+    /** Get player's percentile ranking. */
+    public Optional<Double> getPercentile(String playerId) {
+        try (Jedis jedis = jedisPool.getResource()) {
+            Long rank = jedis.zrevrank(key, playerId);
+            long total = jedis.zcard(key);
+            if (rank == null || total == 0) {
+                return Optional.empty();
+            }
+            double percentile = Math.round((1.0 - (double) rank / total) * 10000.0) / 100.0;
+            return Optional.of(percentile);
+        }
+    }
+}
+
+// Helper record for player rank entries
+record PlayerRankEntry(String playerId, double score, int rank) {}
 ```
 
 ## Common Pitfalls
@@ -487,7 +717,7 @@ A: A hot key is a single Redis key receiving disproportionate read/write traffic
 
 - **Configure `maxmemory` and `maxmemory-policy` explicitly**: Never run Redis without a memory limit in production. Set `maxmemory` to 75% of available RAM (leaving room for fork operations and OS), and choose an eviction policy that matches your use case: `allkeys-lru` for general caching, `volatile-ttl` when only TTL-bearing keys should be evicted, `noeviction` for data that must never be lost (but handle OOM errors in your application)
 - **Monitor slow log and latency**: Enable `slowlog-log-slower-than 10000` (10ms) to capture slow commands. Monitor `INFO commandstats` for command frequency and average latency. Set up alerts on `connected_clients` approaching `maxclients`, `used_memory` approaching `maxmemory`, and `rejected_connections` > 0. Use `LATENCY DOCTOR` for automated latency diagnosis
-- **Use connection pooling**: Creating a new TCP connection per Redis command adds 1-3ms overhead. Use connection pools (default in most Redis clients) with pool size matching your concurrency level. For Python: `redis.ConnectionPool(max_connections=50)`. For Java: Lettuce's built-in connection pooling or Jedis pool
+- **Use connection pooling**: Creating a new TCP connection per Redis command adds 1-3ms overhead. Use connection pools (default in most Redis clients) with pool size matching your concurrency level. For Java: `JedisPool` with `JedisPoolConfig.setMaxTotal(50)`, or Lettuce's built-in connection pooling with `RedisClient` and `StatefulRedisConnection`
 - **Implement circuit breakers for Redis calls**: When Redis is unavailable, your application should degrade gracefully (serve stale data, skip caching, use defaults) rather than failing entirely. Wrap Redis calls in a circuit breaker that opens after N consecutive failures, serving fallback responses for a cooldown period before retrying
 
 ## Related Topics

@@ -237,100 +237,104 @@ mainSteps:
 
 ### PagerDuty Integration for On-Call Management
 
-```python
-import json
-import boto3
-import urllib3
-from datetime import datetime
+```typescript
+import { SNSEvent } from 'aws-lambda';
 
-http = urllib3.PoolManager()
+interface CloudWatchAlarmMessage {
+  AlarmName: string;
+  AlarmDescription?: string;
+  NewStateValue: string;
+  NewStateReason: string;
+  StateChangeTime: string;
+  Region?: string;
+  AWSAccountId?: string;
+  Trigger?: { MetricName?: string; Threshold?: number };
+}
 
-def lambda_handler(event, context):
-    """
-    Lambda function triggered by SNS from CloudWatch alarms.
-    Routes to PagerDuty with enriched context for faster incident response.
-    """
-    for record in event['Records']:
-        message = json.loads(record['Sns']['Message'])
-        alarm_name = message['AlarmName']
-        alarm_description = message.get('AlarmDescription', '')
-        new_state = message['NewStateValue']
-        reason = message['NewStateReason']
-        timestamp = message['StateChangeTime']
+export const handler = async (event: SNSEvent): Promise<void> => {
+  // Lambda function triggered by SNS from CloudWatch alarms.
+  // Routes to PagerDuty with enriched context for faster incident response.
+  for (const record of event.Records) {
+    const message: CloudWatchAlarmMessage = JSON.parse(record.Sns.Message);
+    const { AlarmName: alarmName, NewStateValue: newState, NewStateReason: reason } = message;
+    const alarmDescription = message.AlarmDescription ?? '';
+    const timestamp = message.StateChangeTime;
 
-        # Determine severity from alarm name prefix
-        if alarm_name.startswith('P1-'):
-            severity = 'critical'
-            urgency = 'high'
-        elif alarm_name.startswith('P2-'):
-            severity = 'error'
-            urgency = 'high'
-        elif alarm_name.startswith('P3-'):
-            severity = 'warning'
-            urgency = 'low'
-        else:
-            severity = 'info'
-            urgency = 'low'
+    // Determine severity from alarm name prefix
+    let severity: string;
+    let urgency: string;
+    if (alarmName.startsWith('P1-')) {
+      severity = 'critical'; urgency = 'high';
+    } else if (alarmName.startsWith('P2-')) {
+      severity = 'error'; urgency = 'high';
+    } else if (alarmName.startsWith('P3-')) {
+      severity = 'warning'; urgency = 'low';
+    } else {
+      severity = 'info'; urgency = 'low';
+    }
 
-        # Extract runbook URL from alarm description
-        runbook_url = None
-        if 'RUNBOOK:' in alarm_description:
-            runbook_url = alarm_description.split('RUNBOOK:')[1].strip()
+    // Extract runbook URL from alarm description
+    let runbookUrl: string | null = null;
+    if (alarmDescription.includes('RUNBOOK:')) {
+      runbookUrl = alarmDescription.split('RUNBOOK:')[1].trim();
+    }
 
-        # Build PagerDuty event
-        pd_event = {
-            'routing_key': get_routing_key(alarm_name),
-            'event_action': 'trigger' if new_state == 'ALARM' else 'resolve',
-            'dedup_key': alarm_name,
-            'payload': {
-                'summary': f'[{severity.upper()}] {alarm_name}: {reason[:200]}',
-                'severity': severity,
-                'source': 'aws-cloudwatch',
-                'timestamp': timestamp,
-                'component': extract_service_name(alarm_name),
-                'group': 'production',
-                'custom_details': {
-                    'alarm_name': alarm_name,
-                    'alarm_description': alarm_description,
-                    'state_reason': reason,
-                    'region': message.get('Region', 'us-east-1'),
-                    'account_id': message.get('AWSAccountId', ''),
-                    'metric_name': message.get('Trigger', {}).get('MetricName', ''),
-                    'threshold': message.get('Trigger', {}).get('Threshold', ''),
-                },
-            },
-            'links': [],
-        }
+    // Build PagerDuty event
+    const pdEvent: Record<string, any> = {
+      routing_key: getRoutingKey(alarmName),
+      event_action: newState === 'ALARM' ? 'trigger' : 'resolve',
+      dedup_key: alarmName,
+      payload: {
+        summary: `[${severity.toUpperCase()}] ${alarmName}: ${reason.slice(0, 200)}`,
+        severity,
+        source: 'aws-cloudwatch',
+        timestamp,
+        component: extractServiceName(alarmName),
+        group: 'production',
+        custom_details: {
+          alarm_name: alarmName,
+          alarm_description: alarmDescription,
+          state_reason: reason,
+          region: message.Region ?? 'us-east-1',
+          account_id: message.AWSAccountId ?? '',
+          metric_name: message.Trigger?.MetricName ?? '',
+          threshold: message.Trigger?.Threshold ?? '',
+        },
+      },
+      links: [] as { href: string; text: string }[],
+    };
 
-        # Add runbook link if available
-        if runbook_url:
-            pd_event['links'].append({
-                'href': runbook_url,
-                'text': 'Runbook: Step-by-step remediation guide',
-            })
+    // Add runbook link if available
+    if (runbookUrl) {
+      pdEvent.links.push({
+        href: runbookUrl,
+        text: 'Runbook: Step-by-step remediation guide',
+      });
+    }
 
-        # Add CloudWatch console link
-        pd_event['links'].append({
-            'href': f'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:alarm/{alarm_name}',
-            'text': 'CloudWatch Alarm Console',
-        })
+    // Add CloudWatch console link
+    pdEvent.links.push({
+      href: `https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#alarmsV2:alarm/${alarmName}`,
+      text: 'CloudWatch Alarm Console',
+    });
 
-        # Send to PagerDuty Events API v2
-        response = http.request(
-            'POST',
-            'https://events.pagerduty.com/v2/enqueue',
-            body=json.dumps(pd_event),
-            headers={'Content-Type': 'application/json'},
-        )
+    // Send to PagerDuty Events API v2
+    const response = await fetch('https://events.pagerduty.com/v2/enqueue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pdEvent),
+    });
 
-        print(json.dumps({
-            'level': 'INFO',
-            'message': 'PagerDuty event sent',
-            'alarm': alarm_name,
-            'severity': severity,
-            'action': pd_event['event_action'],
-            'pd_response_status': response.status,
-        }))
+    console.log(JSON.stringify({
+      level: 'INFO',
+      message: 'PagerDuty event sent',
+      alarm: alarmName,
+      severity,
+      action: pdEvent.event_action,
+      pd_response_status: response.status,
+    }));
+  }
+};
 ```
 
 ## Common Pitfalls

@@ -78,42 +78,52 @@ docker pull myapp@sha256:a3ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c2
 
 ### Container Lifecycle Management with the Docker SDK
 
-```python
-import docker
-from docker.types import Resources, HealthCheck
+```typescript
+import Docker from 'dockerode';
 
-client = docker.from_env()
+const docker = new Docker();
 
-# Create and start a container with full configuration
-container = client.containers.run(
-    image="order-service:2.1.0",
-    name="order-service-prod",
-    detach=True,
-    ports={"8080/tcp": 8080},
-    environment={
-        "SPRING_PROFILES_ACTIVE": "production",
-        "JAVA_OPTS": "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC",
-    },
-    mem_limit="1g",
-    cpu_quota=100000,  # 1 CPU
-    restart_policy={"Name": "on-failure", "MaximumRetryCount": 5},
-    healthcheck=HealthCheck(
-        test=["CMD", "wget", "--spider", "http://localhost:8080/health"],
-        interval=30_000_000_000,  # 30s in nanoseconds
-        timeout=3_000_000_000,
-        retries=3,
-        start_period=40_000_000_000,
-    ),
-)
+// Create and start a container with full configuration
+const container = await docker.createContainer({
+  Image: 'order-service:2.1.0',
+  name: 'order-service-prod',
+  ExposedPorts: { '8080/tcp': {} },
+  Env: [
+    'SPRING_PROFILES_ACTIVE=production',
+    'JAVA_OPTS=-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC',
+  ],
+  HostConfig: {
+    PortBindings: { '8080/tcp': [{ HostPort: '8080' }] },
+    Memory: 1024 * 1024 * 1024, // 1GB
+    CpuQuota: 100000, // 1 CPU
+    RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 5 },
+  },
+  Healthcheck: {
+    Test: ['CMD', 'wget', '--spider', 'http://localhost:8080/health'],
+    Interval: 30_000_000_000,  // 30s in nanoseconds
+    Timeout: 3_000_000_000,
+    Retries: 3,
+    StartPeriod: 40_000_000_000,
+  },
+});
 
-# Monitor container health status
-container.reload()
-print(f"Status: {container.status}")
-print(f"Health: {container.attrs['State']['Health']['Status']}")
+await container.start();
 
-# Stream container logs
-for line in container.logs(stream=True, follow=True, since=3600):
-    print(line.decode("utf-8").strip())
+// Monitor container health status
+const info = await container.inspect();
+console.log(`Status: ${info.State.Status}`);
+console.log(`Health: ${info.State.Health?.Status}`);
+
+// Stream container logs
+const logStream = await container.logs({
+  follow: true,
+  stdout: true,
+  stderr: true,
+  since: Math.floor(Date.now() / 1000) - 3600,
+});
+logStream.on('data', (chunk: Buffer) => {
+  console.log(chunk.toString('utf-8').trim());
+});
 ```
 
 ## Common Pitfalls

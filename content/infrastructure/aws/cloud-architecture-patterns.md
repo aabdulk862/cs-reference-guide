@@ -119,335 +119,338 @@ resource "aws_db_instance" "replica" {
 
 ### Cost Optimization: Spot Fleet with Fallback
 
-```python
-import boto3
-from datetime import datetime, timedelta
+```typescript
+import {
+  EC2Client,
+  RequestSpotFleetCommand,
+  RequestSpotFleetCommandInput
+} from '@aws-sdk/client-ec2';
+import {
+  CostExplorerClient,
+  GetAnomaliesCommand
+} from '@aws-sdk/client-cost-explorer';
 
-ec2 = boto3.client('ec2')
-cloudwatch = boto3.client('cloudwatch')
+const ec2 = new EC2Client({ region: 'us-east-1' });
 
-def create_cost_optimized_fleet(
-    desired_capacity: int,
-    instance_types: list[str],
-    subnet_ids: list[str]
-) -> dict:
-    """Create a Spot Fleet with On-Demand fallback for cost optimization."""
-    
-    launch_template_configs = []
-    for instance_type in instance_types:
-        for subnet_id in subnet_ids:
-            launch_template_configs.append({
-                'LaunchTemplateSpecification': {
-                    'LaunchTemplateId': 'lt-0123456789abcdef0',
-                    'Version': '$Latest'
-                },
-                'Overrides': [{
-                    'InstanceType': instance_type,
-                    'SubnetId': subnet_id,
-                    'WeightedCapacity': 1.0
-                }]
-            })
+async function createCostOptimizedFleet(
+  desiredCapacity: number,
+  instanceTypes: string[],
+  subnetIds: string[]
+): Promise<void> {
+  // Create a Spot Fleet with On-Demand fallback for cost optimization
+  const launchTemplateConfigs = instanceTypes.flatMap(instanceType =>
+    subnetIds.map(subnetId => ({
+      LaunchTemplateSpecification: {
+        LaunchTemplateId: 'lt-0123456789abcdef0',
+        Version: '$Latest'
+      },
+      Overrides: [{
+        InstanceType: instanceType,
+        SubnetId: subnetId,
+        WeightedCapacity: 1.0
+      }]
+    }))
+  );
 
-    response = ec2.request_spot_fleet(
-        SpotFleetRequestConfig={
-            'IamFleetRole': 'arn:aws:iam::123456789:role/spot-fleet-role',
-            'TargetCapacity': desired_capacity,
-            'OnDemandTargetCapacity': max(2, desired_capacity // 5),  # 20% On-Demand baseline
-            'SpotPrice': '0.50',
-            'AllocationStrategy': 'capacityOptimized',  # Lowest interruption probability
-            'LaunchTemplateConfigs': launch_template_configs,
-            'InstanceInterruptionBehavior': 'terminate',
-            'ReplaceUnhealthyInstances': True,
-            'TerminateInstancesWithExpiration': True,
-            'Type': 'maintain',
-            'ExcessCapacityTerminationPolicy': 'default',
-            'OnDemandAllocationStrategy': 'lowestPrice',
-            'TagSpecifications': [{
-                'ResourceType': 'instance',
-                'Tags': [
-                    {'Key': 'Fleet', 'Value': 'cost-optimized'},
-                    {'Key': 'CostCenter', 'Value': 'engineering'}
-                ]
-            }]
-        }
-    )
-    return response
+  await ec2.send(new RequestSpotFleetCommand({
+    SpotFleetRequestConfig: {
+      IamFleetRole: 'arn:aws:iam::123456789:role/spot-fleet-role',
+      TargetCapacity: desiredCapacity,
+      OnDemandTargetCapacity: Math.max(2, Math.floor(desiredCapacity / 5)), // 20% On-Demand baseline
+      SpotPrice: '0.50',
+      AllocationStrategy: 'capacityOptimized', // Lowest interruption probability
+      LaunchTemplateConfigs: launchTemplateConfigs,
+      InstanceInterruptionBehavior: 'terminate',
+      ReplaceUnhealthyInstances: true,
+      TerminateInstancesWithExpiration: true,
+      Type: 'maintain',
+      ExcessCapacityTerminationPolicy: 'default',
+      OnDemandAllocationStrategy: 'lowestPrice',
+      TagSpecifications: [{
+        ResourceType: 'instance',
+        Tags: [
+          { Key: 'Fleet', Value: 'cost-optimized' },
+          { Key: 'CostCenter', Value: 'engineering' }
+        ]
+      }]
+    }
+  }));
+}
 
+async function getCostAnomalies(daysBack: number = 7) {
+  // Detect cost anomalies using Cost Explorer
+  const ce = new CostExplorerClient({ region: 'us-east-1' });
 
-def get_cost_anomalies(days_back: int = 7) -> list[dict]:
-    """Detect cost anomalies using CloudWatch metrics."""
-    ce = boto3.client('ce')
-    
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-    
-    response = ce.get_anomalies(
-        DateInterval={'StartDate': start_date, 'EndDate': end_date},
-        TotalImpact={'NumericOperator': 'GREATER_THAN_OR_EQUAL', 'StartValue': 100},
-        MaxResults=20
-    )
-    
-    anomalies = []
-    for anomaly in response['Anomalies']:
-        anomalies.append({
-            'service': anomaly['RootCauses'][0]['Service'] if anomaly['RootCauses'] else 'Unknown',
-            'impact': anomaly['Impact']['TotalImpact'],
-            'start': anomaly['AnomalyStartDate'],
-            'status': anomaly['AnomalyStatus']
-        })
-    
-    return anomalies
+  const endDate = new Date().toISOString().split('T')[0];
+  const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
+
+  const response = await ce.send(new GetAnomaliesCommand({
+    DateInterval: { StartDate: startDate, EndDate: endDate },
+    TotalImpact: { NumericOperator: 'GREATER_THAN_OR_EQUAL', StartValue: 100 },
+    MaxResults: 20
+  }));
+
+  return (response.Anomalies ?? []).map(anomaly => ({
+    service: anomaly.RootCauses?.[0]?.Service ?? 'Unknown',
+    impact: anomaly.Impact?.TotalImpact,
+    start: anomaly.AnomalyStartDate,
+    status: anomaly.AnomalyStatus
+  }));
+}
 ```
 
 ### Disaster Recovery: Automated Failover with Lambda
 
-```python
-import boto3
-import json
-import logging
-from typing import Literal
+```typescript
+import { RDSClient, PromoteReadReplicaDBClusterCommand, DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
+import { Route53Client, ChangeResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+import { ECSClient, UpdateServiceCommand, DescribeServicesCommand } from '@aws-sdk/client-ecs';
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+const DR_CONFIG = {
+  primaryRegion: 'us-east-1',
+  secondaryRegion: 'us-west-2',
+  dbClusterId: 'api-database',
+  replicaClusterId: 'api-database-replica',
+  hostedZoneId: 'Z1234567890',
+  domain: 'api.example.com',
+  ecsCluster: 'api-cluster',
+  ecsService: 'api-service',
+  notificationTopic: 'arn:aws:sns:us-east-1:123456789:dr-notifications'
+};
 
-rds = boto3.client('rds')
-route53 = boto3.client('route53')
-sns = boto3.client('sns')
-ecs = boto3.client('ecs')
+export const handler = async (event: { action?: string }) => {
+  // Automated DR failover triggered by CloudWatch alarm.
+  // Steps: Promote replica → Scale ECS → Update DNS → Notify
+  const action = event.action ?? 'failover';
 
-DR_CONFIG = {
-    'primary_region': 'us-east-1',
-    'secondary_region': 'us-west-2',
-    'db_cluster_id': 'api-database',
-    'replica_cluster_id': 'api-database-replica',
-    'hosted_zone_id': 'Z1234567890',
-    'domain': 'api.example.com',
-    'ecs_cluster': 'api-cluster',
-    'ecs_service': 'api-service',
-    'notification_topic': 'arn:aws:sns:us-east-1:123456789:dr-notifications'
+  if (action === 'failover') await executeFailover();
+  else if (action === 'failback') await executeFailback();
+  else if (action === 'validate') return await validateDrReadiness();
+};
+
+async function executeFailover(): Promise<void> {
+  console.log('Starting DR failover procedure');
+
+  // Step 1: Promote RDS read replica to standalone
+  const rdsSecondary = new RDSClient({ region: DR_CONFIG.secondaryRegion });
+  await rdsSecondary.send(new PromoteReadReplicaDBClusterCommand({
+    DBClusterIdentifier: DR_CONFIG.replicaClusterId
+  }));
+
+  // Step 2: Scale up ECS service in secondary region
+  const ecsSecondary = new ECSClient({ region: DR_CONFIG.secondaryRegion });
+  await ecsSecondary.send(new UpdateServiceCommand({
+    cluster: DR_CONFIG.ecsCluster,
+    service: DR_CONFIG.ecsService,
+    desiredCount: 10  // Match production capacity
+  }));
+
+  // Step 3: Update Route 53 to point to secondary
+  const route53 = new Route53Client({});
+  await route53.send(new ChangeResourceRecordSetsCommand({
+    HostedZoneId: DR_CONFIG.hostedZoneId,
+    ChangeBatch: {
+      Comment: 'DR failover - routing to secondary region',
+      Changes: [{
+        Action: 'UPSERT',
+        ResourceRecordSet: {
+          Name: DR_CONFIG.domain,
+          Type: 'A',
+          AliasTarget: {
+            HostedZoneId: 'Z35SXDOTRQ7X7K',  // us-west-2 ALB zone
+            DNSName: 'api-secondary-alb.us-west-2.elb.amazonaws.com',
+            EvaluateTargetHealth: true
+          }
+        }
+      }]
+    }
+  }));
+
+  // Step 4: Notify operations team
+  const sns = new SNSClient({ region: DR_CONFIG.primaryRegion });
+  await sns.send(new PublishCommand({
+    TopicArn: DR_CONFIG.notificationTopic,
+    Subject: 'DR FAILOVER EXECUTED',
+    Message: JSON.stringify({
+      event: 'failover_complete',
+      primaryRegion: DR_CONFIG.primaryRegion,
+      activeRegion: DR_CONFIG.secondaryRegion,
+      timestamp: new Date().toISOString()
+    })
+  }));
+
+  console.log('Failover complete - traffic now routing to secondary region');
 }
 
-def handler(event, context):
-    """
-    Automated DR failover triggered by CloudWatch alarm.
-    Steps: Promote replica → Scale ECS → Update DNS → Notify
-    """
-    action = event.get('action', 'failover')
-    
-    if action == 'failover':
-        execute_failover()
-    elif action == 'failback':
-        execute_failback()
-    elif action == 'validate':
-        validate_dr_readiness()
+async function executeFailback(): Promise<void> {
+  // Failback logic (reverse of failover)
+}
 
-def execute_failover():
-    """Execute full failover to secondary region."""
-    logger.info("Starting DR failover procedure")
-    
-    # Step 1: Promote RDS read replica to standalone
-    logger.info("Promoting RDS replica to primary")
-    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])
-    rds_secondary.promote_read_replica_db_cluster(
-        DBClusterIdentifier=DR_CONFIG['replica_cluster_id']
-    )
-    
-    # Step 2: Scale up ECS service in secondary region
-    logger.info("Scaling ECS service in DR region")
-    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])
-    ecs_secondary.update_service(
-        cluster=DR_CONFIG['ecs_cluster'],
-        service=DR_CONFIG['ecs_service'],
-        desiredCount=10  # Match production capacity
-    )
-    
-    # Step 3: Update Route 53 to point to secondary
-    logger.info("Updating DNS to secondary region")
-    route53.change_resource_record_sets(
-        HostedZoneId=DR_CONFIG['hosted_zone_id'],
-        ChangeBatch={
-            'Comment': 'DR failover - routing to secondary region',
-            'Changes': [{
-                'Action': 'UPSERT',
-                'ResourceRecordSet': {
-                    'Name': DR_CONFIG['domain'],
-                    'Type': 'A',
-                    'AliasTarget': {
-                        'HostedZoneId': 'Z35SXDOTRQ7X7K',  # us-west-2 ALB zone
-                        'DNSName': 'api-secondary-alb.us-west-2.elb.amazonaws.com',
-                        'EvaluateTargetHealth': True
-                    }
-                }
-            }]
-        }
-    )
-    
-    # Step 4: Notify operations team
-    sns.publish(
-        TopicArn=DR_CONFIG['notification_topic'],
-        Subject='DR FAILOVER EXECUTED',
-        Message=json.dumps({
-            'event': 'failover_complete',
-            'primary_region': DR_CONFIG['primary_region'],
-            'active_region': DR_CONFIG['secondary_region'],
-            'timestamp': str(context.get_remaining_time_in_millis())
-        })
-    )
-    
-    logger.info("Failover complete - traffic now routing to secondary region")
+async function validateDrReadiness() {
+  // Validate DR infrastructure is ready for failover
+  const checks: { check: string; value: number; healthy: boolean }[] = [];
 
-def validate_dr_readiness():
-    """Validate DR infrastructure is ready for failover."""
-    checks = []
-    
-    # Check replica lag
-    rds_secondary = boto3.client('rds', region_name=DR_CONFIG['secondary_region'])
-    instances = rds_secondary.describe_db_instances(
-        DBInstanceIdentifier=DR_CONFIG['replica_cluster_id']
-    )
-    replica_lag = instances['DBInstances'][0].get('ReplicaLag', 999)
-    checks.append({
-        'check': 'replica_lag_seconds',
-        'value': replica_lag,
-        'healthy': replica_lag < 60
-    })
-    
-    # Check ECS task health in DR region
-    ecs_secondary = boto3.client('ecs', region_name=DR_CONFIG['secondary_region'])
-    services = ecs_secondary.describe_services(
-        cluster=DR_CONFIG['ecs_cluster'],
-        services=[DR_CONFIG['ecs_service']]
-    )
-    running_count = services['services'][0]['runningCount']
-    checks.append({
-        'check': 'dr_ecs_running_tasks',
-        'value': running_count,
-        'healthy': running_count >= 2
-    })
-    
-    all_healthy = all(c['healthy'] for c in checks)
-    logger.info(f"DR readiness: {'READY' if all_healthy else 'NOT READY'}", extra={'checks': checks})
-    
-    return {'ready': all_healthy, 'checks': checks}
+  // Check replica lag
+  const rdsSecondary = new RDSClient({ region: DR_CONFIG.secondaryRegion });
+  const instances = await rdsSecondary.send(new DescribeDBInstancesCommand({
+    DBInstanceIdentifier: DR_CONFIG.replicaClusterId
+  }));
+  const replicaLag = instances.DBInstances?.[0]?.ReplicaLag ?? 999;
+  checks.push({ check: 'replica_lag_seconds', value: replicaLag, healthy: replicaLag < 60 });
+
+  // Check ECS task health in DR region
+  const ecsSecondary = new ECSClient({ region: DR_CONFIG.secondaryRegion });
+  const services = await ecsSecondary.send(new DescribeServicesCommand({
+    cluster: DR_CONFIG.ecsCluster,
+    services: [DR_CONFIG.ecsService]
+  }));
+  const runningCount = services.services?.[0]?.runningCount ?? 0;
+  checks.push({ check: 'dr_ecs_running_tasks', value: runningCount, healthy: runningCount >= 2 });
+
+  const allHealthy = checks.every(c => c.healthy);
+  console.log(`DR readiness: ${allHealthy ? 'READY' : 'NOT READY'}`, { checks });
+
+  return { ready: allHealthy, checks };
+}
 ```
 
 ### Well-Architected Review: Automated Compliance Checks
 
-```python
-import boto3
-from dataclasses import dataclass
-from enum import Enum
+```typescript
+import { RDSClient, DescribeDBInstancesCommand, ListTagsForResourceCommand } from '@aws-sdk/client-rds';
+import {
+  ElasticLoadBalancingV2Client,
+  DescribeLoadBalancersCommand
+} from '@aws-sdk/client-elastic-load-balancing-v2';
+import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from '@aws-sdk/client-auto-scaling';
+import { EC2Client, DescribeVolumesCommand, DescribeInstancesCommand } from '@aws-sdk/client-ec2';
+import { CloudWatchClient, GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch';
 
-class Severity(Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
+type Severity = 'critical' | 'high' | 'medium' | 'low';
 
-@dataclass
-class Finding:
-    pillar: str
-    check: str
-    severity: Severity
-    resource: str
-    recommendation: str
+interface Finding {
+  pillar: string;
+  check: string;
+  severity: Severity;
+  resource: string;
+  recommendation: string;
+}
 
-def run_reliability_checks() -> list[Finding]:
-    """Automated Well-Architected reliability pillar checks."""
-    findings = []
-    ec2 = boto3.client('ec2')
-    rds = boto3.client('rds')
-    elbv2 = boto3.client('elbv2')
-    
-    # Check: RDS Multi-AZ enabled for production databases
-    db_instances = rds.describe_db_instances()
-    for db in db_instances['DBInstances']:
-        tags = {t['Key']: t['Value'] for t in 
-                rds.list_tags_for_resource(ResourceArn=db['DBInstanceArn'])['TagList']}
-        
-        if tags.get('Environment') == 'production' and not db['MultiAZ']:
-            findings.append(Finding(
-                pillar='Reliability',
-                check='RDS Multi-AZ',
-                severity=Severity.CRITICAL,
-                resource=db['DBInstanceIdentifier'],
-                recommendation='Enable Multi-AZ for production databases to survive AZ failures'
-            ))
-    
-    # Check: ALB spans multiple AZs
-    load_balancers = elbv2.describe_load_balancers()
-    for lb in load_balancers['LoadBalancers']:
-        az_count = len(lb['AvailabilityZones'])
-        if az_count < 2:
-            findings.append(Finding(
-                pillar='Reliability',
-                check='ALB Multi-AZ',
-                severity=Severity.HIGH,
-                resource=lb['LoadBalancerName'],
-                recommendation=f'ALB only spans {az_count} AZ(s). Deploy across 3+ AZs for resilience'
-            ))
-    
-    # Check: Auto Scaling groups have appropriate min capacity
-    asg = boto3.client('autoscaling')
-    groups = asg.describe_auto_scaling_groups()
-    for group in groups['AutoScalingGroups']:
-        if group['MinSize'] < 2:
-            findings.append(Finding(
-                pillar='Reliability',
-                check='ASG Minimum Capacity',
-                severity=Severity.MEDIUM,
-                resource=group['AutoScalingGroupName'],
-                recommendation='Set minimum capacity >= 2 for production ASGs to survive instance failures'
-            ))
-    
-    return findings
+async function runReliabilityChecks(): Promise<Finding[]> {
+  // Automated Well-Architected reliability pillar checks
+  const findings: Finding[] = [];
+  const rds = new RDSClient({});
+  const elbv2 = new ElasticLoadBalancingV2Client({});
 
-def run_cost_optimization_checks() -> list[Finding]:
-    """Automated Well-Architected cost optimization checks."""
-    findings = []
-    ec2 = boto3.client('ec2')
-    ce = boto3.client('ce')
-    
-    # Check: Unattached EBS volumes
-    volumes = ec2.describe_volumes(Filters=[{'Name': 'status', 'Values': ['available']}])
-    for vol in volumes['Volumes']:
-        size_gb = vol['Size']
-        monthly_cost = size_gb * 0.10  # gp3 pricing
-        if monthly_cost > 5:
-            findings.append(Finding(
-                pillar='Cost Optimization',
-                check='Unattached EBS Volumes',
-                severity=Severity.MEDIUM,
-                resource=vol['VolumeId'],
-                recommendation=f'{size_gb}GB unattached volume costing ~${monthly_cost:.2f}/month. Delete or snapshot and remove.'
-            ))
-    
-    # Check: Idle EC2 instances (CPU < 5% for 7 days)
-    cloudwatch = boto3.client('cloudwatch')
-    instances = ec2.describe_instances(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
-    
-    for reservation in instances['Reservations']:
-        for instance in reservation['Instances']:
-            # Query average CPU over 7 days
-            metrics = cloudwatch.get_metric_statistics(
-                Namespace='AWS/EC2',
-                MetricName='CPUUtilization',
-                Dimensions=[{'Name': 'InstanceId', 'Value': instance['InstanceId']}],
-                StartTime='2024-01-08T00:00:00Z',
-                EndTime='2024-01-15T00:00:00Z',
-                Period=604800,
-                Statistics=['Average']
-            )
-            if metrics['Datapoints'] and metrics['Datapoints'][0]['Average'] < 5.0:
-                findings.append(Finding(
-                    pillar='Cost Optimization',
-                    check='Idle EC2 Instances',
-                    severity=Severity.HIGH,
-                    resource=instance['InstanceId'],
-                    recommendation='Instance averaging <5% CPU over 7 days. Consider rightsizing or terminating.'
-                ))
-    
-    return findings
+  // Check: RDS Multi-AZ enabled for production databases
+  const dbInstances = await rds.send(new DescribeDBInstancesCommand({}));
+  for (const db of dbInstances.DBInstances ?? []) {
+    const tagsResponse = await rds.send(new ListTagsForResourceCommand({
+      ResourceName: db.DBInstanceArn
+    }));
+    const tags = Object.fromEntries(
+      (tagsResponse.TagList ?? []).map(t => [t.Key, t.Value])
+    );
+
+    if (tags['Environment'] === 'production' && !db.MultiAZ) {
+      findings.push({
+        pillar: 'Reliability',
+        check: 'RDS Multi-AZ',
+        severity: 'critical',
+        resource: db.DBInstanceIdentifier!,
+        recommendation: 'Enable Multi-AZ for production databases to survive AZ failures'
+      });
+    }
+  }
+
+  // Check: ALB spans multiple AZs
+  const loadBalancers = await elbv2.send(new DescribeLoadBalancersCommand({}));
+  for (const lb of loadBalancers.LoadBalancers ?? []) {
+    const azCount = lb.AvailabilityZones?.length ?? 0;
+    if (azCount < 2) {
+      findings.push({
+        pillar: 'Reliability',
+        check: 'ALB Multi-AZ',
+        severity: 'high',
+        resource: lb.LoadBalancerName!,
+        recommendation: `ALB only spans ${azCount} AZ(s). Deploy across 3+ AZs for resilience`
+      });
+    }
+  }
+
+  // Check: Auto Scaling groups have appropriate min capacity
+  const asg = new AutoScalingClient({});
+  const groups = await asg.send(new DescribeAutoScalingGroupsCommand({}));
+  for (const group of groups.AutoScalingGroups ?? []) {
+    if ((group.MinSize ?? 0) < 2) {
+      findings.push({
+        pillar: 'Reliability',
+        check: 'ASG Minimum Capacity',
+        severity: 'medium',
+        resource: group.AutoScalingGroupName!,
+        recommendation: 'Set minimum capacity >= 2 for production ASGs to survive instance failures'
+      });
+    }
+  }
+
+  return findings;
+}
+
+async function runCostOptimizationChecks(): Promise<Finding[]> {
+  // Automated Well-Architected cost optimization checks
+  const findings: Finding[] = [];
+  const ec2 = new EC2Client({});
+  const cloudwatch = new CloudWatchClient({});
+
+  // Check: Unattached EBS volumes
+  const volumes = await ec2.send(new DescribeVolumesCommand({
+    Filters: [{ Name: 'status', Values: ['available'] }]
+  }));
+  for (const vol of volumes.Volumes ?? []) {
+    const sizeGb = vol.Size ?? 0;
+    const monthlyCost = sizeGb * 0.10; // gp3 pricing
+    if (monthlyCost > 5) {
+      findings.push({
+        pillar: 'Cost Optimization',
+        check: 'Unattached EBS Volumes',
+        severity: 'medium',
+        resource: vol.VolumeId!,
+        recommendation: `${sizeGb}GB unattached volume costing ~$${monthlyCost.toFixed(2)}/month. Delete or snapshot and remove.`
+      });
+    }
+  }
+
+  // Check: Idle EC2 instances (CPU < 5% for 7 days)
+  const instances = await ec2.send(new DescribeInstancesCommand({
+    Filters: [{ Name: 'instance-state-name', Values: ['running'] }]
+  }));
+
+  for (const reservation of instances.Reservations ?? []) {
+    for (const instance of reservation.Instances ?? []) {
+      const metrics = await cloudwatch.send(new GetMetricStatisticsCommand({
+        Namespace: 'AWS/EC2',
+        MetricName: 'CPUUtilization',
+        Dimensions: [{ Name: 'InstanceId', Value: instance.InstanceId }],
+        StartTime: new Date(Date.now() - 7 * 86400000),
+        EndTime: new Date(),
+        Period: 604800,
+        Statistics: ['Average']
+      }));
+      if (metrics.Datapoints?.length && metrics.Datapoints[0].Average! < 5.0) {
+        findings.push({
+          pillar: 'Cost Optimization',
+          check: 'Idle EC2 Instances',
+          severity: 'high',
+          resource: instance.InstanceId!,
+          recommendation: 'Instance averaging <5% CPU over 7 days. Consider rightsizing or terminating.'
+        });
+      }
+    }
+  }
+
+  return findings;
+}
 ```
 
 ## Common Pitfalls

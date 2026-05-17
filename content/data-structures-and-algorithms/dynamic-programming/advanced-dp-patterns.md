@@ -265,23 +265,38 @@ public class TreeDP {
 }
 ```
 
-```python
-def max_independent_set(tree: dict[int, list[int]], weights: list[int], root: int) -> int:
-    """Maximum weight independent set on a tree. O(n) time."""
-    n = len(weights)
-    dp = [[0, 0] for _ in range(n)]  # [not_included, included]
+```java
+/**
+ * Maximum weight independent set on a tree using DFS-based tree DP.
+ * dp[v][0] = max weight excluding vertex v
+ * dp[v][1] = max weight including vertex v
+ * Time: O(n)
+ */
+public class MaxIndependentSet {
+    private int[][] dp;
+    private List<List<Integer>> tree;
+    private int[] weights;
 
-    def dfs(v: int, parent: int) -> None:
-        dp[v][1] = weights[v]
-        for child in tree.get(v, []):
-            if child == parent:
-                continue
-            dfs(child, v)
-            dp[v][0] += max(dp[child][0], dp[child][1])
-            dp[v][1] += dp[child][0]
+    public int solve(List<List<Integer>> tree, int[] weights, int root) {
+        int n = weights.length;
+        this.dp = new int[n][2];
+        this.tree = tree;
+        this.weights = weights;
 
-    dfs(root, -1)
-    return max(dp[root][0], dp[root][1])
+        dfs(root, -1);
+        return Math.max(dp[root][0], dp[root][1]);
+    }
+
+    private void dfs(int v, int parent) {
+        dp[v][1] = weights[v];
+        for (int child : tree.get(v)) {
+            if (child == parent) continue;
+            dfs(child, v);
+            dp[v][0] += Math.max(dp[child][0], dp[child][1]);
+            dp[v][1] += dp[child][0];
+        }
+    }
+}
 ```
 
 ## Common Pitfalls

@@ -87,7 +87,7 @@ function RecentlyStudied({ recentTopics }: { recentTopics: RecentTopic[] }) {
         const displayTitle = topic.title || topic.topicId;
 
         return (
-          <li key={topic.topicId} className="dashboard-recent__item">
+          <li key={`${topic.topicId}-${topic.timestamp}`} className="dashboard-recent__item">
             <Link to={linkPath} className="dashboard-recent__link">
               <span className="dashboard-recent__title">{displayTitle}</span>
               <span className="dashboard-recent__meta">

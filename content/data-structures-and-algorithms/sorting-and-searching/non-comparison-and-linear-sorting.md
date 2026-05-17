@@ -264,40 +264,72 @@ public class BucketSort {
 }
 ```
 
-```python
-def counting_sort(arr: list[int]) -> list[int]:
-    """Counting sort for non-negative integers. O(n + k) time."""
-    if not arr:
-        return []
-    max_val = max(arr)
-    count = [0] * (max_val + 1)
+```java
+public class LinearSorting {
+    /**
+     * Counting sort for non-negative integers. O(n + k) time.
+     * k is the maximum value in the array.
+     */
+    public static int[] countingSort(int[] arr) {
+        if (arr.length == 0) return new int[0];
 
-    for val in arr:
-        count[val] += 1
+        int maxVal = arr[0];
+        for (int val : arr) maxVal = Math.max(maxVal, val);
 
-    result = []
-    for val, cnt in enumerate(count):
-        result.extend([val] * cnt)
+        int[] count = new int[maxVal + 1];
+        for (int val : arr) count[val]++;
 
-    return result
+        int[] result = new int[arr.length];
+        int idx = 0;
+        for (int val = 0; val <= maxVal; val++) {
+            for (int c = 0; c < count[val]; c++) {
+                result[idx++] = val;
+            }
+        }
+        return result;
+    }
 
-def radix_sort(arr: list[int]) -> list[int]:
-    """LSD radix sort for non-negative integers. O(d * n) time."""
-    if not arr:
-        return []
-    max_val = max(arr)
-    exp = 1
+    /**
+     * LSD radix sort for non-negative integers. O(d * n) time.
+     * d is the number of digits in the maximum value.
+     */
+    public static void radixSort(int[] arr) {
+        if (arr.length == 0) return;
 
-    while max_val // exp > 0:
-        # Stable counting sort on current digit
-        buckets: list[list[int]] = [[] for _ in range(10)]
-        for val in arr:
-            digit = (val // exp) % 10
-            buckets[digit].append(val)
-        arr = [val for bucket in buckets for val in bucket]
-        exp *= 10
+        int maxVal = arr[0];
+        for (int val : arr) maxVal = Math.max(maxVal, val);
 
-    return arr
+        // Sort by each digit using stable counting sort
+        for (int exp = 1; maxVal / exp > 0; exp *= 10) {
+            countingSortByDigit(arr, exp);
+        }
+    }
+
+    private static void countingSortByDigit(int[] arr, int exp) {
+        int n = arr.length;
+        int[] output = new int[n];
+        int[] count = new int[10];
+
+        for (int val : arr) {
+            int digit = (val / exp) % 10;
+            count[digit]++;
+        }
+
+        // Convert count to cumulative positions
+        for (int i = 1; i < 10; i++) {
+            count[i] += count[i - 1];
+        }
+
+        // Build output array (traverse in reverse for stability)
+        for (int i = n - 1; i >= 0; i--) {
+            int digit = (arr[i] / exp) % 10;
+            output[count[digit] - 1] = arr[i];
+            count[digit]--;
+        }
+
+        System.arraycopy(output, 0, arr, 0, n);
+    }
+}
 ```
 
 ## Common Pitfalls

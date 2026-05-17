@@ -133,48 +133,72 @@ public class Anagrams {
 }
 ```
 
-```python
-from collections import Counter, defaultdict
+```java
+import java.util.*;
 
-def is_anagram(s: str, t: str) -> bool:
-    """Check anagram using Counter comparison. O(n) time."""
-    return Counter(s) == Counter(t)
+public class AnagramsAlt {
+    /**
+     * Check anagram using frequency array comparison. O(n) time.
+     */
+    public static boolean isAnagram(String s, String t) {
+        if (s.length() != t.length()) return false;
+        int[] freq = new int[26];
+        for (int i = 0; i < s.length(); i++) {
+            freq[s.charAt(i) - 'a']++;
+            freq[t.charAt(i) - 'a']--;
+        }
+        for (int count : freq) {
+            if (count != 0) return false;
+        }
+        return true;
+    }
 
-def group_anagrams(strs: list[str]) -> list[list[str]]:
-    """Group anagrams using sorted tuple as key."""
-    groups: dict[tuple, list[str]] = defaultdict(list)
-    for s in strs:
-        key = tuple(sorted(s))
-        groups[key].append(s)
-    return list(groups.values())
+    /**
+     * Group anagrams using sorted string as canonical key.
+     */
+    public static List<List<String>> groupAnagrams(String[] strs) {
+        Map<String, List<String>> groups = new HashMap<>();
+        for (String s : strs) {
+            char[] chars = s.toCharArray();
+            Arrays.sort(chars);
+            String key = new String(chars);
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
+        }
+        return new ArrayList<>(groups.values());
+    }
 
-def find_anagrams_in_text(text: str, pattern: str) -> list[int]:
-    """Find all starting indices of pattern's anagrams in text.
-    Uses sliding window with frequency comparison. O(n) time.
-    """
-    if len(pattern) > len(text):
-        return []
+    /**
+     * Find all starting indices of pattern's anagrams in text.
+     * Uses sliding window with frequency comparison. O(n) time.
+     */
+    public static List<Integer> findAnagramsInText(String text, String pattern) {
+        List<Integer> result = new ArrayList<>();
+        int n = text.length(), m = pattern.length();
+        if (m > n) return result;
 
-    result = []
-    p_count = Counter(pattern)
-    w_count = Counter(text[:len(pattern)])
+        int[] pCount = new int[26];
+        int[] wCount = new int[26];
 
-    if w_count == p_count:
-        result.append(0)
+        for (int i = 0; i < m; i++) {
+            pCount[pattern.charAt(i) - 'a']++;
+            wCount[text.charAt(i) - 'a']++;
+        }
 
-    for i in range(len(pattern), len(text)):
-        # Add new character to window
-        w_count[text[i]] += 1
-        # Remove old character from window
-        old_char = text[i - len(pattern)]
-        w_count[old_char] -= 1
-        if w_count[old_char] == 0:
-            del w_count[old_char]
+        if (Arrays.equals(pCount, wCount)) result.add(0);
 
-        if w_count == p_count:
-            result.append(i - len(pattern) + 1)
+        for (int i = m; i < n; i++) {
+            // Add new character to window
+            wCount[text.charAt(i) - 'a']++;
+            // Remove old character from window
+            wCount[text.charAt(i - m) - 'a']--;
 
-    return result
+            if (Arrays.equals(pCount, wCount)) {
+                result.add(i - m + 1);
+            }
+        }
+        return result;
+    }
+}
 ```
 
 ### Palindrome Operations

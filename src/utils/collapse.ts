@@ -50,11 +50,15 @@ export function shouldCollapse(section: {
   return false;
 }
 
+/** Maximum number of paragraphs to show in collapsed state */
+const MAX_VISIBLE_PARAGRAPHS = 3;
+
 /**
- * Returns a truncated subset of content nodes that fits within the maxWords limit.
+ * Returns a truncated subset of content nodes that fits within the maxWords limit
+ * AND the paragraph limit (MAX_VISIBLE_PARAGRAPHS).
  *
- * Iterates through content nodes in order, accumulating word counts.
- * Once the word budget is exhausted, remaining nodes are excluded.
+ * Iterates through content nodes in order, accumulating word counts and paragraph counts.
+ * Once either budget is exhausted, remaining nodes are excluded.
  * For text-based nodes (paragraph, blockquote), the last included node
  * may be truncated mid-text to stay within the word limit.
  */
@@ -68,9 +72,10 @@ export function getVisibleContent(
 
   const result: ContentNode[] = [];
   let wordsRemaining = maxWords;
+  let paragraphsRemaining = MAX_VISIBLE_PARAGRAPHS;
 
   for (const node of content) {
-    if (wordsRemaining <= 0) {
+    if (wordsRemaining <= 0 || paragraphsRemaining <= 0) {
       break;
     }
 
@@ -86,6 +91,7 @@ export function getVisibleContent(
           result.push({ type: 'paragraph', text: truncatedText });
           wordsRemaining = 0;
         }
+        paragraphsRemaining--;
         break;
       }
 
@@ -179,6 +185,15 @@ export function getVisibleContent(
       case 'interactive':
       case 'unparseable': {
         // Non-text nodes don't consume word budget significantly
+        result.push(node);
+        break;
+      }
+
+      case 'mermaid':
+      case 'admonition':
+      case 'task-list':
+      case 'footnote-ref':
+      case 'footnote-def': {
         result.push(node);
         break;
       }

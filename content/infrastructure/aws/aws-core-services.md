@@ -19,196 +19,216 @@ AWS core services form the foundation of virtually every cloud architecture on t
 
 ### EC2 Instance Launch with User Data
 
-```python
-import boto3
+```typescript
+import { EC2Client, RunInstancesCommand } from '@aws-sdk/client-ec2';
 
-ec2 = boto3.client('ec2', region_name='us-east-1')
+const ec2 = new EC2Client({ region: 'us-east-1' });
 
-user_data_script = """#!/bin/bash
+const userDataScript = `#!/bin/bash
 yum update -y
 yum install -y docker
 systemctl start docker
 systemctl enable docker
 docker pull nginx:latest
 docker run -d -p 80:80 nginx:latest
-"""
+`;
 
-response = ec2.run_instances(
-    ImageId='ami-0c02fb55956c7d316',  # Amazon Linux 2
-    InstanceType='t3.medium',
-    MinCount=1,
-    MaxCount=1,
-    KeyName='my-key-pair',
-    UserData=user_data_script,
-    SecurityGroupIds=['sg-0123456789abcdef0'],
-    SubnetId='subnet-0123456789abcdef0',
-    IamInstanceProfile={'Name': 'EC2-SSM-Role'},
-    TagSpecifications=[{
-        'ResourceType': 'instance',
-        'Tags': [
-            {'Key': 'Name', 'Value': 'web-server-prod'},
-            {'Key': 'Environment', 'Value': 'production'}
-        ]
-    }],
-    MetadataOptions={
-        'HttpTokens': 'required',  # IMDSv2 only
-        'HttpEndpoint': 'enabled'
-    }
-)
+const response = await ec2.send(new RunInstancesCommand({
+  ImageId: 'ami-0c02fb55956c7d316',  // Amazon Linux 2
+  InstanceType: 't3.medium',
+  MinCount: 1,
+  MaxCount: 1,
+  KeyName: 'my-key-pair',
+  UserData: Buffer.from(userDataScript).toString('base64'),
+  SecurityGroupIds: ['sg-0123456789abcdef0'],
+  SubnetId: 'subnet-0123456789abcdef0',
+  IamInstanceProfile: { Name: 'EC2-SSM-Role' },
+  TagSpecifications: [{
+    ResourceType: 'instance',
+    Tags: [
+      { Key: 'Name', Value: 'web-server-prod' },
+      { Key: 'Environment', Value: 'production' }
+    ]
+  }],
+  MetadataOptions: {
+    HttpTokens: 'required',  // IMDSv2 only
+    HttpEndpoint: 'enabled'
+  }
+}));
 
-instance_id = response['Instances'][0]['InstanceId']
-print(f"Launched instance: {instance_id}")
+const instanceId = response.Instances?.[0]?.InstanceId;
+console.log(`Launched instance: ${instanceId}`);
 ```
 
 ### S3 Operations with Lifecycle Policies
 
-```python
-import boto3
-import json
+```typescript
+import {
+  S3Client,
+  CreateBucketCommand,
+  PutBucketVersioningCommand,
+  PutBucketEncryptionCommand,
+  PutBucketLifecycleConfigurationCommand
+} from '@aws-sdk/client-s3';
 
-s3 = boto3.client('s3')
+const s3 = new S3Client({ region: 'us-west-2' });
 
-# Create bucket with versioning and encryption
-s3.create_bucket(
-    Bucket='my-app-data-prod',
-    CreateBucketConfiguration={'LocationConstraint': 'us-west-2'}
-)
+// Create bucket with versioning and encryption
+await s3.send(new CreateBucketCommand({
+  Bucket: 'my-app-data-prod',
+  CreateBucketConfiguration: { LocationConstraint: 'us-west-2' }
+}));
 
-s3.put_bucket_versioning(
-    Bucket='my-app-data-prod',
-    VersioningConfiguration={'Status': 'Enabled'}
-)
+await s3.send(new PutBucketVersioningCommand({
+  Bucket: 'my-app-data-prod',
+  VersioningConfiguration: { Status: 'Enabled' }
+}));
 
-s3.put_bucket_encryption(
-    Bucket='my-app-data-prod',
-    ServerSideEncryptionConfiguration={
-        'Rules': [{
-            'ApplyServerSideEncryptionByDefault': {
-                'SSEAlgorithm': 'aws:kms',
-                'KMSMasterKeyID': 'alias/my-app-key'
-            },
-            'BucketKeyEnabled': True
-        }]
-    }
-)
-
-# Lifecycle policy: transition to IA after 30 days, Glacier after 90
-lifecycle_policy = {
-    'Rules': [{
-        'ID': 'archive-old-data',
-        'Status': 'Enabled',
-        'Filter': {'Prefix': 'logs/'},
-        'Transitions': [
-            {'Days': 30, 'StorageClass': 'STANDARD_IA'},
-            {'Days': 90, 'StorageClass': 'GLACIER'},
-            {'Days': 365, 'StorageClass': 'DEEP_ARCHIVE'}
-        ],
-        'NoncurrentVersionExpiration': {'NoncurrentDays': 30}
+await s3.send(new PutBucketEncryptionCommand({
+  Bucket: 'my-app-data-prod',
+  ServerSideEncryptionConfiguration: {
+    Rules: [{
+      ApplyServerSideEncryptionByDefault: {
+        SSEAlgorithm: 'aws:kms',
+        KMSMasterKeyID: 'alias/my-app-key'
+      },
+      BucketKeyEnabled: true
     }]
-}
+  }
+}));
 
-s3.put_bucket_lifecycle_configuration(
-    Bucket='my-app-data-prod',
-    LifecycleConfiguration=lifecycle_policy
-)
+// Lifecycle policy: transition to IA after 30 days, Glacier after 90
+await s3.send(new PutBucketLifecycleConfigurationCommand({
+  Bucket: 'my-app-data-prod',
+  LifecycleConfiguration: {
+    Rules: [{
+      ID: 'archive-old-data',
+      Status: 'Enabled',
+      Filter: { Prefix: 'logs/' },
+      Transitions: [
+        { Days: 30, StorageClass: 'STANDARD_IA' },
+        { Days: 90, StorageClass: 'GLACIER' },
+        { Days: 365, StorageClass: 'DEEP_ARCHIVE' }
+      ],
+      NoncurrentVersionExpiration: { NoncurrentDays: 30 }
+    }]
+  }
+}));
 ```
 
 ### Lambda Function with SQS Trigger
 
-```python
-import json
-import boto3
-import logging
-from typing import Any
+```typescript
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { SQSEvent, SQSBatchResponse, Context } from 'aws-lambda';
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+const client = new DynamoDBClient({});
+const dynamodb = DynamoDBDocumentClient.from(client);
+const TABLE_NAME = 'orders';
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('orders')
+export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
+  const batchItemFailures: { itemIdentifier: string }[] = [];
 
-def handler(event: dict, context: Any) -> dict:
-    """Process order messages from SQS queue."""
-    batch_item_failures = []
+  for (const record of event.Records) {
+    try {
+      const body = JSON.parse(record.body);
+      const orderId = body.orderId;
 
-    for record in event['Records']:
-        try:
-            body = json.loads(record['body'])
-            order_id = body['orderId']
-            
-            # Idempotency check
-            existing = table.get_item(
-                Key={'orderId': order_id},
-                ProjectionExpression='orderId, #s',
-                ExpressionAttributeNames={'#s': 'status'}
-            )
-            
-            if 'Item' in existing and existing['Item']['status'] == 'processed':
-                logger.info(f"Order {order_id} already processed, skipping")
-                continue
+      // Idempotency check
+      const existing = await dynamodb.send(new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { orderId },
+        ProjectionExpression: 'orderId, #s',
+        ExpressionAttributeNames: { '#s': 'status' }
+      }));
 
-            # Process the order
-            table.put_item(Item={
-                'orderId': order_id,
-                'customerId': body['customerId'],
-                'amount': body['amount'],
-                'status': 'processed',
-                'processedAt': context.get_remaining_time_in_millis()
-            })
+      if (existing.Item?.status === 'processed') {
+        console.log(`Order ${orderId} already processed, skipping`);
+        continue;
+      }
 
-            logger.info(f"Successfully processed order {order_id}")
+      // Process the order
+      await dynamodb.send(new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          orderId,
+          customerId: body.customerId,
+          amount: body.amount,
+          status: 'processed',
+          processedAt: new Date().toISOString()
+        }
+      }));
 
-        except Exception as e:
-            logger.error(f"Failed to process record: {e}")
-            batch_item_failures.append({
-                'itemIdentifier': record['messageId']
-            })
+      console.log(`Successfully processed order ${orderId}`);
+    } catch (error) {
+      console.error(`Failed to process record: ${error}`);
+      batchItemFailures.push({ itemIdentifier: record.messageId });
+    }
+  }
 
-    return {'batchItemFailures': batch_item_failures}
+  return { batchItemFailures };
+};
 ```
 
 ### DynamoDB Single-Table Design
 
-```python
-import boto3
-from boto3.dynamodb.conditions import Key, Attr
-from decimal import Decimal
+```typescript
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('ecommerce')
+const client = new DynamoDBClient({});
+const dynamodb = DynamoDBDocumentClient.from(client);
+const TABLE_NAME = 'ecommerce';
 
-# Write: Create customer with orders using single-table design
-def create_order(customer_id: str, order_id: str, items: list, total: float):
-    """Single-table design: PK=CUSTOMER#id, SK varies by entity type."""
-    table.put_item(Item={
-        'PK': f'CUSTOMER#{customer_id}',
-        'SK': f'ORDER#{order_id}',
-        'GSI1PK': f'ORDER#{order_id}',
-        'GSI1SK': f'CUSTOMER#{customer_id}',
-        'type': 'Order',
-        'items': items,
-        'total': Decimal(str(total)),
-        'status': 'pending',
-        'createdAt': '2024-01-15T10:30:00Z'
-    })
+// Write: Create customer with orders using single-table design
+async function createOrder(
+  customerId: string, orderId: string, items: any[], total: number
+): Promise<void> {
+  // Single-table design: PK=CUSTOMER#id, SK varies by entity type
+  await dynamodb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      PK: `CUSTOMER#${customerId}`,
+      SK: `ORDER#${orderId}`,
+      GSI1PK: `ORDER#${orderId}`,
+      GSI1SK: `CUSTOMER#${customerId}`,
+      type: 'Order',
+      items,
+      total,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    }
+  }));
+}
 
-# Query: Get all orders for a customer
-def get_customer_orders(customer_id: str):
-    response = table.query(
-        KeyConditionExpression=Key('PK').eq(f'CUSTOMER#{customer_id}')
-            & Key('SK').begins_with('ORDER#'),
-        ScanIndexForward=False,  # Most recent first
-        Limit=20
-    )
-    return response['Items']
+// Query: Get all orders for a customer
+async function getCustomerOrders(customerId: string) {
+  const response = await dynamodb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+    ExpressionAttributeValues: {
+      ':pk': `CUSTOMER#${customerId}`,
+      ':sk': 'ORDER#'
+    },
+    ScanIndexForward: false,  // Most recent first
+    Limit: 20
+  }));
+  return response.Items;
+}
 
-# Query: Get order details using GSI
-def get_order_details(order_id: str):
-    response = table.query(
-        IndexName='GSI1',
-        KeyConditionExpression=Key('GSI1PK').eq(f'ORDER#{order_id}')
-    )
-    return response['Items']
+// Query: Get order details using GSI
+async function getOrderDetails(orderId: string) {
+  const response = await dynamodb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    IndexName: 'GSI1',
+    KeyConditionExpression: 'GSI1PK = :pk',
+    ExpressionAttributeValues: {
+      ':pk': `ORDER#${orderId}`
+    }
+  }));
+  return response.Items;
+}
 ```
 
 ### CloudFront Distribution with S3 Origin
@@ -265,53 +285,52 @@ Resources:
 
 ### SNS + SQS Fan-Out Pattern
 
-```python
-import boto3
-import json
+```typescript
+import { SNSClient, CreateTopicCommand, SubscribeCommand, PublishCommand } from '@aws-sdk/client-sns';
 
-sns = boto3.client('sns')
-sqs = boto3.client('sqs')
+const sns = new SNSClient({ region: 'us-east-1' });
 
-# Create SNS topic for order events
-topic_response = sns.create_topic(Name='order-events')
-topic_arn = topic_response['TopicArn']
+// Create SNS topic for order events
+const topicResponse = await sns.send(new CreateTopicCommand({ Name: 'order-events' }));
+const topicArn = topicResponse.TopicArn!;
 
-# Subscribe multiple SQS queues for different consumers
-queues = {
-    'inventory-queue': 'arn:aws:sqs:us-east-1:123456789:inventory-updates',
-    'analytics-queue': 'arn:aws:sqs:us-east-1:123456789:analytics-events',
-    'notification-queue': 'arn:aws:sqs:us-east-1:123456789:customer-notifications'
+// Subscribe multiple SQS queues for different consumers
+const queues: Record<string, string> = {
+  'inventory-queue': 'arn:aws:sqs:us-east-1:123456789:inventory-updates',
+  'analytics-queue': 'arn:aws:sqs:us-east-1:123456789:analytics-events',
+  'notification-queue': 'arn:aws:sqs:us-east-1:123456789:customer-notifications'
+};
+
+for (const [queueName, queueArn] of Object.entries(queues)) {
+  await sns.send(new SubscribeCommand({
+    TopicArn: topicArn,
+    Protocol: 'sqs',
+    Endpoint: queueArn,
+    Attributes: {
+      FilterPolicy: JSON.stringify({
+        eventType: ['order.created', 'order.shipped']
+      }),
+      RawMessageDelivery: 'true'
+    }
+  }));
 }
 
-for queue_name, queue_arn in queues.items():
-    sns.subscribe(
-        TopicArn=topic_arn,
-        Protocol='sqs',
-        Endpoint=queue_arn,
-        Attributes={
-            'FilterPolicy': json.dumps({
-                'eventType': ['order.created', 'order.shipped']
-            }),
-            'RawMessageDelivery': 'true'
-        }
-    )
-
-# Publish order event
-sns.publish(
-    TopicArn=topic_arn,
-    Message=json.dumps({
-        'orderId': 'ORD-12345',
-        'customerId': 'CUST-789',
-        'total': 99.99,
-        'items': [{'sku': 'WIDGET-A', 'qty': 2}]
-    }),
-    MessageAttributes={
-        'eventType': {
-            'DataType': 'String',
-            'StringValue': 'order.created'
-        }
+// Publish order event
+await sns.send(new PublishCommand({
+  TopicArn: topicArn,
+  Message: JSON.stringify({
+    orderId: 'ORD-12345',
+    customerId: 'CUST-789',
+    total: 99.99,
+    items: [{ sku: 'WIDGET-A', qty: 2 }]
+  }),
+  MessageAttributes: {
+    eventType: {
+      DataType: 'String',
+      StringValue: 'order.created'
     }
-)
+  }
+}));
 ```
 
 ## Common Pitfalls

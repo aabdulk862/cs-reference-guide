@@ -127,21 +127,32 @@ public class DutchNationalFlag {
 }
 ```
 
-```python
-def dutch_national_flag(arr: list[int], pivot: int) -> None:
-    """Partition array in-place into [< pivot, == pivot, > pivot]."""
-    low, mid, high = 0, 0, len(arr) - 1
+```java
+/**
+ * Alternative implementation using Comparable for generic types.
+ * Partitions array in-place into [< pivot, == pivot, > pivot].
+ */
+public static <T extends Comparable<T>> void dutchNationalFlag(T[] arr, T pivot) {
+    int low = 0, mid = 0, high = arr.length - 1;
 
-    while mid <= high:
-        if arr[mid] < pivot:
-            arr[low], arr[mid] = arr[mid], arr[low]
-            low += 1
-            mid += 1
-        elif arr[mid] == pivot:
-            mid += 1
-        else:
-            arr[mid], arr[high] = arr[high], arr[mid]
-            high -= 1
+    while (mid <= high) {
+        int cmp = arr[mid].compareTo(pivot);
+        if (cmp < 0) {
+            T temp = arr[low];
+            arr[low] = arr[mid];
+            arr[mid] = temp;
+            low++;
+            mid++;
+        } else if (cmp == 0) {
+            mid++;
+        } else {
+            T temp = arr[mid];
+            arr[mid] = arr[high];
+            arr[high] = temp;
+            high--;
+        }
+    }
+}
 ```
 
 ### Dynamic Array (ArrayList) Internals

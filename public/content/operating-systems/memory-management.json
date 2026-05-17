@@ -1,0 +1,275 @@
+{
+  "id": "processes-and-memory-memory-management",
+  "slug": "memory-management",
+  "title": "Memory Management",
+  "category": "Operating Systems",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Virtual memory gives each process a private, contiguous address space (48-bit on x86-64 = 256TB) mapped to physical frames via page tables",
+            "x86-64 uses 4-level page tables (PGD → PUD → PMD → PTE), each level indexing 512 entries with 9 bits of the virtual address",
+            "The TLB (Translation Lookaside Buffer) caches recent virtual-to-physical translations; a TLB miss costs 10-100 cycles for a page table walk vs 1 cycle for a hit",
+            "Huge pages (2MB or 1GB) reduce TLB pressure by covering more address space per entry — critical for large heaps (JVM, databases)",
+            "Copy-on-write (COW) makes fork() O(1) by sharing physical pages until a write triggers duplication",
+            "The page cache buffers disk I/O in unused RAM; Linux dynamically grows/shrinks it based on memory pressure",
+            "OOM killer terminates processes when physical memory + swap is exhausted, selecting victims by oom_score (memory usage, age, privilege)",
+            "Kernel uses buddy allocation for page frames and slab allocation for fixed-size kernel objects (task_struct, inode, dentry)",
+            "User-space allocators (glibc ptmalloc2, jemalloc, tcmalloc) subdivide kernel-provided chunks using thread-local caches and size-class bins"
+          ]
+        }
+      ],
+      "wordCount": 176,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Deep understanding of memory management is required when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Tuning JVM garbage collection — GC interacts with virtual memory (huge pages reduce TLB misses during heap traversal, swapped-out pages cause GC pauses, G1/ZGC use mmap tricks for concurrent compaction)",
+            "Diagnosing memory leaks and fragmentation — distinguishing between virtual memory growth (harmless address space expansion) and RSS growth (actual physical memory consumption), understanding why free() doesn't always return memory to the OS",
+            "Configuring container memory limits — setting cgroup memory.max, understanding the difference between anonymous memory (heap/stack) and page cache (reclaimable), preventing OOM kills",
+            "Optimizing database buffer pools — choosing between OS page cache and application-managed buffers (O_DIRECT), configuring huge pages for large buffer pools, understanding NUMA effects on memory access latency",
+            "Building memory-mapped data structures — using mmap for persistent data structures, shared memory IPC, or memory-mapped files that exceed physical RAM",
+            "Performance profiling — interpreting perf counters for TLB misses, page faults, cache misses, and understanding NUMA topology effects"
+          ]
+        }
+      ],
+      "wordCount": 159,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "virtual-memory-page-table-walk-simulation-c",
+          "heading": "Virtual Memory Page Table Walk Simulation (C)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <stdint.h>\n#include <string.h>\n\n#define PAGE_SIZE       4096\n#define ENTRIES_PER_TABLE 512\n#define PTE_PRESENT     (1UL << 0)\n#define PTE_WRITABLE    (1UL << 1)\n#define PTE_USER        (1UL << 2)\n#define PTE_ACCESSED    (1UL << 5)\n#define PTE_DIRTY       (1UL << 6)\n#define PTE_ADDR_MASK   0x000FFFFFFFFFF000UL\n\ntypedef struct {\n    uint64_t entries[ENTRIES_PER_TABLE];\n} PageTable;\n\ntypedef struct {\n    PageTable *pgd;\n    uint64_t page_faults;\n    uint64_t tlb_hits;\n    uint64_t translations;\n} AddressSpace;\n\n// Extract indices from 48-bit virtual address\nstatic inline uint64_t pgd_index(uint64_t va) { return (va >> 39) & 0x1FF; }\nstatic inline uint64_t pud_index(uint64_t va) { return (va >> 30) & 0x1FF; }\nstatic inline uint64_t pmd_index(uint64_t va) { return (va >> 21) & 0x1FF; }\nstatic inline uint64_t pte_index(uint64_t va) { return (va >> 12) & 0x1FF; }\nstatic inline uint64_t page_offset(uint64_t va) { return va & 0xFFF; }\n\n// Allocate and zero a new page table\nPageTable *alloc_page_table() {\n    PageTable *pt = (PageTable *)calloc(1, sizeof(PageTable));\n    return pt;\n}\n\n// Map a virtual page to a physical frame\nint map_page(AddressSpace *as, uint64_t vaddr, uint64_t paddr, uint64_t flags) {\n    uint64_t entry;\n    \n    // Walk/create PGD -> PUD\n    entry = as->pgd->entries[pgd_index(vaddr)];\n    PageTable *pud;\n    if (!(entry & PTE_PRESENT)) {\n        pud = alloc_page_table();\n        as->pgd->entries[pgd_index(vaddr)] = (uint64_t)pud | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pud = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Walk/create PUD -> PMD\n    entry = pud->entries[pud_index(vaddr)];\n    PageTable *pmd;\n    if (!(entry & PTE_PRESENT)) {\n        pmd = alloc_page_table();\n        pud->entries[pud_index(vaddr)] = (uint64_t)pmd | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pmd = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Walk/create PMD -> PTE\n    entry = pmd->entries[pmd_index(vaddr)];\n    PageTable *pte;\n    if (!(entry & PTE_PRESENT)) {\n        pte = alloc_page_table();\n        pmd->entries[pmd_index(vaddr)] = (uint64_t)pte | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pte = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Set the final PTE\n    pte->entries[pte_index(vaddr)] = (paddr & PTE_ADDR_MASK) | flags | PTE_PRESENT;\n    return 0;\n}\n\n// Translate virtual address to physical address\nuint64_t translate(AddressSpace *as, uint64_t vaddr) {\n    as->translations++;\n    \n    uint64_t entry = as->pgd->entries[pgd_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pud = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pud->entries[pud_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pmd = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pmd->entries[pmd_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pte = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pte->entries[pte_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    // Mark accessed\n    pte->entries[pte_index(vaddr)] |= PTE_ACCESSED;\n    \n    return (entry & PTE_ADDR_MASK) | page_offset(vaddr);\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "memory-mapped-file-io-c",
+          "heading": "Memory-Mapped File I/O (C)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <fcntl.h>\n#include <sys/mman.h>\n#include <sys/stat.h>\n#include <unistd.h>\n#include <string.h>\n\n// Memory-mapped file for a simple key-value store\ntypedef struct {\n    char key[64];\n    char value[256];\n    uint32_t hash;\n    uint8_t occupied;\n} Entry;\n\ntypedef struct {\n    uint32_t count;\n    uint32_t capacity;\n    Entry entries[];  // Flexible array member\n} MappedHashTable;\n\nMappedHashTable *create_mapped_table(const char *path, uint32_t capacity) {\n    size_t size = sizeof(MappedHashTable) + capacity * sizeof(Entry);\n    \n    int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);\n    if (fd == -1) return NULL;\n    \n    // Extend file to required size\n    if (ftruncate(fd, size) == -1) {\n        close(fd);\n        return NULL;\n    }\n    \n    // Map file into memory\n    MappedHashTable *table = mmap(NULL, size, PROT_READ | PROT_WRITE,\n                                   MAP_SHARED, fd, 0);\n    close(fd);  // fd can be closed after mmap\n    \n    if (table == MAP_FAILED) return NULL;\n    \n    table->count = 0;\n    table->capacity = capacity;\n    memset(table->entries, 0, capacity * sizeof(Entry));\n    \n    // Advise kernel about access pattern\n    madvise(table, size, MADV_RANDOM);\n    \n    return table;\n}\n\nMappedHashTable *open_mapped_table(const char *path) {\n    int fd = open(path, O_RDWR);\n    if (fd == -1) return NULL;\n    \n    struct stat st;\n    fstat(fd, &st);\n    \n    MappedHashTable *table = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE,\n                                   MAP_SHARED, fd, 0);\n    close(fd);\n    \n    return (table == MAP_FAILED) ? NULL : table;\n}\n\n// Changes are automatically persisted to disk via page cache\n// Use msync() for explicit durability guarantees\nvoid sync_table(MappedHashTable *table) {\n    size_t size = sizeof(MappedHashTable) + table->capacity * sizeof(Entry);\n    msync(table, size, MS_SYNC);  // Blocks until written to disk\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "custom-memory-allocator-with-free-list-c",
+          "heading": "Custom Memory Allocator with Free List (C)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "c",
+              "code": "#include <stdint.h>\n#include <sys/mman.h>\n#include <string.h>\n\n#define ARENA_SIZE (1024 * 1024)  // 1MB arena\n#define ALIGNMENT 16\n#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))\n\ntypedef struct Block {\n    size_t size;\n    struct Block *next;\n    uint8_t free;\n} Block;\n\n#define BLOCK_HEADER_SIZE ALIGN(sizeof(Block))\n\ntypedef struct {\n    void *arena;\n    size_t arena_size;\n    Block *free_list;\n    size_t allocated;\n    size_t peak_allocated;\n} Allocator;\n\nAllocator *allocator_create() {\n    // Request memory from OS via mmap (bypasses malloc)\n    void *arena = mmap(NULL, ARENA_SIZE, PROT_READ | PROT_WRITE,\n                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);\n    if (arena == MAP_FAILED) return NULL;\n    \n    Allocator *alloc = (Allocator *)arena;\n    alloc->arena = (uint8_t *)arena + ALIGN(sizeof(Allocator));\n    alloc->arena_size = ARENA_SIZE - ALIGN(sizeof(Allocator));\n    alloc->allocated = 0;\n    alloc->peak_allocated = 0;\n    \n    // Initialize free list with single large block\n    alloc->free_list = (Block *)alloc->arena;\n    alloc->free_list->size = alloc->arena_size - BLOCK_HEADER_SIZE;\n    alloc->free_list->next = NULL;\n    alloc->free_list->free = 1;\n    \n    return alloc;\n}\n\nvoid *allocator_alloc(Allocator *alloc, size_t size) {\n    size = ALIGN(size);\n    \n    // First-fit search through free list\n    Block *prev = NULL;\n    Block *curr = alloc->free_list;\n    \n    while (curr) {\n        if (curr->free && curr->size >= size) {\n            // Split block if remainder is large enough\n            if (curr->size >= size + BLOCK_HEADER_SIZE + ALIGNMENT) {\n                Block *new_block = (Block *)((uint8_t *)curr + BLOCK_HEADER_SIZE + size);\n                new_block->size = curr->size - size - BLOCK_HEADER_SIZE;\n                new_block->next = curr->next;\n                new_block->free = 1;\n                \n                curr->size = size;\n                curr->next = new_block;\n            }\n            \n            curr->free = 0;\n            alloc->allocated += curr->size;\n            if (alloc->allocated > alloc->peak_allocated)\n                alloc->peak_allocated = alloc->allocated;\n            \n            return (uint8_t *)curr + BLOCK_HEADER_SIZE;\n        }\n        prev = curr;\n        curr = curr->next;\n    }\n    \n    return NULL;  // Out of memory\n}\n\nvoid allocator_free(Allocator *alloc, void *ptr) {\n    if (!ptr) return;\n    \n    Block *block = (Block *)((uint8_t *)ptr - BLOCK_HEADER_SIZE);\n    block->free = 1;\n    alloc->allocated -= block->size;\n    \n    // Coalesce adjacent free blocks\n    Block *curr = alloc->free_list;\n    while (curr) {\n        if (curr->free && curr->next && curr->next->free) {\n            curr->size += BLOCK_HEADER_SIZE + curr->next->size;\n            curr->next = curr->next->next;\n            continue;  // Check again in case of multiple adjacent free blocks\n        }\n        curr = curr->next;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "lru-page-replacement-simulation-python",
+          "heading": "LRU Page Replacement Simulation (Python)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "python",
+              "code": "from collections import OrderedDict\nfrom dataclasses import dataclass\nfrom enum import Enum\nfrom typing import Optional\n\nclass PageState(Enum):\n    CLEAN = \"clean\"\n    DIRTY = \"dirty\"\n\n@dataclass\nclass PageFrame:\n    page_number: int\n    state: PageState\n    access_count: int = 0\n\nclass LRUPageCache:\n    \"\"\"Simulates OS page cache with LRU eviction policy.\"\"\"\n    \n    def __init__(self, num_frames: int):\n        self.num_frames = num_frames\n        self.frames: OrderedDict[int, PageFrame] = OrderedDict()\n        self.page_faults = 0\n        self.disk_writes = 0\n        self.total_accesses = 0\n    \n    def access(self, page_number: int, write: bool = False) -> bool:\n        \"\"\"Access a page. Returns True if page was in cache (hit).\"\"\"\n        self.total_accesses += 1\n        \n        if page_number in self.frames:\n            # Cache hit: move to end (most recently used)\n            self.frames.move_to_end(page_number)\n            frame = self.frames[page_number]\n            frame.access_count += 1\n            if write:\n                frame.state = PageState.DIRTY\n            return True\n        \n        # Cache miss: page fault\n        self.page_faults += 1\n        \n        # Evict LRU page if cache is full\n        if len(self.frames) >= self.num_frames:\n            self._evict_lru()\n        \n        # Load new page\n        state = PageState.DIRTY if write else PageState.CLEAN\n        self.frames[page_number] = PageFrame(\n            page_number=page_number,\n            state=state,\n            access_count=1\n        )\n        return False\n    \n    def _evict_lru(self):\n        \"\"\"Evict the least recently used page.\"\"\"\n        # OrderedDict.popitem(last=False) removes the first (oldest) item\n        page_num, frame = self.frames.popitem(last=False)\n        if frame.state == PageState.DIRTY:\n            self.disk_writes += 1  # Must write back dirty page\n    \n    @property\n    def hit_rate(self) -> float:\n        if self.total_accesses == 0:\n            return 0.0\n        return 1.0 - (self.page_faults / self.total_accesses)\n    \n    def stats(self) -> dict:\n        return {\n            \"total_accesses\": self.total_accesses,\n            \"page_faults\": self.page_faults,\n            \"disk_writes\": self.disk_writes,\n            \"hit_rate\": f\"{self.hit_rate:.2%}\",\n            \"frames_used\": len(self.frames),\n        }\n\n# Simulate a workload\ncache = LRUPageCache(num_frames=4)\n# Locality-heavy access pattern\naccesses = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5, 1, 2, 3]\nfor page in accesses:\n    hit = cache.access(page, write=(page % 2 == 0))\n    status = \"HIT\" if hit else \"MISS\"\n    print(f\"Access page {page}: {status}\")\n\nprint(f\"\\nStats: {cache.stats()}\")",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Confusing virtual memory size (VSZ) with physical memory usage (RSS): A process can have a large virtual address space (mapped but uncommitted memory, memory-mapped files, shared libraries) while using little physical RAM. RSS (Resident Set Size) shows actual physical pages in use. Monitoring VSZ for memory leaks gives false alarms; monitor RSS and PSS (Proportional Set Size, which accounts for shared pages). Use smaps_rollup for accurate per-process memory accounting in containerized environments.",
+            "Memory fragmentation in long-running services: After many allocation/deallocation cycles, the heap becomes fragmented — free memory exists but not in contiguous chunks large enough for new allocations. This causes RSS to grow even though logical usage is stable. glibc's ptmalloc2 is particularly prone to fragmentation with certain allocation patterns. Mitigations: use jemalloc or tcmalloc (better fragmentation resistance), periodically call malloc_trim(), or redesign to use arena/pool allocators for same-sized objects.",
+            "Transparent Huge Pages (THP) causing latency spikes: THP automatically promotes 4KB pages to 2MB huge pages, which reduces TLB misses but can cause latency spikes during compaction (the kernel must find 512 contiguous free pages). Databases (Redis, MongoDB) and latency-sensitive services often disable THP (echo never > /sys/kernel/mm/transparent_hugepage/enabled) and use explicit hugetlbfs instead, which pre-allocates huge pages at boot time.",
+            "OOM killer targeting the wrong process: When the system runs out of memory, the OOM killer selects a victim based on oom_score (primarily memory usage). It might kill your database instead of a runaway batch job. Protect critical processes with oom_score_adj = -1000 (never kill) and set appropriate cgroup memory limits so containers are killed before the host OOM killer activates. Monitor /proc/meminfo MemAvailable and set alerts at 10-15% remaining.",
+            "Swap thrashing destroying performance: When working set exceeds physical memory, the system pages out to swap (disk), and subsequent accesses trigger page faults requiring disk reads (milliseconds vs nanoseconds for RAM). This creates a death spiral where the system spends all time swapping instead of computing. Production systems often set vm.swappiness=1 or disable swap entirely, relying on cgroup memory limits and OOM killing for memory pressure handling. Monitor with vmstat (si/so columns) and page fault rates.",
+            "NUMA-unaware memory allocation: On multi-socket servers, memory access latency depends on which NUMA node the memory is allocated from. Accessing remote-node memory costs 1.5-2x local access latency. Applications that allocate memory on one node but access it from threads on another node suffer significant performance degradation. Use numactl --membind or set_mempolicy() for NUMA-aware allocation. Monitor with numastat for cross-node access patterns."
+          ]
+        }
+      ],
+      "wordCount": 408,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JVM garbage collection and OS interaction: The JVM's garbage collector traverses the entire heap, touching every live object's header. With a 32GB heap using 4KB pages, that's 8 million TLB entries needed — far exceeding typical TLB capacity (1024-2048 entries). Huge pages (2MB) reduce this to ~16K entries, dramatically reducing GC pause times. ZGC uses colored pointers and memory mapping tricks (multiple virtual addresses mapping to the same physical page) for concurrent compaction without stop-the-world pauses.",
+            "Database buffer pool management: PostgreSQL's shared_buffers and MySQL's InnoDB buffer pool manage their own page caches in shared memory. They use O_DIRECT to bypass the OS page cache (avoiding double-buffering), implement custom eviction policies (clock sweep for PostgreSQL, LRU with midpoint insertion for InnoDB), and use huge pages for the buffer pool. Understanding the interaction between application buffers, OS page cache, and physical memory is critical for database tuning.",
+            "Container memory limits and OOM behavior: Kubernetes memory limits map to cgroup memory.max. When a container exceeds its limit, the cgroup OOM killer terminates a process within that cgroup (not the host OOM killer). The page cache counts against the cgroup limit, so a container doing heavy file I/O may OOM even with low heap usage. Set memory.high (soft limit with throttling) below memory.max to provide backpressure. Monitor container_memory_working_set_bytes (RSS + active page cache) rather than just RSS.",
+            "Redis memory management: Redis stores all data in memory and uses jemalloc for allocation. Memory fragmentation (mem_fragmentation_ratio > 1.5) indicates jemalloc cannot efficiently reuse freed memory. Redis 4.0+ includes active defragmentation that moves allocations to reduce fragmentation. Understanding virtual memory helps explain why Redis RSS doesn't decrease after deleting keys (freed pages may not be returned to OS) and why fork-based persistence (RDB snapshots) temporarily doubles memory usage due to COW page duplication under write-heavy workloads.",
+            "Memory-mapped databases (LMDB, RocksDB): LMDB maps the entire database file into virtual memory, relying on the OS page cache for caching and the MMU for access. This eliminates application-level buffer management complexity and enables zero-copy reads. The database can be larger than physical RAM — the OS transparently pages in/out as needed. However, this approach makes performance dependent on OS page cache behavior and can suffer from page fault storms under memory pressure."
+          ]
+        }
+      ],
+      "wordCount": 372,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the 4-level page table structure on x86-64 and why it exists."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: x86-64 uses 48 bits of virtual address space (256TB), divided into 4 levels of page tables: PGD (Page Global Directory), PUD (Page Upper Directory), PMD (Page Middle Directory), and PTE (Page Table Entry). Each level uses 9 bits of the virtual address to index into a 512-entry table, with the final 12 bits as the page offset (4KB pages). The hierarchical structure exists because a flat page table for 48-bit addresses would require 512GB of memory per process. With hierarchical tables, only populated regions of the address space need page table pages allocated — a process using 100MB might only need a few hundred page table pages rather than millions. Each entry contains the physical address of the next level (or the final frame) plus permission bits (present, writable, user-accessible, no-execute)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the TLB and why do huge pages improve performance?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The TLB is a hardware cache in the CPU that stores recent virtual-to-physical address translations, avoiding the expensive 4-level page table walk (10-100 cycles) on every memory access. A typical L1 TLB has 64-128 entries and the L2 TLB has 1024-2048 entries. With 4KB pages, 2048 TLB entries cover only 8MB of address space — insufficient for applications with large working sets (databases, JVMs). Huge pages (2MB) allow each TLB entry to cover 512x more memory, so 2048 entries cover 4GB. This dramatically reduces TLB miss rates for applications with large, randomly-accessed memory regions. The tradeoff is increased internal fragmentation (allocating 2MB when you need 8KB wastes memory) and higher allocation cost (finding contiguous 2MB physical regions)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does the OOM killer work and how do you protect critical processes?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: When the system exhausts physical memory and swap, the OOM killer selects a process to terminate based on oom_score (0-1000). The score is primarily based on the process's memory consumption as a proportion of total memory, adjusted by oom_score_adj (-1000 to +1000). Higher scores mean more likely to be killed. To protect critical processes: set oom_score_adj to -1000 (OOM_SCORE_ADJ_MIN) which makes the process unkillable by OOM. In containerized environments, set cgroup memory limits so the cgroup-level OOM killer activates before the system-wide one. Monitor /proc/meminfo MemAvailable and set alerts. Best practice: don't rely on OOM killer — use memory limits, monitoring, and backpressure to prevent OOM conditions entirely."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain copy-on-write and its implications for fork()."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Copy-on-write (COW) is an optimization where fork() doesn't copy the parent's physical memory pages. Instead, both parent and child share the same physical frames, with page table entries marked read-only. When either process writes to a shared page, the MMU triggers a protection fault, the kernel allocates a new frame, copies the original page content, updates the writer's page table entry to point to the new frame with write permission, and resumes execution. This makes fork() nearly O(1) regardless of process size. Implications: fork() in a process with a 32GB heap is fast (only page tables are copied, ~6MB for 32GB), but if the child writes to many pages (e.g., Redis during RDB save under write-heavy load), physical memory usage temporarily doubles. This is why Redis can OOM during background saves even with memory limits set to half of available RAM."
+        }
+      ],
+      "wordCount": 548,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use cgroups v2 memory.high for graceful degradation: Set memory.high below memory.max to throttle the process (slow down allocations) before hitting the hard limit that triggers OOM kill. This gives the application time to shed load or free caches. Monitor memory.events for high/max/oom counters. Example: memory.max=4G, memory.high=3.5G gives 500MB of throttling buffer before hard kill.",
+            "Monitor page fault rates to detect swap pressure: Track major page faults (requiring disk I/O) via /proc/pid/stat field 12 or perf stat -e page-faults. A sudden increase in major faults indicates the working set exceeds physical memory and pages are being loaded from swap. Correlate with vmstat si/so (swap in/out) columns. For latency-sensitive services, any major page faults in steady state indicate a memory sizing problem.",
+            "Pre-fault memory for latency-sensitive applications: After mmap() or malloc() of large regions, the memory isn't physically allocated until first access (demand paging). This causes page faults during request processing, adding latency jitter. Pre-fault by touching every page at startup: memset(ptr, 0, size) or use MAP_POPULATE with mmap(). JVMs use -XX:+AlwaysPreTouch to pre-fault the entire heap at startup, trading slower startup for consistent runtime latency.",
+            "Configure NUMA-aware memory allocation for multi-socket systems: On dual-socket servers, memory access to the remote NUMA node costs 40-100ns more than local access. Use numactl --localalloc to keep allocations on the local node, or --interleave=all for workloads that access memory from all cores equally. Monitor with numastat -p <pid> to detect excessive remote-node allocations. Database buffer pools should be NUMA-interleaved since all cores access the shared buffer."
+          ]
+        }
+      ],
+      "wordCount": 251,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Processes and Threads — Process address spaces and fork/exec rely on virtual memory and COW",
+            "File Systems — The page cache bridges memory management and file I/O, buffering disk data in RAM",
+            "I/O and Scheduling — Memory-mapped I/O and page faults interact with the I/O subsystem"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "c",
+      "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <stdint.h>\n#include <string.h>\n\n#define PAGE_SIZE       4096\n#define ENTRIES_PER_TABLE 512\n#define PTE_PRESENT     (1UL << 0)\n#define PTE_WRITABLE    (1UL << 1)\n#define PTE_USER        (1UL << 2)\n#define PTE_ACCESSED    (1UL << 5)\n#define PTE_DIRTY       (1UL << 6)\n#define PTE_ADDR_MASK   0x000FFFFFFFFFF000UL\n\ntypedef struct {\n    uint64_t entries[ENTRIES_PER_TABLE];\n} PageTable;\n\ntypedef struct {\n    PageTable *pgd;\n    uint64_t page_faults;\n    uint64_t tlb_hits;\n    uint64_t translations;\n} AddressSpace;\n\n// Extract indices from 48-bit virtual address\nstatic inline uint64_t pgd_index(uint64_t va) { return (va >> 39) & 0x1FF; }\nstatic inline uint64_t pud_index(uint64_t va) { return (va >> 30) & 0x1FF; }\nstatic inline uint64_t pmd_index(uint64_t va) { return (va >> 21) & 0x1FF; }\nstatic inline uint64_t pte_index(uint64_t va) { return (va >> 12) & 0x1FF; }\nstatic inline uint64_t page_offset(uint64_t va) { return va & 0xFFF; }\n\n// Allocate and zero a new page table\nPageTable *alloc_page_table() {\n    PageTable *pt = (PageTable *)calloc(1, sizeof(PageTable));\n    return pt;\n}\n\n// Map a virtual page to a physical frame\nint map_page(AddressSpace *as, uint64_t vaddr, uint64_t paddr, uint64_t flags) {\n    uint64_t entry;\n    \n    // Walk/create PGD -> PUD\n    entry = as->pgd->entries[pgd_index(vaddr)];\n    PageTable *pud;\n    if (!(entry & PTE_PRESENT)) {\n        pud = alloc_page_table();\n        as->pgd->entries[pgd_index(vaddr)] = (uint64_t)pud | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pud = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Walk/create PUD -> PMD\n    entry = pud->entries[pud_index(vaddr)];\n    PageTable *pmd;\n    if (!(entry & PTE_PRESENT)) {\n        pmd = alloc_page_table();\n        pud->entries[pud_index(vaddr)] = (uint64_t)pmd | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pmd = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Walk/create PMD -> PTE\n    entry = pmd->entries[pmd_index(vaddr)];\n    PageTable *pte;\n    if (!(entry & PTE_PRESENT)) {\n        pte = alloc_page_table();\n        pmd->entries[pmd_index(vaddr)] = (uint64_t)pte | PTE_PRESENT | PTE_WRITABLE | PTE_USER;\n    } else {\n        pte = (PageTable *)(entry & PTE_ADDR_MASK);\n    }\n    \n    // Set the final PTE\n    pte->entries[pte_index(vaddr)] = (paddr & PTE_ADDR_MASK) | flags | PTE_PRESENT;\n    return 0;\n}\n\n// Translate virtual address to physical address\nuint64_t translate(AddressSpace *as, uint64_t vaddr) {\n    as->translations++;\n    \n    uint64_t entry = as->pgd->entries[pgd_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pud = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pud->entries[pud_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pmd = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pmd->entries[pmd_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    PageTable *pte = (PageTable *)(entry & PTE_ADDR_MASK);\n    entry = pte->entries[pte_index(vaddr)];\n    if (!(entry & PTE_PRESENT)) { as->page_faults++; return 0; }\n    \n    // Mark accessed\n    pte->entries[pte_index(vaddr)] |= PTE_ACCESSED;\n    \n    return (entry & PTE_ADDR_MASK) | page_offset(vaddr);\n}",
+      "runnable": false
+    },
+    {
+      "language": "c",
+      "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <fcntl.h>\n#include <sys/mman.h>\n#include <sys/stat.h>\n#include <unistd.h>\n#include <string.h>\n\n// Memory-mapped file for a simple key-value store\ntypedef struct {\n    char key[64];\n    char value[256];\n    uint32_t hash;\n    uint8_t occupied;\n} Entry;\n\ntypedef struct {\n    uint32_t count;\n    uint32_t capacity;\n    Entry entries[];  // Flexible array member\n} MappedHashTable;\n\nMappedHashTable *create_mapped_table(const char *path, uint32_t capacity) {\n    size_t size = sizeof(MappedHashTable) + capacity * sizeof(Entry);\n    \n    int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);\n    if (fd == -1) return NULL;\n    \n    // Extend file to required size\n    if (ftruncate(fd, size) == -1) {\n        close(fd);\n        return NULL;\n    }\n    \n    // Map file into memory\n    MappedHashTable *table = mmap(NULL, size, PROT_READ | PROT_WRITE,\n                                   MAP_SHARED, fd, 0);\n    close(fd);  // fd can be closed after mmap\n    \n    if (table == MAP_FAILED) return NULL;\n    \n    table->count = 0;\n    table->capacity = capacity;\n    memset(table->entries, 0, capacity * sizeof(Entry));\n    \n    // Advise kernel about access pattern\n    madvise(table, size, MADV_RANDOM);\n    \n    return table;\n}\n\nMappedHashTable *open_mapped_table(const char *path) {\n    int fd = open(path, O_RDWR);\n    if (fd == -1) return NULL;\n    \n    struct stat st;\n    fstat(fd, &st);\n    \n    MappedHashTable *table = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE,\n                                   MAP_SHARED, fd, 0);\n    close(fd);\n    \n    return (table == MAP_FAILED) ? NULL : table;\n}\n\n// Changes are automatically persisted to disk via page cache\n// Use msync() for explicit durability guarantees\nvoid sync_table(MappedHashTable *table) {\n    size_t size = sizeof(MappedHashTable) + table->capacity * sizeof(Entry);\n    msync(table, size, MS_SYNC);  // Blocks until written to disk\n}",
+      "runnable": false
+    },
+    {
+      "language": "c",
+      "code": "#include <stdint.h>\n#include <sys/mman.h>\n#include <string.h>\n\n#define ARENA_SIZE (1024 * 1024)  // 1MB arena\n#define ALIGNMENT 16\n#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))\n\ntypedef struct Block {\n    size_t size;\n    struct Block *next;\n    uint8_t free;\n} Block;\n\n#define BLOCK_HEADER_SIZE ALIGN(sizeof(Block))\n\ntypedef struct {\n    void *arena;\n    size_t arena_size;\n    Block *free_list;\n    size_t allocated;\n    size_t peak_allocated;\n} Allocator;\n\nAllocator *allocator_create() {\n    // Request memory from OS via mmap (bypasses malloc)\n    void *arena = mmap(NULL, ARENA_SIZE, PROT_READ | PROT_WRITE,\n                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);\n    if (arena == MAP_FAILED) return NULL;\n    \n    Allocator *alloc = (Allocator *)arena;\n    alloc->arena = (uint8_t *)arena + ALIGN(sizeof(Allocator));\n    alloc->arena_size = ARENA_SIZE - ALIGN(sizeof(Allocator));\n    alloc->allocated = 0;\n    alloc->peak_allocated = 0;\n    \n    // Initialize free list with single large block\n    alloc->free_list = (Block *)alloc->arena;\n    alloc->free_list->size = alloc->arena_size - BLOCK_HEADER_SIZE;\n    alloc->free_list->next = NULL;\n    alloc->free_list->free = 1;\n    \n    return alloc;\n}\n\nvoid *allocator_alloc(Allocator *alloc, size_t size) {\n    size = ALIGN(size);\n    \n    // First-fit search through free list\n    Block *prev = NULL;\n    Block *curr = alloc->free_list;\n    \n    while (curr) {\n        if (curr->free && curr->size >= size) {\n            // Split block if remainder is large enough\n            if (curr->size >= size + BLOCK_HEADER_SIZE + ALIGNMENT) {\n                Block *new_block = (Block *)((uint8_t *)curr + BLOCK_HEADER_SIZE + size);\n                new_block->size = curr->size - size - BLOCK_HEADER_SIZE;\n                new_block->next = curr->next;\n                new_block->free = 1;\n                \n                curr->size = size;\n                curr->next = new_block;\n            }\n            \n            curr->free = 0;\n            alloc->allocated += curr->size;\n            if (alloc->allocated > alloc->peak_allocated)\n                alloc->peak_allocated = alloc->allocated;\n            \n            return (uint8_t *)curr + BLOCK_HEADER_SIZE;\n        }\n        prev = curr;\n        curr = curr->next;\n    }\n    \n    return NULL;  // Out of memory\n}\n\nvoid allocator_free(Allocator *alloc, void *ptr) {\n    if (!ptr) return;\n    \n    Block *block = (Block *)((uint8_t *)ptr - BLOCK_HEADER_SIZE);\n    block->free = 1;\n    alloc->allocated -= block->size;\n    \n    // Coalesce adjacent free blocks\n    Block *curr = alloc->free_list;\n    while (curr) {\n        if (curr->free && curr->next && curr->next->free) {\n            curr->size += BLOCK_HEADER_SIZE + curr->next->size;\n            curr->next = curr->next->next;\n            continue;  // Check again in case of multiple adjacent free blocks\n        }\n        curr = curr->next;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "python",
+      "code": "from collections import OrderedDict\nfrom dataclasses import dataclass\nfrom enum import Enum\nfrom typing import Optional\n\nclass PageState(Enum):\n    CLEAN = \"clean\"\n    DIRTY = \"dirty\"\n\n@dataclass\nclass PageFrame:\n    page_number: int\n    state: PageState\n    access_count: int = 0\n\nclass LRUPageCache:\n    \"\"\"Simulates OS page cache with LRU eviction policy.\"\"\"\n    \n    def __init__(self, num_frames: int):\n        self.num_frames = num_frames\n        self.frames: OrderedDict[int, PageFrame] = OrderedDict()\n        self.page_faults = 0\n        self.disk_writes = 0\n        self.total_accesses = 0\n    \n    def access(self, page_number: int, write: bool = False) -> bool:\n        \"\"\"Access a page. Returns True if page was in cache (hit).\"\"\"\n        self.total_accesses += 1\n        \n        if page_number in self.frames:\n            # Cache hit: move to end (most recently used)\n            self.frames.move_to_end(page_number)\n            frame = self.frames[page_number]\n            frame.access_count += 1\n            if write:\n                frame.state = PageState.DIRTY\n            return True\n        \n        # Cache miss: page fault\n        self.page_faults += 1\n        \n        # Evict LRU page if cache is full\n        if len(self.frames) >= self.num_frames:\n            self._evict_lru()\n        \n        # Load new page\n        state = PageState.DIRTY if write else PageState.CLEAN\n        self.frames[page_number] = PageFrame(\n            page_number=page_number,\n            state=state,\n            access_count=1\n        )\n        return False\n    \n    def _evict_lru(self):\n        \"\"\"Evict the least recently used page.\"\"\"\n        # OrderedDict.popitem(last=False) removes the first (oldest) item\n        page_num, frame = self.frames.popitem(last=False)\n        if frame.state == PageState.DIRTY:\n            self.disk_writes += 1  # Must write back dirty page\n    \n    @property\n    def hit_rate(self) -> float:\n        if self.total_accesses == 0:\n            return 0.0\n        return 1.0 - (self.page_faults / self.total_accesses)\n    \n    def stats(self) -> dict:\n        return {\n            \"total_accesses\": self.total_accesses,\n            \"page_faults\": self.page_faults,\n            \"disk_writes\": self.disk_writes,\n            \"hit_rate\": f\"{self.hit_rate:.2%}\",\n            \"frames_used\": len(self.frames),\n        }\n\n# Simulate a workload\ncache = LRUPageCache(num_frames=4)\n# Locality-heavy access pattern\naccesses = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5, 1, 2, 3]\nfor page in accesses:\n    hit = cache.access(page, write=(page % 2 == 0))\n    status = \"HIT\" if hit else \"MISS\"\n    print(f\"Access page {page}: {status}\")\n\nprint(f\"\\nStats: {cache.stats()}\")",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/processes-and-memory/memory-management.md",
+    "wordCount": 1960,
+    "sectionCount": 12
+  }
+}

@@ -228,35 +228,52 @@ public class MatrixChain {
 }
 ```
 
-```python
-def min_path_sum(grid: list[list[int]]) -> int:
-    """Minimum path sum from top-left to bottom-right."""
-    m, n = len(grid), len(grid[0])
-    dp = list(grid[0])
-    for j in range(1, n):
-        dp[j] += dp[j - 1]
+```java
+public class GridDP {
+    /**
+     * Minimum path sum from top-left to bottom-right.
+     * Space-optimized to O(n) using single row.
+     */
+    public static int minPathSum(int[][] grid) {
+        int m = grid.length, n = grid[0].length;
+        int[] dp = new int[n];
+        dp[0] = grid[0][0];
+        for (int j = 1; j < n; j++) {
+            dp[j] = dp[j - 1] + grid[0][j];
+        }
 
-    for i in range(1, m):
-        dp[0] += grid[i][0]
-        for j in range(1, n):
-            dp[j] = min(dp[j], dp[j - 1]) + grid[i][j]
+        for (int i = 1; i < m; i++) {
+            dp[0] += grid[i][0];
+            for (int j = 1; j < n; j++) {
+                dp[j] = Math.min(dp[j], dp[j - 1]) + grid[i][j];
+            }
+        }
+        return dp[n - 1];
+    }
 
-    return dp[n - 1]
+    /**
+     * Minimum scalar multiplications for matrix chain.
+     * dims[i] x dims[i+1] are dimensions of matrix i.
+     * Time: O(n^3), Space: O(n^2)
+     */
+    public static int matrixChainOrder(int[] dims) {
+        int n = dims.length - 1;
+        int[][] dp = new int[n][n];
 
-def matrix_chain_order(dims: list[int]) -> int:
-    """Minimum scalar multiplications for matrix chain."""
-    n = len(dims) - 1
-    dp = [[0] * n for _ in range(n)]
-
-    for length in range(2, n + 1):
-        for i in range(n - length + 1):
-            j = i + length - 1
-            dp[i][j] = float('inf')
-            for k in range(i, j):
-                cost = dp[i][k] + dp[k + 1][j] + dims[i] * dims[k + 1] * dims[j + 1]
-                dp[i][j] = min(dp[i][j], cost)
-
-    return dp[0][n - 1]
+        for (int length = 2; length <= n; length++) {
+            for (int i = 0; i <= n - length; i++) {
+                int j = i + length - 1;
+                dp[i][j] = Integer.MAX_VALUE;
+                for (int k = i; k < j; k++) {
+                    int cost = dp[i][k] + dp[k + 1][j]
+                        + dims[i] * dims[k + 1] * dims[j + 1];
+                    dp[i][j] = Math.min(dp[i][j], cost);
+                }
+            }
+        }
+        return dp[0][n - 1];
+    }
+}
 ```
 
 ## Common Pitfalls

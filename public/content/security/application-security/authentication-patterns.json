@@ -1,0 +1,415 @@
+{
+  "id": "application-security-authentication-patterns",
+  "slug": "authentication-patterns",
+  "title": "Authentication Patterns",
+  "category": "Security",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Authentication Patterns",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Authentication is the process of verifying the identity of a user, service, or system. In distributed architectures, authentication becomes a complex challenge involving token management, federation across identity providers, and balancing security with user experience. Modern authentication patterns have evolved from simple username/password schemes to sophisticated protocols like OAuth 2.0 and OpenID Connect that enable secure delegation, single sign-on, and fine-grained consent management."
+        },
+        {
+          "type": "paragraph",
+          "text": "Understanding authentication patterns at a deep level is essential for system design interviews, security architecture reviews, and building production systems that handle millions of users. The difference between authentication (who are you?) and authorization (what can you do?) is fundamental, yet the protocols that implement them are deeply intertwined. This guide covers the major authentication protocols, token formats, session management strategies, and multi-factor authentication approaches used in production systems today."
+        }
+      ],
+      "wordCount": 133,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "OAuth 2.0 — Authorization framework that delegates access without sharing credentials; uses grant types (authorization code, client credentials, device code) for different scenarios",
+            "OpenID Connect (OIDC) — Identity layer built on OAuth 2.0; adds ID tokens with user identity claims and a standardized UserInfo endpoint",
+            "SAML 2.0 — XML-based federation protocol for enterprise SSO; uses assertions exchanged between Identity Providers (IdP) and Service Providers (SP)",
+            "JWT (JSON Web Token) — Compact, URL-safe token format containing signed claims; used as access tokens, ID tokens, and refresh tokens",
+            "Session Management — Server-side state tracking via session IDs stored in cookies; provides instant revocation but requires shared state",
+            "MFA (Multi-Factor Authentication) — Requires two or more verification factors (knowledge, possession, inherence) to reduce credential theft risk",
+            "PKCE (Proof Key for Code Exchange) — Extension to OAuth 2.0 authorization code flow that prevents authorization code interception attacks in public clients",
+            "Token Refresh — Pattern using long-lived refresh tokens to obtain new short-lived access tokens without re-authentication",
+            "Federation — Trusting external identity providers to authenticate users, enabling SSO across organizational boundaries"
+          ]
+        }
+      ],
+      "wordCount": 176,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "OAuth 2.0 Authorization Code Flow with PKCE:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Web applications with server-side backends that need to access APIs on behalf of users",
+            "Single-page applications (SPAs) that cannot securely store client secrets",
+            "Mobile applications where the authorization code could be intercepted",
+            "Any scenario requiring delegated access to third-party resources"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "OAuth 2.0 Client Credentials Flow:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Service-to-service communication where no user context is needed",
+            "Background jobs, cron tasks, and daemon processes accessing APIs",
+            "Machine-to-machine authentication in microservices architectures"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "OpenID Connect:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "When you need user identity information (name, email, profile) in addition to API access",
+            "Implementing \"Login with Google/Microsoft/Okta\" social login flows",
+            "Enterprise SSO where a centralized identity provider manages all user identities"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "SAML 2.0:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enterprise environments with existing SAML infrastructure (Active Directory Federation Services)",
+            "B2B integrations where partners require SAML-based SSO",
+            "Legacy systems that predate OAuth 2.0/OIDC adoption"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "JWT-based Authentication:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Stateless microservices that need to validate tokens without calling the auth server",
+            "Cross-domain authentication where cookies cannot be shared",
+            "Systems requiring offline token validation at edge nodes or CDNs"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Session-based Authentication:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Traditional server-rendered web applications",
+            "Systems requiring immediate session revocation (banking, healthcare)",
+            "Applications where token size is a concern (JWTs grow with claims)"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-Factor Authentication:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Any system handling sensitive data (financial, healthcare, PII)",
+            "Administrative and privileged access paths",
+            "Compliance requirements (PCI DSS, SOC 2, HIPAA)"
+          ]
+        }
+      ],
+      "wordCount": 211,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-1-oauth-20-authorization-code-flow-with-pkce",
+          "heading": "Example 1: OAuth 2.0 Authorization Code Flow with PKCE",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import crypto from 'crypto';\n\n// Step 1: Generate PKCE code verifier and challenge\nfunction generatePKCE(): { verifier: string; challenge: string } {\n  const verifier = crypto.randomBytes(32).toString('base64url');\n  const challenge = crypto\n    .createHash('sha256')\n    .update(verifier)\n    .digest('base64url');\n  return { verifier, challenge };\n}\n\n// Step 2: Build authorization URL\nfunction buildAuthorizationUrl(config: OAuthConfig): string {\n  const { verifier, challenge } = generatePKCE();\n  const state = crypto.randomBytes(16).toString('hex');\n\n  // Store verifier and state in session for later verification\n  session.set('pkce_verifier', verifier);\n  session.set('oauth_state', state);\n\n  const params = new URLSearchParams({\n    response_type: 'code',\n    client_id: config.clientId,\n    redirect_uri: config.redirectUri,\n    scope: 'openid profile email',\n    state: state,\n    code_challenge: challenge,\n    code_challenge_method: 'S256',\n  });\n\n  return `${config.authorizationEndpoint}?${params.toString()}`;\n}\n\n// Step 3: Exchange authorization code for tokens\nasync function exchangeCode(code: string, state: string): Promise<TokenResponse> {\n  // Verify state to prevent CSRF\n  if (state !== session.get('oauth_state')) {\n    throw new Error('Invalid state parameter - possible CSRF attack');\n  }\n\n  const response = await fetch(config.tokenEndpoint, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n    body: new URLSearchParams({\n      grant_type: 'authorization_code',\n      code: code,\n      redirect_uri: config.redirectUri,\n      client_id: config.clientId,\n      code_verifier: session.get('pkce_verifier'),\n    }),\n  });\n\n  if (!response.ok) {\n    throw new Error(`Token exchange failed: ${response.status}`);\n  }\n\n  return response.json() as Promise<TokenResponse>;\n}\n\ninterface TokenResponse {\n  access_token: string;\n  token_type: string;\n  expires_in: number;\n  refresh_token?: string;\n  id_token?: string;\n  scope: string;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-2-jwt-validation-and-best-practices",
+          "heading": "Example 2: JWT Validation and Best Practices",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import jwt from 'jsonwebtoken';\nimport jwksClient from 'jwks-rsa';\n\n// Configure JWKS client for public key retrieval\nconst client = jwksClient({\n  jwksUri: 'https://auth.example.com/.well-known/jwks.json',\n  cache: true,\n  cacheMaxAge: 600000, // 10 minutes\n  rateLimit: true,\n  jwksRequestsPerMinute: 10,\n});\n\n// Key retrieval function\nfunction getSigningKey(header: jwt.JwtHeader): Promise<string> {\n  return new Promise((resolve, reject) => {\n    client.getSigningKey(header.kid, (err, key) => {\n      if (err) return reject(err);\n      resolve(key!.getPublicKey());\n    });\n  });\n}\n\n// Comprehensive JWT validation middleware\nasync function validateToken(req: Request, res: Response, next: NextFunction) {\n  const authHeader = req.headers.authorization;\n  if (!authHeader?.startsWith('Bearer ')) {\n    return res.status(401).json({ error: 'Missing bearer token' });\n  }\n\n  const token = authHeader.slice(7);\n\n  try {\n    // Decode header to get kid for key lookup\n    const decoded = jwt.decode(token, { complete: true });\n    if (!decoded || decoded.header.alg === 'none') {\n      return res.status(401).json({ error: 'Invalid token format' });\n    }\n\n    // CRITICAL: Never accept 'none' algorithm\n    // CRITICAL: Always verify against expected issuer and audience\n    const signingKey = await getSigningKey(decoded.header);\n\n    const payload = jwt.verify(token, signingKey, {\n      algorithms: ['RS256'], // Explicitly whitelist algorithms\n      issuer: 'https://auth.example.com',\n      audience: 'https://api.example.com',\n      clockTolerance: 30, // 30 seconds clock skew tolerance\n    }) as JWTPayload;\n\n    // Additional custom validations\n    if (!payload.sub) {\n      return res.status(401).json({ error: 'Token missing subject claim' });\n    }\n\n    req.user = {\n      id: payload.sub,\n      email: payload.email,\n      roles: payload.roles || [],\n      tenantId: payload.tenant_id,\n    };\n\n    next();\n  } catch (error) {\n    if (error instanceof jwt.TokenExpiredError) {\n      return res.status(401).json({ error: 'Token expired' });\n    }\n    if (error instanceof jwt.JsonWebTokenError) {\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n    return res.status(500).json({ error: 'Token validation failed' });\n  }\n}\n\ninterface JWTPayload {\n  sub: string;\n  email: string;\n  roles: string[];\n  tenant_id: string;\n  iat: number;\n  exp: number;\n  iss: string;\n  aud: string;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-3-secure-session-management-with-redis",
+          "heading": "Example 3: Secure Session Management with Redis",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import session from 'express-session';\nimport RedisStore from 'connect-redis';\nimport { createClient } from 'redis';\nimport crypto from 'crypto';\n\n// Redis client with TLS for production\nconst redisClient = createClient({\n  url: process.env.REDIS_URL,\n  socket: {\n    tls: true,\n    rejectUnauthorized: true,\n  },\n});\n\nawait redisClient.connect();\n\n// Session configuration\napp.use(session({\n  store: new RedisStore({\n    client: redisClient,\n    prefix: 'sess:',\n    ttl: 3600, // 1 hour\n  }),\n  name: '__Host-session', // __Host- prefix enforces Secure + no Domain\n  secret: process.env.SESSION_SECRET!,\n  resave: false,\n  saveUninitialized: false,\n  cookie: {\n    secure: true,        // HTTPS only\n    httpOnly: true,      // No JavaScript access\n    sameSite: 'lax',     // CSRF protection\n    maxAge: 3600000,     // 1 hour\n    path: '/',\n    domain: undefined,   // Required for __Host- prefix\n  },\n  genid: () => crypto.randomBytes(32).toString('hex'), // Cryptographically random session IDs\n  rolling: true, // Reset expiry on each request (sliding window)\n}));\n\n// Session regeneration after authentication (prevent session fixation)\nasync function loginUser(req: Request, user: User): Promise<void> {\n  return new Promise((resolve, reject) => {\n    // Destroy old session and create new one\n    req.session.regenerate((err) => {\n      if (err) return reject(err);\n\n      req.session.userId = user.id;\n      req.session.roles = user.roles;\n      req.session.loginTime = Date.now();\n      req.session.lastActivity = Date.now();\n\n      req.session.save((err) => {\n        if (err) return reject(err);\n        resolve();\n      });\n    });\n  });\n}\n\n// Absolute timeout check (force re-auth after 8 hours regardless of activity)\nfunction checkAbsoluteTimeout(req: Request, res: Response, next: NextFunction) {\n  const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours\n  if (req.session.loginTime && Date.now() - req.session.loginTime > maxSessionAge) {\n    req.session.destroy(() => {\n      res.status(401).json({ error: 'Session expired, please re-authenticate' });\n    });\n    return;\n  }\n  req.session.lastActivity = Date.now();\n  next();\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-4-totp-based-multi-factor-authentication",
+          "heading": "Example 4: TOTP-based Multi-Factor Authentication",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { authenticator } from 'otplib';\nimport qrcode from 'qrcode';\n\n// MFA enrollment - generate secret and QR code\nasync function enrollMFA(userId: string, userEmail: string): Promise<MFAEnrollment> {\n  const secret = authenticator.generateSecret(20); // 160-bit secret\n\n  // Store encrypted secret (not yet verified)\n  await db.mfaSecrets.create({\n    userId,\n    secret: encrypt(secret), // Encrypt at rest\n    verified: false,\n    createdAt: new Date(),\n  });\n\n  // Generate otpauth:// URI for authenticator apps\n  const otpauthUrl = authenticator.keyuri(userEmail, 'MyApp', secret);\n  const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);\n\n  // Generate backup codes\n  const backupCodes = Array.from({ length: 10 }, () =>\n    crypto.randomBytes(4).toString('hex')\n  );\n\n  await db.backupCodes.create({\n    userId,\n    codes: backupCodes.map(code => hashBackupCode(code)),\n  });\n\n  return {\n    qrCode: qrCodeDataUrl,\n    secret: secret, // Show once for manual entry\n    backupCodes: backupCodes, // Show once, user must save\n  };\n}\n\n// MFA verification during login\nasync function verifyMFA(userId: string, token: string): Promise<boolean> {\n  const mfaRecord = await db.mfaSecrets.findOne({ userId, verified: true });\n  if (!mfaRecord) {\n    throw new Error('MFA not enrolled');\n  }\n\n  const secret = decrypt(mfaRecord.secret);\n\n  // Check TOTP with 1-step window (allows 30 seconds clock drift)\n  const isValid = authenticator.check(token, secret);\n\n  if (!isValid) {\n    // Check backup codes as fallback\n    return verifyBackupCode(userId, token);\n  }\n\n  // Prevent replay attacks - track used tokens\n  const tokenKey = `mfa:used:${userId}:${token}`;\n  const alreadyUsed = await redisClient.get(tokenKey);\n  if (alreadyUsed) {\n    return false; // Token replay detected\n  }\n  await redisClient.setEx(tokenKey, 60, '1'); // Block reuse for 60 seconds\n\n  return true;\n}\n\n// Backup code verification (one-time use)\nasync function verifyBackupCode(userId: string, code: string): Promise<boolean> {\n  const hashedCode = hashBackupCode(code);\n  const result = await db.backupCodes.findOneAndUpdate(\n    { userId, codes: hashedCode },\n    { $pull: { codes: hashedCode } }\n  );\n  return result !== null;\n}\n\ninterface MFAEnrollment {\n  qrCode: string;\n  secret: string;\n  backupCodes: string[];\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-5-token-refresh-with-rotation",
+          "heading": "Example 5: Token Refresh with Rotation",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Refresh token rotation - each refresh token can only be used once\nasync function refreshAccessToken(refreshToken: string): Promise<TokenPair> {\n  // Validate refresh token\n  const tokenRecord = await db.refreshTokens.findOne({\n    token: hashToken(refreshToken),\n    revokedAt: null,\n    expiresAt: { $gt: new Date() },\n  });\n\n  if (!tokenRecord) {\n    // If token not found, it may have been reused (stolen)\n    // Revoke entire token family as a security measure\n    if (tokenRecord === null) {\n      const possiblyReused = await db.refreshTokens.findOne({\n        token: hashToken(refreshToken),\n      });\n      if (possiblyReused) {\n        // Token was already used - revoke all tokens in this family\n        await db.refreshTokens.updateMany(\n          { familyId: possiblyReused.familyId },\n          { revokedAt: new Date(), revokeReason: 'token_reuse_detected' }\n        );\n        // Alert security team\n        await alertSecurityTeam(possiblyReused.userId, 'refresh_token_reuse');\n      }\n    }\n    throw new UnauthorizedError('Invalid refresh token');\n  }\n\n  // Revoke current refresh token (one-time use)\n  await db.refreshTokens.updateOne(\n    { _id: tokenRecord._id },\n    { revokedAt: new Date(), revokeReason: 'rotated' }\n  );\n\n  // Issue new token pair\n  const user = await db.users.findById(tokenRecord.userId);\n  const newAccessToken = generateAccessToken(user);\n  const newRefreshToken = crypto.randomBytes(32).toString('base64url');\n\n  // Store new refresh token in same family\n  await db.refreshTokens.create({\n    token: hashToken(newRefreshToken),\n    userId: user.id,\n    familyId: tokenRecord.familyId, // Same family for reuse detection\n    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days\n    createdAt: new Date(),\n  });\n\n  return {\n    accessToken: newAccessToken,\n    refreshToken: newRefreshToken,\n    expiresIn: 900, // 15 minutes\n  };\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Accepting the none algorithm in JWT validation. The JWT spec allows alg: \"none\" for unsigned tokens. If your validation library doesn't explicitly reject this, an attacker can forge tokens by removing the signature and setting the algorithm to none. Always whitelist specific algorithms (e.g., ['RS256']) in your verification options."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Storing refresh tokens without hashing. If your database is compromised and refresh tokens are stored in plaintext, attackers can impersonate any user. Hash refresh tokens before storage (using SHA-256) just as you would hash passwords. The client holds the raw token; the server only stores the hash."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Not implementing token family tracking for refresh token rotation. Without family tracking, you cannot detect when a stolen refresh token is reused. If an attacker uses a stolen token after the legitimate user has already rotated it, you should revoke the entire family and force re-authentication."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Using implicit flow for SPAs. The OAuth 2.0 implicit flow returns tokens in URL fragments, exposing them in browser history, referrer headers, and server logs. It's deprecated in OAuth 2.1. Always use authorization code flow with PKCE for browser-based applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Hardcoding client secrets in frontend code. SPAs and mobile apps are public clients — they cannot securely store secrets. Never embed client secrets in JavaScript bundles or mobile app binaries. Use PKCE instead of client secrets for these clients."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Not validating the aud (audience) claim in JWTs. Without audience validation, a token issued for one service can be replayed against another service in the same ecosystem. Each service must verify that the token's audience matches its own identifier."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Implementing MFA without rate limiting verification attempts. Without rate limiting, an attacker with a stolen password can brute-force 6-digit TOTP codes (only 1 million possibilities). Limit verification attempts to 3-5 per 30-second window and implement exponential backoff."
+        },
+        {
+          "type": "paragraph",
+          "text": "8. Using symmetric JWT signing (HS256) in microservices. With HS256, every service that needs to validate tokens must have the shared secret, expanding the attack surface. Use asymmetric signing (RS256/ES256) where only the auth service holds the private key and other services validate with the public key."
+        }
+      ],
+      "wordCount": 351,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Enterprise SSO with SAML and OIDC bridge: Large organizations often have existing SAML infrastructure (ADFS, Okta, Ping Identity) but need to integrate with modern applications expecting OIDC. Identity brokers like Keycloak or Auth0 act as a bridge, accepting SAML assertions from the enterprise IdP and issuing OIDC tokens to downstream applications. This allows gradual migration without disrupting existing integrations."
+        },
+        {
+          "type": "paragraph",
+          "text": "API gateway authentication in microservices: In a microservices architecture, the API gateway (Kong, AWS API Gateway, Envoy) handles token validation at the edge, extracting user identity and forwarding it as trusted headers to internal services. This centralizes authentication logic, reduces latency (no per-service token validation), and simplifies internal service development. Services trust the gateway's headers because network policies prevent direct external access."
+        },
+        {
+          "type": "paragraph",
+          "text": "Mobile banking with step-up authentication: Banking apps implement risk-based authentication where low-risk operations (checking balance) require only biometric unlock, medium-risk operations (internal transfers) require PIN confirmation, and high-risk operations (external transfers, adding payees) require full MFA with SMS or hardware token. The risk engine evaluates device fingerprint, location, transaction amount, and behavioral patterns to determine the required authentication level."
+        },
+        {
+          "type": "paragraph",
+          "text": "B2B SaaS with customer-managed identity: Enterprise SaaS products allow customers to bring their own identity provider. Each tenant configures their IdP (Okta, Azure AD, Google Workspace) via SAML or OIDC federation. The SaaS application trusts assertions from the customer's IdP, maps external groups to internal roles, and enforces the customer's authentication policies (MFA requirements, session duration) without managing credentials directly."
+        }
+      ],
+      "wordCount": 240,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the OAuth 2.0 authorization code flow with PKCE. Why is PKCE necessary for public clients?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The authorization code flow with PKCE works as follows: (1) The client generates a random code verifier and derives a code challenge (SHA-256 hash). (2) The client redirects the user to the authorization server with the code challenge. (3) After user consent, the auth server redirects back with an authorization code. (4) The client exchanges the code for tokens, including the original code verifier. (5) The auth server verifies the code verifier matches the challenge before issuing tokens. PKCE is necessary for public clients (SPAs, mobile apps) because they cannot securely store a client secret. Without PKCE, an attacker who intercepts the authorization code (via malicious app on the same device, browser extension, or network interception) could exchange it for tokens. With PKCE, the attacker would also need the code verifier, which never leaves the client's memory."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How would you implement token revocation in a stateless JWT-based system?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Pure stateless JWTs cannot be revoked before expiry — this is their fundamental limitation. Practical approaches include: (1) Short-lived access tokens (5-15 minutes) with refresh token rotation, limiting the window of exposure. (2) Token blacklisting using a distributed cache (Redis) that stores revoked token JTIs; services check the blacklist on each request. The blacklist only needs entries for unexpired tokens, so it stays small. (3) Token versioning where each user has a token version counter; incrementing it invalidates all existing tokens. (4) For critical operations, use token introspection (RFC 7662) where the service calls the auth server to verify token validity in real-time. The trade-off is always between statelessness (performance, scalability) and revocability (security). Most production systems use approach (1) + (2) for a practical balance."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Compare SAML 2.0 and OpenID Connect. When would you choose one over the other?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: SAML 2.0 is XML-based, uses SOAP/HTTP-POST bindings, and was designed for enterprise web SSO. OIDC is JSON-based, built on OAuth 2.0, and designed for modern web and mobile applications. Choose SAML when: integrating with enterprise identity infrastructure (ADFS, legacy IdPs), partners mandate SAML, or you need attribute-based assertions with complex policies. Choose OIDC when: building new applications, supporting mobile clients, needing lightweight JSON tokens, or requiring OAuth 2.0 API authorization alongside authentication. Key technical differences: SAML assertions are typically larger (XML + signatures), SAML requires more complex parsing, OIDC has better mobile support, and OIDC's discovery mechanism (.well-known/openid-configuration) simplifies client configuration. Many organizations run both, using SAML for B2B federation and OIDC for consumer-facing applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you securely store and manage refresh tokens? What happens if a refresh token is compromised?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Refresh tokens should be: (1) Stored as hashed values in the database (SHA-256), never plaintext. (2) Bound to the client that requested them (client_id validation). (3) Rotated on every use — each refresh generates a new refresh token and invalidates the old one. (4) Grouped into token families for reuse detection. If a refresh token is compromised and the attacker uses it after the legitimate user has already rotated it, the system detects the reuse (the old token was already consumed), revokes the entire token family, and forces re-authentication. If the attacker uses it before the legitimate user, the legitimate user's next refresh attempt will fail (their token was consumed by the attacker), triggering the same family revocation. This limits the damage window and provides detection capability."
+        }
+      ],
+      "wordCount": 571,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Implement centralized token validation with caching. In microservices, avoid each service independently fetching JWKS keys on every request. Use a shared validation library that caches public keys with appropriate TTL (10-60 minutes) and implements graceful key rotation. When a token's kid doesn't match cached keys, fetch fresh keys once (not on every failed validation to prevent DoS)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Design for authentication service unavailability. Your auth service will go down eventually. Services should cache validated tokens locally (with short TTL), implement circuit breakers around token introspection calls, and have degraded-mode policies (e.g., allow requests with recently-validated tokens for 5 minutes during outage). Never fail open — if you can't validate, reject the request with a retryable error."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor authentication metrics as security signals. Track: failed login rate per account (credential stuffing), failed MFA rate (brute force), token refresh patterns (stolen tokens show unusual refresh timing), geographic anomalies (impossible travel), and device fingerprint changes. Set alerts at thresholds that indicate attack rather than normal user behavior. A sudden spike in failed logins across many accounts is credential stuffing; concentrated failures on one account is targeted attack."
+        }
+      ],
+      "wordCount": 183,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Web Application Security — CSRF protection, session security, and browser-based attack vectors that authentication must defend against",
+            "Cryptography Fundamentals — The signing algorithms, hashing functions, and key management that JWT and token security depend on",
+            "Spring Security — Java-specific implementation of OAuth 2.0, session management, and authentication filters"
+          ]
+        }
+      ],
+      "wordCount": 48,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import crypto from 'crypto';\n\n// Step 1: Generate PKCE code verifier and challenge\nfunction generatePKCE(): { verifier: string; challenge: string } {\n  const verifier = crypto.randomBytes(32).toString('base64url');\n  const challenge = crypto\n    .createHash('sha256')\n    .update(verifier)\n    .digest('base64url');\n  return { verifier, challenge };\n}\n\n// Step 2: Build authorization URL\nfunction buildAuthorizationUrl(config: OAuthConfig): string {\n  const { verifier, challenge } = generatePKCE();\n  const state = crypto.randomBytes(16).toString('hex');\n\n  // Store verifier and state in session for later verification\n  session.set('pkce_verifier', verifier);\n  session.set('oauth_state', state);\n\n  const params = new URLSearchParams({\n    response_type: 'code',\n    client_id: config.clientId,\n    redirect_uri: config.redirectUri,\n    scope: 'openid profile email',\n    state: state,\n    code_challenge: challenge,\n    code_challenge_method: 'S256',\n  });\n\n  return `${config.authorizationEndpoint}?${params.toString()}`;\n}\n\n// Step 3: Exchange authorization code for tokens\nasync function exchangeCode(code: string, state: string): Promise<TokenResponse> {\n  // Verify state to prevent CSRF\n  if (state !== session.get('oauth_state')) {\n    throw new Error('Invalid state parameter - possible CSRF attack');\n  }\n\n  const response = await fetch(config.tokenEndpoint, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n    body: new URLSearchParams({\n      grant_type: 'authorization_code',\n      code: code,\n      redirect_uri: config.redirectUri,\n      client_id: config.clientId,\n      code_verifier: session.get('pkce_verifier'),\n    }),\n  });\n\n  if (!response.ok) {\n    throw new Error(`Token exchange failed: ${response.status}`);\n  }\n\n  return response.json() as Promise<TokenResponse>;\n}\n\ninterface TokenResponse {\n  access_token: string;\n  token_type: string;\n  expires_in: number;\n  refresh_token?: string;\n  id_token?: string;\n  scope: string;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import jwt from 'jsonwebtoken';\nimport jwksClient from 'jwks-rsa';\n\n// Configure JWKS client for public key retrieval\nconst client = jwksClient({\n  jwksUri: 'https://auth.example.com/.well-known/jwks.json',\n  cache: true,\n  cacheMaxAge: 600000, // 10 minutes\n  rateLimit: true,\n  jwksRequestsPerMinute: 10,\n});\n\n// Key retrieval function\nfunction getSigningKey(header: jwt.JwtHeader): Promise<string> {\n  return new Promise((resolve, reject) => {\n    client.getSigningKey(header.kid, (err, key) => {\n      if (err) return reject(err);\n      resolve(key!.getPublicKey());\n    });\n  });\n}\n\n// Comprehensive JWT validation middleware\nasync function validateToken(req: Request, res: Response, next: NextFunction) {\n  const authHeader = req.headers.authorization;\n  if (!authHeader?.startsWith('Bearer ')) {\n    return res.status(401).json({ error: 'Missing bearer token' });\n  }\n\n  const token = authHeader.slice(7);\n\n  try {\n    // Decode header to get kid for key lookup\n    const decoded = jwt.decode(token, { complete: true });\n    if (!decoded || decoded.header.alg === 'none') {\n      return res.status(401).json({ error: 'Invalid token format' });\n    }\n\n    // CRITICAL: Never accept 'none' algorithm\n    // CRITICAL: Always verify against expected issuer and audience\n    const signingKey = await getSigningKey(decoded.header);\n\n    const payload = jwt.verify(token, signingKey, {\n      algorithms: ['RS256'], // Explicitly whitelist algorithms\n      issuer: 'https://auth.example.com',\n      audience: 'https://api.example.com',\n      clockTolerance: 30, // 30 seconds clock skew tolerance\n    }) as JWTPayload;\n\n    // Additional custom validations\n    if (!payload.sub) {\n      return res.status(401).json({ error: 'Token missing subject claim' });\n    }\n\n    req.user = {\n      id: payload.sub,\n      email: payload.email,\n      roles: payload.roles || [],\n      tenantId: payload.tenant_id,\n    };\n\n    next();\n  } catch (error) {\n    if (error instanceof jwt.TokenExpiredError) {\n      return res.status(401).json({ error: 'Token expired' });\n    }\n    if (error instanceof jwt.JsonWebTokenError) {\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n    return res.status(500).json({ error: 'Token validation failed' });\n  }\n}\n\ninterface JWTPayload {\n  sub: string;\n  email: string;\n  roles: string[];\n  tenant_id: string;\n  iat: number;\n  exp: number;\n  iss: string;\n  aud: string;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import session from 'express-session';\nimport RedisStore from 'connect-redis';\nimport { createClient } from 'redis';\nimport crypto from 'crypto';\n\n// Redis client with TLS for production\nconst redisClient = createClient({\n  url: process.env.REDIS_URL,\n  socket: {\n    tls: true,\n    rejectUnauthorized: true,\n  },\n});\n\nawait redisClient.connect();\n\n// Session configuration\napp.use(session({\n  store: new RedisStore({\n    client: redisClient,\n    prefix: 'sess:',\n    ttl: 3600, // 1 hour\n  }),\n  name: '__Host-session', // __Host- prefix enforces Secure + no Domain\n  secret: process.env.SESSION_SECRET!,\n  resave: false,\n  saveUninitialized: false,\n  cookie: {\n    secure: true,        // HTTPS only\n    httpOnly: true,      // No JavaScript access\n    sameSite: 'lax',     // CSRF protection\n    maxAge: 3600000,     // 1 hour\n    path: '/',\n    domain: undefined,   // Required for __Host- prefix\n  },\n  genid: () => crypto.randomBytes(32).toString('hex'), // Cryptographically random session IDs\n  rolling: true, // Reset expiry on each request (sliding window)\n}));\n\n// Session regeneration after authentication (prevent session fixation)\nasync function loginUser(req: Request, user: User): Promise<void> {\n  return new Promise((resolve, reject) => {\n    // Destroy old session and create new one\n    req.session.regenerate((err) => {\n      if (err) return reject(err);\n\n      req.session.userId = user.id;\n      req.session.roles = user.roles;\n      req.session.loginTime = Date.now();\n      req.session.lastActivity = Date.now();\n\n      req.session.save((err) => {\n        if (err) return reject(err);\n        resolve();\n      });\n    });\n  });\n}\n\n// Absolute timeout check (force re-auth after 8 hours regardless of activity)\nfunction checkAbsoluteTimeout(req: Request, res: Response, next: NextFunction) {\n  const maxSessionAge = 8 * 60 * 60 * 1000; // 8 hours\n  if (req.session.loginTime && Date.now() - req.session.loginTime > maxSessionAge) {\n    req.session.destroy(() => {\n      res.status(401).json({ error: 'Session expired, please re-authenticate' });\n    });\n    return;\n  }\n  req.session.lastActivity = Date.now();\n  next();\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { authenticator } from 'otplib';\nimport qrcode from 'qrcode';\n\n// MFA enrollment - generate secret and QR code\nasync function enrollMFA(userId: string, userEmail: string): Promise<MFAEnrollment> {\n  const secret = authenticator.generateSecret(20); // 160-bit secret\n\n  // Store encrypted secret (not yet verified)\n  await db.mfaSecrets.create({\n    userId,\n    secret: encrypt(secret), // Encrypt at rest\n    verified: false,\n    createdAt: new Date(),\n  });\n\n  // Generate otpauth:// URI for authenticator apps\n  const otpauthUrl = authenticator.keyuri(userEmail, 'MyApp', secret);\n  const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);\n\n  // Generate backup codes\n  const backupCodes = Array.from({ length: 10 }, () =>\n    crypto.randomBytes(4).toString('hex')\n  );\n\n  await db.backupCodes.create({\n    userId,\n    codes: backupCodes.map(code => hashBackupCode(code)),\n  });\n\n  return {\n    qrCode: qrCodeDataUrl,\n    secret: secret, // Show once for manual entry\n    backupCodes: backupCodes, // Show once, user must save\n  };\n}\n\n// MFA verification during login\nasync function verifyMFA(userId: string, token: string): Promise<boolean> {\n  const mfaRecord = await db.mfaSecrets.findOne({ userId, verified: true });\n  if (!mfaRecord) {\n    throw new Error('MFA not enrolled');\n  }\n\n  const secret = decrypt(mfaRecord.secret);\n\n  // Check TOTP with 1-step window (allows 30 seconds clock drift)\n  const isValid = authenticator.check(token, secret);\n\n  if (!isValid) {\n    // Check backup codes as fallback\n    return verifyBackupCode(userId, token);\n  }\n\n  // Prevent replay attacks - track used tokens\n  const tokenKey = `mfa:used:${userId}:${token}`;\n  const alreadyUsed = await redisClient.get(tokenKey);\n  if (alreadyUsed) {\n    return false; // Token replay detected\n  }\n  await redisClient.setEx(tokenKey, 60, '1'); // Block reuse for 60 seconds\n\n  return true;\n}\n\n// Backup code verification (one-time use)\nasync function verifyBackupCode(userId: string, code: string): Promise<boolean> {\n  const hashedCode = hashBackupCode(code);\n  const result = await db.backupCodes.findOneAndUpdate(\n    { userId, codes: hashedCode },\n    { $pull: { codes: hashedCode } }\n  );\n  return result !== null;\n}\n\ninterface MFAEnrollment {\n  qrCode: string;\n  secret: string;\n  backupCodes: string[];\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Refresh token rotation - each refresh token can only be used once\nasync function refreshAccessToken(refreshToken: string): Promise<TokenPair> {\n  // Validate refresh token\n  const tokenRecord = await db.refreshTokens.findOne({\n    token: hashToken(refreshToken),\n    revokedAt: null,\n    expiresAt: { $gt: new Date() },\n  });\n\n  if (!tokenRecord) {\n    // If token not found, it may have been reused (stolen)\n    // Revoke entire token family as a security measure\n    if (tokenRecord === null) {\n      const possiblyReused = await db.refreshTokens.findOne({\n        token: hashToken(refreshToken),\n      });\n      if (possiblyReused) {\n        // Token was already used - revoke all tokens in this family\n        await db.refreshTokens.updateMany(\n          { familyId: possiblyReused.familyId },\n          { revokedAt: new Date(), revokeReason: 'token_reuse_detected' }\n        );\n        // Alert security team\n        await alertSecurityTeam(possiblyReused.userId, 'refresh_token_reuse');\n      }\n    }\n    throw new UnauthorizedError('Invalid refresh token');\n  }\n\n  // Revoke current refresh token (one-time use)\n  await db.refreshTokens.updateOne(\n    { _id: tokenRecord._id },\n    { revokedAt: new Date(), revokeReason: 'rotated' }\n  );\n\n  // Issue new token pair\n  const user = await db.users.findById(tokenRecord.userId);\n  const newAccessToken = generateAccessToken(user);\n  const newRefreshToken = crypto.randomBytes(32).toString('base64url');\n\n  // Store new refresh token in same family\n  await db.refreshTokens.create({\n    token: hashToken(newRefreshToken),\n    userId: user.id,\n    familyId: tokenRecord.familyId, // Same family for reuse detection\n    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days\n    createdAt: new Date(),\n  });\n\n  return {\n    accessToken: newAccessToken,\n    refreshToken: newRefreshToken,\n    expiresIn: 900, // 15 minutes\n  };\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/application-security/authentication-patterns.md",
+    "wordCount": 1913,
+    "sectionCount": 14
+  }
+}

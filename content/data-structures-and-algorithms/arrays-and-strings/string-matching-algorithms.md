@@ -215,34 +215,47 @@ public class RabinKarp {
 }
 ```
 
-```python
-def rabin_karp(text: str, pattern: str, base: int = 31, mod: int = 10**9 + 7) -> list[int]:
-    """Find all occurrences of pattern in text using rolling hash."""
-    n, m = len(text), len(pattern)
-    if m > n:
-        return []
+```java
+/**
+ * Alternative Rabin-Karp implementation with configurable base and modulus.
+ * Demonstrates the rolling hash technique for pattern matching.
+ */
+public class RabinKarpAlt {
+    /**
+     * Find all occurrences of pattern in text using rolling hash.
+     * @param base hash base (typically a prime like 31)
+     * @param mod hash modulus (large prime like 10^9 + 7)
+     */
+    public static List<Integer> search(String text, String pattern, long base, long mod) {
+        int n = text.length(), m = pattern.length();
+        if (m > n) return Collections.emptyList();
 
-    result = []
-    pattern_hash = 0
-    window_hash = 0
-    high_pow = 1  # base^(m-1) mod mod
+        List<Integer> result = new ArrayList<>();
+        long patternHash = 0, windowHash = 0;
+        long highPow = 1;  // base^(m-1) mod mod
 
-    for i in range(m):
-        pattern_hash = (pattern_hash * base + ord(pattern[i])) % mod
-        window_hash = (window_hash * base + ord(text[i])) % mod
-        if i > 0:
-            high_pow = (high_pow * base) % mod
+        for (int i = 0; i < m; i++) {
+            patternHash = (patternHash * base + pattern.charAt(i)) % mod;
+            windowHash = (windowHash * base + text.charAt(i)) % mod;
+            if (i > 0) highPow = (highPow * base) % mod;
+        }
 
-    for i in range(n - m + 1):
-        if window_hash == pattern_hash:
-            if text[i:i + m] == pattern:  # Verify on hash match
-                result.append(i)
+        for (int i = 0; i <= n - m; i++) {
+            if (windowHash == patternHash) {
+                // Verify character by character on hash match
+                if (text.substring(i, i + m).equals(pattern)) {
+                    result.add(i);
+                }
+            }
 
-        if i < n - m:
-            window_hash = (window_hash - ord(text[i]) * high_pow) % mod
-            window_hash = (window_hash * base + ord(text[i + m])) % mod
-
-    return result
+            if (i < n - m) {
+                windowHash = (windowHash - text.charAt(i) * highPow % mod + mod) % mod;
+                windowHash = (windowHash * base + text.charAt(i + m)) % mod;
+            }
+        }
+        return result;
+    }
+}
 ```
 
 ### Z-Algorithm

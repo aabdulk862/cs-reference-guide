@@ -223,49 +223,71 @@ public class VariableWindow {
 }
 ```
 
-```python
-def length_of_longest_substring(s: str) -> int:
-    """Longest substring without repeating characters. O(n) time."""
-    last_seen: dict[str, int] = {}
-    max_len = 0
-    left = 0
+```java
+/**
+ * Alternative sliding window implementations demonstrating
+ * the variable-size window pattern with different constraints.
+ */
+public class VariableWindowAlt {
+    /**
+     * Longest substring without repeating characters. O(n) time.
+     * Uses array-based tracking for ASCII characters.
+     */
+    public static int lengthOfLongestSubstring(String s) {
+        int[] lastSeen = new int[128]; // ASCII
+        Arrays.fill(lastSeen, -1);
+        int maxLen = 0, left = 0;
 
-    for right, char in enumerate(s):
-        if char in last_seen and last_seen[char] >= left:
-            left = last_seen[char] + 1
-        last_seen[char] = right
-        max_len = max(max_len, right - left + 1)
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            if (lastSeen[c] >= left) {
+                left = lastSeen[c] + 1;
+            }
+            lastSeen[c] = right;
+            maxLen = Math.max(maxLen, right - left + 1);
+        }
+        return maxLen;
+    }
 
-    return max_len
+    /**
+     * Minimum window substring containing all characters of t.
+     * Time: O(n), Space: O(t.length())
+     */
+    public static String minWindow(String s, String t) {
+        if (s.isEmpty() || t.isEmpty()) return "";
 
+        Map<Character, Integer> need = new HashMap<>();
+        for (char c : t.toCharArray()) need.merge(c, 1, Integer::sum);
 
-def min_window(s: str, t: str) -> str:
-    """Minimum window substring containing all characters of t."""
-    from collections import Counter
+        int have = 0, required = need.size();
+        int left = 0, minLen = Integer.MAX_VALUE, minStart = 0;
+        Map<Character, Integer> window = new HashMap<>();
 
-    need = Counter(t)
-    have, required = 0, len(need)
-    window: dict[str, int] = {}
-    result = ""
-    min_len = float("inf")
-    left = 0
+        for (int right = 0; right < s.length(); right++) {
+            char c = s.charAt(right);
+            window.merge(c, 1, Integer::sum);
 
-    for right, char in enumerate(s):
-        window[char] = window.get(char, 0) + 1
-        if char in need and window[char] == need[char]:
-            have += 1
+            if (need.containsKey(c) && window.get(c).equals(need.get(c))) {
+                have++;
+            }
 
-        while have == required:
-            if right - left + 1 < min_len:
-                min_len = right - left + 1
-                result = s[left:right + 1]
-            left_char = s[left]
-            window[left_char] -= 1
-            if left_char in need and window[left_char] < need[left_char]:
-                have -= 1
-            left += 1
+            while (have == required) {
+                if (right - left + 1 < minLen) {
+                    minLen = right - left + 1;
+                    minStart = left;
+                }
+                char leftChar = s.charAt(left);
+                window.merge(leftChar, -1, Integer::sum);
+                if (need.containsKey(leftChar) && window.get(leftChar) < need.get(leftChar)) {
+                    have--;
+                }
+                left++;
+            }
+        }
 
-    return result
+        return minLen == Integer.MAX_VALUE ? "" : s.substring(minStart, minStart + minLen);
+    }
+}
 ```
 
 ## Common Pitfalls

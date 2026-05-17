@@ -1,0 +1,401 @@
+{
+  "id": "infrastructure-security-cryptography-fundamentals",
+  "slug": "cryptography-fundamentals",
+  "title": "Cryptography Fundamentals",
+  "category": "Security",
+  "sections": [
+    {
+      "id": "content",
+      "heading": "Cryptography Fundamentals",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Cryptography is the mathematical foundation of information security, providing the primitives that enable confidentiality, integrity, authentication, and non-repudiation in digital systems. Every secure communication channel, every authenticated API call, every encrypted database, and every digital signature relies on cryptographic algorithms. For software engineers, understanding cryptography is not about implementing algorithms from scratch — it's about knowing which primitives to use, how to compose them correctly, and what failure modes to avoid."
+        },
+        {
+          "type": "paragraph",
+          "text": "Modern cryptography operates on the principle that security should depend only on the secrecy of keys, never on the secrecy of algorithms (Kerckhoffs's principle). This guide covers symmetric and asymmetric encryption, cryptographic hashing, digital signatures, Public Key Infrastructure (PKI), and key management — the building blocks that every production system depends on for security."
+        }
+      ],
+      "wordCount": 125,
+      "subsections": []
+    },
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Symmetric Encryption — Same key for encryption and decryption; fast (AES-256-GCM processes ~4 GB/s on modern hardware); used for data at rest and bulk data encryption",
+            "Asymmetric Encryption — Key pair (public/private); slow (~1000x slower than symmetric); used for key exchange, digital signatures, and encrypting small payloads",
+            "Cryptographic Hashing — One-way function producing fixed-size output; used for integrity verification, password storage, and content addressing",
+            "Digital Signatures — Asymmetric operation proving authenticity and non-repudiation; the sender signs with private key, anyone verifies with public key",
+            "PKI (Public Key Infrastructure) — Trust hierarchy using Certificate Authorities (CAs) to bind public keys to identities via X.509 certificates",
+            "Key Management — Lifecycle of cryptographic keys: generation, distribution, storage, rotation, and destruction",
+            "AES-256-GCM — Industry standard authenticated encryption providing both confidentiality and integrity in a single operation",
+            "RSA vs ECC — RSA uses large key sizes (2048-4096 bit) for equivalent security; ECC achieves same security with smaller keys (256-384 bit), faster operations",
+            "HMAC — Hash-based Message Authentication Code; combines a secret key with a hash function to provide message integrity and authenticity",
+            "Key Derivation Functions (KDF) — Derive cryptographic keys from passwords or other key material (PBKDF2, scrypt, Argon2)"
+          ]
+        }
+      ],
+      "wordCount": 194,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Symmetric Encryption (AES-256-GCM):"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Encrypting data at rest in databases, file systems, and object storage",
+            "Encrypting data in transit after key exchange (TLS session encryption)",
+            "Encrypting large volumes of data where performance matters",
+            "Disk encryption (LUKS, BitLocker, FileVault)",
+            "Application-level field encryption for sensitive columns"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Asymmetric Encryption (RSA, ECC):"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "TLS handshake key exchange (establishing shared symmetric keys)",
+            "Digital signatures for code signing, document signing, JWT signing",
+            "SSH key authentication",
+            "Email encryption (PGP/GPG, S/MIME)",
+            "Encrypting symmetric keys for envelope encryption patterns"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Cryptographic Hashing (SHA-256, SHA-3):"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Verifying file integrity (checksums, content addressing)",
+            "Git commit identification",
+            "Building Merkle trees (blockchain, certificate transparency)",
+            "Generating deterministic identifiers from content",
+            "HMAC construction for API authentication"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Password Hashing (Argon2, bcrypt, scrypt):"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Storing user passwords (never use SHA-256 or MD5 for passwords)",
+            "Deriving encryption keys from user-provided passphrases",
+            "Any scenario where brute-force resistance is required"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Digital Signatures:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "JWT token signing (RS256, ES256)",
+            "Code signing for software distribution",
+            "API request signing (AWS Signature V4)",
+            "Certificate signing in PKI hierarchies",
+            "Blockchain transaction authorization"
+          ]
+        }
+      ],
+      "wordCount": 161,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "example-1-aes-256-gcm-authenticated-encryption",
+          "heading": "Example 1: AES-256-GCM Authenticated Encryption",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import crypto from 'crypto';\n\n// AES-256-GCM provides both confidentiality and integrity (AEAD)\nclass EncryptionService {\n  private readonly algorithm = 'aes-256-gcm';\n  private readonly keyLength = 32; // 256 bits\n  private readonly ivLength = 12;  // 96 bits (recommended for GCM)\n  private readonly tagLength = 16; // 128 bits authentication tag\n\n  constructor(private readonly masterKey: Buffer) {\n    if (masterKey.length !== this.keyLength) {\n      throw new Error(`Key must be ${this.keyLength} bytes`);\n    }\n  }\n\n  encrypt(plaintext: string, associatedData?: string): EncryptedPayload {\n    // Generate random IV for each encryption (NEVER reuse IV with same key)\n    const iv = crypto.randomBytes(this.ivLength);\n\n    const cipher = crypto.createCipheriv(this.algorithm, this.masterKey, iv, {\n      authTagLength: this.tagLength,\n    });\n\n    // Associated data is authenticated but not encrypted\n    if (associatedData) {\n      cipher.setAAD(Buffer.from(associatedData, 'utf8'));\n    }\n\n    const encrypted = Buffer.concat([\n      cipher.update(plaintext, 'utf8'),\n      cipher.final(),\n    ]);\n\n    const authTag = cipher.getAuthTag();\n\n    return {\n      ciphertext: encrypted.toString('base64'),\n      iv: iv.toString('base64'),\n      tag: authTag.toString('base64'),\n      aad: associatedData,\n    };\n  }\n\n  decrypt(payload: EncryptedPayload): string {\n    const iv = Buffer.from(payload.iv, 'base64');\n    const ciphertext = Buffer.from(payload.ciphertext, 'base64');\n    const tag = Buffer.from(payload.tag, 'base64');\n\n    const decipher = crypto.createDecipheriv(this.algorithm, this.masterKey, iv, {\n      authTagLength: this.tagLength,\n    });\n\n    decipher.setAuthTag(tag);\n\n    if (payload.aad) {\n      decipher.setAAD(Buffer.from(payload.aad, 'utf8'));\n    }\n\n    try {\n      const decrypted = Buffer.concat([\n        decipher.update(ciphertext),\n        decipher.final(), // Throws if authentication fails\n      ]);\n      return decrypted.toString('utf8');\n    } catch (error) {\n      throw new Error('Decryption failed: data may have been tampered with');\n    }\n  }\n}\n\ninterface EncryptedPayload {\n  ciphertext: string;\n  iv: string;\n  tag: string;\n  aad?: string;\n}\n\n// Usage\nconst key = crypto.randomBytes(32); // Generate a secure random key\nconst service = new EncryptionService(key);\n\nconst encrypted = service.encrypt('sensitive data', 'user:12345');\nconst decrypted = service.decrypt(encrypted); // 'sensitive data'",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-2-envelope-encryption-pattern",
+          "heading": "Example 2: Envelope Encryption Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Envelope encryption: encrypt data with a data key, encrypt the data key with a master key\n// This is how AWS KMS, Google Cloud KMS, and Azure Key Vault work\n\nclass EnvelopeEncryption {\n  constructor(private readonly kmsClient: KMSClient) {}\n\n  async encrypt(plaintext: Buffer, context: Record<string, string>): Promise<EnvelopePayload> {\n    // Step 1: Generate a unique data encryption key (DEK) from KMS\n    const { Plaintext: dekPlaintext, CiphertextBlob: dekEncrypted } =\n      await this.kmsClient.send(new GenerateDataKeyCommand({\n        KeyId: process.env.KMS_KEY_ARN,\n        KeySpec: 'AES_256',\n        EncryptionContext: context, // Bound to this encryption context\n      }));\n\n    // Step 2: Encrypt data locally with the plaintext DEK\n    const iv = crypto.randomBytes(12);\n    const cipher = crypto.createCipheriv('aes-256-gcm', dekPlaintext!, iv);\n    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);\n    const tag = cipher.getAuthTag();\n\n    // Step 3: Immediately destroy plaintext DEK from memory\n    dekPlaintext!.fill(0);\n\n    // Step 4: Return encrypted data + encrypted DEK\n    return {\n      encryptedData: encrypted.toString('base64'),\n      encryptedDataKey: Buffer.from(dekEncrypted!).toString('base64'),\n      iv: iv.toString('base64'),\n      tag: tag.toString('base64'),\n      context: context,\n    };\n  }\n\n  async decrypt(payload: EnvelopePayload): Promise<Buffer> {\n    // Step 1: Decrypt the DEK using KMS\n    const { Plaintext: dekPlaintext } = await this.kmsClient.send(new DecryptCommand({\n      CiphertextBlob: Buffer.from(payload.encryptedDataKey, 'base64'),\n      EncryptionContext: payload.context,\n    }));\n\n    // Step 2: Decrypt data locally with the plaintext DEK\n    const decipher = crypto.createDecipheriv(\n      'aes-256-gcm',\n      dekPlaintext!,\n      Buffer.from(payload.iv, 'base64')\n    );\n    decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));\n\n    const decrypted = Buffer.concat([\n      decipher.update(Buffer.from(payload.encryptedData, 'base64')),\n      decipher.final(),\n    ]);\n\n    // Step 3: Destroy plaintext DEK\n    dekPlaintext!.fill(0);\n\n    return decrypted;\n  }\n}\n\ninterface EnvelopePayload {\n  encryptedData: string;\n  encryptedDataKey: string;\n  iv: string;\n  tag: string;\n  context: Record<string, string>;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-3-secure-password-hashing-with-argon2",
+          "heading": "Example 3: Secure Password Hashing with Argon2",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import argon2 from 'argon2';\n\n// Argon2id is the recommended password hashing algorithm (winner of PHC competition)\nclass PasswordService {\n  // OWASP recommended parameters for Argon2id\n  private readonly options: argon2.Options = {\n    type: argon2.argon2id,    // Hybrid: resistant to both side-channel and GPU attacks\n    memoryCost: 65536,         // 64 MB memory\n    timeCost: 3,               // 3 iterations\n    parallelism: 4,            // 4 parallel threads\n    hashLength: 32,            // 256-bit output\n    saltLength: 16,            // 128-bit salt (auto-generated)\n  };\n\n  async hashPassword(password: string): Promise<string> {\n    // Argon2 generates a random salt and encodes everything in the output string\n    // Output format: $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>\n    return argon2.hash(password, this.options);\n  }\n\n  async verifyPassword(password: string, hash: string): Promise<boolean> {\n    try {\n      return await argon2.verify(hash, password);\n    } catch {\n      return false; // Invalid hash format\n    }\n  }\n\n  async needsRehash(hash: string): Promise<boolean> {\n    // Check if hash was created with older/weaker parameters\n    return argon2.needsRehash(hash, this.options);\n  }\n}\n\n// Usage in login flow\nasync function authenticateUser(email: string, password: string): Promise<User> {\n  const user = await db.users.findByEmail(email);\n  if (!user) {\n    // Constant-time comparison to prevent user enumeration via timing\n    await passwordService.hashPassword('dummy-password');\n    throw new AuthenticationError('Invalid credentials');\n  }\n\n  const valid = await passwordService.verifyPassword(password, user.passwordHash);\n  if (!valid) {\n    await recordFailedAttempt(user.id);\n    throw new AuthenticationError('Invalid credentials');\n  }\n\n  // Rehash if parameters have been upgraded\n  if (await passwordService.needsRehash(user.passwordHash)) {\n    const newHash = await passwordService.hashPassword(password);\n    await db.users.updatePasswordHash(user.id, newHash);\n  }\n\n  return user;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-4-digital-signatures-with-ed25519",
+          "heading": "Example 4: Digital Signatures with Ed25519",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import crypto from 'crypto';\n\n// Ed25519: fast, secure, small signatures (64 bytes)\n// Preferred over RSA for new systems due to performance and key size\n\nclass SignatureService {\n  private privateKey: crypto.KeyObject;\n  private publicKey: crypto.KeyObject;\n\n  constructor(privateKeyPem: string) {\n    this.privateKey = crypto.createPrivateKey(privateKeyPem);\n    this.publicKey = crypto.createPublicKey(privateKeyPem);\n  }\n\n  // Generate a new Ed25519 key pair\n  static generateKeyPair(): { publicKey: string; privateKey: string } {\n    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {\n      publicKeyEncoding: { type: 'spki', format: 'pem' },\n      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },\n    });\n    return { publicKey, privateKey };\n  }\n\n  // Sign a message\n  sign(message: Buffer): Buffer {\n    return crypto.sign(null, message, this.privateKey);\n  }\n\n  // Verify a signature\n  verify(message: Buffer, signature: Buffer): boolean {\n    return crypto.verify(null, message, this.publicKey, signature);\n  }\n\n  // Sign a JSON payload (common pattern for API requests)\n  signPayload(payload: object): SignedPayload {\n    const canonical = JSON.stringify(payload, Object.keys(payload).sort());\n    const timestamp = Date.now();\n    const message = Buffer.from(`${timestamp}.${canonical}`);\n    const signature = this.sign(message);\n\n    return {\n      payload,\n      timestamp,\n      signature: signature.toString('base64'),\n    };\n  }\n\n  // Verify a signed payload with timestamp validation\n  verifyPayload(signed: SignedPayload, maxAgeMs: number = 300000): boolean {\n    // Check timestamp freshness (prevent replay attacks)\n    if (Date.now() - signed.timestamp > maxAgeMs) {\n      return false;\n    }\n\n    const canonical = JSON.stringify(signed.payload, Object.keys(signed.payload).sort());\n    const message = Buffer.from(`${signed.timestamp}.${canonical}`);\n    const signature = Buffer.from(signed.signature, 'base64');\n\n    return this.verify(message, signature);\n  }\n}\n\ninterface SignedPayload {\n  payload: object;\n  timestamp: number;\n  signature: string;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "example-5-hmac-for-api-request-authentication",
+          "heading": "Example 5: HMAC for API Request Authentication",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// AWS Signature V4 style request signing\nimport javax.crypto.Mac;\nimport javax.crypto.spec.SecretKeySpec;\nimport java.nio.charset.StandardCharsets;\nimport java.security.MessageDigest;\nimport java.time.Instant;\nimport java.time.format.DateTimeFormatter;\n\npublic class RequestSigner {\n\n    private final String accessKey;\n    private final byte[] secretKey;\n\n    public RequestSigner(String accessKey, String secretKey) {\n        this.accessKey = accessKey;\n        this.secretKey = secretKey.getBytes(StandardCharsets.UTF_8);\n    }\n\n    public String signRequest(String method, String path, String body, Instant timestamp) {\n        String dateStamp = DateTimeFormatter.ofPattern(\"yyyyMMdd\")\n            .format(timestamp.atZone(java.time.ZoneOffset.UTC));\n        String amzDate = DateTimeFormatter.ofPattern(\"yyyyMMdd'T'HHmmss'Z'\")\n            .format(timestamp.atZone(java.time.ZoneOffset.UTC));\n\n        // Step 1: Create canonical request\n        String bodyHash = sha256Hex(body);\n        String canonicalRequest = String.join(\"\\n\",\n            method, path, \"\", // query string\n            \"host:api.example.com\",\n            \"x-amz-date:\" + amzDate, \"\",\n            \"host;x-amz-date\",\n            bodyHash\n        );\n\n        // Step 2: Create string to sign\n        String credentialScope = dateStamp + \"/us-east-1/execute-api/request\";\n        String stringToSign = String.join(\"\\n\",\n            \"HMAC-SHA256\",\n            amzDate,\n            credentialScope,\n            sha256Hex(canonicalRequest)\n        );\n\n        // Step 3: Derive signing key (key derivation chain)\n        byte[] dateKey = hmacSha256((\"SIGN\" + new String(secretKey)).getBytes(), dateStamp);\n        byte[] regionKey = hmacSha256(dateKey, \"us-east-1\");\n        byte[] serviceKey = hmacSha256(regionKey, \"execute-api\");\n        byte[] signingKey = hmacSha256(serviceKey, \"request\");\n\n        // Step 4: Calculate signature\n        String signature = hexEncode(hmacSha256(signingKey, stringToSign));\n\n        return String.format(\n            \"HMAC-SHA256 Credential=%s/%s, SignedHeaders=host;x-amz-date, Signature=%s\",\n            accessKey, credentialScope, signature\n        );\n    }\n\n    private byte[] hmacSha256(byte[] key, String data) {\n        try {\n            Mac mac = Mac.getInstance(\"HmacSHA256\");\n            mac.init(new SecretKeySpec(key, \"HmacSHA256\"));\n            return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));\n        } catch (Exception e) {\n            throw new RuntimeException(\"HMAC computation failed\", e);\n        }\n    }\n\n    private String sha256Hex(String data) {\n        try {\n            MessageDigest digest = MessageDigest.getInstance(\"SHA-256\");\n            byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));\n            return hexEncode(hash);\n        } catch (Exception e) {\n            throw new RuntimeException(\"SHA-256 computation failed\", e);\n        }\n    }\n\n    private String hexEncode(byte[] bytes) {\n        StringBuilder sb = new StringBuilder();\n        for (byte b : bytes) {\n            sb.append(String.format(\"%02x\", b));\n        }\n        return sb.toString();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "1. Using ECB mode for block cipher encryption. ECB (Electronic Codebook) encrypts each block independently, meaning identical plaintext blocks produce identical ciphertext blocks. This leaks patterns in the data (the famous \"ECB penguin\" image). Always use authenticated encryption modes like GCM or CCM that provide both confidentiality and integrity."
+        },
+        {
+          "type": "paragraph",
+          "text": "2. Reusing IVs/nonces with the same key. In AES-GCM, reusing a nonce with the same key completely breaks both confidentiality and authenticity. An attacker can XOR two ciphertexts to eliminate the key stream and recover plaintext. Always generate a fresh random nonce for each encryption operation, or use a deterministic nonce scheme (AES-GCM-SIV) if nonce reuse is a risk."
+        },
+        {
+          "type": "paragraph",
+          "text": "3. Using MD5 or SHA-1 for security-critical operations. MD5 has practical collision attacks (can generate two different inputs with the same hash in seconds). SHA-1 has demonstrated collision attacks (SHAttered, 2017). Use SHA-256 or SHA-3 for integrity verification, and Argon2/bcrypt for password hashing. MD5 is acceptable only for non-security checksums (file deduplication)."
+        },
+        {
+          "type": "paragraph",
+          "text": "4. Implementing your own cryptographic algorithms. Custom crypto implementations almost always contain side-channel vulnerabilities (timing attacks, cache attacks), mathematical errors, or implementation bugs. Use well-audited libraries: libsodium, OpenSSL, BoringSSL, or platform-native crypto APIs. The algorithms are public; the security comes from correct implementation and key management."
+        },
+        {
+          "type": "paragraph",
+          "text": "5. Confusing encryption with hashing. Encryption is reversible (with the key); hashing is one-way. Encrypting passwords means they can be decrypted if the key is compromised. Hash passwords with Argon2/bcrypt so that even a complete database breach doesn't reveal plaintext passwords."
+        },
+        {
+          "type": "paragraph",
+          "text": "6. Storing encryption keys alongside encrypted data. If the key is stored in the same database, file system, or backup as the encrypted data, encryption provides no protection against database breaches. Use separate key management systems (HSMs, KMS) with strict access controls and audit logging."
+        },
+        {
+          "type": "paragraph",
+          "text": "7. Not authenticating ciphertext (using encryption without MAC). Encryption alone (AES-CBC without HMAC) doesn't prevent tampering. An attacker can modify ciphertext and the decryption will succeed with corrupted plaintext (padding oracle attacks exploit this). Always use authenticated encryption (AES-GCM) or encrypt-then-MAC (AES-CBC + HMAC-SHA256 over the ciphertext)."
+        },
+        {
+          "type": "paragraph",
+          "text": "8. Using insufficient key sizes or deprecated algorithms. RSA-1024 is considered broken. 3DES is deprecated. Use minimum RSA-2048 (preferably 4096 for long-term keys), AES-256, and SHA-256. For new systems, prefer ECC (P-256 or Ed25519) over RSA for better performance with equivalent security."
+        }
+      ],
+      "wordCount": 381,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "TLS 1.3 handshake: TLS 1.3 uses Ephemeral Diffie-Hellman (ECDHE) for key exchange, providing perfect forward secrecy. The client and server each generate ephemeral key pairs, exchange public keys, and derive a shared secret. This shared secret is used to derive symmetric session keys (AES-256-GCM) for bulk data encryption. Even if the server's long-term private key is later compromised, past sessions remain secure because the ephemeral keys were destroyed."
+        },
+        {
+          "type": "paragraph",
+          "text": "End-to-end encrypted messaging (Signal Protocol): Signal uses the Double Ratchet algorithm combining Diffie-Hellman ratcheting (new key pairs per message exchange) with symmetric key ratcheting (hash chain for forward secrecy within a single exchange). This provides both forward secrecy (compromising current keys doesn't reveal past messages) and post-compromise security (the system self-heals after a key compromise). Each message uses a unique encryption key derived from the ratchet state."
+        },
+        {
+          "type": "paragraph",
+          "text": "Database field-level encryption: Healthcare and financial systems encrypt sensitive fields (SSN, credit card numbers) at the application layer before storage. Each field uses envelope encryption: a unique data encryption key (DEK) encrypted by a key encryption key (KEK) stored in a hardware security module. This allows key rotation without re-encrypting all data — only the DEK wrappers need updating."
+        },
+        {
+          "type": "paragraph",
+          "text": "Blockchain and cryptocurrency: Bitcoin uses ECDSA (secp256k1 curve) for transaction signing, SHA-256 for proof-of-work mining and block hashing, and RIPEMD-160 for address generation. The security model relies on the computational infeasibility of reversing hash functions (mining) and forging signatures without the private key (spending someone else's funds)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Certificate Transparency: Google's Certificate Transparency system uses Merkle trees (binary trees of SHA-256 hashes) to create an append-only log of all issued TLS certificates. Any certificate not in the log is rejected by browsers. This prevents CAs from secretly issuing fraudulent certificates, as the Merkle tree structure makes it computationally infeasible to modify historical entries without detection."
+        }
+      ],
+      "wordCount": 298,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between symmetric and asymmetric encryption. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Symmetric encryption uses the same key for encryption and decryption (AES-256). It's fast (~4 GB/s) but requires secure key distribution — both parties must share the secret key. Asymmetric encryption uses a key pair: public key encrypts, private key decrypts (RSA, ECC). It's ~1000x slower but solves the key distribution problem — public keys can be shared openly. In practice, they're used together: asymmetric encryption establishes a shared symmetric key (TLS handshake), then symmetric encryption handles bulk data transfer. Use symmetric for: data at rest, session encryption, disk encryption. Use asymmetric for: key exchange, digital signatures, identity verification."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is perfect forward secrecy and why does TLS 1.3 mandate it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Perfect forward secrecy (PFS) ensures that compromising a server's long-term private key doesn't allow decryption of past recorded sessions. TLS 1.3 achieves this by using ephemeral Diffie-Hellman key exchange (ECDHE) for every session. Each connection generates fresh key pairs that are destroyed after the session ends. Even if an attacker records all encrypted traffic and later obtains the server's private key, they cannot derive the ephemeral session keys. TLS 1.3 mandates PFS by removing all non-PFS cipher suites (static RSA key exchange). This is critical because intelligence agencies and attackers practice \"harvest now, decrypt later\" — recording encrypted traffic hoping to obtain keys in the future."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does Argon2 differ from bcrypt, and why is it preferred for password hashing?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Both are adaptive password hashing functions designed to be slow (preventing brute force), but they differ in resource consumption. Bcrypt is CPU-hard with a fixed 4KB memory requirement, making it vulnerable to GPU and ASIC attacks that parallelize computation cheaply. Argon2 (specifically Argon2id) is both CPU-hard and memory-hard — it requires configurable amounts of RAM (typically 64MB+), making GPU/ASIC attacks economically infeasible because memory is expensive to parallelize. Argon2id combines Argon2i (side-channel resistant, for password hashing) and Argon2d (data-dependent, maximum GPU resistance) in a hybrid mode. It won the Password Hashing Competition (2015) and is recommended by OWASP. The key parameters are: memory cost (64MB+), time cost (3+ iterations), and parallelism (matching available cores)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain envelope encryption and why cloud providers use it instead of direct encryption with master keys."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Envelope encryption uses two layers of keys: a data encryption key (DEK) encrypts the actual data, and a key encryption key (KEK/master key) encrypts the DEK. Cloud providers (AWS KMS, GCP KMS) use this pattern because: (1) The master key never leaves the HSM — it's used only to wrap/unwrap DEKs, minimizing exposure. (2) Each piece of data gets a unique DEK, so compromising one DEK doesn't expose other data. (3) Key rotation is efficient — rotating the master key only requires re-encrypting the DEKs (small), not re-encrypting all data (potentially petabytes). (4) Performance — bulk encryption happens locally with the DEK (fast symmetric crypto), while only the small DEK encryption/decryption requires the remote KMS call. (5) Audit — all master key operations are logged, providing visibility into who accessed which data keys."
+        }
+      ],
+      "wordCount": 514,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Implement key rotation without downtime. Design encryption systems to support multiple active keys simultaneously. When rotating, encrypt new data with the new key but continue decrypting with both old and new keys. Store the key version/ID alongside encrypted data (in metadata, not in the ciphertext). Gradually re-encrypt old data in background jobs. This dual-key period ensures zero-downtime rotation and allows rollback if the new key has issues."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use hardware security modules (HSMs) for master keys in regulated environments. HSMs (AWS CloudHSM, Azure Dedicated HSM, on-premise Thales/Gemalto) provide tamper-resistant key storage where keys never exist in plaintext outside the hardware boundary. They're required for PCI DSS Level 1, FIPS 140-2 Level 3 compliance, and any system where key extraction must be physically impossible. The trade-off is cost ($1-5K/month for cloud HSMs) and latency (1-5ms per operation vs microseconds for software crypto)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Monitor cryptographic operations for anomalies. Track: encryption/decryption rates per service (sudden spikes may indicate data exfiltration), key access patterns (unusual services accessing keys they shouldn't), failed decryption attempts (may indicate key rotation issues or tampering), and certificate expiration timelines. Set alerts for: keys approaching rotation deadlines, certificates expiring within 30 days, and any access to master keys outside normal patterns."
+        }
+      ],
+      "wordCount": 200,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Authentication Patterns — How cryptographic primitives (JWT signing, password hashing, HMAC) are applied in authentication protocols",
+            "Network Security — TLS implementation, certificate management, and encrypted tunnels that depend on these cryptographic fundamentals",
+            "Container Security — Image signing, secrets encryption, and supply chain verification using digital signatures"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "typescript",
+      "code": "import crypto from 'crypto';\n\n// AES-256-GCM provides both confidentiality and integrity (AEAD)\nclass EncryptionService {\n  private readonly algorithm = 'aes-256-gcm';\n  private readonly keyLength = 32; // 256 bits\n  private readonly ivLength = 12;  // 96 bits (recommended for GCM)\n  private readonly tagLength = 16; // 128 bits authentication tag\n\n  constructor(private readonly masterKey: Buffer) {\n    if (masterKey.length !== this.keyLength) {\n      throw new Error(`Key must be ${this.keyLength} bytes`);\n    }\n  }\n\n  encrypt(plaintext: string, associatedData?: string): EncryptedPayload {\n    // Generate random IV for each encryption (NEVER reuse IV with same key)\n    const iv = crypto.randomBytes(this.ivLength);\n\n    const cipher = crypto.createCipheriv(this.algorithm, this.masterKey, iv, {\n      authTagLength: this.tagLength,\n    });\n\n    // Associated data is authenticated but not encrypted\n    if (associatedData) {\n      cipher.setAAD(Buffer.from(associatedData, 'utf8'));\n    }\n\n    const encrypted = Buffer.concat([\n      cipher.update(plaintext, 'utf8'),\n      cipher.final(),\n    ]);\n\n    const authTag = cipher.getAuthTag();\n\n    return {\n      ciphertext: encrypted.toString('base64'),\n      iv: iv.toString('base64'),\n      tag: authTag.toString('base64'),\n      aad: associatedData,\n    };\n  }\n\n  decrypt(payload: EncryptedPayload): string {\n    const iv = Buffer.from(payload.iv, 'base64');\n    const ciphertext = Buffer.from(payload.ciphertext, 'base64');\n    const tag = Buffer.from(payload.tag, 'base64');\n\n    const decipher = crypto.createDecipheriv(this.algorithm, this.masterKey, iv, {\n      authTagLength: this.tagLength,\n    });\n\n    decipher.setAuthTag(tag);\n\n    if (payload.aad) {\n      decipher.setAAD(Buffer.from(payload.aad, 'utf8'));\n    }\n\n    try {\n      const decrypted = Buffer.concat([\n        decipher.update(ciphertext),\n        decipher.final(), // Throws if authentication fails\n      ]);\n      return decrypted.toString('utf8');\n    } catch (error) {\n      throw new Error('Decryption failed: data may have been tampered with');\n    }\n  }\n}\n\ninterface EncryptedPayload {\n  ciphertext: string;\n  iv: string;\n  tag: string;\n  aad?: string;\n}\n\n// Usage\nconst key = crypto.randomBytes(32); // Generate a secure random key\nconst service = new EncryptionService(key);\n\nconst encrypted = service.encrypt('sensitive data', 'user:12345');\nconst decrypted = service.decrypt(encrypted); // 'sensitive data'",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Envelope encryption: encrypt data with a data key, encrypt the data key with a master key\n// This is how AWS KMS, Google Cloud KMS, and Azure Key Vault work\n\nclass EnvelopeEncryption {\n  constructor(private readonly kmsClient: KMSClient) {}\n\n  async encrypt(plaintext: Buffer, context: Record<string, string>): Promise<EnvelopePayload> {\n    // Step 1: Generate a unique data encryption key (DEK) from KMS\n    const { Plaintext: dekPlaintext, CiphertextBlob: dekEncrypted } =\n      await this.kmsClient.send(new GenerateDataKeyCommand({\n        KeyId: process.env.KMS_KEY_ARN,\n        KeySpec: 'AES_256',\n        EncryptionContext: context, // Bound to this encryption context\n      }));\n\n    // Step 2: Encrypt data locally with the plaintext DEK\n    const iv = crypto.randomBytes(12);\n    const cipher = crypto.createCipheriv('aes-256-gcm', dekPlaintext!, iv);\n    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);\n    const tag = cipher.getAuthTag();\n\n    // Step 3: Immediately destroy plaintext DEK from memory\n    dekPlaintext!.fill(0);\n\n    // Step 4: Return encrypted data + encrypted DEK\n    return {\n      encryptedData: encrypted.toString('base64'),\n      encryptedDataKey: Buffer.from(dekEncrypted!).toString('base64'),\n      iv: iv.toString('base64'),\n      tag: tag.toString('base64'),\n      context: context,\n    };\n  }\n\n  async decrypt(payload: EnvelopePayload): Promise<Buffer> {\n    // Step 1: Decrypt the DEK using KMS\n    const { Plaintext: dekPlaintext } = await this.kmsClient.send(new DecryptCommand({\n      CiphertextBlob: Buffer.from(payload.encryptedDataKey, 'base64'),\n      EncryptionContext: payload.context,\n    }));\n\n    // Step 2: Decrypt data locally with the plaintext DEK\n    const decipher = crypto.createDecipheriv(\n      'aes-256-gcm',\n      dekPlaintext!,\n      Buffer.from(payload.iv, 'base64')\n    );\n    decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));\n\n    const decrypted = Buffer.concat([\n      decipher.update(Buffer.from(payload.encryptedData, 'base64')),\n      decipher.final(),\n    ]);\n\n    // Step 3: Destroy plaintext DEK\n    dekPlaintext!.fill(0);\n\n    return decrypted;\n  }\n}\n\ninterface EnvelopePayload {\n  encryptedData: string;\n  encryptedDataKey: string;\n  iv: string;\n  tag: string;\n  context: Record<string, string>;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import argon2 from 'argon2';\n\n// Argon2id is the recommended password hashing algorithm (winner of PHC competition)\nclass PasswordService {\n  // OWASP recommended parameters for Argon2id\n  private readonly options: argon2.Options = {\n    type: argon2.argon2id,    // Hybrid: resistant to both side-channel and GPU attacks\n    memoryCost: 65536,         // 64 MB memory\n    timeCost: 3,               // 3 iterations\n    parallelism: 4,            // 4 parallel threads\n    hashLength: 32,            // 256-bit output\n    saltLength: 16,            // 128-bit salt (auto-generated)\n  };\n\n  async hashPassword(password: string): Promise<string> {\n    // Argon2 generates a random salt and encodes everything in the output string\n    // Output format: $argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>\n    return argon2.hash(password, this.options);\n  }\n\n  async verifyPassword(password: string, hash: string): Promise<boolean> {\n    try {\n      return await argon2.verify(hash, password);\n    } catch {\n      return false; // Invalid hash format\n    }\n  }\n\n  async needsRehash(hash: string): Promise<boolean> {\n    // Check if hash was created with older/weaker parameters\n    return argon2.needsRehash(hash, this.options);\n  }\n}\n\n// Usage in login flow\nasync function authenticateUser(email: string, password: string): Promise<User> {\n  const user = await db.users.findByEmail(email);\n  if (!user) {\n    // Constant-time comparison to prevent user enumeration via timing\n    await passwordService.hashPassword('dummy-password');\n    throw new AuthenticationError('Invalid credentials');\n  }\n\n  const valid = await passwordService.verifyPassword(password, user.passwordHash);\n  if (!valid) {\n    await recordFailedAttempt(user.id);\n    throw new AuthenticationError('Invalid credentials');\n  }\n\n  // Rehash if parameters have been upgraded\n  if (await passwordService.needsRehash(user.passwordHash)) {\n    const newHash = await passwordService.hashPassword(password);\n    await db.users.updatePasswordHash(user.id, newHash);\n  }\n\n  return user;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import crypto from 'crypto';\n\n// Ed25519: fast, secure, small signatures (64 bytes)\n// Preferred over RSA for new systems due to performance and key size\n\nclass SignatureService {\n  private privateKey: crypto.KeyObject;\n  private publicKey: crypto.KeyObject;\n\n  constructor(privateKeyPem: string) {\n    this.privateKey = crypto.createPrivateKey(privateKeyPem);\n    this.publicKey = crypto.createPublicKey(privateKeyPem);\n  }\n\n  // Generate a new Ed25519 key pair\n  static generateKeyPair(): { publicKey: string; privateKey: string } {\n    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {\n      publicKeyEncoding: { type: 'spki', format: 'pem' },\n      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },\n    });\n    return { publicKey, privateKey };\n  }\n\n  // Sign a message\n  sign(message: Buffer): Buffer {\n    return crypto.sign(null, message, this.privateKey);\n  }\n\n  // Verify a signature\n  verify(message: Buffer, signature: Buffer): boolean {\n    return crypto.verify(null, message, this.publicKey, signature);\n  }\n\n  // Sign a JSON payload (common pattern for API requests)\n  signPayload(payload: object): SignedPayload {\n    const canonical = JSON.stringify(payload, Object.keys(payload).sort());\n    const timestamp = Date.now();\n    const message = Buffer.from(`${timestamp}.${canonical}`);\n    const signature = this.sign(message);\n\n    return {\n      payload,\n      timestamp,\n      signature: signature.toString('base64'),\n    };\n  }\n\n  // Verify a signed payload with timestamp validation\n  verifyPayload(signed: SignedPayload, maxAgeMs: number = 300000): boolean {\n    // Check timestamp freshness (prevent replay attacks)\n    if (Date.now() - signed.timestamp > maxAgeMs) {\n      return false;\n    }\n\n    const canonical = JSON.stringify(signed.payload, Object.keys(signed.payload).sort());\n    const message = Buffer.from(`${signed.timestamp}.${canonical}`);\n    const signature = Buffer.from(signed.signature, 'base64');\n\n    return this.verify(message, signature);\n  }\n}\n\ninterface SignedPayload {\n  payload: object;\n  timestamp: number;\n  signature: string;\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// AWS Signature V4 style request signing\nimport javax.crypto.Mac;\nimport javax.crypto.spec.SecretKeySpec;\nimport java.nio.charset.StandardCharsets;\nimport java.security.MessageDigest;\nimport java.time.Instant;\nimport java.time.format.DateTimeFormatter;\n\npublic class RequestSigner {\n\n    private final String accessKey;\n    private final byte[] secretKey;\n\n    public RequestSigner(String accessKey, String secretKey) {\n        this.accessKey = accessKey;\n        this.secretKey = secretKey.getBytes(StandardCharsets.UTF_8);\n    }\n\n    public String signRequest(String method, String path, String body, Instant timestamp) {\n        String dateStamp = DateTimeFormatter.ofPattern(\"yyyyMMdd\")\n            .format(timestamp.atZone(java.time.ZoneOffset.UTC));\n        String amzDate = DateTimeFormatter.ofPattern(\"yyyyMMdd'T'HHmmss'Z'\")\n            .format(timestamp.atZone(java.time.ZoneOffset.UTC));\n\n        // Step 1: Create canonical request\n        String bodyHash = sha256Hex(body);\n        String canonicalRequest = String.join(\"\\n\",\n            method, path, \"\", // query string\n            \"host:api.example.com\",\n            \"x-amz-date:\" + amzDate, \"\",\n            \"host;x-amz-date\",\n            bodyHash\n        );\n\n        // Step 2: Create string to sign\n        String credentialScope = dateStamp + \"/us-east-1/execute-api/request\";\n        String stringToSign = String.join(\"\\n\",\n            \"HMAC-SHA256\",\n            amzDate,\n            credentialScope,\n            sha256Hex(canonicalRequest)\n        );\n\n        // Step 3: Derive signing key (key derivation chain)\n        byte[] dateKey = hmacSha256((\"SIGN\" + new String(secretKey)).getBytes(), dateStamp);\n        byte[] regionKey = hmacSha256(dateKey, \"us-east-1\");\n        byte[] serviceKey = hmacSha256(regionKey, \"execute-api\");\n        byte[] signingKey = hmacSha256(serviceKey, \"request\");\n\n        // Step 4: Calculate signature\n        String signature = hexEncode(hmacSha256(signingKey, stringToSign));\n\n        return String.format(\n            \"HMAC-SHA256 Credential=%s/%s, SignedHeaders=host;x-amz-date, Signature=%s\",\n            accessKey, credentialScope, signature\n        );\n    }\n\n    private byte[] hmacSha256(byte[] key, String data) {\n        try {\n            Mac mac = Mac.getInstance(\"HmacSHA256\");\n            mac.init(new SecretKeySpec(key, \"HmacSHA256\"));\n            return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));\n        } catch (Exception e) {\n            throw new RuntimeException(\"HMAC computation failed\", e);\n        }\n    }\n\n    private String sha256Hex(String data) {\n        try {\n            MessageDigest digest = MessageDigest.getInstance(\"SHA-256\");\n            byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));\n            return hexEncode(hash);\n        } catch (Exception e) {\n            throw new RuntimeException(\"SHA-256 computation failed\", e);\n        }\n    }\n\n    private String hexEncode(byte[] bytes) {\n        StringBuilder sb = new StringBuilder();\n        for (byte b : bytes) {\n            sb.append(String.format(\"%02x\", b));\n        }\n        return sb.toString();\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/infrastructure-security/cryptography-fundamentals.md",
+    "wordCount": 1919,
+    "sectionCount": 14
+  }
+}

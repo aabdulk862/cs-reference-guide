@@ -266,56 +266,69 @@ public class ExponentialSearch {
 }
 ```
 
-```python
-def exponential_search(arr: list[int], target: int) -> int:
-    """Search using exponential expansion + binary search. O(log k) time."""
-    if arr[0] == target:
-        return 0
+```java
+public class SpecializedSearch {
+    /**
+     * Exponential search: find target using exponential expansion + binary search.
+     * O(log k) time where k is the position of the target.
+     * Useful when target is near the beginning of a large sorted array.
+     */
+    public static int exponentialSearch(int[] arr, int target) {
+        if (arr[0] == target) return 0;
 
-    i = 1
-    while i < len(arr) and arr[i] <= target:
-        i *= 2
+        int i = 1;
+        while (i < arr.length && arr[i] <= target) {
+            i *= 2;
+        }
 
-    # Binary search in [i//2, min(i, n-1)]
-    left, right = i // 2, min(i, len(arr) - 1)
-    while left <= right:
-        mid = (left + right) // 2
-        if arr[mid] == target:
-            return mid
-        if arr[mid] < target:
-            left = mid + 1
-        else:
-            right = mid - 1
+        // Binary search in [i/2, min(i, n-1)]
+        int left = i / 2, right = Math.min(i, arr.length - 1);
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] == target) return mid;
+            if (arr[mid] < target) left = mid + 1;
+            else right = mid - 1;
+        }
+        return -1;
+    }
 
-    return -1
+    /**
+     * Median of two sorted arrays. O(log(min(m,n))) time.
+     * Uses binary search on the shorter array's partition point.
+     */
+    public static double findMedianSortedArrays(int[] nums1, int[] nums2) {
+        // Ensure nums1 is the shorter array
+        if (nums1.length > nums2.length) {
+            int[] temp = nums1; nums1 = nums2; nums2 = temp;
+        }
 
-def find_median_sorted_arrays(nums1: list[int], nums2: list[int]) -> float:
-    """Median of two sorted arrays. O(log(min(m,n))) time."""
-    if len(nums1) > len(nums2):
-        nums1, nums2 = nums2, nums1
+        int m = nums1.length, n = nums2.length;
+        int left = 0, right = m;
 
-    m, n = len(nums1), len(nums2)
-    left, right = 0, m
+        while (left <= right) {
+            int p1 = (left + right) / 2;
+            int p2 = (m + n + 1) / 2 - p1;
 
-    while left <= right:
-        p1 = (left + right) // 2
-        p2 = (m + n + 1) // 2 - p1
+            int maxLeft1 = (p1 == 0) ? Integer.MIN_VALUE : nums1[p1 - 1];
+            int minRight1 = (p1 == m) ? Integer.MAX_VALUE : nums1[p1];
+            int maxLeft2 = (p2 == 0) ? Integer.MIN_VALUE : nums2[p2 - 1];
+            int minRight2 = (p2 == n) ? Integer.MAX_VALUE : nums2[p2];
 
-        max_left1 = float('-inf') if p1 == 0 else nums1[p1 - 1]
-        min_right1 = float('inf') if p1 == m else nums1[p1]
-        max_left2 = float('-inf') if p2 == 0 else nums2[p2 - 1]
-        min_right2 = float('inf') if p2 == n else nums2[p2]
-
-        if max_left1 <= min_right2 and max_left2 <= min_right1:
-            if (m + n) % 2 == 0:
-                return (max(max_left1, max_left2) + min(min_right1, min_right2)) / 2
-            return max(max_left1, max_left2)
-        elif max_left1 > min_right2:
-            right = p1 - 1
-        else:
-            left = p1 + 1
-
-    raise ValueError("Arrays not sorted")
+            if (maxLeft1 <= minRight2 && maxLeft2 <= minRight1) {
+                if ((m + n) % 2 == 0) {
+                    return (Math.max(maxLeft1, maxLeft2)
+                          + Math.min(minRight1, minRight2)) / 2.0;
+                }
+                return Math.max(maxLeft1, maxLeft2);
+            } else if (maxLeft1 > minRight2) {
+                right = p1 - 1;
+            } else {
+                left = p1 + 1;
+            }
+        }
+        throw new IllegalArgumentException("Arrays not sorted");
+    }
+}
 ```
 
 ## Common Pitfalls

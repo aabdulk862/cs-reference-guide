@@ -43,12 +43,13 @@ const NAV_STATE_KEY = 'nav-state';
 
 /** Category groups for sidebar organization */
 const CATEGORY_GROUPS: { label: string; icon: string; categoryIds: string[] }[] = [
-  { label: 'Core CS', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
-  { label: 'Server', icon: '⚙️', categoryIds: ['backend', 'databases', 'system-design'] },
-  { label: 'Client', icon: '🎨', categoryIds: ['frontend'] },
-  { label: 'DevOps', icon: '🚀', categoryIds: ['infrastructure'] },
-  { label: 'Quality', icon: '✅', categoryIds: ['testing', 'security', 'software-engineering'] },
-  { label: 'Career', icon: '📚', categoryIds: ['interview-prep', 'git'] },
+  { label: 'Fundamentals', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
+  { label: 'Server-Side', icon: '⚙️', categoryIds: ['backend', 'databases'] },
+  { label: 'Client-Side', icon: '🎨', categoryIds: ['frontend'] },
+  { label: 'Architecture', icon: '🏗️', categoryIds: ['system-design', 'software-engineering', 'security'] },
+  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure', 'git'] },
+  { label: 'Quality', icon: '✅', categoryIds: ['testing'] },
+  { label: 'Interview', icon: '🎯', categoryIds: ['interview-prep'] },
 ];
 
 interface NavState {

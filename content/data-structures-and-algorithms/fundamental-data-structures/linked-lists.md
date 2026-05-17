@@ -136,50 +136,73 @@ public class SinglyLinkedList<T> {
 
 Sentinel nodes (dummy head and tail) eliminate edge cases for empty lists and boundary operations. This pattern is used in production implementations like Java's LinkedList and Linux kernel's list_head.
 
-```python
-class DoublyLinkedList:
-    class Node:
-        def __init__(self, data=None):
-            self.data = data
-            self.prev = None
-            self.next = None
+```java
+/**
+ * Doubly linked list with sentinel nodes.
+ * Sentinel head and tail eliminate edge cases for boundary operations.
+ * Used in production implementations like Java's LinkedList and LRU caches.
+ */
+public class DoublyLinkedList<T> {
+    private static class Node<T> {
+        T data;
+        Node<T> prev;
+        Node<T> next;
 
-    def __init__(self):
-        self.head = self.Node()  # Sentinel head
-        self.tail = self.Node()  # Sentinel tail
-        self.head.next = self.tail
-        self.tail.prev = self.head
-        self.size = 0
+        Node(T data) {
+            this.data = data;
+        }
+    }
 
-    def insert_after(self, node, data):
-        """Insert new node after the given node in O(1)."""
-        new_node = self.Node(data)
-        new_node.prev = node
-        new_node.next = node.next
-        node.next.prev = new_node
-        node.next = new_node
-        self.size += 1
-        return new_node
+    private final Node<T> head;  // Sentinel head
+    private final Node<T> tail;  // Sentinel tail
+    private int size;
 
-    def insert_at_head(self, data):
-        return self.insert_after(self.head, data)
+    public DoublyLinkedList() {
+        head = new Node<>(null);
+        tail = new Node<>(null);
+        head.next = tail;
+        tail.prev = head;
+        size = 0;
+    }
 
-    def insert_at_tail(self, data):
-        return self.insert_after(self.tail.prev, data)
+    /** Insert new node after the given node in O(1). */
+    private Node<T> insertAfter(Node<T> node, T data) {
+        Node<T> newNode = new Node<>(data);
+        newNode.prev = node;
+        newNode.next = node.next;
+        node.next.prev = newNode;
+        node.next = newNode;
+        size++;
+        return newNode;
+    }
 
-    def remove(self, node):
-        """Remove the given node in O(1). Node must not be a sentinel."""
-        if node is self.head or node is self.tail:
-            raise ValueError("Cannot remove sentinel nodes")
-        node.prev.next = node.next
-        node.next.prev = node.prev
-        self.size -= 1
-        return node.data
+    public Node<T> insertAtHead(T data) {
+        return insertAfter(head, data);
+    }
 
-    def move_to_front(self, node):
-        """Move existing node to front in O(1) — used in LRU caches."""
-        self.remove(node)
-        self.insert_after(self.head, node.data)
+    public Node<T> insertAtTail(T data) {
+        return insertAfter(tail.prev, data);
+    }
+
+    /** Remove the given node in O(1). Node must not be a sentinel. */
+    public T remove(Node<T> node) {
+        if (node == head || node == tail) {
+            throw new IllegalArgumentException("Cannot remove sentinel nodes");
+        }
+        node.prev.next = node.next;
+        node.next.prev = node.prev;
+        size--;
+        return node.data;
+    }
+
+    /** Move existing node to front in O(1) — used in LRU caches. */
+    public void moveToFront(Node<T> node) {
+        remove(node);
+        insertAfter(head, node.data);
+    }
+
+    public int size() { return size; }
+}
 ```
 
 ### Floyd's Cycle Detection Algorithm

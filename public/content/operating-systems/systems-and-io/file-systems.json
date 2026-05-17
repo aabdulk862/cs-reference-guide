@@ -1,0 +1,275 @@
+{
+  "id": "systems-and-io-file-systems",
+  "slug": "file-systems",
+  "title": "File Systems",
+  "category": "Operating Systems",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Inodes store file metadata (size, permissions, timestamps, block pointers) separately from directory entries (which map names to inode numbers)",
+            "ext4 is Linux's default filesystem: supports files up to 16TB, volumes up to 1EB, uses extents (contiguous block ranges) instead of indirect block pointers",
+            "XFS excels at large files and parallel I/O: uses B+ trees for metadata, allocation groups for parallelism, and delayed allocation to reduce fragmentation",
+            "Journaling writes metadata changes to a log before applying them, enabling crash recovery by replaying or discarding incomplete transactions",
+            "The VFS (Virtual File System) layer provides a uniform interface (open, read, write, stat) across all filesystem implementations (ext4, XFS, NFS, procfs, tmpfs)",
+            "The page cache buffers file data in RAM; reads are served from cache when possible, writes are buffered and flushed asynchronously (writeback)",
+            "Direct I/O (O_DIRECT) bypasses the page cache for applications managing their own caching (databases), avoiding double-buffering overhead",
+            "Hard links create multiple directory entries pointing to the same inode; symbolic links store a target path string resolved at access time",
+            "fsync() flushes file data and metadata to persistent storage; fdatasync() flushes only data and essential metadata (not timestamps)"
+          ]
+        }
+      ],
+      "wordCount": 187,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "File system knowledge is critical when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Choosing a filesystem for production workloads — ext4 for general-purpose, XFS for large files and high-throughput sequential I/O, ZFS/Btrfs for data integrity and snapshots, tmpfs for ephemeral high-speed storage",
+            "Tuning database storage — understanding how journaling interacts with database WAL, when to use O_DIRECT vs buffered I/O, how to align I/O to filesystem block boundaries for optimal performance",
+            "Diagnosing I/O performance issues — distinguishing between filesystem-level bottlenecks (metadata operations, journal contention) and device-level bottlenecks (disk throughput, IOPS limits)",
+            "Designing backup and snapshot strategies — leveraging filesystem snapshots (LVM, ZFS, Btrfs) for consistent point-in-time copies without stopping applications",
+            "Implementing log rotation and archival — understanding how rename() is atomic within a filesystem, how hard links enable zero-downtime log rotation, and how inotify monitors file changes",
+            "Configuring container storage — choosing between overlay filesystems (overlayfs for Docker layers), bind mounts, and volume drivers for persistent container data"
+          ]
+        }
+      ],
+      "wordCount": 151,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "file-system-operations-and-metadata-inspection-java",
+          "heading": "File System Operations and Metadata Inspection (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.*;\nimport java.nio.file.*;\nimport java.nio.file.attribute.*;\nimport java.time.Instant;\nimport java.time.ZoneId;\nimport java.time.format.DateTimeFormatter;\n\npublic class FileSystemOps {\n\n    // Demonstrate atomic file write using rename\n    static boolean atomicWrite(Path path, byte[] data) throws IOException {\n        Path tmpPath = path.resolveSibling(path.getFileName() + \".tmp.\" + ProcessHandle.current().pid());\n\n        try {\n            // Write to temporary file\n            Files.write(tmpPath, data, StandardOpenOption.CREATE,\n                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);\n\n            // Force data to disk (not just OS buffers)\n            try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {\n                fos.getFD().sync();\n            }\n\n            // Atomic rename replaces old file\n            Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE,\n                    StandardCopyOption.REPLACE_EXISTING);\n\n            return true;\n        } catch (IOException e) {\n            Files.deleteIfExists(tmpPath);\n            return false;\n        }\n    }\n\n    // Inspect file metadata (similar to inode info)\n    static void printFileInfo(Path path) throws IOException {\n        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);\n        PosixFileAttributes posixAttrs = null;\n        try {\n            posixAttrs = Files.readAttributes(path, PosixFileAttributes.class);\n        } catch (UnsupportedOperationException ignored) {}\n\n        System.out.println(\"File: \" + path);\n        System.out.println(\"  Size: \" + attrs.size() + \" bytes\");\n        System.out.println(\"  Is regular file: \" + attrs.isRegularFile());\n        System.out.println(\"  Is directory: \" + attrs.isDirectory());\n        System.out.println(\"  Is symbolic link: \" + attrs.isSymbolicLink());\n\n        if (posixAttrs != null) {\n            System.out.println(\"  Owner: \" + posixAttrs.owner().getName());\n            System.out.println(\"  Group: \" + posixAttrs.group().getName());\n            System.out.println(\"  Permissions: \" + PosixFilePermissions.toString(posixAttrs.permissions()));\n        }\n\n        DateTimeFormatter fmt = DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\")\n                .withZone(ZoneId.systemDefault());\n        System.out.println(\"  Modified: \" + fmt.format(attrs.lastModifiedTime().toInstant()));\n        System.out.println(\"  Created: \" + fmt.format(attrs.creationTime().toInstant()));\n    }\n\n    // Check filesystem capacity\n    static void printFsStats(Path path) throws IOException {\n        FileStore store = Files.getFileStore(path);\n\n        long total = store.getTotalSpace();\n        long free = store.getUnallocatedSpace();\n        long usable = store.getUsableSpace(); // Available to non-root\n\n        System.out.println(\"Filesystem stats for \" + path + \":\");\n        System.out.println(\"  Total: \" + (total / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Free: \" + (free / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Usable: \" + (usable / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Type: \" + store.type());\n        System.out.println(\"  Read-only: \" + store.isReadOnly());\n    }\n\n    public static void main(String[] args) throws IOException {\n        Path testPath = Paths.get(args.length > 0 ? args[0] : \".\");\n        printFileInfo(testPath);\n        printFsStats(testPath);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "buffered-vs-direct-io-performance-comparison-java",
+          "heading": "Buffered vs Direct I/O Performance Comparison (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.*;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.FileChannel;\nimport java.nio.file.*;\n\npublic class IOBenchmark {\n    private static final int FILE_SIZE = 256 * 1024 * 1024; // 256MB\n    private static final int BLOCK_SIZE = 4096;             // 4KB\n\n    // Write with buffered I/O (uses page cache via BufferedOutputStream)\n    static double benchmarkBufferedWrite(Path path) throws IOException {\n        byte[] buf = new byte[BLOCK_SIZE];\n        java.util.Arrays.fill(buf, (byte) 'A');\n\n        long start = System.nanoTime();\n\n        try (BufferedOutputStream bos = new BufferedOutputStream(\n                new FileOutputStream(path.toFile()), 64 * 1024)) {\n            int total = 0;\n            while (total < FILE_SIZE) {\n                bos.write(buf);\n                total += BLOCK_SIZE;\n            }\n            bos.flush();\n        }\n\n        // Force data to disk\n        try (FileOutputStream fos = new FileOutputStream(path.toFile(), true)) {\n            fos.getFD().sync();\n        }\n\n        long end = System.nanoTime();\n        return (end - start) / 1_000_000.0;\n    }\n\n    // Write with direct ByteBuffer (bypasses JVM heap, closer to direct I/O)\n    static double benchmarkDirectWrite(Path path) throws IOException {\n        ByteBuffer buf = ByteBuffer.allocateDirect(BLOCK_SIZE);\n        for (int i = 0; i < BLOCK_SIZE; i++) buf.put((byte) 'B');\n\n        long start = System.nanoTime();\n\n        try (FileChannel channel = FileChannel.open(path,\n                StandardOpenOption.CREATE, StandardOpenOption.WRITE,\n                StandardOpenOption.TRUNCATE_EXISTING)) {\n            int total = 0;\n            while (total < FILE_SIZE) {\n                buf.flip();\n                channel.write(buf);\n                buf.clear();\n                total += BLOCK_SIZE;\n            }\n            channel.force(true); // Equivalent to fsync - flush to disk\n        }\n\n        long end = System.nanoTime();\n        return (end - start) / 1_000_000.0;\n    }\n\n    public static void main(String[] args) throws IOException {\n        System.out.printf(\"Writing %d MB...%n\", FILE_SIZE / (1024 * 1024));\n\n        Path bufferedPath = Paths.get(\"/tmp/bench_buffered\");\n        Path directPath = Paths.get(\"/tmp/bench_direct\");\n\n        double bufferedMs = benchmarkBufferedWrite(bufferedPath);\n        System.out.printf(\"Buffered I/O: %.1f ms (%.1f MB/s)%n\",\n                bufferedMs, (FILE_SIZE / (1024.0 * 1024.0)) / (bufferedMs / 1000.0));\n\n        double directMs = benchmarkDirectWrite(directPath);\n        System.out.printf(\"Direct I/O:   %.1f ms (%.1f MB/s)%n\",\n                directMs, (FILE_SIZE / (1024.0 * 1024.0)) / (directMs / 1000.0));\n\n        Files.deleteIfExists(bufferedPath);\n        Files.deleteIfExists(directPath);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "file-system-event-monitoring-with-watchservice-java",
+          "heading": "File System Event Monitoring with WatchService (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.IOException;\nimport java.nio.file.*;\nimport java.nio.file.attribute.BasicFileAttributes;\n\npublic class FileWatcher {\n\n    static void printEvent(WatchEvent<?> event) {\n        WatchEvent.Kind<?> kind = event.kind();\n        Path filename = (Path) event.context();\n\n        String action;\n        if (kind == StandardWatchEventKinds.ENTRY_CREATE) action = \"CREATED\";\n        else if (kind == StandardWatchEventKinds.ENTRY_DELETE) action = \"DELETED\";\n        else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) action = \"MODIFIED\";\n        else action = \"UNKNOWN\";\n\n        System.out.printf(\"  %s: %s%n\", action, filename);\n\n        // Check if it's a directory\n        if (kind == StandardWatchEventKinds.ENTRY_CREATE) {\n            try {\n                Path full = ((Path) event.context());\n                if (Files.isDirectory(full)) {\n                    System.out.println(\"    [directory]\");\n                }\n            } catch (Exception ignored) {}\n        }\n    }\n\n    public static void main(String[] args) throws IOException, InterruptedException {\n        Path watchPath = Paths.get(args.length > 0 ? args[0] : \"/tmp\");\n\n        WatchService watchService = FileSystems.getDefault().newWatchService();\n\n        watchPath.register(watchService,\n                StandardWatchEventKinds.ENTRY_CREATE,\n                StandardWatchEventKinds.ENTRY_DELETE,\n                StandardWatchEventKinds.ENTRY_MODIFY);\n\n        System.out.println(\"Watching \" + watchPath + \" for filesystem events...\");\n\n        while (true) {\n            WatchKey key = watchService.take(); // Blocks until events available\n\n            for (WatchEvent<?> event : key.pollEvents()) {\n                if (event.kind() == StandardWatchEventKinds.OVERFLOW) {\n                    System.out.println(\"  OVERFLOW: events may have been lost\");\n                    continue;\n                }\n                printEvent(event);\n            }\n\n            // Reset key to receive further events\n            boolean valid = key.reset();\n            if (!valid) {\n                System.out.println(\"Watch key no longer valid, exiting.\");\n                break;\n            }\n        }\n\n        watchService.close();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "journaling-simulation-java",
+          "heading": "Journaling Simulation (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.*;\nimport java.nio.file.*;\nimport java.util.*;\n\npublic class JournaledFileSystem {\n    /**Simulates a write-ahead journaling filesystem.*/\n\n    enum TxState { PENDING, COMMITTED, APPLIED, ABORTED }\n\n    static class JournalEntry implements Serializable {\n        int txId;\n        long timestamp;\n        List<Map<String, Object>> operations;\n        TxState state;\n\n        JournalEntry(int txId, long timestamp, List<Map<String, Object>> operations) {\n            this.txId = txId;\n            this.timestamp = timestamp;\n            this.operations = operations;\n            this.state = TxState.PENDING;\n        }\n    }\n\n    private final Path journalPath;\n    private final Path dataPath;\n    private int nextTxId = 1;\n    private final List<JournalEntry> journal = new ArrayList<>();\n    private final Map<String, byte[]> data = new HashMap<>();\n\n    public JournaledFileSystem(String journalPath, String dataPath) {\n        this.journalPath = Paths.get(journalPath);\n        this.dataPath = Paths.get(dataPath);\n        // Recover from crash if journal exists\n        recover();\n    }\n\n    /** Write file with journaling for crash consistency. */\n    public int writeFile(String filename, byte[] content) throws IOException {\n        int txId = nextTxId++;\n\n        // Phase 1: Write intent to journal\n        Map<String, Object> op = new HashMap<>();\n        op.put(\"op\", \"write\");\n        op.put(\"file\", filename);\n        op.put(\"size\", content.length);\n        op.put(\"checksum\", Arrays.hashCode(content));\n\n        JournalEntry entry = new JournalEntry(txId, System.currentTimeMillis(),\n                Collections.singletonList(op));\n        journal.add(entry);\n        flushJournal();\n\n        // Phase 2: Mark as committed (point of no return)\n        entry.state = TxState.COMMITTED;\n        flushJournal();\n\n        // Phase 3: Apply to data area\n        data.put(filename, content);\n        flushData();\n\n        // Phase 4: Mark as applied (can be garbage collected)\n        entry.state = TxState.APPLIED;\n        flushJournal();\n\n        return txId;\n    }\n\n    public int deleteFile(String filename) throws IOException {\n        int txId = nextTxId++;\n\n        Map<String, Object> op = new HashMap<>();\n        op.put(\"op\", \"delete\");\n        op.put(\"file\", filename);\n\n        JournalEntry entry = new JournalEntry(txId, System.currentTimeMillis(),\n                Collections.singletonList(op));\n        journal.add(entry);\n        flushJournal();\n\n        entry.state = TxState.COMMITTED;\n        flushJournal();\n\n        data.remove(filename);\n        flushData();\n\n        entry.state = TxState.APPLIED;\n        flushJournal();\n\n        return txId;\n    }\n\n    /** Replay committed but unapplied journal entries after crash. */\n    private void recover() {\n        if (!Files.exists(journalPath)) return;\n\n        try (ObjectInputStream ois = new ObjectInputStream(\n                new FileInputStream(journalPath.toFile()))) {\n            @SuppressWarnings(\"unchecked\")\n            List<JournalEntry> savedJournal = (List<JournalEntry>) ois.readObject();\n\n            for (JournalEntry entry : savedJournal) {\n                if (entry.state == TxState.COMMITTED) {\n                    // Replay: apply the operation\n                    for (Map<String, Object> op : entry.operations) {\n                        if (\"write\".equals(op.get(\"op\"))) {\n                            System.out.println(\"Recovery: replaying write to \" + op.get(\"file\"));\n                        } else if (\"delete\".equals(op.get(\"op\"))) {\n                            data.remove((String) op.get(\"file\"));\n                        }\n                    }\n                    entry.state = TxState.APPLIED;\n                } else if (entry.state == TxState.PENDING) {\n                    // Incomplete: discard\n                    entry.state = TxState.ABORTED;\n                    System.out.println(\"Recovery: aborting incomplete tx \" + entry.txId);\n                }\n            }\n        } catch (IOException | ClassNotFoundException e) {\n            System.err.println(\"Recovery failed: \" + e.getMessage());\n        }\n    }\n\n    /** Persist journal to disk. */\n    private void flushJournal() throws IOException {\n        try (ObjectOutputStream oos = new ObjectOutputStream(\n                new FileOutputStream(journalPath.toFile()))) {\n            oos.writeObject(journal);\n            oos.flush();\n        }\n        // Force to disk\n        try (FileOutputStream fos = new FileOutputStream(journalPath.toFile(), true)) {\n            fos.getFD().sync();\n        }\n    }\n\n    /** Persist data to disk. */\n    private void flushData() throws IOException {\n        try (ObjectOutputStream oos = new ObjectOutputStream(\n                new FileOutputStream(dataPath.toFile()))) {\n            oos.writeObject(data);\n            oos.flush();\n        }\n        try (FileOutputStream fos = new FileOutputStream(dataPath.toFile(), true)) {\n            fos.getFD().sync();\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Not calling fsync() after critical writes: write() only transfers data to the kernel page cache — it doesn't guarantee persistence to disk. A power failure after write() but before the kernel flushes dirty pages loses data. For durability, call fsync(fd) after writing critical data (database WAL entries, configuration files). Note: fsync() is expensive (forces disk flush, ~5-10ms on HDD, ~0.1ms on NVMe). Batch writes and fsync once rather than per-write.",
+            "Assuming rename() is durable without directory fsync: rename() is atomic (the file appears at the new path or the old path, never both or neither), but it's not durable until the directory entry is persisted. After rename(), fsync the parent directory to ensure the rename survives a crash. Many applications (including early versions of PostgreSQL) had data loss bugs from missing directory fsync.",
+            "Running out of inodes before disk space: Each file and directory consumes one inode. Filesystems allocate a fixed number of inodes at creation time (ext4 default: 1 inode per 16KB of space). Workloads with millions of tiny files (mail servers, package caches) can exhaust inodes while disk space remains available. Check with df -i. XFS dynamically allocates inodes and doesn't have this limitation.",
+            "Ignoring the 5% reserved space on ext4: ext4 reserves 5% of disk space for root by default (tune2fs -m). On a 1TB filesystem, that's 50GB unavailable to normal users. This prevents the filesystem from becoming 100% full (which causes severe fragmentation and potential system instability). Reduce to 1% for data-only volumes: tune2fs -m 1 /dev/sdX. Never set to 0% on root filesystems.",
+            "Using O_DIRECT without proper alignment: Direct I/O requires buffer addresses, file offsets, and transfer sizes to be aligned to the filesystem block size (typically 512 bytes or 4096 bytes). Unaligned O_DIRECT operations fail with EINVAL. Use posix_memalign() or aligned_alloc() for buffers. This is a common source of bugs when porting database code between filesystems with different alignment requirements.",
+            "Ext4 metadata journaling doesn't protect file data: The default ext4 mount option (data=ordered) ensures metadata is consistent after crash but doesn't journal file data. A crash during a write can leave a file with correct metadata (size, blocks) but stale or zero-filled data blocks. For applications requiring data consistency, use data=journal mount option (2x write amplification) or implement application-level WAL (write-ahead logging)."
+          ]
+        }
+      ],
+      "wordCount": 378,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Docker overlay filesystem: Docker uses overlayfs to layer container images. Each image layer is a read-only directory; the container's writable layer sits on top. File reads traverse layers top-down until found. Writes use copy-up: the file is copied from the lower layer to the upper layer before modification. Understanding overlayfs explains why first writes to large files in containers are slow (copy-up overhead) and why container image layer ordering matters for build cache efficiency.",
+            "PostgreSQL WAL and fsync: PostgreSQL writes all changes to the Write-Ahead Log before applying them to data files. WAL records are fsync'd to disk at commit time (synchronous_commit=on), ensuring durability. The infamous \"fsync bug\" (2018) revealed that Linux's fsync() could silently fail — PostgreSQL now uses O_DIRECT for WAL or retries fsync on failure. Understanding the interaction between WAL, page cache, and fsync is essential for database reliability.",
+            "Log-structured merge trees (LSM) in RocksDB/LevelDB: LSM-tree databases write all data sequentially to immutable sorted files (SSTables), then merge them in background compaction. This converts random writes to sequential writes, achieving high write throughput on both HDD and SSD. Understanding filesystem sequential write performance, the impact of compaction on I/O bandwidth, and how to tune compaction to avoid write stalls requires deep filesystem knowledge.",
+            "NFS and distributed file access: NFS provides transparent remote file access using the VFS layer — applications use standard file operations without knowing files are remote. NFS v4 adds stateful operations (file locking, delegation) and compound operations (multiple ops in one RPC). Understanding VFS, caching semantics (close-to-open consistency), and the CAP theorem tradeoffs in distributed filesystems helps debug NFS performance issues and stale file handle errors.",
+            "ZFS for data integrity: ZFS checksums every block (data and metadata), detecting silent data corruption (bit rot) that traditional filesystems miss. It uses copy-on-write for atomic updates, supports transparent compression (LZ4, ZSTD), deduplication, and send/receive for efficient replication. ZFS is used in storage servers (FreeNAS/TrueNAS), database backups, and any environment where data integrity is paramount."
+          ]
+        }
+      ],
+      "wordCount": 327,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the difference between hard links and symbolic links. What happens when you delete the original file?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: A hard link is an additional directory entry pointing to the same inode — the file's data blocks are shared, and the inode's link count tracks how many directory entries reference it. Deleting any one name just decrements the link count; the data is only freed when the link count reaches zero (and no processes have the file open). A symbolic link is a separate file containing a path string that is resolved at access time. If the target is deleted, the symlink becomes a \"dangling\" reference — accessing it returns ENOENT. Hard links cannot cross filesystem boundaries (different filesystems have independent inode spaces) and cannot link to directories (to prevent cycles in the directory tree). Symbolic links can cross filesystems and link to directories."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does journaling provide crash consistency? What are the tradeoffs between metadata-only and full data journaling?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Journaling writes a description of intended changes to a sequential log (journal) before modifying the actual filesystem structures. If a crash occurs mid-operation, recovery replays committed journal entries (redo) or discards uncommitted ones (undo). Metadata-only journaling (ext4 default, data=ordered) journals structural changes (inode updates, block allocation, directory modifications) but not file data. This ensures filesystem structure is always consistent but a crash during a write can leave files with allocated blocks containing stale data. Full data journaling (data=journal) writes both metadata and file data to the journal first, providing complete consistency but at 2x write amplification cost (data written twice: journal then final location). Most production systems use metadata-only journaling with application-level WAL for data consistency."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the VFS layer and why does Linux need it?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The Virtual File System (VFS) is an abstraction layer that provides a uniform API (open, read, write, stat, mkdir) for all filesystem implementations. Without VFS, every application would need filesystem-specific code. VFS defines abstract operation tables (inode_operations, file_operations, super_operations, dentry_operations) that each filesystem driver implements. When an application calls read(), the VFS resolves the path through the dentry cache, finds the inode, and dispatches to the filesystem-specific read implementation. This enables transparent access to ext4, XFS, NFS, procfs, sysfs, tmpfs, FUSE filesystems, and any future filesystem through the same system calls. It also enables features like union mounts (overlayfs) and bind mounts that compose multiple filesystems."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Why do databases use O_DIRECT instead of relying on the OS page cache?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Databases use O_DIRECT to bypass the OS page cache for several reasons: (1) Avoid double-buffering — databases maintain their own buffer pool with application-specific eviction policies (LRU-2, clock sweep), so caching in the page cache wastes RAM. (2) Predictable memory usage — without O_DIRECT, the page cache grows unpredictably, potentially evicting other processes' pages or triggering OOM. (3) Control over write ordering — databases need precise control over when data hits disk (WAL before data pages); the page cache's writeback is asynchronous and unordered. (4) Avoid readahead waste — the kernel's readahead heuristics don't match database access patterns (random page reads). The tradeoff: O_DIRECT requires aligned buffers, aligned offsets, and the application must implement its own caching and readahead logic."
+        }
+      ],
+      "wordCount": 532,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor inode usage alongside disk space: df -i shows inode utilization. Systems with many small files (container image layers, mail spools, package caches) can exhaust inodes before disk space. Set monitoring alerts at 80% inode usage. On ext4, inode count is fixed at filesystem creation — the only fix is reformatting. XFS dynamically allocates inodes and doesn't have this limitation.",
+            "Use noatime mount option for read-heavy workloads: By default, Linux updates the access time (atime) on every file read, generating a write for every read operation. Mount with noatime or relatime (updates atime only if older than mtime) to eliminate this overhead. This is especially impactful for workloads that read many small files (web servers serving static content, package managers scanning directories).",
+            "Tune dirty page writeback for your workload: The kernel's dirty page writeback parameters (vm.dirty_ratio, vm.dirty_background_ratio, vm.dirty_expire_centisecs) control when buffered writes are flushed to disk. High values improve write throughput (more batching) but increase data loss risk on crash and cause write stalls when the dirty limit is hit. For databases: lower values (5-10%) for predictable latency. For batch processing: higher values (20-40%) for throughput.",
+            "Use filesystem-level encryption (fscrypt) for data at rest: Linux's fscrypt provides per-file encryption at the filesystem level (supported by ext4, F2FS). It's more efficient than full-disk encryption (dm-crypt) because only file contents and names are encrypted — metadata operations don't require decryption. Each directory can have a different encryption key, enabling per-user or per-application key management without separate partitions."
+          ]
+        }
+      ],
+      "wordCount": 245,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Memory Management — The page cache bridges file I/O and memory management, buffering file data in physical RAM",
+            "I/O and Scheduling — I/O scheduling algorithms determine how filesystem block requests are ordered and dispatched to storage devices",
+            "Processes and Threads — File descriptors are per-process resources inherited across fork() and shared between threads"
+          ]
+        }
+      ],
+      "wordCount": 53,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.io.*;\nimport java.nio.file.*;\nimport java.nio.file.attribute.*;\nimport java.time.Instant;\nimport java.time.ZoneId;\nimport java.time.format.DateTimeFormatter;\n\npublic class FileSystemOps {\n\n    // Demonstrate atomic file write using rename\n    static boolean atomicWrite(Path path, byte[] data) throws IOException {\n        Path tmpPath = path.resolveSibling(path.getFileName() + \".tmp.\" + ProcessHandle.current().pid());\n\n        try {\n            // Write to temporary file\n            Files.write(tmpPath, data, StandardOpenOption.CREATE,\n                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);\n\n            // Force data to disk (not just OS buffers)\n            try (FileOutputStream fos = new FileOutputStream(tmpPath.toFile())) {\n                fos.getFD().sync();\n            }\n\n            // Atomic rename replaces old file\n            Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE,\n                    StandardCopyOption.REPLACE_EXISTING);\n\n            return true;\n        } catch (IOException e) {\n            Files.deleteIfExists(tmpPath);\n            return false;\n        }\n    }\n\n    // Inspect file metadata (similar to inode info)\n    static void printFileInfo(Path path) throws IOException {\n        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);\n        PosixFileAttributes posixAttrs = null;\n        try {\n            posixAttrs = Files.readAttributes(path, PosixFileAttributes.class);\n        } catch (UnsupportedOperationException ignored) {}\n\n        System.out.println(\"File: \" + path);\n        System.out.println(\"  Size: \" + attrs.size() + \" bytes\");\n        System.out.println(\"  Is regular file: \" + attrs.isRegularFile());\n        System.out.println(\"  Is directory: \" + attrs.isDirectory());\n        System.out.println(\"  Is symbolic link: \" + attrs.isSymbolicLink());\n\n        if (posixAttrs != null) {\n            System.out.println(\"  Owner: \" + posixAttrs.owner().getName());\n            System.out.println(\"  Group: \" + posixAttrs.group().getName());\n            System.out.println(\"  Permissions: \" + PosixFilePermissions.toString(posixAttrs.permissions()));\n        }\n\n        DateTimeFormatter fmt = DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\")\n                .withZone(ZoneId.systemDefault());\n        System.out.println(\"  Modified: \" + fmt.format(attrs.lastModifiedTime().toInstant()));\n        System.out.println(\"  Created: \" + fmt.format(attrs.creationTime().toInstant()));\n    }\n\n    // Check filesystem capacity\n    static void printFsStats(Path path) throws IOException {\n        FileStore store = Files.getFileStore(path);\n\n        long total = store.getTotalSpace();\n        long free = store.getUnallocatedSpace();\n        long usable = store.getUsableSpace(); // Available to non-root\n\n        System.out.println(\"Filesystem stats for \" + path + \":\");\n        System.out.println(\"  Total: \" + (total / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Free: \" + (free / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Usable: \" + (usable / (1024 * 1024)) + \" MB\");\n        System.out.println(\"  Type: \" + store.type());\n        System.out.println(\"  Read-only: \" + store.isReadOnly());\n    }\n\n    public static void main(String[] args) throws IOException {\n        Path testPath = Paths.get(args.length > 0 ? args[0] : \".\");\n        printFileInfo(testPath);\n        printFsStats(testPath);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.*;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.FileChannel;\nimport java.nio.file.*;\n\npublic class IOBenchmark {\n    private static final int FILE_SIZE = 256 * 1024 * 1024; // 256MB\n    private static final int BLOCK_SIZE = 4096;             // 4KB\n\n    // Write with buffered I/O (uses page cache via BufferedOutputStream)\n    static double benchmarkBufferedWrite(Path path) throws IOException {\n        byte[] buf = new byte[BLOCK_SIZE];\n        java.util.Arrays.fill(buf, (byte) 'A');\n\n        long start = System.nanoTime();\n\n        try (BufferedOutputStream bos = new BufferedOutputStream(\n                new FileOutputStream(path.toFile()), 64 * 1024)) {\n            int total = 0;\n            while (total < FILE_SIZE) {\n                bos.write(buf);\n                total += BLOCK_SIZE;\n            }\n            bos.flush();\n        }\n\n        // Force data to disk\n        try (FileOutputStream fos = new FileOutputStream(path.toFile(), true)) {\n            fos.getFD().sync();\n        }\n\n        long end = System.nanoTime();\n        return (end - start) / 1_000_000.0;\n    }\n\n    // Write with direct ByteBuffer (bypasses JVM heap, closer to direct I/O)\n    static double benchmarkDirectWrite(Path path) throws IOException {\n        ByteBuffer buf = ByteBuffer.allocateDirect(BLOCK_SIZE);\n        for (int i = 0; i < BLOCK_SIZE; i++) buf.put((byte) 'B');\n\n        long start = System.nanoTime();\n\n        try (FileChannel channel = FileChannel.open(path,\n                StandardOpenOption.CREATE, StandardOpenOption.WRITE,\n                StandardOpenOption.TRUNCATE_EXISTING)) {\n            int total = 0;\n            while (total < FILE_SIZE) {\n                buf.flip();\n                channel.write(buf);\n                buf.clear();\n                total += BLOCK_SIZE;\n            }\n            channel.force(true); // Equivalent to fsync - flush to disk\n        }\n\n        long end = System.nanoTime();\n        return (end - start) / 1_000_000.0;\n    }\n\n    public static void main(String[] args) throws IOException {\n        System.out.printf(\"Writing %d MB...%n\", FILE_SIZE / (1024 * 1024));\n\n        Path bufferedPath = Paths.get(\"/tmp/bench_buffered\");\n        Path directPath = Paths.get(\"/tmp/bench_direct\");\n\n        double bufferedMs = benchmarkBufferedWrite(bufferedPath);\n        System.out.printf(\"Buffered I/O: %.1f ms (%.1f MB/s)%n\",\n                bufferedMs, (FILE_SIZE / (1024.0 * 1024.0)) / (bufferedMs / 1000.0));\n\n        double directMs = benchmarkDirectWrite(directPath);\n        System.out.printf(\"Direct I/O:   %.1f ms (%.1f MB/s)%n\",\n                directMs, (FILE_SIZE / (1024.0 * 1024.0)) / (directMs / 1000.0));\n\n        Files.deleteIfExists(bufferedPath);\n        Files.deleteIfExists(directPath);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.IOException;\nimport java.nio.file.*;\nimport java.nio.file.attribute.BasicFileAttributes;\n\npublic class FileWatcher {\n\n    static void printEvent(WatchEvent<?> event) {\n        WatchEvent.Kind<?> kind = event.kind();\n        Path filename = (Path) event.context();\n\n        String action;\n        if (kind == StandardWatchEventKinds.ENTRY_CREATE) action = \"CREATED\";\n        else if (kind == StandardWatchEventKinds.ENTRY_DELETE) action = \"DELETED\";\n        else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) action = \"MODIFIED\";\n        else action = \"UNKNOWN\";\n\n        System.out.printf(\"  %s: %s%n\", action, filename);\n\n        // Check if it's a directory\n        if (kind == StandardWatchEventKinds.ENTRY_CREATE) {\n            try {\n                Path full = ((Path) event.context());\n                if (Files.isDirectory(full)) {\n                    System.out.println(\"    [directory]\");\n                }\n            } catch (Exception ignored) {}\n        }\n    }\n\n    public static void main(String[] args) throws IOException, InterruptedException {\n        Path watchPath = Paths.get(args.length > 0 ? args[0] : \"/tmp\");\n\n        WatchService watchService = FileSystems.getDefault().newWatchService();\n\n        watchPath.register(watchService,\n                StandardWatchEventKinds.ENTRY_CREATE,\n                StandardWatchEventKinds.ENTRY_DELETE,\n                StandardWatchEventKinds.ENTRY_MODIFY);\n\n        System.out.println(\"Watching \" + watchPath + \" for filesystem events...\");\n\n        while (true) {\n            WatchKey key = watchService.take(); // Blocks until events available\n\n            for (WatchEvent<?> event : key.pollEvents()) {\n                if (event.kind() == StandardWatchEventKinds.OVERFLOW) {\n                    System.out.println(\"  OVERFLOW: events may have been lost\");\n                    continue;\n                }\n                printEvent(event);\n            }\n\n            // Reset key to receive further events\n            boolean valid = key.reset();\n            if (!valid) {\n                System.out.println(\"Watch key no longer valid, exiting.\");\n                break;\n            }\n        }\n\n        watchService.close();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.*;\nimport java.nio.file.*;\nimport java.util.*;\n\npublic class JournaledFileSystem {\n    /**Simulates a write-ahead journaling filesystem.*/\n\n    enum TxState { PENDING, COMMITTED, APPLIED, ABORTED }\n\n    static class JournalEntry implements Serializable {\n        int txId;\n        long timestamp;\n        List<Map<String, Object>> operations;\n        TxState state;\n\n        JournalEntry(int txId, long timestamp, List<Map<String, Object>> operations) {\n            this.txId = txId;\n            this.timestamp = timestamp;\n            this.operations = operations;\n            this.state = TxState.PENDING;\n        }\n    }\n\n    private final Path journalPath;\n    private final Path dataPath;\n    private int nextTxId = 1;\n    private final List<JournalEntry> journal = new ArrayList<>();\n    private final Map<String, byte[]> data = new HashMap<>();\n\n    public JournaledFileSystem(String journalPath, String dataPath) {\n        this.journalPath = Paths.get(journalPath);\n        this.dataPath = Paths.get(dataPath);\n        // Recover from crash if journal exists\n        recover();\n    }\n\n    /** Write file with journaling for crash consistency. */\n    public int writeFile(String filename, byte[] content) throws IOException {\n        int txId = nextTxId++;\n\n        // Phase 1: Write intent to journal\n        Map<String, Object> op = new HashMap<>();\n        op.put(\"op\", \"write\");\n        op.put(\"file\", filename);\n        op.put(\"size\", content.length);\n        op.put(\"checksum\", Arrays.hashCode(content));\n\n        JournalEntry entry = new JournalEntry(txId, System.currentTimeMillis(),\n                Collections.singletonList(op));\n        journal.add(entry);\n        flushJournal();\n\n        // Phase 2: Mark as committed (point of no return)\n        entry.state = TxState.COMMITTED;\n        flushJournal();\n\n        // Phase 3: Apply to data area\n        data.put(filename, content);\n        flushData();\n\n        // Phase 4: Mark as applied (can be garbage collected)\n        entry.state = TxState.APPLIED;\n        flushJournal();\n\n        return txId;\n    }\n\n    public int deleteFile(String filename) throws IOException {\n        int txId = nextTxId++;\n\n        Map<String, Object> op = new HashMap<>();\n        op.put(\"op\", \"delete\");\n        op.put(\"file\", filename);\n\n        JournalEntry entry = new JournalEntry(txId, System.currentTimeMillis(),\n                Collections.singletonList(op));\n        journal.add(entry);\n        flushJournal();\n\n        entry.state = TxState.COMMITTED;\n        flushJournal();\n\n        data.remove(filename);\n        flushData();\n\n        entry.state = TxState.APPLIED;\n        flushJournal();\n\n        return txId;\n    }\n\n    /** Replay committed but unapplied journal entries after crash. */\n    private void recover() {\n        if (!Files.exists(journalPath)) return;\n\n        try (ObjectInputStream ois = new ObjectInputStream(\n                new FileInputStream(journalPath.toFile()))) {\n            @SuppressWarnings(\"unchecked\")\n            List<JournalEntry> savedJournal = (List<JournalEntry>) ois.readObject();\n\n            for (JournalEntry entry : savedJournal) {\n                if (entry.state == TxState.COMMITTED) {\n                    // Replay: apply the operation\n                    for (Map<String, Object> op : entry.operations) {\n                        if (\"write\".equals(op.get(\"op\"))) {\n                            System.out.println(\"Recovery: replaying write to \" + op.get(\"file\"));\n                        } else if (\"delete\".equals(op.get(\"op\"))) {\n                            data.remove((String) op.get(\"file\"));\n                        }\n                    }\n                    entry.state = TxState.APPLIED;\n                } else if (entry.state == TxState.PENDING) {\n                    // Incomplete: discard\n                    entry.state = TxState.ABORTED;\n                    System.out.println(\"Recovery: aborting incomplete tx \" + entry.txId);\n                }\n            }\n        } catch (IOException | ClassNotFoundException e) {\n            System.err.println(\"Recovery failed: \" + e.getMessage());\n        }\n    }\n\n    /** Persist journal to disk. */\n    private void flushJournal() throws IOException {\n        try (ObjectOutputStream oos = new ObjectOutputStream(\n                new FileOutputStream(journalPath.toFile()))) {\n            oos.writeObject(journal);\n            oos.flush();\n        }\n        // Force to disk\n        try (FileOutputStream fos = new FileOutputStream(journalPath.toFile(), true)) {\n            fos.getFD().sync();\n        }\n    }\n\n    /** Persist data to disk. */\n    private void flushData() throws IOException {\n        try (ObjectOutputStream oos = new ObjectOutputStream(\n                new FileOutputStream(dataPath.toFile()))) {\n            oos.writeObject(data);\n            oos.flush();\n        }\n        try (FileOutputStream fos = new FileOutputStream(dataPath.toFile(), true)) {\n            fos.getFD().sync();\n        }\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/systems-and-io/file-systems.md",
+    "wordCount": 1873,
+    "sectionCount": 12
+  }
+}

@@ -1,0 +1,283 @@
+{
+  "id": "systems-and-io-io-and-scheduling",
+  "slug": "io-and-scheduling",
+  "title": "I/O and Scheduling",
+  "category": "Operating Systems",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Blocking I/O: thread sleeps until operation completes — simple but wastes threads (one thread per connection doesn't scale past ~10K connections)",
+            "Non-blocking I/O: operations return immediately with EAGAIN if not ready — requires polling, wastes CPU cycles checking readiness",
+            "I/O multiplexing (select/poll/epoll/kqueue): single thread monitors many file descriptors, waking only when I/O is ready — foundation of event-driven servers",
+            "epoll (Linux) uses a kernel-maintained interest set with O(1) readiness notification; kqueue (BSD/macOS) provides similar functionality with a unified event interface",
+            "Async I/O (io_uring, IOCP): kernel performs I/O and notifies completion — true asynchronous operation without blocking or polling",
+            "CFS (Completely Fair Scheduler): Linux's default CPU scheduler using a red-black tree of virtual runtimes, providing proportional fairness based on nice values",
+            "Real-time scheduling (SCHED_FIFO, SCHED_RR): deterministic scheduling for latency-sensitive workloads — runs until yield or preemption by higher priority",
+            "CPU scheduling metrics: throughput (tasks/second), latency (time to first response), fairness (proportional CPU share), utilization (% CPU busy)",
+            "io_uring: Linux's modern async I/O interface using shared ring buffers between user and kernel space — eliminates system call overhead for high-IOPS workloads"
+          ]
+        }
+      ],
+      "wordCount": 179,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "I/O models and scheduling knowledge is critical when:"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Designing high-concurrency network servers — choosing between thread-per-connection (simple, limited to ~10K), event-driven with epoll (scales to millions of connections), or io_uring (highest throughput for disk and network I/O)",
+            "Tuning application latency — understanding how CPU scheduling affects tail latency (p99/p999), when to use real-time priorities, and how to avoid priority inversion",
+            "Building event loops and async frameworks — implementing or configuring frameworks like Node.js (libuv/epoll), Netty (epoll/kqueue), Tokio (io_uring/epoll), or Go runtime (netpoller)",
+            "Optimizing database I/O — choosing between buffered reads (page cache), direct I/O (O_DIRECT), and async I/O (io_uring) for different access patterns",
+            "Configuring container CPU limits — understanding how CFS bandwidth throttling (cpu.cfs_quota_us) interacts with application thread pools and causes latency spikes",
+            "Diagnosing I/O bottlenecks — using iostat, iotop, and blktrace to identify whether bottlenecks are in the application, filesystem, I/O scheduler, or device"
+          ]
+        }
+      ],
+      "wordCount": 145,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "event-driven-server-with-nio-selector-java",
+          "heading": "Event-Driven Server with NIO Selector (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.IOException;\nimport java.net.InetSocketAddress;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.*;\nimport java.util.Iterator;\nimport java.util.Set;\n\npublic class NioEchoServer {\n    private static final int MAX_EVENTS = 1024;\n    private static final int LISTEN_BACKLOG = 512;\n    private static final int BUFFER_SIZE = 4096;\n\n    public static void main(String[] args) throws IOException {\n        int port = 8080;\n        ServerSocketChannel listener = createListener(port);\n        eventLoop(listener);\n    }\n\n    static ServerSocketChannel createListener(int port) throws IOException {\n        ServerSocketChannel serverChannel = ServerSocketChannel.open();\n        serverChannel.configureBlocking(false);\n        serverChannel.socket().setReuseAddress(true);\n        serverChannel.socket().bind(new InetSocketAddress(port), LISTEN_BACKLOG);\n        return serverChannel;\n    }\n\n    static void eventLoop(ServerSocketChannel listener) throws IOException {\n        Selector selector = Selector.open();\n\n        // Register listener for accept events (equivalent to EPOLLIN on listen fd)\n        listener.register(selector, SelectionKey.OP_ACCEPT);\n\n        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);\n\n        System.out.println(\"Server listening on port \" + listener.socket().getLocalPort());\n\n        while (true) {\n            // Block until at least one channel is ready (like epoll_wait with -1 timeout)\n            int readyCount = selector.select();\n            if (readyCount == 0) continue;\n\n            Set<SelectionKey> selectedKeys = selector.selectedKeys();\n            Iterator<SelectionKey> iter = selectedKeys.iterator();\n\n            while (iter.hasNext()) {\n                SelectionKey key = iter.next();\n                iter.remove();\n\n                if (key.isAcceptable()) {\n                    // Accept all pending connections\n                    ServerSocketChannel server = (ServerSocketChannel) key.channel();\n                    SocketChannel client;\n                    while ((client = server.accept()) != null) {\n                        client.configureBlocking(false);\n                        client.socket().setTcpNoDelay(true);\n                        client.register(selector, SelectionKey.OP_READ);\n                    }\n                } else if (key.isReadable()) {\n                    SocketChannel client = (SocketChannel) key.channel();\n                    buffer.clear();\n\n                    try {\n                        int bytesRead = client.read(buffer);\n                        if (bytesRead == -1) {\n                            // Client disconnected\n                            key.cancel();\n                            client.close();\n                            continue;\n                        }\n\n                        // Echo back (simple example)\n                        buffer.flip();\n                        while (buffer.hasRemaining()) {\n                            client.write(buffer);\n                        }\n                    } catch (IOException e) {\n                        key.cancel();\n                        client.close();\n                    }\n                }\n            }\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "async-file-io-with-asynchronousfilechannel-java",
+          "heading": "Async File I/O with AsynchronousFileChannel (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.IOException;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.AsynchronousFileChannel;\nimport java.nio.channels.CompletionHandler;\nimport java.nio.file.*;\nimport java.util.concurrent.CountDownLatch;\nimport java.util.concurrent.atomic.AtomicInteger;\n\npublic class AsyncFileIO {\n    private static final int QUEUE_DEPTH = 64;\n    private static final int BLOCK_SIZE = 4096;\n\n    static class IoRequest {\n        final int fd;\n        final long offset;\n        final int length;\n        final ByteBuffer buffer;\n        final String op;\n\n        IoRequest(int fd, long offset, int length, ByteBuffer buffer, String op) {\n            this.fd = fd;\n            this.offset = offset;\n            this.length = length;\n            this.buffer = buffer;\n            this.op = op;\n        }\n    }\n\n    // Submit async read request with completion handler\n    static void submitRead(AsynchronousFileChannel channel, long offset,\n                           ByteBuffer buffer, CountDownLatch latch) {\n        IoRequest req = new IoRequest(0, offset, buffer.capacity(), buffer, \"read\");\n\n        channel.read(buffer, offset, req, new CompletionHandler<Integer, IoRequest>() {\n            @Override\n            public void completed(Integer bytesRead, IoRequest attachment) {\n                System.out.printf(\"Completed %s: offset=%d bytes=%d%n\",\n                        attachment.op, attachment.offset, bytesRead);\n                latch.countDown();\n            }\n\n            @Override\n            public void failed(Throwable exc, IoRequest attachment) {\n                System.err.printf(\"I/O error for offset %d: %s%n\",\n                        attachment.offset, exc.getMessage());\n                latch.countDown();\n            }\n        });\n    }\n\n    public static void main(String[] args) throws IOException, InterruptedException {\n        Path path = Paths.get(\"testfile.dat\");\n        if (!Files.exists(path)) {\n            System.err.println(\"File not found: \" + path);\n            return;\n        }\n\n        AsynchronousFileChannel channel = AsynchronousFileChannel.open(\n                path, StandardOpenOption.READ);\n\n        int numReads = 8;\n        CountDownLatch latch = new CountDownLatch(numReads);\n\n        // Submit multiple async reads\n        for (int i = 0; i < numReads; i++) {\n            ByteBuffer buffer = ByteBuffer.allocateDirect(BLOCK_SIZE);\n            submitRead(channel, (long) i * BLOCK_SIZE, buffer, latch);\n        }\n\n        // Wait for all completions\n        latch.await();\n\n        channel.close();\n        System.out.println(\"All async reads completed.\");\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cpu-scheduling-simulation-cfs-virtual-runtime-java",
+          "heading": "CPU Scheduling Simulation: CFS Virtual Runtime (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\n\npublic class CFSScheduler {\n    /**Simulates Linux's Completely Fair Scheduler.*/\n\n    static class Task implements Comparable<Task> {\n        double vruntime;\n        final int pid;\n        final String name;\n        final int nice;\n        double totalRuntimeMs = 0;\n\n        Task(double vruntime, int pid, String name, int nice) {\n            this.vruntime = vruntime;\n            this.pid = pid;\n            this.name = name;\n            this.nice = nice;\n        }\n\n        /** CFS weight from nice value. Nice 0 = weight 1024. */\n        double weight() {\n            // Simplified: each nice level is ~1.25x weight difference\n            return 1024 * Math.pow(1.25, -nice);\n        }\n\n        @Override\n        public int compareTo(Task other) {\n            return Double.compare(this.vruntime, other.vruntime);\n        }\n    }\n\n    private final PriorityQueue<Task> runQueue = new PriorityQueue<>(); // Min-heap by vruntime\n    private Task current = null;\n    private final double targetLatencyMs;\n    private final double minGranularityMs;\n    private double clockMs = 0.0;\n    private int nrRunning = 0;\n    private double totalWeight = 0.0;\n    private double minVruntime = 0.0; // Floor for new tasks\n\n    public CFSScheduler(double targetLatencyMs, double minGranularityMs) {\n        this.targetLatencyMs = targetLatencyMs;\n        this.minGranularityMs = minGranularityMs;\n    }\n\n    public CFSScheduler() {\n        this(6.0, 0.75);\n    }\n\n    public void addTask(int pid, String name, int nice) {\n        Task task = new Task(minVruntime, pid, name, nice);\n        runQueue.add(task);\n        nrRunning++;\n        totalWeight += task.weight();\n    }\n\n    private double timeSlice(Task task) {\n        /** Calculate time slice proportional to weight. */\n        if (nrRunning <= 1) return targetLatencyMs;\n\n        // Proportional share of the scheduling period\n        double period = Math.max(targetLatencyMs, nrRunning * minGranularityMs);\n        double sliceMs = period * (task.weight() / totalWeight);\n        return Math.max(sliceMs, minGranularityMs);\n    }\n\n    private void updateVruntime(Task task, double deltaMs) {\n        /** Update virtual runtime (inversely proportional to weight). */\n        // Higher weight = slower vruntime growth = more CPU time\n        task.vruntime += deltaMs * (1024.0 / task.weight());\n        task.totalRuntimeMs += deltaMs;\n    }\n\n    public Task tick(double deltaMs) {\n        /** Advance scheduler by deltaMs. */\n        clockMs += deltaMs;\n\n        if (current == null && !runQueue.isEmpty()) {\n            current = runQueue.poll();\n        }\n\n        if (current == null) return null;\n\n        // Run current task\n        updateVruntime(current, deltaMs);\n\n        // Check if a task with lower vruntime exists (should preempt)\n        boolean shouldPreempt = false;\n        if (!runQueue.isEmpty() && runQueue.peek().vruntime < current.vruntime) {\n            // Another task has less vruntime (is \"less fair\")\n            if (current.totalRuntimeMs >= minGranularityMs) {\n                shouldPreempt = true;\n            }\n        }\n\n        if (shouldPreempt) {\n            // Put current back and pick the task with lowest vruntime\n            runQueue.add(current);\n            current = runQueue.poll();\n        }\n\n        // Update minVruntime (monotonically increasing)\n        if (!runQueue.isEmpty()) {\n            minVruntime = Math.max(minVruntime, runQueue.peek().vruntime);\n        }\n        if (current != null) {\n            minVruntime = Math.max(minVruntime, current.vruntime);\n        }\n\n        return current;\n    }\n\n    public Task tick() {\n        return tick(1.0);\n    }\n\n    public void stats() {\n        List<Task> allTasks = new ArrayList<>(runQueue);\n        if (current != null) allTasks.add(current);\n        allTasks.sort(Comparator.comparingInt(t -> t.pid));\n\n        System.out.printf(\"%n--- CFS Stats at %.1fms ---%n\", clockMs);\n        for (Task task : allTasks) {\n            System.out.printf(\"  PID %d (%s): nice=%d weight=%.0f vruntime=%.2f runtime=%.1fms%n\",\n                    task.pid, task.name, task.nice, task.weight(), task.vruntime, task.totalRuntimeMs);\n        }\n    }\n\n    // Simulate mixed-priority workload\n    public static void main(String[] args) {\n        CFSScheduler scheduler = new CFSScheduler();\n        scheduler.addTask(1, \"web-server\", -5);    // Higher priority\n        scheduler.addTask(2, \"batch-job\", 10);     // Lower priority\n        scheduler.addTask(3, \"api-handler\", 0);    // Normal priority\n        scheduler.addTask(4, \"log-processor\", 5);  // Below normal\n\n        // Run for 100ms\n        for (int i = 0; i < 100; i++) {\n            scheduler.tick(1.0);\n        }\n\n        scheduler.stats();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "io-multiplexing-with-nio-selector-java",
+          "heading": "I/O Multiplexing with NIO Selector (Java)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.io.IOException;\nimport java.net.InetSocketAddress;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.*;\nimport java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.function.Consumer;\n\npublic class EventLoop {\n    /**Simple event loop demonstrating I/O multiplexing patterns.*/\n\n    private final Selector selector;\n    private final Map<SelectableChannel, Consumer<SelectionKey>> readers = new ConcurrentHashMap<>();\n    private final Map<SelectableChannel, Consumer<SelectionKey>> writers = new ConcurrentHashMap<>();\n\n    public EventLoop() throws IOException {\n        this.selector = Selector.open();\n    }\n\n    public void addReader(SelectableChannel channel, Consumer<SelectionKey> callback) throws ClosedChannelException {\n        readers.put(channel, callback);\n        int ops = SelectionKey.OP_READ;\n        if (writers.containsKey(channel)) ops |= SelectionKey.OP_WRITE;\n        channel.register(selector, ops);\n    }\n\n    public void addWriter(SelectableChannel channel, Consumer<SelectionKey> callback) throws ClosedChannelException {\n        writers.put(channel, callback);\n        int ops = SelectionKey.OP_WRITE;\n        if (readers.containsKey(channel)) ops |= SelectionKey.OP_READ;\n        channel.register(selector, ops);\n    }\n\n    public void remove(SelectableChannel channel) {\n        readers.remove(channel);\n        writers.remove(channel);\n        SelectionKey key = channel.keyFor(selector);\n        if (key != null) key.cancel();\n    }\n\n    public void runOnce(long timeoutMs) throws IOException {\n        // select() - blocks until at least one channel is ready\n        int ready = selector.select(timeoutMs);\n        if (ready == 0) return;\n\n        Iterator<SelectionKey> iter = selector.selectedKeys().iterator();\n        while (iter.hasNext()) {\n            SelectionKey key = iter.next();\n            iter.remove();\n\n            if (key.isReadable()) {\n                Consumer<SelectionKey> cb = readers.get(key.channel());\n                if (cb != null) cb.accept(key);\n            }\n            if (key.isValid() && key.isWritable()) {\n                Consumer<SelectionKey> cb = writers.get(key.channel());\n                if (cb != null) cb.accept(key);\n            }\n        }\n    }\n\n    public void runForever() throws IOException {\n        while (!readers.isEmpty() || !writers.isEmpty()) {\n            runOnce(1000);\n        }\n    }\n}\n\nclass EchoServer {\n    /**Non-blocking echo server using event loop.*/\n\n    private final EventLoop loop;\n    private final ServerSocketChannel serverChannel;\n    private final Map<SocketChannel, ByteBuffer> clients = new ConcurrentHashMap<>();\n\n    public EchoServer(int port) throws IOException {\n        this.loop = new EventLoop();\n        this.serverChannel = ServerSocketChannel.open();\n        serverChannel.configureBlocking(false);\n        serverChannel.socket().setReuseAddress(true);\n        serverChannel.socket().bind(new InetSocketAddress(port), 128);\n\n        serverChannel.register(loop.selector, SelectionKey.OP_ACCEPT);\n        loop.readers.put(serverChannel, this::onAccept);\n    }\n\n    private void onAccept(SelectionKey key) {\n        try {\n            SocketChannel client;\n            while ((client = serverChannel.accept()) != null) {\n                client.configureBlocking(false);\n                clients.put(client, ByteBuffer.allocate(4096));\n                final SocketChannel ch = client;\n                loop.addReader(client, k -> onRead(ch));\n            }\n        } catch (IOException e) {\n            // No more pending connections\n        }\n    }\n\n    private void onRead(SocketChannel client) {\n        ByteBuffer buffer = clients.get(client);\n        if (buffer == null) return;\n        try {\n            buffer.clear();\n            int bytesRead = client.read(buffer);\n            if (bytesRead > 0) {\n                buffer.flip();\n                client.write(buffer); // Echo back\n            } else if (bytesRead == -1) {\n                closeClient(client);\n            }\n        } catch (IOException e) {\n            closeClient(client);\n        }\n    }\n\n    private void closeClient(SocketChannel client) {\n        loop.remove(client);\n        clients.remove(client);\n        try { client.close(); } catch (IOException ignored) {}\n    }\n\n    public void run() throws IOException {\n        System.out.println(\"Echo server running on port \" + serverChannel.socket().getLocalPort());\n        loop.runForever();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "Using level-triggered epoll without draining the socket: In level-triggered mode (default), epoll reports readiness on every epoll_wait call as long as data is available. If you read only part of the available data, epoll_wait returns immediately again, potentially causing a busy loop. Either drain the socket completely (read until EAGAIN) or switch to edge-triggered mode (EPOLLET) which only notifies on state transitions. Edge-triggered requires draining because you won't be notified again until new data arrives.",
+            "Thread-per-connection model hitting OS limits: Each thread consumes ~8MB of virtual address space (stack) and a kernel task_struct. At 10K connections, that's 80GB of virtual memory and significant scheduler overhead. The C10K problem is solved by I/O multiplexing (one thread handling thousands of connections via epoll). Modern systems target C10M (10 million connections) using io_uring, kernel bypass (DPDK), or userspace TCP stacks.",
+            "CFS bandwidth throttling causing latency spikes in containers: When a container's CPU quota (cpu.cfs_quota_us) is exhausted within a period (cpu.cfs_period_us, default 100ms), all threads in the cgroup are throttled until the next period. This causes periodic latency spikes even when the host has idle CPU. Mitigations: increase the period (reduces burst penalty), set quota higher than average usage (accommodate bursts), or use cpuset pinning instead of CFS quotas for latency-sensitive workloads. Monitor with cpu.stat throttled_time.",
+            "Ignoring the thundering herd problem with epoll: When multiple threads/processes epoll_wait on the same listening socket, a new connection wakes all of them but only one can accept it. The rest wake up, fail to accept, and go back to sleep — wasting CPU. Solutions: use EPOLLEXCLUSIVE flag (Linux 4.5+) to wake only one waiter, use SO_REUSEPORT to give each thread its own accept queue, or accept in a single thread and distribute connections to workers.",
+            "Mixing blocking and non-blocking I/O in the same event loop: If any operation in an event loop blocks (DNS resolution, file I/O without O_NONBLOCK, synchronous database queries), it stalls all other connections handled by that loop. Use async DNS (c-ares, getaddrinfo_a), thread pools for blocking file I/O, and async database drivers. Node.js's libuv uses a thread pool specifically for operations that lack async OS interfaces (file I/O on Linux before io_uring).",
+            "Not handling partial writes in non-blocking mode: write() on a non-blocking socket may write fewer bytes than requested (returns partial count) or fail with EAGAIN (buffer full). You must buffer the remaining data and register for EPOLLOUT to retry when the socket becomes writable. Failing to handle partial writes causes data corruption or truncation. Similarly, read() may return partial data — accumulate in a buffer and parse only when a complete message is available."
+          ]
+        }
+      ],
+      "wordCount": 433,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Nginx event-driven architecture: Nginx uses a multi-process model where each worker process runs a single-threaded event loop with epoll (Linux) or kqueue (BSD). One worker handles thousands of concurrent connections without threading overhead. The master process manages workers, handles configuration reloads (graceful restart via SIGHUP), and distributes listening sockets. This architecture achieves high throughput with minimal memory overhead — Nginx can handle 100K+ concurrent connections per worker.",
+            "Redis single-threaded event loop: Redis processes all commands in a single thread using an event loop (ae library wrapping epoll/kqueue). This eliminates lock contention entirely — no synchronization needed for data structure access. The single-threaded model works because Redis operations are CPU-bound for microseconds (in-memory data structures). Redis 6.0+ added I/O threads for network read/write (parsing and serialization) while keeping command execution single-threaded.",
+            "Java NIO and Netty: Java NIO provides Selector (wrapping epoll/kqueue) for I/O multiplexing. Netty builds on this with a multi-reactor pattern: a boss EventLoopGroup accepts connections and distributes them to worker EventLoopGroups that handle I/O. Each EventLoop is a single thread with its own Selector, processing all I/O for its assigned channels without synchronization. This powers high-performance servers (gRPC, Elasticsearch, Cassandra) handling millions of requests per second.",
+            "Linux CFS and container scheduling: Kubernetes CPU requests map to CFS shares (cpu.shares in cgroups v1, cpu.weight in v2), providing proportional fairness under contention. CPU limits map to CFS bandwidth control (cpu.cfs_quota_us/cpu.cfs_period_us), hard-capping CPU usage. Understanding CFS explains why a container with 500m CPU limit (50ms quota per 100ms period) experiences periodic 50ms stalls when burst-heavy, and why burstable QoS class pods have unpredictable latency under contention.",
+            "High-frequency trading with kernel bypass: HFT systems bypass the kernel entirely for network I/O using DPDK (Data Plane Development Kit) or Solarflare's OpenOnload. These frameworks map NIC memory directly into user space, eliminating system call overhead, interrupt handling, and kernel network stack processing. Combined with busy-polling (spinning on the NIC ring buffer), they achieve sub-microsecond network latency. The tradeoff: dedicated CPU cores for polling (100% utilization even when idle) and loss of kernel network features (firewalling, routing, monitoring)."
+          ]
+        }
+      ],
+      "wordCount": 342,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Compare blocking I/O, non-blocking I/O, I/O multiplexing, and async I/O. When would you use each?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Blocking I/O: thread sleeps until operation completes. Simple to program but requires one thread per connection, limiting scalability to ~10K connections (thread memory and scheduling overhead). Use for simple clients or low-concurrency servers. Non-blocking I/O: operations return immediately with EAGAIN if not ready. Requires application-level polling loop, wasting CPU. Rarely used alone. I/O multiplexing (epoll/kqueue): register interest in multiple FDs, block until any is ready. One thread handles thousands of connections efficiently. Use for high-concurrency servers (web servers, proxies, databases). Async I/O (io_uring/IOCP): submit operations to the kernel, get notified on completion. True async — no blocking, no polling. Use for maximum throughput on modern kernels, especially for disk I/O where epoll doesn't help (regular files are always \"ready\" in epoll)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain how epoll works and why it's more efficient than select/poll for large numbers of connections."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: select/poll require passing the entire set of file descriptors to the kernel on every call, and the kernel scans all of them to find ready ones — O(n) per call where n is total FDs monitored. epoll maintains a persistent interest set in the kernel (epoll_ctl adds/removes FDs once). epoll_wait returns only the ready FDs — O(1) for adding the ready event, O(k) total where k is the number of ready FDs (typically much smaller than n). For 100K connections where 100 are ready, select scans 100K FDs while epoll returns just 100. epoll also avoids copying the FD set between user and kernel space on every call. Edge-triggered mode (EPOLLET) further reduces notifications by only reporting state transitions rather than current state."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the Completely Fair Scheduler (CFS) and how does it achieve fairness?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CFS maintains a red-black tree of runnable tasks, ordered by virtual runtime (vruntime). The task with the lowest vruntime (least CPU time relative to its weight) is always scheduled next — O(log n) to find and rebalance. Virtual runtime advances inversely proportional to the task's weight (derived from nice value): high-weight tasks accumulate vruntime slowly, getting more CPU time. A nice-0 task with weight 1024 and a nice-5 task with weight 335 sharing a CPU get ~75% and ~25% respectively. The scheduling period (target latency) is divided proportionally among all runnable tasks, with a minimum granularity to prevent excessive context switching. CFS provides proportional fairness without fixed time slices or priority levels."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How does io_uring improve upon traditional Linux async I/O (aio)?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Linux's legacy aio (io_submit/io_getevents) only supports direct I/O on files (not buffered I/O, not network), requires aligned buffers, and has high per-operation overhead from system calls. io_uring solves these limitations: (1) Shared ring buffers between user and kernel space eliminate system call overhead — submissions and completions are written to memory-mapped rings without syscalls (with SQPOLL mode). (2) Universal — supports all I/O operations (files, network, timers, even non-I/O operations like openat, statx). (3) Batching — submit multiple operations with a single io_uring_enter() call. (4) Linked operations — chain dependent operations (read then write) without returning to userspace between them. (5) Fixed buffers/files — pre-register resources to avoid per-operation kernel validation. io_uring achieves 2-10x higher IOPS than epoll+read for storage workloads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain CFS bandwidth throttling and its impact on containerized applications."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: CFS bandwidth control limits a cgroup's CPU usage to quota microseconds per period (default 100ms). A container with 200m CPU limit gets 20ms per 100ms period. If the container's threads consume their 20ms quota in a burst (e.g., handling a request spike in the first 5ms), all threads are throttled for the remaining 95ms — causing a latency spike visible as p99 tail latency. This is the \"CFS throttling\" problem. Mitigations: (1) Set CPU limits higher than average usage to accommodate bursts. (2) Increase the period (cpu.cfs_period_us = 10ms) so throttling is shorter and more frequent. (3) Use cpu.shares (proportional, no hard cap) instead of quotas for latency-sensitive services. (4) Monitor nr_throttled and throttled_time in cpu.stat. (5) In Kubernetes, set requests (shares) without limits (no quota) for latency-sensitive pods."
+        }
+      ],
+      "wordCount": 680,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use SO_REUSEPORT for multi-core network servers: SO_REUSEPORT allows multiple sockets to bind to the same port, with the kernel distributing incoming connections across them using a hash. Each worker thread/process gets its own accept queue, eliminating the thundering herd problem and lock contention on the accept path. Nginx, HAProxy, and Envoy use this for linear scaling across cores. Combine with CPU affinity (SO_INCOMING_CPU) to keep connections on the same core as the accepting thread.",
+            "Monitor I/O scheduler queue depth and latency: Use iostat -x 1 to monitor await (average I/O latency), avgqu-sz (queue depth), and %util (device utilization). High await with low %util indicates I/O scheduling delays or filesystem contention. High %util with high avgqu-sz indicates device saturation. For NVMe devices, use nvme smart-log for device-level latency histograms. Set alerts on p99 I/O latency exceeding your SLO (typically 1-10ms for SSD, 10-50ms for HDD).",
+            "Pin latency-sensitive event loops to dedicated cores: Use CPU affinity (taskset, pthread_setaffinity_np) to bind event loop threads to specific cores, and isolate those cores from the scheduler (isolcpus kernel parameter). This eliminates context switch overhead and cache pollution from other processes. Combine with NAPI busy polling (SO_BUSY_POLL) for network I/O to reduce interrupt-to-userspace latency from ~10μs to ~1μs. Standard practice in HFT and real-time audio processing.",
+            "Tune epoll with EPOLLEXCLUSIVE and batch accept: For servers with multiple worker threads sharing a listening socket, use EPOLLEXCLUSIVE (Linux 4.5+) to wake only one thread per event, avoiding thundering herd. In the accept handler, loop accept() until EAGAIN to batch-accept all pending connections in one wake-up. This reduces the number of epoll_wait returns and system calls. For very high connection rates (>100K/s), consider accept4() with SOCK_NONBLOCK|SOCK_CLOEXEC to avoid separate fcntl calls."
+          ]
+        }
+      ],
+      "wordCount": 282,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Processes and Threads — Thread pools and process models that interact with I/O multiplexing and CPU scheduling",
+            "Concurrency Primitives — Lock-free structures and synchronization used in event loop implementations",
+            "File Systems — File I/O buffering, direct I/O, and the page cache that interact with I/O scheduling"
+          ]
+        }
+      ],
+      "wordCount": 46,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.io.IOException;\nimport java.net.InetSocketAddress;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.*;\nimport java.util.Iterator;\nimport java.util.Set;\n\npublic class NioEchoServer {\n    private static final int MAX_EVENTS = 1024;\n    private static final int LISTEN_BACKLOG = 512;\n    private static final int BUFFER_SIZE = 4096;\n\n    public static void main(String[] args) throws IOException {\n        int port = 8080;\n        ServerSocketChannel listener = createListener(port);\n        eventLoop(listener);\n    }\n\n    static ServerSocketChannel createListener(int port) throws IOException {\n        ServerSocketChannel serverChannel = ServerSocketChannel.open();\n        serverChannel.configureBlocking(false);\n        serverChannel.socket().setReuseAddress(true);\n        serverChannel.socket().bind(new InetSocketAddress(port), LISTEN_BACKLOG);\n        return serverChannel;\n    }\n\n    static void eventLoop(ServerSocketChannel listener) throws IOException {\n        Selector selector = Selector.open();\n\n        // Register listener for accept events (equivalent to EPOLLIN on listen fd)\n        listener.register(selector, SelectionKey.OP_ACCEPT);\n\n        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);\n\n        System.out.println(\"Server listening on port \" + listener.socket().getLocalPort());\n\n        while (true) {\n            // Block until at least one channel is ready (like epoll_wait with -1 timeout)\n            int readyCount = selector.select();\n            if (readyCount == 0) continue;\n\n            Set<SelectionKey> selectedKeys = selector.selectedKeys();\n            Iterator<SelectionKey> iter = selectedKeys.iterator();\n\n            while (iter.hasNext()) {\n                SelectionKey key = iter.next();\n                iter.remove();\n\n                if (key.isAcceptable()) {\n                    // Accept all pending connections\n                    ServerSocketChannel server = (ServerSocketChannel) key.channel();\n                    SocketChannel client;\n                    while ((client = server.accept()) != null) {\n                        client.configureBlocking(false);\n                        client.socket().setTcpNoDelay(true);\n                        client.register(selector, SelectionKey.OP_READ);\n                    }\n                } else if (key.isReadable()) {\n                    SocketChannel client = (SocketChannel) key.channel();\n                    buffer.clear();\n\n                    try {\n                        int bytesRead = client.read(buffer);\n                        if (bytesRead == -1) {\n                            // Client disconnected\n                            key.cancel();\n                            client.close();\n                            continue;\n                        }\n\n                        // Echo back (simple example)\n                        buffer.flip();\n                        while (buffer.hasRemaining()) {\n                            client.write(buffer);\n                        }\n                    } catch (IOException e) {\n                        key.cancel();\n                        client.close();\n                    }\n                }\n            }\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.IOException;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.AsynchronousFileChannel;\nimport java.nio.channels.CompletionHandler;\nimport java.nio.file.*;\nimport java.util.concurrent.CountDownLatch;\nimport java.util.concurrent.atomic.AtomicInteger;\n\npublic class AsyncFileIO {\n    private static final int QUEUE_DEPTH = 64;\n    private static final int BLOCK_SIZE = 4096;\n\n    static class IoRequest {\n        final int fd;\n        final long offset;\n        final int length;\n        final ByteBuffer buffer;\n        final String op;\n\n        IoRequest(int fd, long offset, int length, ByteBuffer buffer, String op) {\n            this.fd = fd;\n            this.offset = offset;\n            this.length = length;\n            this.buffer = buffer;\n            this.op = op;\n        }\n    }\n\n    // Submit async read request with completion handler\n    static void submitRead(AsynchronousFileChannel channel, long offset,\n                           ByteBuffer buffer, CountDownLatch latch) {\n        IoRequest req = new IoRequest(0, offset, buffer.capacity(), buffer, \"read\");\n\n        channel.read(buffer, offset, req, new CompletionHandler<Integer, IoRequest>() {\n            @Override\n            public void completed(Integer bytesRead, IoRequest attachment) {\n                System.out.printf(\"Completed %s: offset=%d bytes=%d%n\",\n                        attachment.op, attachment.offset, bytesRead);\n                latch.countDown();\n            }\n\n            @Override\n            public void failed(Throwable exc, IoRequest attachment) {\n                System.err.printf(\"I/O error for offset %d: %s%n\",\n                        attachment.offset, exc.getMessage());\n                latch.countDown();\n            }\n        });\n    }\n\n    public static void main(String[] args) throws IOException, InterruptedException {\n        Path path = Paths.get(\"testfile.dat\");\n        if (!Files.exists(path)) {\n            System.err.println(\"File not found: \" + path);\n            return;\n        }\n\n        AsynchronousFileChannel channel = AsynchronousFileChannel.open(\n                path, StandardOpenOption.READ);\n\n        int numReads = 8;\n        CountDownLatch latch = new CountDownLatch(numReads);\n\n        // Submit multiple async reads\n        for (int i = 0; i < numReads; i++) {\n            ByteBuffer buffer = ByteBuffer.allocateDirect(BLOCK_SIZE);\n            submitRead(channel, (long) i * BLOCK_SIZE, buffer, latch);\n        }\n\n        // Wait for all completions\n        latch.await();\n\n        channel.close();\n        System.out.println(\"All async reads completed.\");\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.util.*;\n\npublic class CFSScheduler {\n    /**Simulates Linux's Completely Fair Scheduler.*/\n\n    static class Task implements Comparable<Task> {\n        double vruntime;\n        final int pid;\n        final String name;\n        final int nice;\n        double totalRuntimeMs = 0;\n\n        Task(double vruntime, int pid, String name, int nice) {\n            this.vruntime = vruntime;\n            this.pid = pid;\n            this.name = name;\n            this.nice = nice;\n        }\n\n        /** CFS weight from nice value. Nice 0 = weight 1024. */\n        double weight() {\n            // Simplified: each nice level is ~1.25x weight difference\n            return 1024 * Math.pow(1.25, -nice);\n        }\n\n        @Override\n        public int compareTo(Task other) {\n            return Double.compare(this.vruntime, other.vruntime);\n        }\n    }\n\n    private final PriorityQueue<Task> runQueue = new PriorityQueue<>(); // Min-heap by vruntime\n    private Task current = null;\n    private final double targetLatencyMs;\n    private final double minGranularityMs;\n    private double clockMs = 0.0;\n    private int nrRunning = 0;\n    private double totalWeight = 0.0;\n    private double minVruntime = 0.0; // Floor for new tasks\n\n    public CFSScheduler(double targetLatencyMs, double minGranularityMs) {\n        this.targetLatencyMs = targetLatencyMs;\n        this.minGranularityMs = minGranularityMs;\n    }\n\n    public CFSScheduler() {\n        this(6.0, 0.75);\n    }\n\n    public void addTask(int pid, String name, int nice) {\n        Task task = new Task(minVruntime, pid, name, nice);\n        runQueue.add(task);\n        nrRunning++;\n        totalWeight += task.weight();\n    }\n\n    private double timeSlice(Task task) {\n        /** Calculate time slice proportional to weight. */\n        if (nrRunning <= 1) return targetLatencyMs;\n\n        // Proportional share of the scheduling period\n        double period = Math.max(targetLatencyMs, nrRunning * minGranularityMs);\n        double sliceMs = period * (task.weight() / totalWeight);\n        return Math.max(sliceMs, minGranularityMs);\n    }\n\n    private void updateVruntime(Task task, double deltaMs) {\n        /** Update virtual runtime (inversely proportional to weight). */\n        // Higher weight = slower vruntime growth = more CPU time\n        task.vruntime += deltaMs * (1024.0 / task.weight());\n        task.totalRuntimeMs += deltaMs;\n    }\n\n    public Task tick(double deltaMs) {\n        /** Advance scheduler by deltaMs. */\n        clockMs += deltaMs;\n\n        if (current == null && !runQueue.isEmpty()) {\n            current = runQueue.poll();\n        }\n\n        if (current == null) return null;\n\n        // Run current task\n        updateVruntime(current, deltaMs);\n\n        // Check if a task with lower vruntime exists (should preempt)\n        boolean shouldPreempt = false;\n        if (!runQueue.isEmpty() && runQueue.peek().vruntime < current.vruntime) {\n            // Another task has less vruntime (is \"less fair\")\n            if (current.totalRuntimeMs >= minGranularityMs) {\n                shouldPreempt = true;\n            }\n        }\n\n        if (shouldPreempt) {\n            // Put current back and pick the task with lowest vruntime\n            runQueue.add(current);\n            current = runQueue.poll();\n        }\n\n        // Update minVruntime (monotonically increasing)\n        if (!runQueue.isEmpty()) {\n            minVruntime = Math.max(minVruntime, runQueue.peek().vruntime);\n        }\n        if (current != null) {\n            minVruntime = Math.max(minVruntime, current.vruntime);\n        }\n\n        return current;\n    }\n\n    public Task tick() {\n        return tick(1.0);\n    }\n\n    public void stats() {\n        List<Task> allTasks = new ArrayList<>(runQueue);\n        if (current != null) allTasks.add(current);\n        allTasks.sort(Comparator.comparingInt(t -> t.pid));\n\n        System.out.printf(\"%n--- CFS Stats at %.1fms ---%n\", clockMs);\n        for (Task task : allTasks) {\n            System.out.printf(\"  PID %d (%s): nice=%d weight=%.0f vruntime=%.2f runtime=%.1fms%n\",\n                    task.pid, task.name, task.nice, task.weight(), task.vruntime, task.totalRuntimeMs);\n        }\n    }\n\n    // Simulate mixed-priority workload\n    public static void main(String[] args) {\n        CFSScheduler scheduler = new CFSScheduler();\n        scheduler.addTask(1, \"web-server\", -5);    // Higher priority\n        scheduler.addTask(2, \"batch-job\", 10);     // Lower priority\n        scheduler.addTask(3, \"api-handler\", 0);    // Normal priority\n        scheduler.addTask(4, \"log-processor\", 5);  // Below normal\n\n        // Run for 100ms\n        for (int i = 0; i < 100; i++) {\n            scheduler.tick(1.0);\n        }\n\n        scheduler.stats();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "import java.io.IOException;\nimport java.net.InetSocketAddress;\nimport java.nio.ByteBuffer;\nimport java.nio.channels.*;\nimport java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.function.Consumer;\n\npublic class EventLoop {\n    /**Simple event loop demonstrating I/O multiplexing patterns.*/\n\n    private final Selector selector;\n    private final Map<SelectableChannel, Consumer<SelectionKey>> readers = new ConcurrentHashMap<>();\n    private final Map<SelectableChannel, Consumer<SelectionKey>> writers = new ConcurrentHashMap<>();\n\n    public EventLoop() throws IOException {\n        this.selector = Selector.open();\n    }\n\n    public void addReader(SelectableChannel channel, Consumer<SelectionKey> callback) throws ClosedChannelException {\n        readers.put(channel, callback);\n        int ops = SelectionKey.OP_READ;\n        if (writers.containsKey(channel)) ops |= SelectionKey.OP_WRITE;\n        channel.register(selector, ops);\n    }\n\n    public void addWriter(SelectableChannel channel, Consumer<SelectionKey> callback) throws ClosedChannelException {\n        writers.put(channel, callback);\n        int ops = SelectionKey.OP_WRITE;\n        if (readers.containsKey(channel)) ops |= SelectionKey.OP_READ;\n        channel.register(selector, ops);\n    }\n\n    public void remove(SelectableChannel channel) {\n        readers.remove(channel);\n        writers.remove(channel);\n        SelectionKey key = channel.keyFor(selector);\n        if (key != null) key.cancel();\n    }\n\n    public void runOnce(long timeoutMs) throws IOException {\n        // select() - blocks until at least one channel is ready\n        int ready = selector.select(timeoutMs);\n        if (ready == 0) return;\n\n        Iterator<SelectionKey> iter = selector.selectedKeys().iterator();\n        while (iter.hasNext()) {\n            SelectionKey key = iter.next();\n            iter.remove();\n\n            if (key.isReadable()) {\n                Consumer<SelectionKey> cb = readers.get(key.channel());\n                if (cb != null) cb.accept(key);\n            }\n            if (key.isValid() && key.isWritable()) {\n                Consumer<SelectionKey> cb = writers.get(key.channel());\n                if (cb != null) cb.accept(key);\n            }\n        }\n    }\n\n    public void runForever() throws IOException {\n        while (!readers.isEmpty() || !writers.isEmpty()) {\n            runOnce(1000);\n        }\n    }\n}\n\nclass EchoServer {\n    /**Non-blocking echo server using event loop.*/\n\n    private final EventLoop loop;\n    private final ServerSocketChannel serverChannel;\n    private final Map<SocketChannel, ByteBuffer> clients = new ConcurrentHashMap<>();\n\n    public EchoServer(int port) throws IOException {\n        this.loop = new EventLoop();\n        this.serverChannel = ServerSocketChannel.open();\n        serverChannel.configureBlocking(false);\n        serverChannel.socket().setReuseAddress(true);\n        serverChannel.socket().bind(new InetSocketAddress(port), 128);\n\n        serverChannel.register(loop.selector, SelectionKey.OP_ACCEPT);\n        loop.readers.put(serverChannel, this::onAccept);\n    }\n\n    private void onAccept(SelectionKey key) {\n        try {\n            SocketChannel client;\n            while ((client = serverChannel.accept()) != null) {\n                client.configureBlocking(false);\n                clients.put(client, ByteBuffer.allocate(4096));\n                final SocketChannel ch = client;\n                loop.addReader(client, k -> onRead(ch));\n            }\n        } catch (IOException e) {\n            // No more pending connections\n        }\n    }\n\n    private void onRead(SocketChannel client) {\n        ByteBuffer buffer = clients.get(client);\n        if (buffer == null) return;\n        try {\n            buffer.clear();\n            int bytesRead = client.read(buffer);\n            if (bytesRead > 0) {\n                buffer.flip();\n                client.write(buffer); // Echo back\n            } else if (bytesRead == -1) {\n                closeClient(client);\n            }\n        } catch (IOException e) {\n            closeClient(client);\n        }\n    }\n\n    private void closeClient(SocketChannel client) {\n        loop.remove(client);\n        clients.remove(client);\n        try { client.close(); } catch (IOException ignored) {}\n    }\n\n    public void run() throws IOException {\n        System.out.println(\"Echo server running on port \" + serverChannel.socket().getLocalPort());\n        loop.runForever();\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/systems-and-io/io-and-scheduling.md",
+    "wordCount": 2107,
+    "sectionCount": 12
+  }
+}

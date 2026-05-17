@@ -274,48 +274,67 @@ public class GraphAlgorithms {
 }
 ```
 
-```python
-from collections import deque, defaultdict
+```java
+import java.util.*;
 
-def connected_components(graph: dict[int, list[int]], num_vertices: int) -> list[set[int]]:
-    """Find all connected components using BFS. O(V + E) time."""
-    visited = set()
-    components = []
+public class GraphTraversal {
+    /**
+     * Find all connected components using BFS. O(V + E) time.
+     * Returns list of sets, each containing vertices in one component.
+     */
+    public static List<Set<Integer>> connectedComponents(
+            List<List<Integer>> graph, int numVertices) {
+        boolean[] visited = new boolean[numVertices];
+        List<Set<Integer>> components = new ArrayList<>();
 
-    for v in range(num_vertices):
-        if v in visited:
-            continue
-        component = set()
-        queue = deque([v])
-        visited.add(v)
+        for (int v = 0; v < numVertices; v++) {
+            if (visited[v]) continue;
 
-        while queue:
-            curr = queue.popleft()
-            component.add(curr)
-            for neighbor in graph.get(curr, []):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(neighbor)
+            Set<Integer> component = new HashSet<>();
+            Queue<Integer> queue = new LinkedList<>();
+            queue.offer(v);
+            visited[v] = true;
 
-        components.append(component)
-    return components
+            while (!queue.isEmpty()) {
+                int curr = queue.poll();
+                component.add(curr);
+                for (int neighbor : graph.get(curr)) {
+                    if (!visited[neighbor]) {
+                        visited[neighbor] = true;
+                        queue.offer(neighbor);
+                    }
+                }
+            }
+            components.add(component);
+        }
+        return components;
+    }
 
-def has_cycle_directed(graph: dict[int, list[int]], num_vertices: int) -> bool:
-    """Detect cycle in directed graph using three-color DFS."""
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color = [WHITE] * num_vertices
+    /**
+     * Detect cycle in directed graph using three-color DFS.
+     * WHITE=0 (unvisited), GRAY=1 (in progress), BLACK=2 (done).
+     */
+    public static boolean hasCycleDirected(List<List<Integer>> graph, int numVertices) {
+        int[] color = new int[numVertices]; // All WHITE (0) initially
 
-    def dfs(v: int) -> bool:
-        color[v] = GRAY
-        for neighbor in graph.get(v, []):
-            if color[neighbor] == GRAY:
-                return True
-            if color[neighbor] == WHITE and dfs(neighbor):
-                return True
-        color[v] = BLACK
-        return False
+        for (int v = 0; v < numVertices; v++) {
+            if (color[v] == 0 && dfs(graph, v, color)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
-    return any(color[v] == WHITE and dfs(v) for v in range(num_vertices))
+    private static boolean dfs(List<List<Integer>> graph, int v, int[] color) {
+        color[v] = 1; // GRAY
+        for (int neighbor : graph.get(v)) {
+            if (color[neighbor] == 1) return true;  // Back edge = cycle
+            if (color[neighbor] == 0 && dfs(graph, neighbor, color)) return true;
+        }
+        color[v] = 2; // BLACK
+        return false;
+    }
+}
 ```
 
 ## Common Pitfalls

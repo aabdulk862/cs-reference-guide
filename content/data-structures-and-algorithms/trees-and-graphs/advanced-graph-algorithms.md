@@ -262,46 +262,67 @@ public class TarjanSCC {
 }
 ```
 
-```python
-from collections import defaultdict
+```java
+import java.util.*;
 
-def tarjan_scc(graph: dict[int, list[int]], num_vertices: int) -> list[list[int]]:
-    """Find all strongly connected components using Tarjan's algorithm."""
-    disc = [-1] * num_vertices
-    low = [0] * num_vertices
-    on_stack = [False] * num_vertices
-    stack: list[int] = []
-    sccs: list[list[int]] = []
-    time = [0]
+/**
+ * Tarjan's algorithm for finding Strongly Connected Components.
+ * Time: O(V + E), Space: O(V)
+ */
+public class TarjanSCC {
+    private int[] disc;
+    private int[] low;
+    private boolean[] onStack;
+    private Deque<Integer> stack;
+    private List<List<Integer>> sccs;
+    private int time;
+    private List<List<Integer>> graph;
 
-    def dfs(u: int) -> None:
-        disc[u] = low[u] = time[0]
-        time[0] += 1
-        stack.append(u)
-        on_stack[u] = True
+    public List<List<Integer>> findSCCs(List<List<Integer>> graph, int numVertices) {
+        this.graph = graph;
+        disc = new int[numVertices];
+        low = new int[numVertices];
+        onStack = new boolean[numVertices];
+        Arrays.fill(disc, -1);
+        stack = new ArrayDeque<>();
+        sccs = new ArrayList<>();
+        time = 0;
 
-        for v in graph.get(u, []):
-            if disc[v] == -1:
-                dfs(v)
-                low[u] = min(low[u], low[v])
-            elif on_stack[v]:
-                low[u] = min(low[u], disc[v])
+        for (int v = 0; v < numVertices; v++) {
+            if (disc[v] == -1) {
+                dfs(v);
+            }
+        }
+        return sccs;
+    }
 
-        if low[u] == disc[u]:
-            scc = []
-            while True:
-                v = stack.pop()
-                on_stack[v] = False
-                scc.append(v)
-                if v == u:
-                    break
-            sccs.append(scc)
+    private void dfs(int u) {
+        disc[u] = low[u] = time++;
+        stack.push(u);
+        onStack[u] = true;
 
-    for v in range(num_vertices):
-        if disc[v] == -1:
-            dfs(v)
+        for (int v : graph.get(u)) {
+            if (disc[v] == -1) {
+                dfs(v);
+                low[u] = Math.min(low[u], low[v]);
+            } else if (onStack[v]) {
+                low[u] = Math.min(low[u], disc[v]);
+            }
+        }
 
-    return sccs
+        // If u is root of an SCC
+        if (low[u] == disc[u]) {
+            List<Integer> scc = new ArrayList<>();
+            while (true) {
+                int v = stack.pop();
+                onStack[v] = false;
+                scc.add(v);
+                if (v == u) break;
+            }
+            sccs.add(scc);
+        }
+    }
+}
 ```
 
 ## Common Pitfalls

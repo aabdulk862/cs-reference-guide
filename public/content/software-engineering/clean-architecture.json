@@ -1,0 +1,301 @@
+{
+  "id": "design-principles-clean-architecture",
+  "slug": "clean-architecture",
+  "title": "Clean Architecture",
+  "category": "Software Engineering",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Dependency Rule: Source code dependencies must point inward — outer layers depend on inner layers, never the reverse",
+            "Layers (inside out): Entities → Use Cases → Interface Adapters → Frameworks & Drivers",
+            "Hexagonal Architecture (Ports & Adapters): Application core defines ports (interfaces); adapters implement them for external systems",
+            "Use Cases: Application-specific business rules that orchestrate entity behavior — one use case per user intention",
+            "Domain entities are framework-agnostic: No annotations, no ORM decorators, no HTTP concerns in the domain layer",
+            "The Dependency Inversion Principle is the mechanism that enforces the dependency rule at compile time",
+            "Bounded Contexts from DDD define where one clean architecture boundary ends and another begins",
+            "Testability is a natural outcome: Inner layers are testable without any infrastructure, frameworks, or external services"
+          ]
+        }
+      ],
+      "wordCount": 125,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Clean architecture is most valuable in systems where business logic is complex, long-lived, and must survive multiple technology migrations. It shines in enterprise applications where the domain model is the primary asset and infrastructure is expected to change over the system's lifetime."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply clean architecture when the business domain is complex enough to warrant isolation from infrastructure concerns, when you anticipate changing databases, frameworks, or external services over the system's lifetime, when multiple delivery mechanisms exist (REST API, GraphQL, CLI, message consumers) for the same business logic, when regulatory requirements demand auditable and testable business rules, and when team size requires clear boundaries to enable parallel development."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid clean architecture for simple CRUD applications where the business logic is trivial, for short-lived prototypes or MVPs where speed to market outweighs maintainability, for performance-critical systems where abstraction layers introduce unacceptable latency, and for small teams working on small codebases where the overhead of multiple layers exceeds the benefit."
+        },
+        {
+          "type": "paragraph",
+          "text": "The key insight is that clean architecture is an investment. The upfront cost of defining boundaries, creating ports, and implementing adapters pays dividends when requirements change, teams grow, or infrastructure evolves. For systems expected to live less than two years with stable requirements, the investment may not be justified."
+        }
+      ],
+      "wordCount": 206,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "hexagonal-architecture-ports-and-adapters",
+          "heading": "Hexagonal Architecture — Ports and Adapters",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The hexagonal architecture (also called ports and adapters) places the application core at the center, defining ports (interfaces) that describe how the application interacts with the outside world. Adapters implement these ports for specific technologies."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// === DOMAIN LAYER (innermost) ===\n// Pure business entity — no framework dependencies\npublic class Account {\n    private final AccountId id;\n    private Money balance;\n    private final List<Transaction> transactions;\n\n    public Account(AccountId id, Money initialBalance) {\n        this.id = id;\n        this.balance = initialBalance;\n        this.transactions = new ArrayList<>();\n    }\n\n    public void withdraw(Money amount) {\n        if (amount.isGreaterThan(balance)) {\n            throw new InsufficientFundsException(id, amount, balance);\n        }\n        balance = balance.subtract(amount);\n        transactions.add(Transaction.withdrawal(amount, LocalDateTime.now()));\n    }\n\n    public void deposit(Money amount) {\n        if (amount.isNegativeOrZero()) {\n            throw new InvalidAmountException(amount);\n        }\n        balance = balance.add(amount);\n        transactions.add(Transaction.deposit(amount, LocalDateTime.now()));\n    }\n\n    public Money getBalance() { return balance; }\n    public AccountId getId() { return id; }\n}\n\n// === PORTS (interfaces defined by the application core) ===\n\n// Driven port — the application needs this to persist data\npublic interface AccountRepository {\n    Optional<Account> findById(AccountId id);\n    void save(Account account);\n}\n\n// Driven port — the application needs this to send notifications\npublic interface TransferNotifier {\n    void notifyTransferCompleted(AccountId from, AccountId to, Money amount);\n    void notifyTransferFailed(AccountId from, AccountId to, String reason);\n}\n\n// Driving port — external actors use this to trigger application behavior\npublic interface TransferUseCase {\n    TransferResult execute(TransferCommand command);\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// === USE CASE LAYER ===\n// Orchestrates domain entities to fulfill a specific user intention\npublic class TransferMoneyUseCase implements TransferUseCase {\n    private final AccountRepository accountRepository;\n    private final TransferNotifier notifier;\n    private final TransactionLogger transactionLogger;\n\n    public TransferMoneyUseCase(\n            AccountRepository accountRepository,\n            TransferNotifier notifier,\n            TransactionLogger transactionLogger) {\n        this.accountRepository = accountRepository;\n        this.notifier = notifier;\n        this.transactionLogger = transactionLogger;\n    }\n\n    @Override\n    public TransferResult execute(TransferCommand command) {\n        Account source = accountRepository.findById(command.sourceAccountId())\n            .orElseThrow(() -> new AccountNotFoundException(command.sourceAccountId()));\n        Account target = accountRepository.findById(command.targetAccountId())\n            .orElseThrow(() -> new AccountNotFoundException(command.targetAccountId()));\n\n        try {\n            source.withdraw(command.amount());\n            target.deposit(command.amount());\n\n            accountRepository.save(source);\n            accountRepository.save(target);\n\n            transactionLogger.log(command.sourceAccountId(), command.targetAccountId(), command.amount());\n            notifier.notifyTransferCompleted(command.sourceAccountId(), command.targetAccountId(), command.amount());\n\n            return TransferResult.success(source.getBalance());\n        } catch (InsufficientFundsException e) {\n            notifier.notifyTransferFailed(command.sourceAccountId(), command.targetAccountId(), e.getMessage());\n            return TransferResult.failure(e.getMessage());\n        }\n    }\n}\n\n// Command object — immutable input to the use case\npublic record TransferCommand(\n    AccountId sourceAccountId,\n    AccountId targetAccountId,\n    Money amount\n) {\n    public TransferCommand {\n        Objects.requireNonNull(sourceAccountId, \"Source account ID required\");\n        Objects.requireNonNull(targetAccountId, \"Target account ID required\");\n        Objects.requireNonNull(amount, \"Amount required\");\n        if (sourceAccountId.equals(targetAccountId)) {\n            throw new IllegalArgumentException(\"Cannot transfer to same account\");\n        }\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 35,
+          "subsections": []
+        },
+        {
+          "id": "adapter-implementations",
+          "heading": "Adapter Implementations",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Adapters sit in the outermost layer and implement the ports defined by the application core. They translate between the application's language and the external system's language."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// === ADAPTER LAYER (outermost) ===\n\n// Driven adapter — implements the repository port using JPA\n@Repository\npublic class JpaAccountRepository implements AccountRepository {\n    private final JpaAccountEntityRepository jpaRepository;\n    private final AccountMapper mapper;\n\n    public JpaAccountRepository(JpaAccountEntityRepository jpaRepository, AccountMapper mapper) {\n        this.jpaRepository = jpaRepository;\n        this.mapper = mapper;\n    }\n\n    @Override\n    public Optional<Account> findById(AccountId id) {\n        return jpaRepository.findById(id.value())\n            .map(mapper::toDomain);\n    }\n\n    @Override\n    @Transactional\n    public void save(Account account) {\n        AccountEntity entity = mapper.toEntity(account);\n        jpaRepository.save(entity);\n    }\n}\n\n// Driven adapter — implements notification port using email\npublic class EmailTransferNotifier implements TransferNotifier {\n    private final EmailClient emailClient;\n    private final UserRepository userRepository;\n\n    public EmailTransferNotifier(EmailClient emailClient, UserRepository userRepository) {\n        this.emailClient = emailClient;\n        this.userRepository = userRepository;\n    }\n\n    @Override\n    public void notifyTransferCompleted(AccountId from, AccountId to, Money amount) {\n        User sender = userRepository.findByAccountId(from);\n        emailClient.send(\n            sender.getEmail(),\n            \"Transfer Completed\",\n            String.format(\"Your transfer of %s has been completed.\", amount)\n        );\n    }\n\n    @Override\n    public void notifyTransferFailed(AccountId from, AccountId to, String reason) {\n        User sender = userRepository.findByAccountId(from);\n        emailClient.send(sender.getEmail(), \"Transfer Failed\", reason);\n    }\n}\n\n// Driving adapter — REST controller that invokes the use case\n@RestController\n@RequestMapping(\"/api/transfers\")\npublic class TransferController {\n    private final TransferUseCase transferUseCase;\n\n    public TransferController(TransferUseCase transferUseCase) {\n        this.transferUseCase = transferUseCase;\n    }\n\n    @PostMapping\n    public ResponseEntity<TransferResponse> transfer(@RequestBody @Valid TransferRequest request) {\n        TransferCommand command = new TransferCommand(\n            new AccountId(request.sourceAccountId()),\n            new AccountId(request.targetAccountId()),\n            Money.of(request.amount(), request.currency())\n        );\n\n        TransferResult result = transferUseCase.execute(command);\n\n        if (result.isSuccess()) {\n            return ResponseEntity.ok(new TransferResponse(result.remainingBalance().toString()));\n        }\n        return ResponseEntity.badRequest()\n            .body(new TransferResponse(result.errorMessage()));\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 26,
+          "subsections": []
+        },
+        {
+          "id": "clean-architecture-in-typescript-with-dependency-rule",
+          "heading": "Clean Architecture in TypeScript with Dependency Rule",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// === DOMAIN LAYER ===\n// Pure domain entity — no external dependencies\nexport class Order {\n  private readonly items: OrderItem[] = [];\n  private status: OrderStatus = OrderStatus.DRAFT;\n\n  constructor(\n    public readonly id: string,\n    public readonly customerId: string,\n    private readonly pricingPolicy: PricingPolicy\n  ) {}\n\n  addItem(product: Product, quantity: number): void {\n    if (this.status !== OrderStatus.DRAFT) {\n      throw new OrderNotModifiableError(this.id, this.status);\n    }\n    if (quantity <= 0) {\n      throw new InvalidQuantityError(quantity);\n    }\n    const price = this.pricingPolicy.calculatePrice(product, quantity);\n    this.items.push(new OrderItem(product.id, quantity, price));\n  }\n\n  submit(): void {\n    if (this.items.length === 0) {\n      throw new EmptyOrderError(this.id);\n    }\n    this.status = OrderStatus.SUBMITTED;\n  }\n\n  getTotal(): Money {\n    return this.items.reduce(\n      (sum, item) => sum.add(item.totalPrice),\n      Money.zero('USD')\n    );\n  }\n}\n\n// === PORT (interface defined by application core) ===\nexport interface OrderRepository {\n  findById(id: string): Promise<Order | null>;\n  save(order: Order): Promise<void>;\n  findByCustomer(customerId: string): Promise<Order[]>;\n}\n\nexport interface InventoryService {\n  reserve(productId: string, quantity: number): Promise<ReservationResult>;\n  release(reservationId: string): Promise<void>;\n}\n\n// === USE CASE ===\nexport class SubmitOrderUseCase {\n  constructor(\n    private readonly orderRepository: OrderRepository,\n    private readonly inventoryService: InventoryService,\n    private readonly eventPublisher: DomainEventPublisher\n  ) {}\n\n  async execute(command: SubmitOrderCommand): Promise<SubmitOrderResult> {\n    const order = await this.orderRepository.findById(command.orderId);\n    if (!order) {\n      return SubmitOrderResult.notFound(command.orderId);\n    }\n\n    // Reserve inventory for all items\n    const reservations: string[] = [];\n    try {\n      for (const item of order.getItems()) {\n        const result = await this.inventoryService.reserve(item.productId, item.quantity);\n        if (!result.success) {\n          // Rollback previous reservations\n          await Promise.all(reservations.map(r => this.inventoryService.release(r)));\n          return SubmitOrderResult.insufficientInventory(item.productId);\n        }\n        reservations.push(result.reservationId);\n      }\n\n      order.submit();\n      await this.orderRepository.save(order);\n      await this.eventPublisher.publish(new OrderSubmittedEvent(order.id, order.getTotal()));\n\n      return SubmitOrderResult.success(order.id);\n    } catch (error) {\n      await Promise.all(reservations.map(r => this.inventoryService.release(r)));\n      throw error;\n    }\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "project-structure-following-clean-architecture",
+          "heading": "Project Structure Following Clean Architecture",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "",
+              "code": "src/\n├── domain/                    # Innermost layer — entities and value objects\n│   ├── entities/\n│   │   ├── Account.ts\n│   │   ├── Transaction.ts\n│   │   └── User.ts\n│   ├── value-objects/\n│   │   ├── Money.ts\n│   │   ├── AccountId.ts\n│   │   └── Email.ts\n│   ├── events/\n│   │   ├── DomainEvent.ts\n│   │   └── TransferCompleted.ts\n│   └── exceptions/\n│       ├── InsufficientFunds.ts\n│       └── AccountNotFound.ts\n├── application/               # Use cases and port definitions\n│   ├── ports/\n│   │   ├── driven/           # Ports the app needs (repositories, services)\n│   │   │   ├── AccountRepository.ts\n│   │   │   └── NotificationService.ts\n│   │   └── driving/          # Ports that drive the app (use case interfaces)\n│   │       └── TransferUseCase.ts\n│   ├── use-cases/\n│   │   ├── TransferMoney.ts\n│   │   └── GetAccountBalance.ts\n│   └── dto/\n│       ├── TransferCommand.ts\n│       └── TransferResult.ts\n├── infrastructure/            # Outermost layer — adapters\n│   ├── persistence/\n│   │   ├── PostgresAccountRepository.ts\n│   │   └── entities/\n│   │       └── AccountEntity.ts\n│   ├── messaging/\n│   │   └── RabbitMQNotifier.ts\n│   └── config/\n│       └── DependencyInjection.ts\n└── interfaces/                # Driving adapters\n    ├── rest/\n    │   ├── TransferController.ts\n    │   └── dto/\n    │       └── TransferRequest.ts\n    ├── graphql/\n    │   └── TransferResolver.ts\n    └── cli/\n        └── TransferCommand.ts",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Leaking framework annotations into the domain layer: Placing @Entity, @Column, or @JsonProperty annotations on domain objects couples them to specific frameworks. Domain entities should be plain objects. Use separate persistence entities with mappers to translate between layers.",
+            "Anemic domain model: Placing all business logic in use cases while domain entities are just data holders (getters/setters only) defeats the purpose of clean architecture. Rich domain entities should encapsulate behavior and enforce their own invariants.",
+            "Skipping the use case layer for \"simple\" operations: Directly calling repositories from controllers because \"it's just a CRUD operation\" erodes the architecture over time. Even simple operations benefit from a thin use case layer that provides a consistent entry point and enables cross-cutting concerns like logging and authorization.",
+            "Circular dependencies between layers: When an inner layer needs to trigger something in an outer layer (e.g., domain entity needs to send an email), use the Observer pattern or domain events rather than injecting outer-layer services into the domain.",
+            "Over-mapping between layers: Creating separate DTOs for every layer boundary (controller DTO → use case DTO → domain entity → persistence entity) can lead to excessive boilerplate. Be pragmatic — share immutable value objects across boundaries when they are stable and unlikely to diverge.",
+            "Treating clean architecture as a folder structure: Simply organizing code into domain/, application/, and infrastructure/ folders does not enforce the dependency rule. Use module systems, build tool configurations (like Gradle modules or TypeScript project references), or architectural fitness functions (ArchUnit) to enforce boundaries at compile time."
+          ]
+        }
+      ],
+      "wordCount": 250,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Banking and financial systems: Banks like ING and Rabobank use hexagonal architecture to isolate core banking logic (account management, transaction processing, compliance rules) from delivery channels (mobile apps, web portals, ATM interfaces) and infrastructure (mainframes, cloud databases, message queues). This allows them to modernize infrastructure without rewriting business rules."
+        },
+        {
+          "type": "paragraph",
+          "text": "E-commerce platforms: Shopify's core commerce engine separates order processing, inventory management, and pricing logic from specific payment gateways, shipping providers, and storefront themes. Merchants can swap payment providers without affecting order logic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Healthcare systems: Electronic Health Record (EHR) systems use clean architecture to isolate clinical decision support rules from specific database vendors and UI frameworks. Regulatory changes to clinical rules can be implemented and tested independently of infrastructure changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Multi-channel retail: A retailer serving customers through web, mobile app, in-store kiosks, and voice assistants implements business logic once in the application core. Each channel is a driving adapter that translates channel-specific interactions into use case commands."
+        },
+        {
+          "type": "paragraph",
+          "text": "Legacy system modernization: The strangler fig pattern combined with clean architecture allows teams to extract bounded contexts from monoliths. New features are built with clean architecture while legacy code is gradually replaced, with anti-corruption layers translating between old and new systems."
+        }
+      ],
+      "wordCount": 196,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the dependency rule in clean architecture and how it is enforced."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The dependency rule states that source code dependencies must point inward — outer layers can reference inner layers, but inner layers must have zero knowledge of outer layers. Entities know nothing about use cases, use cases know nothing about controllers or databases. Enforcement happens through the Dependency Inversion Principle: inner layers define interfaces (ports) that outer layers implement (adapters). At compile time, the inner layer depends only on its own interface definition. At runtime, dependency injection provides the concrete adapter. Tools like ArchUnit (Java), Dependency Cruiser (TypeScript), or separate build modules enforce this at CI time by failing builds when forbidden dependencies are detected."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the difference between hexagonal architecture and clean architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Hexagonal architecture (Alistair Cockburn, 2005) focuses on the symmetry between driving adapters (things that use the application) and driven adapters (things the application uses), connected through ports. Clean architecture (Robert C. Martin, 2012) adds explicit concentric layers (entities, use cases, interface adapters, frameworks) with a strict dependency rule. In practice, they are complementary — hexagonal architecture provides the ports-and-adapters mechanism, while clean architecture provides the layering discipline. Most production systems combine both: hexagonal ports at boundaries with clean architecture's layered organization internally."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you handle cross-cutting concerns like logging, authentication, and transactions in clean architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Cross-cutting concerns should not pollute the domain or use case layers. Strategies include: (1) Decorator pattern — wrap use case implementations with decorators that add logging, metrics, or transaction management without modifying the use case itself. (2) Aspect-oriented programming — use framework-level AOP (Spring AOP, TypeScript decorators) at the adapter layer. (3) Middleware/pipeline — implement a use case pipeline where cross-cutting concerns are pipeline stages that execute before/after the core use case. (4) Domain events — for concerns triggered by domain behavior (audit logging), publish domain events that are handled by infrastructure listeners. The key principle is that the use case code remains focused on business logic while infrastructure concerns are handled at the boundary."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: When would you choose clean architecture over a simpler layered architecture?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Choose clean architecture when: the domain is complex enough that isolating it from infrastructure provides testing and maintenance benefits; multiple delivery mechanisms exist or are planned; the system will live long enough to undergo infrastructure migrations; team size requires clear boundaries for parallel work; or regulatory requirements demand auditable, independently testable business rules. Choose simpler layered architecture when: the application is primarily CRUD with minimal business logic; the team is small and communication overhead is low; time-to-market is the primary constraint; or the technology stack is unlikely to change. The decision should be based on the complexity of the business domain, not the size of the codebase."
+        }
+      ],
+      "wordCount": 463,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Enforce the dependency rule with architectural fitness functions: Use ArchUnit (Java), Dependency Cruiser (TypeScript), or custom build scripts to verify that domain packages never import from infrastructure packages. Run these checks in CI — they catch violations before they reach production and prevent gradual erosion of boundaries.",
+            "Use separate build modules for strict enforcement: In Gradle or Maven, create separate modules for domain, application, and infrastructure. The domain module has zero external dependencies. The application module depends only on domain. The infrastructure module depends on both plus framework libraries. This makes illegal dependencies a compile error, not just a convention.",
+            "Start with a modular monolith, extract later: Do not begin with microservices and clean architecture simultaneously. Build a modular monolith with clean architecture boundaries between modules. When a module needs independent scaling or deployment, extract it into a service — the clean boundaries make extraction straightforward because dependencies already point inward."
+          ]
+        }
+      ],
+      "wordCount": 151,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SOLID Principles — The Dependency Inversion Principle is the mechanism that enforces clean architecture's dependency rule",
+            "Refactoring Patterns — The strangler fig pattern enables incremental migration to clean architecture from legacy systems",
+            "Technical Debt — Clean architecture boundaries prevent debt from spreading across system layers"
+          ]
+        }
+      ],
+      "wordCount": 45,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// === DOMAIN LAYER (innermost) ===\n// Pure business entity — no framework dependencies\npublic class Account {\n    private final AccountId id;\n    private Money balance;\n    private final List<Transaction> transactions;\n\n    public Account(AccountId id, Money initialBalance) {\n        this.id = id;\n        this.balance = initialBalance;\n        this.transactions = new ArrayList<>();\n    }\n\n    public void withdraw(Money amount) {\n        if (amount.isGreaterThan(balance)) {\n            throw new InsufficientFundsException(id, amount, balance);\n        }\n        balance = balance.subtract(amount);\n        transactions.add(Transaction.withdrawal(amount, LocalDateTime.now()));\n    }\n\n    public void deposit(Money amount) {\n        if (amount.isNegativeOrZero()) {\n            throw new InvalidAmountException(amount);\n        }\n        balance = balance.add(amount);\n        transactions.add(Transaction.deposit(amount, LocalDateTime.now()));\n    }\n\n    public Money getBalance() { return balance; }\n    public AccountId getId() { return id; }\n}\n\n// === PORTS (interfaces defined by the application core) ===\n\n// Driven port — the application needs this to persist data\npublic interface AccountRepository {\n    Optional<Account> findById(AccountId id);\n    void save(Account account);\n}\n\n// Driven port — the application needs this to send notifications\npublic interface TransferNotifier {\n    void notifyTransferCompleted(AccountId from, AccountId to, Money amount);\n    void notifyTransferFailed(AccountId from, AccountId to, String reason);\n}\n\n// Driving port — external actors use this to trigger application behavior\npublic interface TransferUseCase {\n    TransferResult execute(TransferCommand command);\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// === USE CASE LAYER ===\n// Orchestrates domain entities to fulfill a specific user intention\npublic class TransferMoneyUseCase implements TransferUseCase {\n    private final AccountRepository accountRepository;\n    private final TransferNotifier notifier;\n    private final TransactionLogger transactionLogger;\n\n    public TransferMoneyUseCase(\n            AccountRepository accountRepository,\n            TransferNotifier notifier,\n            TransactionLogger transactionLogger) {\n        this.accountRepository = accountRepository;\n        this.notifier = notifier;\n        this.transactionLogger = transactionLogger;\n    }\n\n    @Override\n    public TransferResult execute(TransferCommand command) {\n        Account source = accountRepository.findById(command.sourceAccountId())\n            .orElseThrow(() -> new AccountNotFoundException(command.sourceAccountId()));\n        Account target = accountRepository.findById(command.targetAccountId())\n            .orElseThrow(() -> new AccountNotFoundException(command.targetAccountId()));\n\n        try {\n            source.withdraw(command.amount());\n            target.deposit(command.amount());\n\n            accountRepository.save(source);\n            accountRepository.save(target);\n\n            transactionLogger.log(command.sourceAccountId(), command.targetAccountId(), command.amount());\n            notifier.notifyTransferCompleted(command.sourceAccountId(), command.targetAccountId(), command.amount());\n\n            return TransferResult.success(source.getBalance());\n        } catch (InsufficientFundsException e) {\n            notifier.notifyTransferFailed(command.sourceAccountId(), command.targetAccountId(), e.getMessage());\n            return TransferResult.failure(e.getMessage());\n        }\n    }\n}\n\n// Command object — immutable input to the use case\npublic record TransferCommand(\n    AccountId sourceAccountId,\n    AccountId targetAccountId,\n    Money amount\n) {\n    public TransferCommand {\n        Objects.requireNonNull(sourceAccountId, \"Source account ID required\");\n        Objects.requireNonNull(targetAccountId, \"Target account ID required\");\n        Objects.requireNonNull(amount, \"Amount required\");\n        if (sourceAccountId.equals(targetAccountId)) {\n            throw new IllegalArgumentException(\"Cannot transfer to same account\");\n        }\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// === ADAPTER LAYER (outermost) ===\n\n// Driven adapter — implements the repository port using JPA\n@Repository\npublic class JpaAccountRepository implements AccountRepository {\n    private final JpaAccountEntityRepository jpaRepository;\n    private final AccountMapper mapper;\n\n    public JpaAccountRepository(JpaAccountEntityRepository jpaRepository, AccountMapper mapper) {\n        this.jpaRepository = jpaRepository;\n        this.mapper = mapper;\n    }\n\n    @Override\n    public Optional<Account> findById(AccountId id) {\n        return jpaRepository.findById(id.value())\n            .map(mapper::toDomain);\n    }\n\n    @Override\n    @Transactional\n    public void save(Account account) {\n        AccountEntity entity = mapper.toEntity(account);\n        jpaRepository.save(entity);\n    }\n}\n\n// Driven adapter — implements notification port using email\npublic class EmailTransferNotifier implements TransferNotifier {\n    private final EmailClient emailClient;\n    private final UserRepository userRepository;\n\n    public EmailTransferNotifier(EmailClient emailClient, UserRepository userRepository) {\n        this.emailClient = emailClient;\n        this.userRepository = userRepository;\n    }\n\n    @Override\n    public void notifyTransferCompleted(AccountId from, AccountId to, Money amount) {\n        User sender = userRepository.findByAccountId(from);\n        emailClient.send(\n            sender.getEmail(),\n            \"Transfer Completed\",\n            String.format(\"Your transfer of %s has been completed.\", amount)\n        );\n    }\n\n    @Override\n    public void notifyTransferFailed(AccountId from, AccountId to, String reason) {\n        User sender = userRepository.findByAccountId(from);\n        emailClient.send(sender.getEmail(), \"Transfer Failed\", reason);\n    }\n}\n\n// Driving adapter — REST controller that invokes the use case\n@RestController\n@RequestMapping(\"/api/transfers\")\npublic class TransferController {\n    private final TransferUseCase transferUseCase;\n\n    public TransferController(TransferUseCase transferUseCase) {\n        this.transferUseCase = transferUseCase;\n    }\n\n    @PostMapping\n    public ResponseEntity<TransferResponse> transfer(@RequestBody @Valid TransferRequest request) {\n        TransferCommand command = new TransferCommand(\n            new AccountId(request.sourceAccountId()),\n            new AccountId(request.targetAccountId()),\n            Money.of(request.amount(), request.currency())\n        );\n\n        TransferResult result = transferUseCase.execute(command);\n\n        if (result.isSuccess()) {\n            return ResponseEntity.ok(new TransferResponse(result.remainingBalance().toString()));\n        }\n        return ResponseEntity.badRequest()\n            .body(new TransferResponse(result.errorMessage()));\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// === DOMAIN LAYER ===\n// Pure domain entity — no external dependencies\nexport class Order {\n  private readonly items: OrderItem[] = [];\n  private status: OrderStatus = OrderStatus.DRAFT;\n\n  constructor(\n    public readonly id: string,\n    public readonly customerId: string,\n    private readonly pricingPolicy: PricingPolicy\n  ) {}\n\n  addItem(product: Product, quantity: number): void {\n    if (this.status !== OrderStatus.DRAFT) {\n      throw new OrderNotModifiableError(this.id, this.status);\n    }\n    if (quantity <= 0) {\n      throw new InvalidQuantityError(quantity);\n    }\n    const price = this.pricingPolicy.calculatePrice(product, quantity);\n    this.items.push(new OrderItem(product.id, quantity, price));\n  }\n\n  submit(): void {\n    if (this.items.length === 0) {\n      throw new EmptyOrderError(this.id);\n    }\n    this.status = OrderStatus.SUBMITTED;\n  }\n\n  getTotal(): Money {\n    return this.items.reduce(\n      (sum, item) => sum.add(item.totalPrice),\n      Money.zero('USD')\n    );\n  }\n}\n\n// === PORT (interface defined by application core) ===\nexport interface OrderRepository {\n  findById(id: string): Promise<Order | null>;\n  save(order: Order): Promise<void>;\n  findByCustomer(customerId: string): Promise<Order[]>;\n}\n\nexport interface InventoryService {\n  reserve(productId: string, quantity: number): Promise<ReservationResult>;\n  release(reservationId: string): Promise<void>;\n}\n\n// === USE CASE ===\nexport class SubmitOrderUseCase {\n  constructor(\n    private readonly orderRepository: OrderRepository,\n    private readonly inventoryService: InventoryService,\n    private readonly eventPublisher: DomainEventPublisher\n  ) {}\n\n  async execute(command: SubmitOrderCommand): Promise<SubmitOrderResult> {\n    const order = await this.orderRepository.findById(command.orderId);\n    if (!order) {\n      return SubmitOrderResult.notFound(command.orderId);\n    }\n\n    // Reserve inventory for all items\n    const reservations: string[] = [];\n    try {\n      for (const item of order.getItems()) {\n        const result = await this.inventoryService.reserve(item.productId, item.quantity);\n        if (!result.success) {\n          // Rollback previous reservations\n          await Promise.all(reservations.map(r => this.inventoryService.release(r)));\n          return SubmitOrderResult.insufficientInventory(item.productId);\n        }\n        reservations.push(result.reservationId);\n      }\n\n      order.submit();\n      await this.orderRepository.save(order);\n      await this.eventPublisher.publish(new OrderSubmittedEvent(order.id, order.getTotal()));\n\n      return SubmitOrderResult.success(order.id);\n    } catch (error) {\n      await Promise.all(reservations.map(r => this.inventoryService.release(r)));\n      throw error;\n    }\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "",
+      "code": "src/\n├── domain/                    # Innermost layer — entities and value objects\n│   ├── entities/\n│   │   ├── Account.ts\n│   │   ├── Transaction.ts\n│   │   └── User.ts\n│   ├── value-objects/\n│   │   ├── Money.ts\n│   │   ├── AccountId.ts\n│   │   └── Email.ts\n│   ├── events/\n│   │   ├── DomainEvent.ts\n│   │   └── TransferCompleted.ts\n│   └── exceptions/\n│       ├── InsufficientFunds.ts\n│       └── AccountNotFound.ts\n├── application/               # Use cases and port definitions\n│   ├── ports/\n│   │   ├── driven/           # Ports the app needs (repositories, services)\n│   │   │   ├── AccountRepository.ts\n│   │   │   └── NotificationService.ts\n│   │   └── driving/          # Ports that drive the app (use case interfaces)\n│   │       └── TransferUseCase.ts\n│   ├── use-cases/\n│   │   ├── TransferMoney.ts\n│   │   └── GetAccountBalance.ts\n│   └── dto/\n│       ├── TransferCommand.ts\n│       └── TransferResult.ts\n├── infrastructure/            # Outermost layer — adapters\n│   ├── persistence/\n│   │   ├── PostgresAccountRepository.ts\n│   │   └── entities/\n│   │       └── AccountEntity.ts\n│   ├── messaging/\n│   │   └── RabbitMQNotifier.ts\n│   └── config/\n│       └── DependencyInjection.ts\n└── interfaces/                # Driving adapters\n    ├── rest/\n    │   ├── TransferController.ts\n    │   └── dto/\n    │       └── TransferRequest.ts\n    ├── graphql/\n    │   └── TransferResolver.ts\n    └── cli/\n        └── TransferCommand.ts",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/software-engineering/design-principles/clean-architecture.md",
+    "wordCount": 1497,
+    "sectionCount": 12
+  }
+}

@@ -131,59 +131,100 @@ public class HashTable<K, V> {
 
 Open addressing stores all entries directly in the bucket array. When a collision occurs, the algorithm probes subsequent slots until an empty one is found. This approach has better cache locality than chaining but is more sensitive to clustering.
 
-```python
-class LinearProbingHashTable:
-    def __init__(self, capacity=16):
-        self.capacity = capacity
-        self.size = 0
-        self.keys = [None] * capacity
-        self.values = [None] * capacity
-        self.DELETED = object()  # Tombstone marker
+```java
+/**
+ * Linear probing hash table implementation.
+ * Uses tombstone markers for lazy deletion.
+ */
+public class LinearProbingHashTable<K, V> {
+    private static final int DEFAULT_CAPACITY = 16;
+    private static final double LOAD_FACTOR = 0.7;
 
-    def _hash(self, key):
-        return hash(key) % self.capacity
+    private Object[] keys;
+    private Object[] values;
+    private boolean[] deleted;
+    private int capacity;
+    private int size;
 
-    def put(self, key, value):
-        if self.size >= self.capacity * 0.7:
-            self._resize()
-        index = self._hash(key)
-        while self.keys[index] is not None and self.keys[index] is not self.DELETED:
-            if self.keys[index] == key:
-                self.values[index] = value
-                return
-            index = (index + 1) % self.capacity
-        self.keys[index] = key
-        self.values[index] = value
-        self.size += 1
+    public LinearProbingHashTable() {
+        this(DEFAULT_CAPACITY);
+    }
 
-    def get(self, key):
-        index = self._hash(key)
-        while self.keys[index] is not None:
-            if self.keys[index] == key:
-                return self.values[index]
-            index = (index + 1) % self.capacity
-        return None
+    public LinearProbingHashTable(int capacity) {
+        this.capacity = capacity;
+        this.keys = new Object[capacity];
+        this.values = new Object[capacity];
+        this.deleted = new boolean[capacity];
+        this.size = 0;
+    }
 
-    def delete(self, key):
-        index = self._hash(key)
-        while self.keys[index] is not None:
-            if self.keys[index] == key:
-                self.keys[index] = self.DELETED
-                self.values[index] = None
-                self.size -= 1
-                return True
-            index = (index + 1) % self.capacity
-        return False
+    private int hash(K key) {
+        return (key.hashCode() & 0x7FFFFFFF) % capacity;
+    }
 
-    def _resize(self):
-        old_keys, old_values = self.keys, self.values
-        self.capacity *= 2
-        self.keys = [None] * self.capacity
-        self.values = [None] * self.capacity
-        self.size = 0
-        for i in range(len(old_keys)):
-            if old_keys[i] is not None and old_keys[i] is not self.DELETED:
-                self.put(old_keys[i], old_values[i])
+    @SuppressWarnings("unchecked")
+    public void put(K key, V value) {
+        if (size >= capacity * LOAD_FACTOR) resize();
+        int index = hash(key);
+        while (keys[index] != null && !deleted[index]) {
+            if (keys[index].equals(key)) {
+                values[index] = value;
+                return;
+            }
+            index = (index + 1) % capacity;
+        }
+        keys[index] = key;
+        values[index] = value;
+        deleted[index] = false;
+        size++;
+    }
+
+    @SuppressWarnings("unchecked")
+    public V get(K key) {
+        int index = hash(key);
+        while (keys[index] != null || deleted[index]) {
+            if (!deleted[index] && keys[index].equals(key)) {
+                return (V) values[index];
+            }
+            index = (index + 1) % capacity;
+        }
+        return null;
+    }
+
+    public boolean delete(K key) {
+        int index = hash(key);
+        while (keys[index] != null || deleted[index]) {
+            if (!deleted[index] && keys[index].equals(key)) {
+                deleted[index] = true;
+                values[index] = null;
+                size--;
+                return true;
+            }
+            index = (index + 1) % capacity;
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void resize() {
+        Object[] oldKeys = keys;
+        Object[] oldValues = values;
+        boolean[] oldDeleted = deleted;
+        int oldCapacity = capacity;
+
+        capacity *= 2;
+        keys = new Object[capacity];
+        values = new Object[capacity];
+        deleted = new boolean[capacity];
+        size = 0;
+
+        for (int i = 0; i < oldCapacity; i++) {
+            if (oldKeys[i] != null && !oldDeleted[i]) {
+                put((K) oldKeys[i], (V) oldValues[i]);
+            }
+        }
+    }
+}
 ```
 
 ### Two-Sum Problem Using Hash Table
@@ -208,37 +249,67 @@ public int[] twoSum(int[] nums, int target) {
 
 Consistent hashing distributes keys across nodes in a ring, minimizing redistribution when nodes are added or removed. This is foundational to distributed caches like Memcached and databases like DynamoDB.
 
-```python
-import hashlib
-import bisect
+```java
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 
-class ConsistentHashRing:
-    def __init__(self, nodes=None, virtual_nodes=150):
-        self.virtual_nodes = virtual_nodes
-        self.ring = {}
-        self.sorted_keys = []
-        if nodes:
-            for node in nodes:
-                self.add_node(node)
+/**
+ * Consistent hash ring for distributed systems.
+ * Uses virtual nodes to ensure even distribution across physical nodes.
+ */
+public class ConsistentHashRing {
+    private final int virtualNodes;
+    private final TreeMap<Long, String> ring = new TreeMap<>();
 
-    def _hash(self, key):
-        return int(hashlib.md5(key.encode()).hexdigest(), 16)
+    public ConsistentHashRing(int virtualNodes) {
+        this.virtualNodes = virtualNodes;
+    }
 
-    def add_node(self, node):
-        for i in range(self.virtual_nodes):
-            virtual_key = f"{node}:{i}"
-            hash_val = self._hash(virtual_key)
-            self.ring[hash_val] = node
-            bisect.insort(self.sorted_keys, hash_val)
+    public ConsistentHashRing(List<String> nodes, int virtualNodes) {
+        this.virtualNodes = virtualNodes;
+        for (String node : nodes) {
+            addNode(node);
+        }
+    }
 
-    def get_node(self, key):
-        if not self.ring:
-            return None
-        hash_val = self._hash(key)
-        idx = bisect.bisect_right(self.sorted_keys, hash_val)
-        if idx == len(self.sorted_keys):
-            idx = 0
-        return self.ring[self.sorted_keys[idx]]
+    private long hash(String key) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(key.getBytes());
+            return ((long) (digest[0] & 0xFF) << 24)
+                 | ((long) (digest[1] & 0xFF) << 16)
+                 | ((long) (digest[2] & 0xFF) << 8)
+                 | ((long) (digest[3] & 0xFF));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void addNode(String node) {
+        for (int i = 0; i < virtualNodes; i++) {
+            String virtualKey = node + ":" + i;
+            ring.put(hash(virtualKey), node);
+        }
+    }
+
+    public void removeNode(String node) {
+        for (int i = 0; i < virtualNodes; i++) {
+            String virtualKey = node + ":" + i;
+            ring.remove(hash(virtualKey));
+        }
+    }
+
+    public String getNode(String key) {
+        if (ring.isEmpty()) return null;
+        long hashVal = hash(key);
+        Map.Entry<Long, String> entry = ring.ceilingEntry(hashVal);
+        if (entry == null) {
+            entry = ring.firstEntry(); // Wrap around the ring
+        }
+        return entry.getValue();
+    }
+}
 ```
 
 ---

@@ -1,0 +1,372 @@
+{
+  "id": "practices-refactoring-patterns",
+  "slug": "refactoring-patterns",
+  "title": "Refactoring Patterns",
+  "category": "Software Engineering",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Extract Method: Pull a coherent block of code into a named method to improve readability and enable reuse",
+            "Replace Conditional with Polymorphism: Eliminate complex switch/if-else chains by distributing behavior across subtype implementations",
+            "Introduce Parameter Object: Group related parameters into a single object to reduce method signature complexity and enable validation",
+            "Strangler Fig Pattern: Incrementally replace legacy system components by routing traffic through a facade that delegates to old or new implementations",
+            "Feature Flags for Refactoring: Deploy refactored code behind toggles to enable gradual rollout, A/B comparison, and instant rollback",
+            "Refactoring preserves external behavior — tests must pass before and after every transformation",
+            "Small, verified steps are safer than large rewrites — each step should be independently committable and deployable",
+            "Martin Fowler's refactoring catalog defines 60+ named transformations with mechanical steps"
+          ]
+        }
+      ],
+      "wordCount": 130,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Refactoring is appropriate whenever you need to change the internal structure of code without altering its external behavior. The primary triggers are adding a new feature that is difficult with the current structure, fixing a bug that reveals a design flaw, improving code that was flagged during code review, reducing complexity that has accumulated over multiple iterations, and preparing code for extraction into a shared library or service."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apply Extract Method when a method exceeds 20 lines or contains comments explaining \"what this block does\" — the comment is a sign the block deserves its own named method. Apply Replace Conditional with Polymorphism when you find the same switch statement duplicated across multiple methods or when adding a new case requires modifying multiple files. Apply Introduce Parameter Object when methods have more than 3-4 parameters or when the same group of parameters appears in multiple method signatures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use the Strangler Fig pattern for large-scale system migrations where a big-bang rewrite is too risky. Use feature flags when refactoring changes behavior in subtle ways that need production validation, or when the refactoring spans multiple deployments and you need to control exposure."
+        },
+        {
+          "type": "paragraph",
+          "text": "Avoid refactoring code that is stable, well-tested, and unlikely to change. Avoid refactoring without adequate test coverage — you need tests to verify behavior preservation. Avoid refactoring under time pressure for an unrelated deadline — schedule it as deliberate technical debt reduction."
+        }
+      ],
+      "wordCount": 232,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "extract-method",
+          "heading": "Extract Method",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Extract Method is the most fundamental refactoring. It improves readability by giving a name to a block of code, reduces duplication by enabling reuse, and simplifies testing by creating smaller, focused units."
+            },
+            {
+              "type": "paragraph",
+              "text": "Before — a long method with embedded logic:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class InvoiceGenerator {\n    public Invoice generateInvoice(Order order, Customer customer) {\n        // Calculate line items\n        List<LineItem> lineItems = new ArrayList<>();\n        for (OrderItem item : order.getItems()) {\n            BigDecimal unitPrice = item.getProduct().getPrice();\n            BigDecimal quantity = BigDecimal.valueOf(item.getQuantity());\n            BigDecimal lineTotal = unitPrice.multiply(quantity);\n\n            if (customer.getTier() == CustomerTier.PREMIUM) {\n                lineTotal = lineTotal.multiply(BigDecimal.valueOf(0.9)); // 10% discount\n            } else if (customer.getTier() == CustomerTier.ENTERPRISE) {\n                lineTotal = lineTotal.multiply(BigDecimal.valueOf(0.8)); // 20% discount\n            }\n\n            lineItems.add(new LineItem(item.getProduct().getName(), item.getQuantity(), unitPrice, lineTotal));\n        }\n\n        // Calculate totals\n        BigDecimal subtotal = lineItems.stream()\n            .map(LineItem::getTotal)\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n        BigDecimal taxRate = getTaxRate(customer.getAddress().getState());\n        BigDecimal tax = subtotal.multiply(taxRate);\n        BigDecimal total = subtotal.add(tax);\n\n        // Apply shipping\n        BigDecimal shipping;\n        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {\n            shipping = BigDecimal.ZERO; // Free shipping over $100\n        } else {\n            shipping = BigDecimal.valueOf(9.99);\n        }\n\n        // Build invoice\n        Invoice invoice = new Invoice();\n        invoice.setInvoiceNumber(generateInvoiceNumber());\n        invoice.setCustomer(customer);\n        invoice.setLineItems(lineItems);\n        invoice.setSubtotal(subtotal);\n        invoice.setTax(tax);\n        invoice.setShipping(shipping);\n        invoice.setTotal(total.add(shipping));\n        invoice.setDueDate(LocalDate.now().plusDays(30));\n        return invoice;\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "After — extracted into focused methods:"
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class InvoiceGenerator {\n    private final TaxCalculator taxCalculator;\n    private final DiscountPolicy discountPolicy;\n    private final ShippingCalculator shippingCalculator;\n\n    public Invoice generateInvoice(Order order, Customer customer) {\n        List<LineItem> lineItems = calculateLineItems(order, customer);\n        BigDecimal subtotal = calculateSubtotal(lineItems);\n        BigDecimal tax = taxCalculator.calculate(subtotal, customer.getAddress());\n        BigDecimal shipping = shippingCalculator.calculate(subtotal);\n        BigDecimal total = subtotal.add(tax).add(shipping);\n\n        return buildInvoice(customer, lineItems, subtotal, tax, shipping, total);\n    }\n\n    private List<LineItem> calculateLineItems(Order order, Customer customer) {\n        return order.getItems().stream()\n            .map(item -> createLineItem(item, customer))\n            .collect(Collectors.toList());\n    }\n\n    private LineItem createLineItem(OrderItem item, Customer customer) {\n        BigDecimal unitPrice = item.getProduct().getPrice();\n        BigDecimal quantity = BigDecimal.valueOf(item.getQuantity());\n        BigDecimal lineTotal = discountPolicy.applyDiscount(\n            unitPrice.multiply(quantity), customer.getTier()\n        );\n        return new LineItem(item.getProduct().getName(), item.getQuantity(), unitPrice, lineTotal);\n    }\n\n    private BigDecimal calculateSubtotal(List<LineItem> lineItems) {\n        return lineItems.stream()\n            .map(LineItem::getTotal)\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n\n    private Invoice buildInvoice(Customer customer, List<LineItem> lineItems,\n            BigDecimal subtotal, BigDecimal tax, BigDecimal shipping, BigDecimal total) {\n        Invoice invoice = new Invoice();\n        invoice.setInvoiceNumber(generateInvoiceNumber());\n        invoice.setCustomer(customer);\n        invoice.setLineItems(lineItems);\n        invoice.setSubtotal(subtotal);\n        invoice.setTax(tax);\n        invoice.setShipping(shipping);\n        invoice.setTotal(total);\n        invoice.setDueDate(LocalDate.now().plusDays(30));\n        return invoice;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 46,
+          "subsections": []
+        },
+        {
+          "id": "replace-conditional-with-polymorphism",
+          "heading": "Replace Conditional with Polymorphism",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "This refactoring eliminates complex conditional logic by distributing behavior across a type hierarchy. Each branch becomes a separate class with a focused implementation."
+            },
+            {
+              "type": "paragraph",
+              "text": "Before — switch statement that grows with every new notification type:"
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// BAD: Adding a new notification type requires modifying this function\nfunction sendNotification(notification: Notification): SendResult {\n  switch (notification.type) {\n    case 'email':\n      const emailBody = renderEmailTemplate(notification.template, notification.data);\n      return emailClient.send({\n        to: notification.recipient.email,\n        subject: notification.subject,\n        body: emailBody,\n        attachments: notification.attachments || [],\n      });\n\n    case 'sms':\n      const smsBody = truncateToSmsLength(notification.message);\n      return smsGateway.send({\n        phoneNumber: notification.recipient.phone,\n        message: smsBody,\n      });\n\n    case 'push':\n      return pushService.send({\n        deviceToken: notification.recipient.deviceToken,\n        title: notification.subject,\n        body: notification.message,\n        badge: notification.badge || 1,\n        sound: notification.sound || 'default',\n      });\n\n    case 'slack':\n      return slackClient.postMessage({\n        channel: notification.recipient.slackChannel,\n        text: notification.message,\n        blocks: notification.richContent || [],\n      });\n\n    default:\n      throw new Error(`Unknown notification type: ${notification.type}`);\n  }\n}",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "After — polymorphic dispatch through a common interface:"
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// GOOD: Each notification type is a self-contained class\ninterface NotificationSender {\n  readonly type: string;\n  send(notification: Notification): Promise<SendResult>;\n  validate(notification: Notification): ValidationResult;\n}\n\nclass EmailSender implements NotificationSender {\n  readonly type = 'email';\n\n  constructor(\n    private readonly emailClient: EmailClient,\n    private readonly templateEngine: TemplateEngine\n  ) {}\n\n  async send(notification: Notification): Promise<SendResult> {\n    const body = this.templateEngine.render(notification.template, notification.data);\n    return this.emailClient.send({\n      to: notification.recipient.email,\n      subject: notification.subject,\n      body,\n      attachments: notification.attachments || [],\n    });\n  }\n\n  validate(notification: Notification): ValidationResult {\n    if (!notification.recipient.email) {\n      return ValidationResult.failure('Email address required');\n    }\n    if (!notification.template) {\n      return ValidationResult.failure('Email template required');\n    }\n    return ValidationResult.success();\n  }\n}\n\nclass SmsSender implements NotificationSender {\n  readonly type = 'sms';\n\n  constructor(private readonly smsGateway: SmsGateway) {}\n\n  async send(notification: Notification): Promise<SendResult> {\n    const message = this.truncateToSmsLength(notification.message);\n    return this.smsGateway.send({\n      phoneNumber: notification.recipient.phone,\n      message,\n    });\n  }\n\n  validate(notification: Notification): ValidationResult {\n    if (!notification.recipient.phone) {\n      return ValidationResult.failure('Phone number required');\n    }\n    return ValidationResult.success();\n  }\n\n  private truncateToSmsLength(message: string): string {\n    return message.length > 160 ? message.substring(0, 157) + '...' : message;\n  }\n}\n\n// Registry pattern — adding new types requires zero changes to existing code\nclass NotificationDispatcher {\n  private readonly senders = new Map<string, NotificationSender>();\n\n  register(sender: NotificationSender): void {\n    this.senders.set(sender.type, sender);\n  }\n\n  async dispatch(notification: Notification): Promise<SendResult> {\n    const sender = this.senders.get(notification.type);\n    if (!sender) {\n      throw new UnsupportedNotificationError(notification.type);\n    }\n\n    const validation = sender.validate(notification);\n    if (!validation.isValid) {\n      return SendResult.failure(validation.error);\n    }\n\n    return sender.send(notification);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 42,
+          "subsections": []
+        },
+        {
+          "id": "introduce-parameter-object",
+          "heading": "Introduce Parameter Object",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "When multiple parameters travel together across method signatures, they represent a concept that deserves its own type. Extracting them into a parameter object improves readability, enables validation, and provides a natural home for related behavior."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// BEFORE: Long parameter list that appears in multiple methods\npublic class ReportService {\n    public Report generateReport(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            ReportFormat format,\n            boolean includeSubDepartments,\n            int maxResults) {\n        validateDateRange(startDate, endDate);\n        // ... report generation logic\n    }\n\n    public long countRecords(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            boolean includeSubDepartments) {\n        validateDateRange(startDate, endDate);\n        // ... counting logic\n    }\n\n    public List<String> previewHeaders(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            ReportFormat format) {\n        // ... header logic\n    }\n}",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// AFTER: Parameter object encapsulates related data and validation\npublic class ReportCriteria {\n    private final LocalDate startDate;\n    private final LocalDate endDate;\n    private final String department;\n    private final boolean includeSubDepartments;\n\n    private ReportCriteria(Builder builder) {\n        if (builder.startDate.isAfter(builder.endDate)) {\n            throw new IllegalArgumentException(\"Start date must be before end date\");\n        }\n        if (ChronoUnit.DAYS.between(builder.startDate, builder.endDate) > 365) {\n            throw new IllegalArgumentException(\"Date range cannot exceed one year\");\n        }\n        this.startDate = builder.startDate;\n        this.endDate = builder.endDate;\n        this.department = Objects.requireNonNull(builder.department);\n        this.includeSubDepartments = builder.includeSubDepartments;\n    }\n\n    public Duration getDuration() {\n        return Duration.between(startDate.atStartOfDay(), endDate.atStartOfDay());\n    }\n\n    public boolean spansMultipleMonths() {\n        return !startDate.getMonth().equals(endDate.getMonth());\n    }\n\n    // Builder pattern for flexible construction\n    public static class Builder {\n        private LocalDate startDate;\n        private LocalDate endDate;\n        private String department;\n        private boolean includeSubDepartments = false;\n\n        public Builder dateRange(LocalDate start, LocalDate end) {\n            this.startDate = start;\n            this.endDate = end;\n            return this;\n        }\n\n        public Builder department(String department) {\n            this.department = department;\n            return this;\n        }\n\n        public Builder includeSubDepartments(boolean include) {\n            this.includeSubDepartments = include;\n            return this;\n        }\n\n        public ReportCriteria build() {\n            return new ReportCriteria(this);\n        }\n    }\n}\n\n// Clean method signatures\npublic class ReportService {\n    public Report generateReport(ReportCriteria criteria, ReportFormat format, int maxResults) {\n        // criteria.getDuration() — behavior lives with the data\n        // ... report generation logic\n    }\n\n    public long countRecords(ReportCriteria criteria) {\n        // ... counting logic\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 35,
+          "subsections": []
+        },
+        {
+          "id": "strangler-fig-pattern",
+          "heading": "Strangler Fig Pattern",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "The strangler fig pattern enables incremental migration from a legacy system to a new implementation. A routing layer (facade) intercepts requests and delegates to either the old or new system based on configuration."
+            },
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "// Strangler fig facade — routes between legacy and new implementations\ninterface OrderProcessor {\n  processOrder(order: OrderRequest): Promise<OrderResult>;\n}\n\nclass LegacyOrderProcessor implements OrderProcessor {\n  constructor(private readonly legacyClient: LegacySystemClient) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    // Translate to legacy format and call old system\n    const legacyOrder = this.translateToLegacyFormat(order);\n    const legacyResult = await this.legacyClient.submitOrder(legacyOrder);\n    return this.translateFromLegacyResult(legacyResult);\n  }\n\n  private translateToLegacyFormat(order: OrderRequest): LegacyOrder {\n    return {\n      orderNum: order.id,\n      custId: order.customerId,\n      items: order.items.map(i => ({ sku: i.productId, qty: i.quantity })),\n      // Legacy system uses cents, new system uses decimal dollars\n      totalCents: Math.round(order.total * 100),\n    };\n  }\n\n  private translateFromLegacyResult(result: LegacyOrderResult): OrderResult {\n    return {\n      orderId: result.orderNum,\n      status: result.statusCode === 'OK' ? 'confirmed' : 'failed',\n      confirmationNumber: result.confNum,\n    };\n  }\n}\n\nclass NewOrderProcessor implements OrderProcessor {\n  constructor(private readonly orderService: OrderService) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    return this.orderService.submit(order);\n  }\n}\n\n// The strangler fig facade — controls routing between old and new\nclass StranglerFigOrderProcessor implements OrderProcessor {\n  constructor(\n    private readonly legacy: LegacyOrderProcessor,\n    private readonly modern: NewOrderProcessor,\n    private readonly featureFlags: FeatureFlagService,\n    private readonly metrics: MetricsCollector\n  ) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    const useNewSystem = await this.featureFlags.isEnabled(\n      'new-order-processor',\n      { customerId: order.customerId, orderTotal: order.total }\n    );\n\n    if (useNewSystem) {\n      this.metrics.increment('order.processor.new');\n      try {\n        const result = await this.modern.processOrder(order);\n        this.metrics.increment('order.processor.new.success');\n        return result;\n      } catch (error) {\n        this.metrics.increment('order.processor.new.failure');\n        // Fallback to legacy on failure during migration\n        if (await this.featureFlags.isEnabled('order-processor-fallback')) {\n          this.metrics.increment('order.processor.fallback');\n          return this.legacy.processOrder(order);\n        }\n        throw error;\n      }\n    }\n\n    this.metrics.increment('order.processor.legacy');\n    return this.legacy.processOrder(order);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 33,
+          "subsections": []
+        },
+        {
+          "id": "feature-flags-for-safe-refactoring",
+          "heading": "Feature Flags for Safe Refactoring",
+          "level": 3,
+          "content": [
+            {
+              "type": "paragraph",
+              "text": "Feature flags enable deploying refactored code to production without exposing it to all users. This allows gradual rollout, comparison testing, and instant rollback."
+            },
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Feature flag service abstraction\npublic interface FeatureFlagService {\n    boolean isEnabled(String flagName);\n    boolean isEnabled(String flagName, EvaluationContext context);\n    <T> T getVariant(String flagName, Class<T> type, T defaultValue);\n}\n\n// Using feature flags to safely migrate a pricing calculation\npublic class PricingService {\n    private final FeatureFlagService featureFlags;\n    private final LegacyPricingEngine legacyEngine;\n    private final NewPricingEngine newEngine;\n    private final MetricsCollector metrics;\n\n    public PricingService(FeatureFlagService featureFlags,\n                          LegacyPricingEngine legacyEngine,\n                          NewPricingEngine newEngine,\n                          MetricsCollector metrics) {\n        this.featureFlags = featureFlags;\n        this.legacyEngine = legacyEngine;\n        this.newEngine = newEngine;\n        this.metrics = metrics;\n    }\n\n    public PricingResult calculatePrice(PricingRequest request) {\n        EvaluationContext context = EvaluationContext.builder()\n            .userId(request.getCustomerId())\n            .attribute(\"region\", request.getRegion())\n            .attribute(\"orderValue\", request.getEstimatedTotal().toString())\n            .build();\n\n        if (featureFlags.isEnabled(\"new-pricing-engine\", context)) {\n            return executeWithComparison(request);\n        }\n        return legacyEngine.calculate(request);\n    }\n\n    // Shadow mode: run both, compare results, serve legacy\n    private PricingResult executeWithComparison(PricingRequest request) {\n        PricingResult legacyResult = legacyEngine.calculate(request);\n        PricingResult newResult = newEngine.calculate(request);\n\n        // Compare results for validation\n        if (!legacyResult.getTotal().equals(newResult.getTotal())) {\n            metrics.increment(\"pricing.mismatch\");\n            metrics.recordValue(\"pricing.mismatch.delta\",\n                legacyResult.getTotal().subtract(newResult.getTotal()).abs().doubleValue());\n            log.warn(\"Pricing mismatch for customer {}: legacy={}, new={}\",\n                request.getCustomerId(), legacyResult.getTotal(), newResult.getTotal());\n        } else {\n            metrics.increment(\"pricing.match\");\n        }\n\n        // Serve new result only when confidence is high\n        if (featureFlags.isEnabled(\"new-pricing-engine-serve\", context)) {\n            return newResult;\n        }\n        return legacyResult;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 23,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Refactoring without tests: The cardinal sin of refactoring is changing code structure without a safety net. If existing tests are insufficient, write characterization tests first — tests that capture current behavior regardless of whether it is \"correct.\" These tests verify that your refactoring preserves behavior.",
+            "Big-bang refactoring instead of incremental steps: Attempting to refactor an entire module in one commit creates merge conflicts, makes code review impossible, and risks introducing subtle bugs. Break refactoring into small, independently deployable steps. Each step should leave the system in a working state.",
+            "Refactoring and adding features simultaneously: Mixing structural changes with behavioral changes makes it impossible to determine whether a bug was introduced by the refactoring or the new feature. Separate refactoring commits from feature commits — refactor first to make the feature easy to add, then add the feature.",
+            "Premature abstraction during refactoring: Seeing a pattern twice does not justify extracting a shared abstraction. Wait for the \"Rule of Three\" — extract only when you see the same pattern three times with enough similarity to justify the abstraction. Premature abstraction creates coupling that is harder to undo than duplication.",
+            "Ignoring the strangler fig's anti-corruption layer: When migrating from legacy to new systems, failing to properly translate between the two system's models leads to data corruption and subtle bugs. The anti-corruption layer must handle all differences in data formats, error codes, and behavioral semantics.",
+            "Feature flag debt: Feature flags used for refactoring must be cleaned up after the migration is complete. Stale flags accumulate as dead code paths, increase testing complexity, and create confusion about which code path is actually active. Set expiration dates on flags and track them in your backlog."
+          ]
+        }
+      ],
+      "wordCount": 279,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Stripe's API versioning: Stripe uses a variant of the strangler fig pattern for API evolution. Each API version is a thin adapter layer that translates between the client's expected format and the current internal representation. Old versions are maintained as adapters while the core evolves independently."
+        },
+        {
+          "type": "paragraph",
+          "text": "GitHub's scientist library: GitHub created the scientist library specifically for safe refactoring in production. It runs both old and new code paths, compares results, and reports mismatches without affecting users. This enabled them to refactor critical permission-checking code with confidence."
+        },
+        {
+          "type": "paragraph",
+          "text": "Netflix's feature flag infrastructure: Netflix uses feature flags extensively for refactoring their recommendation engine. New algorithms are deployed behind flags, tested with small user segments, and gradually rolled out based on engagement metrics. Rollback is instant if metrics degrade."
+        },
+        {
+          "type": "paragraph",
+          "text": "Martin Fowler's refactoring to patterns: The progression from procedural code to design patterns often follows a sequence of named refactorings. Replace Conditional with Polymorphism leads to Strategy pattern. Extract Method + Move Method leads to Decorator pattern. These mechanical transformations make pattern adoption safe and incremental."
+        },
+        {
+          "type": "paragraph",
+          "text": "Shopify's modular monolith extraction: Shopify refactored their Rails monolith into components using Extract Module refactoring at scale. They enforced module boundaries with static analysis, gradually reducing coupling between components until individual modules could be extracted into services when needed."
+        }
+      ],
+      "wordCount": 210,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Q: How do you decide when code needs refactoring versus when it should be rewritten?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Refactoring is appropriate when the code works correctly but is hard to understand, extend, or maintain — the structure is the problem, not the behavior. Rewriting is appropriate when the code is fundamentally broken in ways that cannot be incrementally fixed, when the technology is obsolete and cannot be maintained, or when the domain understanding has changed so dramatically that the existing model is wrong. The key heuristic: if you can write tests that capture the current behavior and incrementally transform the code while keeping tests green, refactor. If you cannot write meaningful tests because the behavior itself is wrong, rewrite. In practice, rewrites are riskier and take longer than expected — prefer refactoring with the strangler fig pattern even for large-scale changes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: Explain the strangler fig pattern and when you would use it over a direct migration."
+        },
+        {
+          "type": "paragraph",
+          "text": "A: The strangler fig pattern incrementally replaces a legacy system by building new functionality alongside it and gradually routing traffic from old to new. A facade layer intercepts requests and delegates to either the legacy or new system based on configuration (feature flags, routing rules, or percentage-based rollout). Use it when: the legacy system is too large or risky to replace in one release; you need to validate the new system with real traffic before full cutover; the migration will span weeks or months; or you need the ability to instantly rollback. Use direct migration when: the system is small enough to replace in one sprint; the old and new systems have incompatible data models that make parallel operation impractical; or the legacy system has no remaining users during the migration window."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: What is the relationship between refactoring and technical debt?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: Refactoring is the primary mechanism for paying down technical debt. Technical debt accumulates when code structure diverges from the ideal design — shortcuts taken for speed, designs that no longer fit evolved requirements, or knowledge gaps that led to suboptimal implementations. Refactoring systematically improves structure without changing behavior, bringing the code closer to the ideal design. However, not all technical debt should be refactored — some debt is in stable code that rarely changes and the cost of refactoring exceeds the benefit. Prioritize refactoring debt in code that changes frequently (high churn), code that is blocking new features, and code that causes recurring bugs. Track refactoring work as explicit backlog items with measurable outcomes (reduced bug rate, faster feature delivery, improved test coverage)."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: How do you refactor safely in a system without adequate test coverage?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: First, write characterization tests — tests that document current behavior by observing what the code actually does, not what it should do. Use techniques like: (1) Golden master testing — capture output for known inputs and assert it does not change. (2) Approval testing — record complex outputs and manually approve them as the baseline. (3) Contract tests at boundaries — test the interface between the code you are refactoring and its callers. (4) Mutation testing to verify test effectiveness — ensure your characterization tests actually detect changes. Once you have sufficient coverage of the code paths you intend to modify, proceed with small refactoring steps, running tests after each step. For legacy code with no tests at all, Michael Feathers' \"Working Effectively with Legacy Code\" provides techniques like Sprout Method and Wrap Method that allow safe changes without full test coverage."
+        }
+      ],
+      "wordCount": 577,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Use shadow mode before switching traffic: When refactoring critical paths (pricing, authentication, data processing), run both old and new implementations in parallel. Compare results in production without serving the new results to users. Only switch to serving new results after achieving a sustained period of zero mismatches. GitHub's scientist pattern and Netflix's shadow testing infrastructure demonstrate this approach at scale.",
+            "Measure refactoring impact with leading indicators: Track metrics that demonstrate refactoring value: time-to-implement for new features in refactored areas, bug rate in refactored code versus unreformed code, deployment frequency for services with clean architecture versus legacy services, and developer satisfaction surveys. These metrics justify continued investment in refactoring to stakeholders.",
+            "Set up automated refactoring safety nets: Configure CI pipelines with mutation testing (PIT for Java, Stryker for TypeScript) to verify that your test suite actually catches behavioral changes. A test suite that passes after refactoring but would also pass with incorrect behavior provides false confidence. Mutation testing reveals gaps in your safety net before they cause production incidents."
+          ]
+        }
+      ],
+      "wordCount": 168,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "SOLID Principles — Refactoring patterns often target SOLID violations — Extract Class addresses SRP, Replace Conditional with Polymorphism addresses OCP",
+            "Code Review Practices — Code reviews are where refactoring opportunities are identified and refactoring quality is validated",
+            "Technical Debt — Refactoring is the primary mechanism for systematically reducing technical debt",
+            "Clean Architecture — The strangler fig pattern enables incremental migration toward clean architecture boundaries"
+          ]
+        }
+      ],
+      "wordCount": 64,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "public class InvoiceGenerator {\n    public Invoice generateInvoice(Order order, Customer customer) {\n        // Calculate line items\n        List<LineItem> lineItems = new ArrayList<>();\n        for (OrderItem item : order.getItems()) {\n            BigDecimal unitPrice = item.getProduct().getPrice();\n            BigDecimal quantity = BigDecimal.valueOf(item.getQuantity());\n            BigDecimal lineTotal = unitPrice.multiply(quantity);\n\n            if (customer.getTier() == CustomerTier.PREMIUM) {\n                lineTotal = lineTotal.multiply(BigDecimal.valueOf(0.9)); // 10% discount\n            } else if (customer.getTier() == CustomerTier.ENTERPRISE) {\n                lineTotal = lineTotal.multiply(BigDecimal.valueOf(0.8)); // 20% discount\n            }\n\n            lineItems.add(new LineItem(item.getProduct().getName(), item.getQuantity(), unitPrice, lineTotal));\n        }\n\n        // Calculate totals\n        BigDecimal subtotal = lineItems.stream()\n            .map(LineItem::getTotal)\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n        BigDecimal taxRate = getTaxRate(customer.getAddress().getState());\n        BigDecimal tax = subtotal.multiply(taxRate);\n        BigDecimal total = subtotal.add(tax);\n\n        // Apply shipping\n        BigDecimal shipping;\n        if (total.compareTo(BigDecimal.valueOf(100)) > 0) {\n            shipping = BigDecimal.ZERO; // Free shipping over $100\n        } else {\n            shipping = BigDecimal.valueOf(9.99);\n        }\n\n        // Build invoice\n        Invoice invoice = new Invoice();\n        invoice.setInvoiceNumber(generateInvoiceNumber());\n        invoice.setCustomer(customer);\n        invoice.setLineItems(lineItems);\n        invoice.setSubtotal(subtotal);\n        invoice.setTax(tax);\n        invoice.setShipping(shipping);\n        invoice.setTotal(total.add(shipping));\n        invoice.setDueDate(LocalDate.now().plusDays(30));\n        return invoice;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class InvoiceGenerator {\n    private final TaxCalculator taxCalculator;\n    private final DiscountPolicy discountPolicy;\n    private final ShippingCalculator shippingCalculator;\n\n    public Invoice generateInvoice(Order order, Customer customer) {\n        List<LineItem> lineItems = calculateLineItems(order, customer);\n        BigDecimal subtotal = calculateSubtotal(lineItems);\n        BigDecimal tax = taxCalculator.calculate(subtotal, customer.getAddress());\n        BigDecimal shipping = shippingCalculator.calculate(subtotal);\n        BigDecimal total = subtotal.add(tax).add(shipping);\n\n        return buildInvoice(customer, lineItems, subtotal, tax, shipping, total);\n    }\n\n    private List<LineItem> calculateLineItems(Order order, Customer customer) {\n        return order.getItems().stream()\n            .map(item -> createLineItem(item, customer))\n            .collect(Collectors.toList());\n    }\n\n    private LineItem createLineItem(OrderItem item, Customer customer) {\n        BigDecimal unitPrice = item.getProduct().getPrice();\n        BigDecimal quantity = BigDecimal.valueOf(item.getQuantity());\n        BigDecimal lineTotal = discountPolicy.applyDiscount(\n            unitPrice.multiply(quantity), customer.getTier()\n        );\n        return new LineItem(item.getProduct().getName(), item.getQuantity(), unitPrice, lineTotal);\n    }\n\n    private BigDecimal calculateSubtotal(List<LineItem> lineItems) {\n        return lineItems.stream()\n            .map(LineItem::getTotal)\n            .reduce(BigDecimal.ZERO, BigDecimal::add);\n    }\n\n    private Invoice buildInvoice(Customer customer, List<LineItem> lineItems,\n            BigDecimal subtotal, BigDecimal tax, BigDecimal shipping, BigDecimal total) {\n        Invoice invoice = new Invoice();\n        invoice.setInvoiceNumber(generateInvoiceNumber());\n        invoice.setCustomer(customer);\n        invoice.setLineItems(lineItems);\n        invoice.setSubtotal(subtotal);\n        invoice.setTax(tax);\n        invoice.setShipping(shipping);\n        invoice.setTotal(total);\n        invoice.setDueDate(LocalDate.now().plusDays(30));\n        return invoice;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// BAD: Adding a new notification type requires modifying this function\nfunction sendNotification(notification: Notification): SendResult {\n  switch (notification.type) {\n    case 'email':\n      const emailBody = renderEmailTemplate(notification.template, notification.data);\n      return emailClient.send({\n        to: notification.recipient.email,\n        subject: notification.subject,\n        body: emailBody,\n        attachments: notification.attachments || [],\n      });\n\n    case 'sms':\n      const smsBody = truncateToSmsLength(notification.message);\n      return smsGateway.send({\n        phoneNumber: notification.recipient.phone,\n        message: smsBody,\n      });\n\n    case 'push':\n      return pushService.send({\n        deviceToken: notification.recipient.deviceToken,\n        title: notification.subject,\n        body: notification.message,\n        badge: notification.badge || 1,\n        sound: notification.sound || 'default',\n      });\n\n    case 'slack':\n      return slackClient.postMessage({\n        channel: notification.recipient.slackChannel,\n        text: notification.message,\n        blocks: notification.richContent || [],\n      });\n\n    default:\n      throw new Error(`Unknown notification type: ${notification.type}`);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// GOOD: Each notification type is a self-contained class\ninterface NotificationSender {\n  readonly type: string;\n  send(notification: Notification): Promise<SendResult>;\n  validate(notification: Notification): ValidationResult;\n}\n\nclass EmailSender implements NotificationSender {\n  readonly type = 'email';\n\n  constructor(\n    private readonly emailClient: EmailClient,\n    private readonly templateEngine: TemplateEngine\n  ) {}\n\n  async send(notification: Notification): Promise<SendResult> {\n    const body = this.templateEngine.render(notification.template, notification.data);\n    return this.emailClient.send({\n      to: notification.recipient.email,\n      subject: notification.subject,\n      body,\n      attachments: notification.attachments || [],\n    });\n  }\n\n  validate(notification: Notification): ValidationResult {\n    if (!notification.recipient.email) {\n      return ValidationResult.failure('Email address required');\n    }\n    if (!notification.template) {\n      return ValidationResult.failure('Email template required');\n    }\n    return ValidationResult.success();\n  }\n}\n\nclass SmsSender implements NotificationSender {\n  readonly type = 'sms';\n\n  constructor(private readonly smsGateway: SmsGateway) {}\n\n  async send(notification: Notification): Promise<SendResult> {\n    const message = this.truncateToSmsLength(notification.message);\n    return this.smsGateway.send({\n      phoneNumber: notification.recipient.phone,\n      message,\n    });\n  }\n\n  validate(notification: Notification): ValidationResult {\n    if (!notification.recipient.phone) {\n      return ValidationResult.failure('Phone number required');\n    }\n    return ValidationResult.success();\n  }\n\n  private truncateToSmsLength(message: string): string {\n    return message.length > 160 ? message.substring(0, 157) + '...' : message;\n  }\n}\n\n// Registry pattern — adding new types requires zero changes to existing code\nclass NotificationDispatcher {\n  private readonly senders = new Map<string, NotificationSender>();\n\n  register(sender: NotificationSender): void {\n    this.senders.set(sender.type, sender);\n  }\n\n  async dispatch(notification: Notification): Promise<SendResult> {\n    const sender = this.senders.get(notification.type);\n    if (!sender) {\n      throw new UnsupportedNotificationError(notification.type);\n    }\n\n    const validation = sender.validate(notification);\n    if (!validation.isValid) {\n      return SendResult.failure(validation.error);\n    }\n\n    return sender.send(notification);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// BEFORE: Long parameter list that appears in multiple methods\npublic class ReportService {\n    public Report generateReport(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            ReportFormat format,\n            boolean includeSubDepartments,\n            int maxResults) {\n        validateDateRange(startDate, endDate);\n        // ... report generation logic\n    }\n\n    public long countRecords(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            boolean includeSubDepartments) {\n        validateDateRange(startDate, endDate);\n        // ... counting logic\n    }\n\n    public List<String> previewHeaders(\n            LocalDate startDate,\n            LocalDate endDate,\n            String department,\n            ReportFormat format) {\n        // ... header logic\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// AFTER: Parameter object encapsulates related data and validation\npublic class ReportCriteria {\n    private final LocalDate startDate;\n    private final LocalDate endDate;\n    private final String department;\n    private final boolean includeSubDepartments;\n\n    private ReportCriteria(Builder builder) {\n        if (builder.startDate.isAfter(builder.endDate)) {\n            throw new IllegalArgumentException(\"Start date must be before end date\");\n        }\n        if (ChronoUnit.DAYS.between(builder.startDate, builder.endDate) > 365) {\n            throw new IllegalArgumentException(\"Date range cannot exceed one year\");\n        }\n        this.startDate = builder.startDate;\n        this.endDate = builder.endDate;\n        this.department = Objects.requireNonNull(builder.department);\n        this.includeSubDepartments = builder.includeSubDepartments;\n    }\n\n    public Duration getDuration() {\n        return Duration.between(startDate.atStartOfDay(), endDate.atStartOfDay());\n    }\n\n    public boolean spansMultipleMonths() {\n        return !startDate.getMonth().equals(endDate.getMonth());\n    }\n\n    // Builder pattern for flexible construction\n    public static class Builder {\n        private LocalDate startDate;\n        private LocalDate endDate;\n        private String department;\n        private boolean includeSubDepartments = false;\n\n        public Builder dateRange(LocalDate start, LocalDate end) {\n            this.startDate = start;\n            this.endDate = end;\n            return this;\n        }\n\n        public Builder department(String department) {\n            this.department = department;\n            return this;\n        }\n\n        public Builder includeSubDepartments(boolean include) {\n            this.includeSubDepartments = include;\n            return this;\n        }\n\n        public ReportCriteria build() {\n            return new ReportCriteria(this);\n        }\n    }\n}\n\n// Clean method signatures\npublic class ReportService {\n    public Report generateReport(ReportCriteria criteria, ReportFormat format, int maxResults) {\n        // criteria.getDuration() — behavior lives with the data\n        // ... report generation logic\n    }\n\n    public long countRecords(ReportCriteria criteria) {\n        // ... counting logic\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "// Strangler fig facade — routes between legacy and new implementations\ninterface OrderProcessor {\n  processOrder(order: OrderRequest): Promise<OrderResult>;\n}\n\nclass LegacyOrderProcessor implements OrderProcessor {\n  constructor(private readonly legacyClient: LegacySystemClient) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    // Translate to legacy format and call old system\n    const legacyOrder = this.translateToLegacyFormat(order);\n    const legacyResult = await this.legacyClient.submitOrder(legacyOrder);\n    return this.translateFromLegacyResult(legacyResult);\n  }\n\n  private translateToLegacyFormat(order: OrderRequest): LegacyOrder {\n    return {\n      orderNum: order.id,\n      custId: order.customerId,\n      items: order.items.map(i => ({ sku: i.productId, qty: i.quantity })),\n      // Legacy system uses cents, new system uses decimal dollars\n      totalCents: Math.round(order.total * 100),\n    };\n  }\n\n  private translateFromLegacyResult(result: LegacyOrderResult): OrderResult {\n    return {\n      orderId: result.orderNum,\n      status: result.statusCode === 'OK' ? 'confirmed' : 'failed',\n      confirmationNumber: result.confNum,\n    };\n  }\n}\n\nclass NewOrderProcessor implements OrderProcessor {\n  constructor(private readonly orderService: OrderService) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    return this.orderService.submit(order);\n  }\n}\n\n// The strangler fig facade — controls routing between old and new\nclass StranglerFigOrderProcessor implements OrderProcessor {\n  constructor(\n    private readonly legacy: LegacyOrderProcessor,\n    private readonly modern: NewOrderProcessor,\n    private readonly featureFlags: FeatureFlagService,\n    private readonly metrics: MetricsCollector\n  ) {}\n\n  async processOrder(order: OrderRequest): Promise<OrderResult> {\n    const useNewSystem = await this.featureFlags.isEnabled(\n      'new-order-processor',\n      { customerId: order.customerId, orderTotal: order.total }\n    );\n\n    if (useNewSystem) {\n      this.metrics.increment('order.processor.new');\n      try {\n        const result = await this.modern.processOrder(order);\n        this.metrics.increment('order.processor.new.success');\n        return result;\n      } catch (error) {\n        this.metrics.increment('order.processor.new.failure');\n        // Fallback to legacy on failure during migration\n        if (await this.featureFlags.isEnabled('order-processor-fallback')) {\n          this.metrics.increment('order.processor.fallback');\n          return this.legacy.processOrder(order);\n        }\n        throw error;\n      }\n    }\n\n    this.metrics.increment('order.processor.legacy');\n    return this.legacy.processOrder(order);\n  }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Feature flag service abstraction\npublic interface FeatureFlagService {\n    boolean isEnabled(String flagName);\n    boolean isEnabled(String flagName, EvaluationContext context);\n    <T> T getVariant(String flagName, Class<T> type, T defaultValue);\n}\n\n// Using feature flags to safely migrate a pricing calculation\npublic class PricingService {\n    private final FeatureFlagService featureFlags;\n    private final LegacyPricingEngine legacyEngine;\n    private final NewPricingEngine newEngine;\n    private final MetricsCollector metrics;\n\n    public PricingService(FeatureFlagService featureFlags,\n                          LegacyPricingEngine legacyEngine,\n                          NewPricingEngine newEngine,\n                          MetricsCollector metrics) {\n        this.featureFlags = featureFlags;\n        this.legacyEngine = legacyEngine;\n        this.newEngine = newEngine;\n        this.metrics = metrics;\n    }\n\n    public PricingResult calculatePrice(PricingRequest request) {\n        EvaluationContext context = EvaluationContext.builder()\n            .userId(request.getCustomerId())\n            .attribute(\"region\", request.getRegion())\n            .attribute(\"orderValue\", request.getEstimatedTotal().toString())\n            .build();\n\n        if (featureFlags.isEnabled(\"new-pricing-engine\", context)) {\n            return executeWithComparison(request);\n        }\n        return legacyEngine.calculate(request);\n    }\n\n    // Shadow mode: run both, compare results, serve legacy\n    private PricingResult executeWithComparison(PricingRequest request) {\n        PricingResult legacyResult = legacyEngine.calculate(request);\n        PricingResult newResult = newEngine.calculate(request);\n\n        // Compare results for validation\n        if (!legacyResult.getTotal().equals(newResult.getTotal())) {\n            metrics.increment(\"pricing.mismatch\");\n            metrics.recordValue(\"pricing.mismatch.delta\",\n                legacyResult.getTotal().subtract(newResult.getTotal()).abs().doubleValue());\n            log.warn(\"Pricing mismatch for customer {}: legacy={}, new={}\",\n                request.getCustomerId(), legacyResult.getTotal(), newResult.getTotal());\n        } else {\n            metrics.increment(\"pricing.match\");\n        }\n\n        // Serve new result only when confidence is high\n        if (featureFlags.isEnabled(\"new-pricing-engine-serve\", context)) {\n            return newResult;\n        }\n        return legacyResult;\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/software-engineering/practices/refactoring-patterns.md",
+    "wordCount": 1839,
+    "sectionCount": 13
+  }
+}

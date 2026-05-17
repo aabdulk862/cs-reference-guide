@@ -220,44 +220,64 @@ public class LIS {
 }
 ```
 
-```python
-from bisect import bisect_left
+```java
+import java.util.*;
 
-def lis_optimal(nums: list[int]) -> int:
-    """Longest increasing subsequence in O(n log n) time."""
-    tails: list[int] = []
+public class LISOptimal {
+    /**
+     * Longest increasing subsequence in O(n log n) time.
+     * Uses patience sorting: maintain tails array where tails[i]
+     * is the smallest tail element for increasing subsequence of length i+1.
+     */
+    public static int lisLength(int[] nums) {
+        List<Integer> tails = new ArrayList<>();
 
-    for num in nums:
-        pos = bisect_left(tails, num)
-        if pos == len(tails):
-            tails.append(num)
-        else:
-            tails[pos] = num
+        for (int num : nums) {
+            int pos = Collections.binarySearch(tails, num);
+            if (pos < 0) pos = -(pos + 1); // insertion point
+            if (pos == tails.size()) {
+                tails.add(num);
+            } else {
+                tails.set(pos, num);
+            }
+        }
+        return tails.size();
+    }
 
-    return len(tails)
+    /**
+     * LIS with actual subsequence reconstruction. O(n^2) time.
+     */
+    public static List<Integer> lisWithReconstruction(int[] nums) {
+        int n = nums.length;
+        int[] dp = new int[n];
+        int[] parent = new int[n];
+        Arrays.fill(dp, 1);
+        Arrays.fill(parent, -1);
 
-def lis_with_reconstruction(nums: list[int]) -> list[int]:
-    """LIS with actual subsequence reconstruction."""
-    n = len(nums)
-    dp = [1] * n
-    parent = [-1] * n
+        for (int i = 1; i < n; i++) {
+            for (int j = 0; j < i; j++) {
+                if (nums[j] < nums[i] && dp[j] + 1 > dp[i]) {
+                    dp[i] = dp[j] + 1;
+                    parent[i] = j;
+                }
+            }
+        }
 
-    for i in range(1, n):
-        for j in range(i):
-            if nums[j] < nums[i] and dp[j] + 1 > dp[i]:
-                dp[i] = dp[j] + 1
-                parent[i] = j
+        // Find the index of maximum length
+        int maxIdx = 0;
+        for (int i = 1; i < n; i++) {
+            if (dp[i] > dp[maxIdx]) maxIdx = i;
+        }
 
-    # Find the index of maximum length
-    max_idx = max(range(n), key=lambda i: dp[i])
-
-    # Reconstruct
-    result = []
-    while max_idx != -1:
-        result.append(nums[max_idx])
-        max_idx = parent[max_idx]
-
-    return result[::-1]
+        // Reconstruct the subsequence
+        LinkedList<Integer> result = new LinkedList<>();
+        while (maxIdx != -1) {
+            result.addFirst(nums[maxIdx]);
+            maxIdx = parent[maxIdx];
+        }
+        return result;
+    }
+}
 ```
 
 ## Common Pitfalls
