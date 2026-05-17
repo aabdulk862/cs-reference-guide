@@ -239,7 +239,7 @@ export function SidebarNavigation() {
           return (
             <li
               key={category.id}
-              className="sidebar-category"
+              className={`sidebar-category${categorySlug === category.id ? ' sidebar-category--has-active' : ''}`}
               role="treeitem"
               aria-expanded={isExpanded}
             >
@@ -278,8 +278,9 @@ export function SidebarNavigation() {
                       categorySlug === category.id && topicSlug === topicSlugPart && !subtopicSlug;
 
                     if (isMultiPage) {
+                      const isTopicActive = categorySlug === category.id && topicSlug === topicSlugPart;
                       return (
-                        <li key={topic.id} className="sidebar-topic" role="treeitem" aria-expanded={isTopicExpanded}>
+                        <li key={topic.id} className={`sidebar-topic${isTopicActive ? ' sidebar-topic--has-active' : ''}`} role="treeitem" aria-expanded={isTopicExpanded}>
                           <button
                             className={`sidebar-topic-toggle ${isActive ? 'active' : ''}`}
                             onClick={() => toggleTopic(topicKey)}

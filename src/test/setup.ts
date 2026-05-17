@@ -78,3 +78,31 @@ Object.defineProperty(window, 'matchMedia', {
 beforeEach(() => {
   localStorage.clear();
 });
+
+// Mock IntersectionObserver for jsdom (not provided by default)
+class IntersectionObserverMock implements IntersectionObserver {
+  readonly root: Element | Document | null = null;
+  readonly rootMargin: string = '';
+  readonly thresholds: ReadonlyArray<number> = [];
+
+  constructor(
+    private callback: IntersectionObserverCallback,
+    _options?: IntersectionObserverInit
+  ) {
+    // Store callback for potential use in tests
+    void this.callback;
+  }
+
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+
+Object.defineProperty(globalThis, 'IntersectionObserver', {
+  value: IntersectionObserverMock,
+  writable: true,
+  configurable: true,
+});

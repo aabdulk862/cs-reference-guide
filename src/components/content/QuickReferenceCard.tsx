@@ -6,6 +6,8 @@
  * Validates: Requirement 3.5
  */
 
+import { useState } from 'react';
+
 interface QuickReferenceCardProps {
   /** Array of quick reference items to display (max 7 shown) */
   items: string[];
@@ -43,6 +45,8 @@ export function QuickReferenceCard({
   items,
   title = 'Quick Reference',
 }: QuickReferenceCardProps) {
+  const [copied, setCopied] = useState(false);
+
   // Don't render if no items provided
   if (!items || items.length === 0) {
     return null;
@@ -51,9 +55,26 @@ export function QuickReferenceCard({
   // Display at most 7 items
   const displayItems = items.slice(0, 7);
 
+  const handleCopyAll = () => {
+    const text = displayItems.map((item) => truncateToTwoSentences(item)).join('\n• ');
+    navigator.clipboard.writeText('• ' + text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="quick-reference-card" role="region" aria-label={title}>
-      <h3 className="quick-reference-title">{title}</h3>
+      <div className="quick-reference-header">
+        <h3 className="quick-reference-title">{title}</h3>
+        <button
+          type="button"
+          className="quick-reference-copy-btn"
+          onClick={handleCopyAll}
+          aria-label="Copy all quick reference items"
+        >
+          {copied ? '✓ Copied' : 'Copy all'}
+        </button>
+      </div>
       <ul className="quick-reference-list">
         {displayItems.map((item, index) => (
           <li key={index} className="quick-reference-item">

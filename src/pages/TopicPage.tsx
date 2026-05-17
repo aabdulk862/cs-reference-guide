@@ -18,6 +18,8 @@ import { ViewToggle } from '../components/content/ViewToggle';
 import { QuickReferenceCard } from '../components/content/QuickReferenceCard';
 import { ContentCard } from '../components/content/ContentCard';
 import { TableOfContents } from '../components/content/TableOfContents';
+import { ShareButton } from '../components/content/ShareButton';
+import { RandomTopicButton } from '../components/navigation/RandomTopicButton';
 import { calculateReadingTime } from '../utils/reading-time';
 import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import {
@@ -352,7 +354,7 @@ export default function TopicPage() {
 
   if (loading) {
     return (
-      <div className="page-topic page-topic--loading" role="status" aria-live="polite">
+      <div className="page-topic page-topic--loading" data-category={categorySlug} role="status" aria-live="polite">
         <p>Loading topic content…</p>
       </div>
     );
@@ -360,7 +362,7 @@ export default function TopicPage() {
 
   if (notFound) {
     return (
-      <div className="page-topic page-topic--error" role="alert">
+      <div className="page-topic page-topic--error" data-category={categorySlug} role="alert">
         <h2>Topic not found</h2>
         <p>The topic you're looking for doesn't exist.</p>
         <Link to="/">Return to Dashboard</Link>
@@ -371,7 +373,7 @@ export default function TopicPage() {
   if (subtopicNotFound) {
     const isSingleFileTopic = manifest && manifestTopic && !hasSubtopics;
     return (
-      <div className="page-topic page-topic--error" role="alert">
+      <div className="page-topic page-topic--error" data-category={categorySlug} role="alert">
         <h2>{isSingleFileTopic ? 'Page not found' : 'Subtopic not found'}</h2>
         <p>
           {isSingleFileTopic
@@ -387,7 +389,7 @@ export default function TopicPage() {
 
   if (error || !topicData) {
     return (
-      <div className="page-topic page-topic--error" role="alert">
+      <div className="page-topic page-topic--error" data-category={categorySlug} role="alert">
         <h2>Unable to load topic</h2>
         <p>{error ?? 'Topic data is unavailable.'}</p>
       </div>
@@ -438,6 +440,7 @@ export default function TopicPage() {
   return (
     <SingleFileView
       topicData={topicData}
+      categorySlug={categorySlug!}
       breadcrumbDisplayNames={breadcrumbDisplayNames}
       activeView={activeView}
       onViewChange={handleViewChange}
@@ -485,7 +488,7 @@ function SubtopicView({
   const nextSubtopic = currentIndex < subtopics.length - 1 ? subtopics[currentIndex + 1] : null;
 
   return (
-    <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
+    <div className="page-topic" data-category={categorySlug}>
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
       <Link to={`/topic/${categorySlug}/${topicSlug}`} className="topic-back-link">
@@ -495,17 +498,29 @@ function SubtopicView({
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
+        <div className="topic-toolbar">
+          <ShareButton />
+          <RandomTopicButton />
+        </div>
       </header>
 
       <ViewToggle onChange={onViewChange} />
       <QuickReferenceCard items={quickRefItems} />
 
-      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
+      <div className={showTableOfContents ? 'topic-layout' : ''}>
+        <div className={showTableOfContents ? 'topic-layout__content' : ''}>
+          <div className="topic-content-sections">
+            {filterSectionsByView(topicData.sections, activeView).map((section) => (
+              <ContentCard key={section.id} section={section} />
+            ))}
+          </div>
+        </div>
 
-      <div className="topic-content-sections">
-        {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <ContentCard key={section.id} section={section} />
-        ))}
+        {showTableOfContents && (
+          <aside className="topic-layout__toc">
+            <TableOfContents sections={topicData.sections} />
+          </aside>
+        )}
       </div>
 
       {/* Prev/Next Navigation */}
@@ -568,23 +583,35 @@ function MultiPageOverview({
   const showTableOfContents = topicData.sections.length > 5;
 
   return (
-    <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
+    <div className="page-topic" data-category={categorySlug}>
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
+        <div className="topic-toolbar">
+          <ShareButton />
+          <RandomTopicButton />
+        </div>
       </header>
 
       <ViewToggle onChange={onViewChange} />
       <QuickReferenceCard items={quickRefItems} />
 
-      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
+      <div className={showTableOfContents ? 'topic-layout' : ''}>
+        <div className={showTableOfContents ? 'topic-layout__content' : ''}>
+          <div className="topic-content-sections">
+            {filterSectionsByView(topicData.sections, activeView).map((section) => (
+              <ContentCard key={section.id} section={section} />
+            ))}
+          </div>
+        </div>
 
-      <div className="topic-content-sections">
-        {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <ContentCard key={section.id} section={section} />
-        ))}
+        {showTableOfContents && (
+          <aside className="topic-layout__toc">
+            <TableOfContents sections={topicData.sections} />
+          </aside>
+        )}
       </div>
 
       <nav className="topic-subtopics" aria-label="Subtopics">
@@ -615,6 +642,7 @@ function MultiPageOverview({
 
 interface SingleFileViewProps {
   topicData: TopicData;
+  categorySlug: string;
   breadcrumbDisplayNames: Record<string, string>;
   activeView: ContentView;
   onViewChange: (view: ContentView) => void;
@@ -624,6 +652,7 @@ interface SingleFileViewProps {
 
 function SingleFileView({
   topicData,
+  categorySlug,
   breadcrumbDisplayNames,
   activeView,
   onViewChange,
@@ -636,23 +665,35 @@ function SingleFileView({
   const showTableOfContents = topicData.sections.length > 5;
 
   return (
-    <div className={`page-topic${showTableOfContents ? ' page-topic--with-toc' : ''}`}>
+    <div className="page-topic" data-category={categorySlug}>
       <Breadcrumbs displayNames={breadcrumbDisplayNames} />
 
       <header className="topic-header">
         <h1 className="topic-header__title">{topicData.title}</h1>
         <p className="topic-header__reading-time">{readingTime} min read</p>
+        <div className="topic-toolbar">
+          <ShareButton />
+          <RandomTopicButton />
+        </div>
       </header>
 
       <ViewToggle onChange={onViewChange} />
       <QuickReferenceCard items={quickRefItems} />
 
-      {showTableOfContents && <TableOfContents sections={topicData.sections} />}
+      <div className={showTableOfContents ? 'topic-layout' : ''}>
+        <div className={showTableOfContents ? 'topic-layout__content' : ''}>
+          <div className="topic-content-sections">
+            {filterSectionsByView(topicData.sections, activeView).map((section) => (
+              <ContentCard key={section.id} section={section} />
+            ))}
+          </div>
+        </div>
 
-      <div className="topic-content-sections">
-        {filterSectionsByView(topicData.sections, activeView).map((section) => (
-          <ContentCard key={section.id} section={section} />
-        ))}
+        {showTableOfContents && (
+          <aside className="topic-layout__toc">
+            <TableOfContents sections={topicData.sections} />
+          </aside>
+        )}
       </div>
 
       <MarkCompleteButton isCompleted={isCompleted} onToggle={onToggleComplete} />
