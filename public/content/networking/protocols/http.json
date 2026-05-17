@@ -128,39 +128,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the differences between HTTP/1.1, HTTP/2, and HTTP/3 and when you'd choose each."
+          "type": "interview",
+          "question": "Explain the differences between HTTP/1.1, HTTP/2, and HTTP/3 and when you'd choose each.",
+          "answer": "HTTP/1.1 uses text-based request/response over TCP with persistent connections. Its main limitation is head-of-line blocking — responses must arrive in request order per connection, so browsers open 6-8 connections per origin. HTTP/2 uses binary framing with stream multiplexing over a single TCP connection, eliminating application-layer HOL blocking. It adds HPACK header compression and server push. However, TCP-level HOL blocking persists — one lost packet blocks all streams. HTTP/3 replaces TCP with QUIC (over UDP), providing independent stream multiplexing (no transport HOL blocking), integrated TLS 1.3 (1-RTT or 0-RTT establishment), and connection migration (survives IP changes). Choose HTTP/1.1 for maximum compatibility, HTTP/2 for web applications and gRPC, HTTP/3 for mobile-heavy or high-latency scenarios."
         },
         {
-          "type": "paragraph",
-          "text": "A: HTTP/1.1 uses text-based request/response over TCP with persistent connections. Its main limitation is head-of-line blocking — responses must arrive in request order per connection, so browsers open 6-8 connections per origin. HTTP/2 uses binary framing with stream multiplexing over a single TCP connection, eliminating application-layer HOL blocking. It adds HPACK header compression and server push. However, TCP-level HOL blocking persists — one lost packet blocks all streams. HTTP/3 replaces TCP with QUIC (over UDP), providing independent stream multiplexing (no transport HOL blocking), integrated TLS 1.3 (1-RTT or 0-RTT establishment), and connection migration (survives IP changes). Choose HTTP/1.1 for maximum compatibility, HTTP/2 for web applications and gRPC, HTTP/3 for mobile-heavy or high-latency scenarios."
+          "type": "interview",
+          "question": "How does HTTP caching work, and how would you design a caching strategy for a web application?",
+          "answer": "HTTP caching uses Cache-Control headers to define caching behavior. For static assets with content hashes in filenames (e.g., app.a3f2b1.js), use Cache-Control: public, max-age=31536000, immutable — cache forever since the URL changes when content changes. For HTML pages, use Cache-Control: no-cache with an ETag — always revalidate but avoid re-downloading if unchanged (304 response). For API responses, use Cache-Control: private, max-age=0, stale-while-revalidate=60 — don't serve stale to shared caches, but allow the browser to serve stale for 60 seconds while revalidating in the background. The Vary header ensures caches store separate entries for different request variations (encoding, language, auth state)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does HTTP caching work, and how would you design a caching strategy for a web application?"
+          "type": "interview",
+          "question": "What happens at the HTTP level during a connection upgrade to WebSocket or HTTP/2?",
+          "answer": "For WebSocket upgrade: the client sends a standard HTTP/1.1 GET request with Connection: Upgrade, Upgrade: websocket, and a Sec-WebSocket-Key header. The server responds with 101 Switching Protocols, Connection: Upgrade, Upgrade: websocket, and Sec-WebSocket-Accept (a hash of the client's key). After this exchange, the TCP connection switches from HTTP framing to WebSocket framing. For HTTP/2: the client can upgrade from HTTP/1.1 using the Upgrade: h2c header (cleartext) or, more commonly, negotiate HTTP/2 during the TLS handshake via ALPN (Application-Layer Protocol Negotiation). The client includes h2 in the ALPN extension, and if the server supports it, both sides switch to HTTP/2 binary framing after the TLS handshake completes."
         },
         {
-          "type": "paragraph",
-          "text": "A: HTTP caching uses Cache-Control headers to define caching behavior. For static assets with content hashes in filenames (e.g., app.a3f2b1.js), use Cache-Control: public, max-age=31536000, immutable — cache forever since the URL changes when content changes. For HTML pages, use Cache-Control: no-cache with an ETag — always revalidate but avoid re-downloading if unchanged (304 response). For API responses, use Cache-Control: private, max-age=0, stale-while-revalidate=60 — don't serve stale to shared caches, but allow the browser to serve stale for 60 seconds while revalidating in the background. The Vary header ensures caches store separate entries for different request variations (encoding, language, auth state)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What happens at the HTTP level during a connection upgrade to WebSocket or HTTP/2?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: For WebSocket upgrade: the client sends a standard HTTP/1.1 GET request with Connection: Upgrade, Upgrade: websocket, and a Sec-WebSocket-Key header. The server responds with 101 Switching Protocols, Connection: Upgrade, Upgrade: websocket, and Sec-WebSocket-Accept (a hash of the client's key). After this exchange, the TCP connection switches from HTTP framing to WebSocket framing. For HTTP/2: the client can upgrade from HTTP/1.1 using the Upgrade: h2c header (cleartext) or, more commonly, negotiate HTTP/2 during the TLS handshake via ALPN (Application-Layer Protocol Negotiation). The client includes h2 in the ALPN extension, and if the server supports it, both sides switch to HTTP/2 binary framing after the TLS handshake completes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you debug a \"slow API\" complaint using HTTP-level tools?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Break down the request lifecycle: DNS resolution time (dig/nslookup), TCP connection time (time to SYN-ACK), TLS handshake time (time to encrypted), time to first byte (TTFB, server processing), and content download time. Use curl -w with timing variables or browser DevTools Network tab waterfall. Check if the issue is connection reuse (are new connections being established per request?), compression (is the response gzipped?), caching (are conditional requests returning 304 or full 200?), or server processing (high TTFB). For intermittent issues, check for TCP retransmissions (packet loss causing 200ms+ delays), DNS resolution spikes, or connection pool exhaustion (requests queuing for available connections)."
+          "type": "interview",
+          "question": "How would you debug a \"slow API\" complaint using HTTP-level tools?",
+          "answer": "Break down the request lifecycle: DNS resolution time (dig/nslookup), TCP connection time (time to SYN-ACK), TLS handshake time (time to encrypted), time to first byte (TTFB, server processing), and content download time. Use curl -w with timing variables or browser DevTools Network tab waterfall. Check if the issue is connection reuse (are new connections being established per request?), compression (is the response gzipped?), caching (are conditional requests returning 304 or full 200?), or server processing (high TTFB). For intermittent issues, check for TCP retransmissions (packet loss causing 200ms+ delays), DNS resolution spikes, or connection pool exhaustion (requests queuing for available connections)."
         }
       ],
-      "wordCount": 481,
+      "wordCount": 473,
       "subsections": []
     },
     {
@@ -224,7 +212,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/networking/protocols/http.md",
-    "wordCount": 1667,
+    "wordCount": 1659,
     "sectionCount": 8
   }
 }

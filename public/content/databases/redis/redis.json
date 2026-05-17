@@ -173,39 +173,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain Redis persistence options and their trade-offs."
+          "type": "interview",
+          "question": "Explain Redis persistence options and their trade-offs.",
+          "answer": "Redis offers two persistence mechanisms. RDB (Redis Database): creates point-in-time snapshots at configured intervals (e.g., every 60 seconds if 1000+ keys changed). Advantages: compact single-file backups, fast restart (just load the file), minimal performance impact (fork + copy-on-write). Disadvantages: data loss between snapshots (up to 60 seconds of writes lost on crash), fork can cause latency spikes on large datasets (copying page tables). AOF (Append Only File): logs every write operation. Advantages: configurable durability (always = fsync every write, everysec = fsync every second, no = OS decides). Disadvantages: larger file size, slower restart (must replay all operations), rewrite process needed periodically to compact the file. Production recommendation: use both — AOF with everysec for durability (max 1 second data loss) and RDB for fast disaster recovery and backups. Redis 7.0's multi-part AOF eliminates the rewrite blocking issue by writing to a new file while the old one is still active."
         },
         {
-          "type": "paragraph",
-          "text": "A: Redis offers two persistence mechanisms. RDB (Redis Database): creates point-in-time snapshots at configured intervals (e.g., every 60 seconds if 1000+ keys changed). Advantages: compact single-file backups, fast restart (just load the file), minimal performance impact (fork + copy-on-write). Disadvantages: data loss between snapshots (up to 60 seconds of writes lost on crash), fork can cause latency spikes on large datasets (copying page tables). AOF (Append Only File): logs every write operation. Advantages: configurable durability (always = fsync every write, everysec = fsync every second, no = OS decides). Disadvantages: larger file size, slower restart (must replay all operations), rewrite process needed periodically to compact the file. Production recommendation: use both — AOF with everysec for durability (max 1 second data loss) and RDB for fast disaster recovery and backups. Redis 7.0's multi-part AOF eliminates the rewrite blocking issue by writing to a new file while the old one is still active."
+          "type": "interview",
+          "question": "How does Redis Cluster handle data partitioning and what happens during a node failure?",
+          "answer": "Redis Cluster uses hash slot partitioning: the key space is divided into 16,384 slots, and each master node owns a subset. The slot for a key is determined by CRC16(key) mod 16384. Clients cache the slot-to-node mapping and route commands directly to the correct node. If a client sends a command to the wrong node, it receives a MOVED redirect. During resharding, ASK redirects handle keys being migrated. Node failure: each master has one or more replicas. If a master becomes unreachable (detected via gossip protocol, majority vote after cluster-node-timeout), its replica is promoted to master automatically. The cluster remains available for slots owned by healthy masters. If a master fails with no replicas, those slots become unavailable and the cluster enters a degraded state (configurable: cluster-require-full-coverage yes/no). Multi-key operations only work when all keys hash to the same slot — use hash tags ({user:123}:profile, {user:123}:orders) to colocate related keys."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Redis Cluster handle data partitioning and what happens during a node failure?"
+          "type": "interview",
+          "question": "How would you implement a distributed rate limiter that handles 100K requests/second?",
+          "answer": "Use the token bucket algorithm implemented as a Lua script for atomicity. Each client identifier gets a Redis hash storing current token count and last refill timestamp. On each request, the Lua script: calculates tokens to add based on elapsed time, checks if a token is available, decrements if yes (allow), returns denied if no. Why Lua: the check-and-decrement must be atomic to prevent race conditions under concurrent access. Why token bucket over sliding window: token bucket uses O(1) memory per client (just two fields) versus sorted sets which store every request timestamp. For 100K req/s: Redis handles this easily on a single node since Lua scripts execute in microseconds. For global distribution, use Redis Cluster with hash tags to keep each client's rate limit state on one shard. Alternative for extreme scale: use local in-memory rate limiting with periodic Redis synchronization (slightly less accurate but eliminates Redis as a bottleneck)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Redis Cluster uses hash slot partitioning: the key space is divided into 16,384 slots, and each master node owns a subset. The slot for a key is determined by CRC16(key) mod 16384. Clients cache the slot-to-node mapping and route commands directly to the correct node. If a client sends a command to the wrong node, it receives a MOVED redirect. During resharding, ASK redirects handle keys being migrated. Node failure: each master has one or more replicas. If a master becomes unreachable (detected via gossip protocol, majority vote after cluster-node-timeout), its replica is promoted to master automatically. The cluster remains available for slots owned by healthy masters. If a master fails with no replicas, those slots become unavailable and the cluster enters a degraded state (configurable: cluster-require-full-coverage yes/no). Multi-key operations only work when all keys hash to the same slot — use hash tags ({user:123}:profile, {user:123}:orders) to colocate related keys."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement a distributed rate limiter that handles 100K requests/second?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use the token bucket algorithm implemented as a Lua script for atomicity. Each client identifier gets a Redis hash storing current token count and last refill timestamp. On each request, the Lua script: calculates tokens to add based on elapsed time, checks if a token is available, decrements if yes (allow), returns denied if no. Why Lua: the check-and-decrement must be atomic to prevent race conditions under concurrent access. Why token bucket over sliding window: token bucket uses O(1) memory per client (just two fields) versus sorted sets which store every request timestamp. For 100K req/s: Redis handles this easily on a single node since Lua scripts execute in microseconds. For global distribution, use Redis Cluster with hash tags to keep each client's rate limit state on one shard. Alternative for extreme scale: use local in-memory rate limiting with periodic Redis synchronization (slightly less accurate but eliminates Redis as a bottleneck)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the hot key problem and how do you solve it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: A hot key is a single Redis key receiving disproportionate read/write traffic — for example, a viral tweet's like count, a flash sale product page, or a shared configuration value. In Redis Cluster, this overloads the single shard owning that key's hash slot since Redis is single-threaded per shard. Solutions: (1) Read replicas: route reads to replicas using READONLY command, distributing read load across multiple nodes. (2) Local caching: cache hot keys in application memory (with short TTL) to absorb most reads without hitting Redis. Redis 6.0+ supports server-assisted client caching with invalidation messages. (3) Key sharding: split one logical key into N physical keys (hot_key:0 through hot_key:7), write to a random shard, read from all and aggregate. Works for counters (INCRBY on random shard, sum all shards for total). (4) Proxy layer: use a Redis proxy (like Twemproxy or Redis Enterprise's proxy) that can replicate hot keys across multiple shards transparently."
+          "type": "interview",
+          "question": "What is the hot key problem and how do you solve it?",
+          "answer": "A hot key is a single Redis key receiving disproportionate read/write traffic — for example, a viral tweet's like count, a flash sale product page, or a shared configuration value. In Redis Cluster, this overloads the single shard owning that key's hash slot since Redis is single-threaded per shard. Solutions: (1) Read replicas: route reads to replicas using READONLY command, distributing read load across multiple nodes. (2) Local caching: cache hot keys in application memory (with short TTL) to absorb most reads without hitting Redis. Redis 6.0+ supports server-assisted client caching with invalidation messages. (3) Key sharding: split one logical key into N physical keys (hot_key:0 through hot_key:7), write to a random shard, read from all and aggregate. Works for counters (INCRBY on random shard, sum all shards for total). (4) Proxy layer: use a Redis proxy (like Twemproxy or Redis Enterprise's proxy) that can replicate hot keys across multiple shards transparently."
         }
       ],
-      "wordCount": 657,
+      "wordCount": 649,
       "subsections": []
     },
     {
@@ -279,7 +267,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/redis/redis.md",
-    "wordCount": 1677,
+    "wordCount": 1669,
     "sectionCount": 13
   }
 }

@@ -8,12 +8,16 @@ import { FootnoteDef } from '@/components/content/FootnoteDef';
 import { Admonition } from '@/components/content/Admonition';
 import { EnhancedCodeBlock } from '@/components/content/EnhancedCodeBlock';
 import { MermaidRenderer } from '@/components/content/MermaidRenderer';
+import { InterviewCard } from '@/components/content/InterviewCard';
+import { CompareCard } from '@/components/content/CompareCard';
+import { PrereqBadges } from '@/components/content/PrereqBadges';
 
 const BigOChart = lazy(() => import('@/components/interactive/BigOChart'));
 const CodePlayground = lazy(() => import('@/components/interactive/CodePlayground'));
 const DSVisualization = lazy(() => import('@/components/interactive/DSVisualization'));
 const Quiz = lazy(() => import('@/components/interactive/Quiz'));
 const SQLPlayground = lazy(() => import('@/components/interactive/SQLPlayground'));
+const ChartRenderer = lazy(() => import('@/components/content/ChartRenderer'));
 
 const MAX_VISIBLE_WORDS = 300;
 
@@ -90,9 +94,13 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
       );
     }
 
-    case 'table':
+    case 'table': {
+      const isScrollable = node.rows.length > 5;
+      const wrapperClass = isScrollable
+        ? 'content-card__table-wrapper table-scrollable'
+        : 'content-card__table-wrapper';
       return (
-        <div key={index} className="content-card__table-wrapper">
+        <div key={index} className={wrapperClass}>
           <table className="content-card__table">
             <thead>
               <tr>
@@ -113,6 +121,7 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
           </table>
         </div>
       );
+    }
 
     case 'blockquote':
       return (
@@ -195,6 +204,42 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
       return (
         <div key={index} className="content-card__footnote-def">
           <FootnoteDef identifier={node.identifier} content={node.content} />
+        </div>
+      );
+
+    case 'interview':
+      return (
+        <InterviewCard key={index} question={node.question} answer={node.answer} />
+      );
+
+    case 'compare':
+      return (
+        <CompareCard key={index} title={node.title} options={node.options} />
+      );
+
+    case 'prereq':
+      return (
+        <PrereqBadges key={index} links={node.links} />
+      );
+
+    case 'chart':
+      return (
+        <div key={index} className="content-card__chart">
+          <Suspense
+            fallback={
+              <div className="content-card__chart-loading">
+                Loading chart…
+              </div>
+            }
+          >
+            <ChartRenderer
+              chartType={node.chartType}
+              data={node.data}
+              xKey={node.xKey}
+              yKeys={node.yKeys}
+              title={node.title}
+            />
+          </Suspense>
         </div>
       );
   }

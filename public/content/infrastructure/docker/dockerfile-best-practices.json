@@ -151,39 +151,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How do multi-stage builds reduce image size, and what are the tradeoffs?"
+          "type": "interview",
+          "question": "How do multi-stage builds reduce image size, and what are the tradeoffs?",
+          "answer": "Multi-stage builds use multiple FROM instructions to separate build-time dependencies from runtime requirements. The build stage includes compilers, package managers, and source code (often 500MB-1GB), while the final stage copies only compiled artifacts into a minimal base image. A Go application built in a golang:1.22 stage (800MB) can produce a final image using scratch (0MB base) containing only the static binary, resulting in images under 20MB. The tradeoff is increased Dockerfile complexity and the inability to debug production containers with standard tools when using minimal bases like scratch or distroless."
         },
         {
-          "type": "paragraph",
-          "text": "A: Multi-stage builds use multiple FROM instructions to separate build-time dependencies from runtime requirements. The build stage includes compilers, package managers, and source code (often 500MB-1GB), while the final stage copies only compiled artifacts into a minimal base image. A Go application built in a golang:1.22 stage (800MB) can produce a final image using scratch (0MB base) containing only the static binary, resulting in images under 20MB. The tradeoff is increased Dockerfile complexity and the inability to debug production containers with standard tools when using minimal bases like scratch or distroless."
+          "type": "interview",
+          "question": "Explain Docker layer caching and how you would optimize a slow build.",
+          "answer": "Docker caches each layer by instruction content and build context. If an instruction and its inputs have not changed, the cached layer is reused. Cache invalidation cascades downward: changing layer N forces rebuild of all subsequent layers. To optimize: order instructions from stable to volatile (OS packages → dependency install → source copy → build), use multi-stage builds to parallelize independent stages, leverage BuildKit's cache mounts for package manager caches (--mount=type=cache,target=/root/.m2), and minimize build context with .dockerignore. A well-optimized build rebuilds only the final 1-2 layers on code changes."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain Docker layer caching and how you would optimize a slow build."
+          "type": "interview",
+          "question": "What security measures should every production Dockerfile include?",
+          "answer": "Run as non-root user (create with adduser, switch with USER), use minimal base images to reduce attack surface (alpine, distroless), pin base image versions with digests for reproducibility, scan for CVEs in CI, never store secrets in layers (use BuildKit --mount=type=secret), set --read-only filesystem where possible, drop all Linux capabilities and add back only required ones, and set resource limits. Additionally, use COPY --chown instead of RUN chown to avoid creating extra layers with root-owned files."
         },
         {
-          "type": "paragraph",
-          "text": "A: Docker caches each layer by instruction content and build context. If an instruction and its inputs have not changed, the cached layer is reused. Cache invalidation cascades downward: changing layer N forces rebuild of all subsequent layers. To optimize: order instructions from stable to volatile (OS packages → dependency install → source copy → build), use multi-stage builds to parallelize independent stages, leverage BuildKit's cache mounts for package manager caches (--mount=type=cache,target=/root/.m2), and minimize build context with .dockerignore. A well-optimized build rebuilds only the final 1-2 layers on code changes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What security measures should every production Dockerfile include?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Run as non-root user (create with adduser, switch with USER), use minimal base images to reduce attack surface (alpine, distroless), pin base image versions with digests for reproducibility, scan for CVEs in CI, never store secrets in layers (use BuildKit --mount=type=secret), set --read-only filesystem where possible, drop all Linux capabilities and add back only required ones, and set resource limits. Additionally, use COPY --chown instead of RUN chown to avoid creating extra layers with root-owned files."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between ENTRYPOINT and CMD?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: ENTRYPOINT defines the executable that always runs when the container starts. CMD provides default arguments to the entrypoint that can be overridden at runtime with docker run <image> <args>. When both are specified, CMD arguments are appended to ENTRYPOINT. Use ENTRYPOINT for the main application binary and CMD for default flags. The exec form ([\"executable\", \"arg\"]) is preferred over shell form (executable arg) because it runs the process directly as PID 1 without a shell wrapper, enabling proper signal handling."
+          "type": "interview",
+          "question": "What is the difference between ENTRYPOINT and CMD?",
+          "answer": "ENTRYPOINT defines the executable that always runs when the container starts. CMD provides default arguments to the entrypoint that can be overridden at runtime with docker run <image> <args>. When both are specified, CMD arguments are appended to ENTRYPOINT. Use ENTRYPOINT for the main application binary and CMD for default flags. The exec form ([\"executable\", \"arg\"]) is preferred over shell form (executable arg) because it runs the process directly as PID 1 without a shell wrapper, enabling proper signal handling."
         }
       ],
-      "wordCount": 383,
+      "wordCount": 375,
       "subsections": []
     },
     {
@@ -245,7 +233,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/docker/dockerfile-best-practices.md",
-    "wordCount": 1325,
+    "wordCount": 1317,
     "sectionCount": 11
   }
 }

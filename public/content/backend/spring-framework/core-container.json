@@ -216,79 +216,52 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between @Component, @Service, @Repository, and @Controller."
+          "type": "interview",
+          "question": "Explain the difference between @Component, @Service, @Repository, and @Controller.",
+          "answer": "All four are specializations of @Component and trigger component scanning for automatic bean registration. @Service indicates business logic with no additional framework behavior beyond semantic clarity. @Repository enables automatic exception translation, converting persistence-specific exceptions (like Hibernate's PersistenceException) into Spring's DataAccessException hierarchy, providing a consistent exception model regardless of the underlying persistence technology. @Controller marks Spring MVC controllers for request mapping and view resolution. The distinction is primarily semantic for code organization and enables targeted AOP advice (e.g., applying transaction management only to @Service beans or exception translation only to @Repository beans)."
         },
         {
-          "type": "paragraph",
-          "text": "A: All four are specializations of @Component and trigger component scanning for automatic bean registration. @Service indicates business logic with no additional framework behavior beyond semantic clarity. @Repository enables automatic exception translation, converting persistence-specific exceptions (like Hibernate's PersistenceException) into Spring's DataAccessException hierarchy, providing a consistent exception model regardless of the underlying persistence technology. @Controller marks Spring MVC controllers for request mapping and view resolution. The distinction is primarily semantic for code organization and enables targeted AOP advice (e.g., applying transaction management only to @Service beans or exception translation only to @Repository beans)."
+          "type": "interview",
+          "question": "How does Spring resolve dependencies when multiple beans of the same type exist?",
+          "answer": "Spring uses a resolution hierarchy: first, it checks for @Primary annotation designating a preferred candidate. If no primary exists, it checks for @Qualifier annotations matching a specific bean name. If neither is present, it attempts to match by parameter name (the parameter name must match a bean name). If ambiguity remains, Spring throws NoUniqueBeanDefinitionException. For collections, Spring injects all matching beans into List<T> or Map<String, T> parameters. ObjectProvider<T> provides programmatic resolution with methods like getIfAvailable() and orderedStream() for graceful handling of missing or multiple candidates."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Spring resolve dependencies when multiple beans of the same type exist?"
+          "type": "interview",
+          "question": "What is the difference between BeanPostProcessor and BeanFactoryPostProcessor?",
+          "answer": "BeanFactoryPostProcessor runs before any beans are instantiated — it operates on bean definitions (metadata) and can modify them, add new definitions, or resolve property placeholders. PropertySourcesPlaceholderConfigurer is a classic example that resolves ${...} placeholders in bean definitions. BeanPostProcessor runs after each bean is instantiated and initialized — it operates on actual bean instances and can wrap them with proxies or modify their state. AutowiredAnnotationBeanPostProcessor handles @Autowired injection, and AnnotationAwareAspectJAutoProxyCreator creates AOP proxies. The key distinction: BeanFactoryPostProcessor modifies the blueprint, BeanPostProcessor modifies the built object."
         },
         {
-          "type": "paragraph",
-          "text": "A: Spring uses a resolution hierarchy: first, it checks for @Primary annotation designating a preferred candidate. If no primary exists, it checks for @Qualifier annotations matching a specific bean name. If neither is present, it attempts to match by parameter name (the parameter name must match a bean name). If ambiguity remains, Spring throws NoUniqueBeanDefinitionException. For collections, Spring injects all matching beans into List<T> or Map<String, T> parameters. ObjectProvider<T> provides programmatic resolution with methods like getIfAvailable() and orderedStream() for graceful handling of missing or multiple candidates."
+          "type": "interview",
+          "question": "What is the difference between @Bean and @Component?",
+          "answer": "@Component (and its specializations) is a class-level annotation that registers the annotated class as a bean through component scanning. The class itself is the bean definition. @Bean is a method-level annotation used within @Configuration classes where the method body creates and configures the bean instance. Use @Bean when you need to instantiate third-party classes you cannot annotate, when bean creation requires complex logic or conditional configuration, or when you need multiple beans of the same type with different configurations. @Configuration classes with @Bean methods also support inter-bean references (calling one @Bean method from another returns the singleton instance, not a new object) due to CGLIB proxying."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between BeanPostProcessor and BeanFactoryPostProcessor?"
+          "type": "interview",
+          "question": "How does Spring Boot auto-configuration work internally?",
+          "answer": "Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or the legacy spring.factories) for auto-configuration class names. Each class is a @Configuration annotated with @Conditional variants that control activation. For example, DataSourceAutoConfiguration activates only when a DataSource class is on the classpath (@ConditionalOnClass) and no user-defined DataSource bean exists (@ConditionalOnMissingBean). Auto-configurations are processed after user-defined configurations, ensuring user beans take precedence. The @EnableAutoConfiguration annotation (included in @SpringBootApplication) triggers this mechanism."
         },
         {
-          "type": "paragraph",
-          "text": "A: BeanFactoryPostProcessor runs before any beans are instantiated — it operates on bean definitions (metadata) and can modify them, add new definitions, or resolve property placeholders. PropertySourcesPlaceholderConfigurer is a classic example that resolves ${...} placeholders in bean definitions. BeanPostProcessor runs after each bean is instantiated and initialized — it operates on actual bean instances and can wrap them with proxies or modify their state. AutowiredAnnotationBeanPostProcessor handles @Autowired injection, and AnnotationAwareAspectJAutoProxyCreator creates AOP proxies. The key distinction: BeanFactoryPostProcessor modifies the blueprint, BeanPostProcessor modifies the built object."
+          "type": "interview",
+          "question": "What is the difference between Spring AOT processing and traditional runtime bean creation?",
+          "answer": "Traditional Spring creates beans at runtime by scanning the classpath, evaluating conditions, and using reflection to instantiate and wire objects. AOT (Ahead-of-Time) processing in Spring 6 / Boot 3 performs these steps at build time, generating Java source code that directly instantiates beans without reflection. This produces a BeanFactoryInitializationAotProcessor that registers bean definitions programmatically. The benefits are faster startup (no classpath scanning or condition evaluation at runtime), lower memory usage (no reflection metadata retained), and GraalVM native image compatibility (no dynamic class loading). The trade-off is that runtime-dynamic features like @Profile evaluation and @ConditionalOnProperty must be resolved at build time, limiting some flexibility."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between @Bean and @Component?"
+          "type": "interview",
+          "question": "How does @ConfigurationProperties differ from @Value for configuration binding?",
+          "answer": "@Value injects individual properties using SpEL expressions and is suitable for simple, isolated values. @ConfigurationProperties binds an entire prefix of properties to a structured Java object, supporting nested objects, collections, validation with @Validated, and type-safe access. @ConfigurationProperties with record classes or @ConstructorBinding creates immutable configuration objects. It also generates metadata for IDE auto-completion via spring-boot-configuration-processor. Use @Value for one-off values; use @ConfigurationProperties for structured configuration groups that benefit from validation and documentation."
         },
         {
-          "type": "paragraph",
-          "text": "A: @Component (and its specializations) is a class-level annotation that registers the annotated class as a bean through component scanning. The class itself is the bean definition. @Bean is a method-level annotation used within @Configuration classes where the method body creates and configures the bean instance. Use @Bean when you need to instantiate third-party classes you cannot annotate, when bean creation requires complex logic or conditional configuration, or when you need multiple beans of the same type with different configurations. @Configuration classes with @Bean methods also support inter-bean references (calling one @Bean method from another returns the singleton instance, not a new object) due to CGLIB proxying."
+          "type": "interview",
+          "question": "Explain custom scopes in Spring. When would you implement one?",
+          "answer": "Custom scopes define a lifecycle boundary for bean instances beyond the built-in singleton, prototype, request, and session scopes. Implement the Scope interface with get() (retrieve or create instance), remove() (destroy instance), and registerDestructionCallback() methods. Register via CustomScopeConfigurer. Use cases include tenant scope (one instance per tenant in multi-tenant apps), conversation scope (one instance per multi-step wizard flow), batch scope (one instance per batch job execution), and thread scope (one instance per thread for thread-unsafe objects). Spring Batch's @StepScope and @JobScope are examples of custom scopes that bind bean lifecycle to batch execution contexts."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Spring Boot auto-configuration work internally?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or the legacy spring.factories) for auto-configuration class names. Each class is a @Configuration annotated with @Conditional variants that control activation. For example, DataSourceAutoConfiguration activates only when a DataSource class is on the classpath (@ConditionalOnClass) and no user-defined DataSource bean exists (@ConditionalOnMissingBean). Auto-configurations are processed after user-defined configurations, ensuring user beans take precedence. The @EnableAutoConfiguration annotation (included in @SpringBootApplication) triggers this mechanism."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between Spring AOT processing and traditional runtime bean creation?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Traditional Spring creates beans at runtime by scanning the classpath, evaluating conditions, and using reflection to instantiate and wire objects. AOT (Ahead-of-Time) processing in Spring 6 / Boot 3 performs these steps at build time, generating Java source code that directly instantiates beans without reflection. This produces a BeanFactoryInitializationAotProcessor that registers bean definitions programmatically. The benefits are faster startup (no classpath scanning or condition evaluation at runtime), lower memory usage (no reflection metadata retained), and GraalVM native image compatibility (no dynamic class loading). The trade-off is that runtime-dynamic features like @Profile evaluation and @ConditionalOnProperty must be resolved at build time, limiting some flexibility."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does @ConfigurationProperties differ from @Value for configuration binding?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: @Value injects individual properties using SpEL expressions and is suitable for simple, isolated values. @ConfigurationProperties binds an entire prefix of properties to a structured Java object, supporting nested objects, collections, validation with @Validated, and type-safe access. @ConfigurationProperties with record classes or @ConstructorBinding creates immutable configuration objects. It also generates metadata for IDE auto-completion via spring-boot-configuration-processor. Use @Value for one-off values; use @ConfigurationProperties for structured configuration groups that benefit from validation and documentation."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain custom scopes in Spring. When would you implement one?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Custom scopes define a lifecycle boundary for bean instances beyond the built-in singleton, prototype, request, and session scopes. Implement the Scope interface with get() (retrieve or create instance), remove() (destroy instance), and registerDestructionCallback() methods. Register via CustomScopeConfigurer. Use cases include tenant scope (one instance per tenant in multi-tenant apps), conversation scope (one instance per multi-step wizard flow), batch scope (one instance per batch job execution), and thread scope (one instance per thread for thread-unsafe objects). Spring Batch's @StepScope and @JobScope are examples of custom scopes that bind bean lifecycle to batch execution contexts."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is SpEL and where is it used in Spring?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Spring Expression Language (SpEL) is a runtime expression language supporting property access, method invocation, string templating, mathematical operators, logical operators, collection manipulation, and type references. It is used in @Value annotations for dynamic property resolution, in @PreAuthorize/@PostAuthorize for security expressions, in @Cacheable for dynamic key generation, in Spring Data @Query for SpEL-based parameter binding, and in Spring Integration for routing expressions. SpEL evaluates against an EvaluationContext that provides access to beans, system properties, and method parameters. Use SimpleEvaluationContext for restricted evaluation when processing untrusted input."
+          "type": "interview",
+          "question": "What is SpEL and where is it used in Spring?",
+          "answer": "Spring Expression Language (SpEL) is a runtime expression language supporting property access, method invocation, string templating, mathematical operators, logical operators, collection manipulation, and type references. It is used in @Value annotations for dynamic property resolution, in @PreAuthorize/@PostAuthorize for security expressions, in @Cacheable for dynamic key generation, in Spring Data @Query for SpEL-based parameter binding, and in Spring Integration for routing expressions. SpEL evaluates against an EvaluationContext that provides access to beans, system properties, and method parameters. Use SimpleEvaluationContext for restricted evaluation when processing untrusted input."
         }
       ],
-      "wordCount": 889,
+      "wordCount": 871,
       "subsections": []
     },
     {
@@ -374,7 +347,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/core-container.md",
-    "wordCount": 2678,
+    "wordCount": 2660,
     "sectionCount": 15
   }
 }

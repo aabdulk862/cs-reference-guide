@@ -184,47 +184,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: What is a deadlock? What are the four necessary conditions and how do you prevent each?"
+          "type": "interview",
+          "question": "What is a deadlock? What are the four necessary conditions and how do you prevent each?",
+          "answer": "Deadlock occurs when two or more threads are permanently blocked, each waiting for a resource held by another. Four conditions must hold simultaneously: (1) Mutual exclusion — resources are non-sharable (prevent by using sharable resources like read-write locks or lock-free structures). (2) Hold-and-wait — threads hold resources while waiting for others (prevent by acquiring all locks atomically or using try-lock with release-and-retry). (3) No preemption — resources cannot be forcibly taken (prevent by allowing lock timeout and forced release). (4) Circular wait — a cycle exists in the wait graph (prevent by imposing a total ordering on lock acquisition). In practice, consistent lock ordering is the most common prevention strategy. Detection uses periodic wait-for graph analysis with cycle detection (DFS), selecting a victim thread to abort and break the cycle."
         },
         {
-          "type": "paragraph",
-          "text": "A: Deadlock occurs when two or more threads are permanently blocked, each waiting for a resource held by another. Four conditions must hold simultaneously: (1) Mutual exclusion — resources are non-sharable (prevent by using sharable resources like read-write locks or lock-free structures). (2) Hold-and-wait — threads hold resources while waiting for others (prevent by acquiring all locks atomically or using try-lock with release-and-retry). (3) No preemption — resources cannot be forcibly taken (prevent by allowing lock timeout and forced release). (4) Circular wait — a cycle exists in the wait graph (prevent by imposing a total ordering on lock acquisition). In practice, consistent lock ordering is the most common prevention strategy. Detection uses periodic wait-for graph analysis with cycle detection (DFS), selecting a victim thread to abort and break the cycle."
+          "type": "interview",
+          "question": "Explain the difference between a mutex and a semaphore. When would you use each?",
+          "answer": "A mutex provides exclusive access with ownership semantics — only the thread that locked it can unlock it, enabling priority inheritance and recursive locking. A semaphore maintains a counter allowing up to N concurrent accesses without ownership — any thread can signal (increment) regardless of which thread waited (decremented). Use a mutex for protecting critical sections (shared data structures, configuration state). Use a counting semaphore for resource pools (limiting concurrent database connections to N, bounding thread pool queue depth). Binary semaphores (N=1) resemble mutexes but lack ownership, making them suitable for signaling between threads (producer signals consumer) but prone to misuse (accidental double-signal)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between a mutex and a semaphore. When would you use each?"
+          "type": "interview",
+          "question": "What are lock-free data structures and when should you use them?",
+          "answer": "Lock-free data structures use atomic operations (compare-and-swap, fetch-and-add) instead of locks, guaranteeing that at least one thread makes progress in any execution (no deadlock, no priority inversion). Common examples: Treiber stack (CAS on top pointer), Michael-Scott queue (CAS on head/tail), and concurrent skip lists. Use them when: lock contention is a measured bottleneck, you need guaranteed progress (real-time systems), or you need to avoid priority inversion. Avoid them when: the data structure is complex (correctness is extremely hard to verify), contention is low (locks are simpler and fast enough), or memory reclamation is difficult (the ABA problem requires hazard pointers or epoch-based reclamation, adding significant complexity)."
         },
         {
-          "type": "paragraph",
-          "text": "A: A mutex provides exclusive access with ownership semantics — only the thread that locked it can unlock it, enabling priority inheritance and recursive locking. A semaphore maintains a counter allowing up to N concurrent accesses without ownership — any thread can signal (increment) regardless of which thread waited (decremented). Use a mutex for protecting critical sections (shared data structures, configuration state). Use a counting semaphore for resource pools (limiting concurrent database connections to N, bounding thread pool queue depth). Binary semaphores (N=1) resemble mutexes but lack ownership, making them suitable for signaling between threads (producer signals consumer) but prone to misuse (accidental double-signal)."
+          "type": "interview",
+          "question": "How do condition variables work and why must you use a while loop when waiting?",
+          "answer": "A condition variable allows a thread to atomically release a mutex and sleep until signaled by another thread. The workflow: (1) acquire mutex, (2) check condition, (3) if false, call cond_wait which atomically releases mutex and sleeps, (4) when signaled, cond_wait re-acquires mutex and returns, (5) re-check condition. The while loop is necessary for three reasons: spurious wakeups (POSIX permits implementations to wake threads without signal), stolen wakeups (between signal and the thread re-acquiring the mutex, another thread may have consumed the resource), and broadcast semantics (cond_broadcast wakes all waiters but only one may proceed). Without the loop, a thread may proceed with an unsatisfied condition, causing data corruption or logic errors."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What are lock-free data structures and when should you use them?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Lock-free data structures use atomic operations (compare-and-swap, fetch-and-add) instead of locks, guaranteeing that at least one thread makes progress in any execution (no deadlock, no priority inversion). Common examples: Treiber stack (CAS on top pointer), Michael-Scott queue (CAS on head/tail), and concurrent skip lists. Use them when: lock contention is a measured bottleneck, you need guaranteed progress (real-time systems), or you need to avoid priority inversion. Avoid them when: the data structure is complex (correctness is extremely hard to verify), contention is low (locks are simpler and fast enough), or memory reclamation is difficult (the ABA problem requires hazard pointers or epoch-based reclamation, adding significant complexity)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do condition variables work and why must you use a while loop when waiting?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: A condition variable allows a thread to atomically release a mutex and sleep until signaled by another thread. The workflow: (1) acquire mutex, (2) check condition, (3) if false, call cond_wait which atomically releases mutex and sleeps, (4) when signaled, cond_wait re-acquires mutex and returns, (5) re-check condition. The while loop is necessary for three reasons: spurious wakeups (POSIX permits implementations to wake threads without signal), stolen wakeups (between signal and the thread re-acquiring the mutex, another thread may have consumed the resource), and broadcast semantics (cond_broadcast wakes all waiters but only one may proceed). Without the loop, a thread may proceed with an unsatisfied condition, causing data corruption or logic errors."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is false sharing and how do you detect and fix it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: False sharing occurs when threads on different cores modify independent variables that happen to reside on the same CPU cache line (typically 64 bytes). The hardware cache coherency protocol (MESI) invalidates the entire cache line on any write, forcing other cores to reload it from a shared cache level or main memory. This serializes what should be independent parallel operations, reducing throughput by 10-100x. Detect with hardware performance counters: perf stat -e cache-misses,L1-dcache-load-misses showing unexpectedly high cache miss rates for simple operations. Fix by padding structures to cache line boundaries: alignas(64) in C++, @jdk.internal.vm.annotation.Contended in Java, or inserting dummy fields between hot variables."
+          "type": "interview",
+          "question": "What is false sharing and how do you detect and fix it?",
+          "answer": "False sharing occurs when threads on different cores modify independent variables that happen to reside on the same CPU cache line (typically 64 bytes). The hardware cache coherency protocol (MESI) invalidates the entire cache line on any write, forcing other cores to reload it from a shared cache level or main memory. This serializes what should be independent parallel operations, reducing throughput by 10-100x. Detect with hardware performance counters: perf stat -e cache-misses,L1-dcache-load-misses showing unexpectedly high cache miss rates for simple operations. Fix by padding structures to cache line boundaries: alignas(64) in C++, @jdk.internal.vm.annotation.Contended in Java, or inserting dummy fields between hot variables."
         }
       ],
-      "wordCount": 632,
+      "wordCount": 622,
       "subsections": []
     },
     {
@@ -297,7 +282,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/systems-and-io/concurrency-primitives.md",
-    "wordCount": 2001,
+    "wordCount": 1991,
     "sectionCount": 13
   }
 }

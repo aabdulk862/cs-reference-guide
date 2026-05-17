@@ -219,39 +219,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the Linux process lifecycle. What happens when you run a command, and how do zombie processes occur?"
+          "type": "interview",
+          "question": "Explain the Linux process lifecycle. What happens when you run a command, and how do zombie processes occur?",
+          "answer": "When you execute a command, the shell calls fork() to create a child process (exact copy of the parent), then the child calls exec() to replace its memory image with the new program. The parent process can call wait() or waitpid() to collect the child's exit status. A zombie process occurs when a child terminates but the parent has not yet called wait() — the process entry remains in the process table (showing state Z) holding only the exit status and PID. Zombies consume no CPU or memory but occupy a PID slot. They are cleaned up when the parent reads the exit status or when the parent itself terminates (at which point init/systemd adopts and reaps the orphaned zombies). Excessive zombies indicate a bug in the parent process (not handling SIGCHLD or not calling wait()). The fix is to either install a SIGCHLD handler that calls waitpid(-1, &status, WNOHANG) in a loop, or to double-fork (grandchild is immediately adopted by init)."
         },
         {
-          "type": "paragraph",
-          "text": "A: When you execute a command, the shell calls fork() to create a child process (exact copy of the parent), then the child calls exec() to replace its memory image with the new program. The parent process can call wait() or waitpid() to collect the child's exit status. A zombie process occurs when a child terminates but the parent has not yet called wait() — the process entry remains in the process table (showing state Z) holding only the exit status and PID. Zombies consume no CPU or memory but occupy a PID slot. They are cleaned up when the parent reads the exit status or when the parent itself terminates (at which point init/systemd adopts and reaps the orphaned zombies). Excessive zombies indicate a bug in the parent process (not handling SIGCHLD or not calling wait()). The fix is to either install a SIGCHLD handler that calls waitpid(-1, &status, WNOHANG) in a loop, or to double-fork (grandchild is immediately adopted by init)."
+          "type": "interview",
+          "question": "How does the Linux virtual memory system work? What is the difference between RSS, VSZ, and shared memory?",
+          "answer": "Linux uses virtual memory to give each process its own address space, mapped to physical memory (RAM) or swap via page tables. VSZ (Virtual Size) is the total virtual address space allocated to a process, including memory-mapped files, shared libraries, and allocated-but-untouched pages. RSS (Resident Set Size) is the portion of VSZ currently in physical RAM. Shared memory (SHR) is the portion of RSS shared with other processes (shared libraries like libc, memory-mapped files). The key insight is that VSZ can be much larger than physical RAM (a process can map terabytes of virtual space), RSS tells you actual RAM consumption, but RSS double-counts shared pages across processes. PSS (Proportional Set Size) divides shared pages equally among sharing processes, giving the most accurate per-process memory cost. When the system is under memory pressure, the kernel's OOM killer selects processes to terminate based on an oom_score that considers RSS, process age, and the oom_score_adj tunable."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does the Linux virtual memory system work? What is the difference between RSS, VSZ, and shared memory?"
+          "type": "interview",
+          "question": "Describe the Linux permission model. How do SetUID, SetGID, and sticky bit work, and what are their security implications?",
+          "answer": "Linux permissions use a three-tier model: owner, group, and others, each with read (4), write (2), and execute (1) bits. SetUID (4000) on an executable means it runs with the file owner's privileges regardless of who executes it — /usr/bin/passwd is SetUID root so regular users can modify /etc/shadow. SetGID (2000) on a directory means new files inherit the directory's group rather than the creator's primary group, useful for shared team directories. The sticky bit (1000) on a directory means only the file owner (or root) can delete files within it, even if others have write permission — /tmp uses this to prevent users from deleting each other's temporary files. Security implications: SetUID binaries are high-value attack targets because exploiting a vulnerability in a SetUID-root binary gives the attacker root access. Security audits should enumerate all SetUID binaries (find / -perm -4000) and verify each is necessary and up-to-date. Modern alternatives include Linux capabilities (cap_net_bind_service instead of SetUID for binding port 80) which grant specific privileges without full root access."
         },
         {
-          "type": "paragraph",
-          "text": "A: Linux uses virtual memory to give each process its own address space, mapped to physical memory (RAM) or swap via page tables. VSZ (Virtual Size) is the total virtual address space allocated to a process, including memory-mapped files, shared libraries, and allocated-but-untouched pages. RSS (Resident Set Size) is the portion of VSZ currently in physical RAM. Shared memory (SHR) is the portion of RSS shared with other processes (shared libraries like libc, memory-mapped files). The key insight is that VSZ can be much larger than physical RAM (a process can map terabytes of virtual space), RSS tells you actual RAM consumption, but RSS double-counts shared pages across processes. PSS (Proportional Set Size) divides shared pages equally among sharing processes, giving the most accurate per-process memory cost. When the system is under memory pressure, the kernel's OOM killer selects processes to terminate based on an oom_score that considers RSS, process age, and the oom_score_adj tunable."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe the Linux permission model. How do SetUID, SetGID, and sticky bit work, and what are their security implications?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Linux permissions use a three-tier model: owner, group, and others, each with read (4), write (2), and execute (1) bits. SetUID (4000) on an executable means it runs with the file owner's privileges regardless of who executes it — /usr/bin/passwd is SetUID root so regular users can modify /etc/shadow. SetGID (2000) on a directory means new files inherit the directory's group rather than the creator's primary group, useful for shared team directories. The sticky bit (1000) on a directory means only the file owner (or root) can delete files within it, even if others have write permission — /tmp uses this to prevent users from deleting each other's temporary files. Security implications: SetUID binaries are high-value attack targets because exploiting a vulnerability in a SetUID-root binary gives the attacker root access. Security audits should enumerate all SetUID binaries (find / -perm -4000) and verify each is necessary and up-to-date. Modern alternatives include Linux capabilities (cap_net_bind_service instead of SetUID for binding port 80) which grant specific privileges without full root access."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you diagnose a Linux server that is running slowly? Walk through your investigation process."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Start with the USE method (Utilization, Saturation, Errors) for each resource. First, uptime shows load averages — if load exceeds CPU count, the system is saturated. Then vmstat 1 shows CPU breakdown (user, system, iowait, idle): high iowait indicates disk bottleneck, high system indicates kernel overhead. free -h checks memory: if available memory is low and swap is active, the system is thrashing. iostat -xz 1 shows disk utilization and queue depth: %util near 100% means the disk is saturated. ss -s shows socket statistics: many TIME_WAIT connections indicate connection churn. dmesg | tail checks for kernel errors (OOM kills, hardware failures). Once the bottleneck resource is identified, drill down: for CPU, use perf top or pidstat; for memory, check /proc/meminfo and process RSS; for disk, use iotop to find the offending process; for network, use iftop or nethogs. The investigation should take under 60 seconds to identify the bottleneck category, then focused tools narrow to the specific cause."
+          "type": "interview",
+          "question": "How would you diagnose a Linux server that is running slowly? Walk through your investigation process.",
+          "answer": "Start with the USE method (Utilization, Saturation, Errors) for each resource. First, uptime shows load averages — if load exceeds CPU count, the system is saturated. Then vmstat 1 shows CPU breakdown (user, system, iowait, idle): high iowait indicates disk bottleneck, high system indicates kernel overhead. free -h checks memory: if available memory is low and swap is active, the system is thrashing. iostat -xz 1 shows disk utilization and queue depth: %util near 100% means the disk is saturated. ss -s shows socket statistics: many TIME_WAIT connections indicate connection churn. dmesg | tail checks for kernel errors (OOM kills, hardware failures). Once the bottleneck resource is identified, drill down: for CPU, use perf top or pidstat; for memory, check /proc/meminfo and process RSS; for disk, use iotop to find the offending process; for network, use iftop or nethogs. The investigation should take under 60 seconds to identify the bottleneck category, then focused tools narrow to the specific cause."
         }
       ],
-      "wordCount": 724,
+      "wordCount": 716,
       "subsections": []
     },
     {
@@ -320,7 +308,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/linux/linux-essentials.md",
-    "wordCount": 2052,
+    "wordCount": 2044,
     "sectionCount": 12
   }
 }

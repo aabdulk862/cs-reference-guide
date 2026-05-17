@@ -227,47 +227,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How do you decide between Testcontainers and mocking the database in integration tests?"
+          "type": "interview",
+          "question": "How do you decide between Testcontainers and mocking the database in integration tests?",
+          "answer": "Use Testcontainers (real database) when: testing SQL queries with joins, aggregations, or database-specific features; verifying constraint enforcement (unique, foreign key, check); testing migration scripts; validating ORM-generated SQL; or testing transaction isolation behavior. Use mocks when: testing business logic that happens to call a repository (mock the repository interface); testing error handling paths (easier to simulate specific failures); or when container startup time is unacceptable for the feedback loop (though this is rarely the case with modern Testcontainers). The key principle: mock at boundaries you own (your repository interface), but don't mock the database itself when testing data access code. A repository test with a mocked database proves nothing — it only verifies that your mock behaves as you expect, not that your SQL is correct."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use Testcontainers (real database) when: testing SQL queries with joins, aggregations, or database-specific features; verifying constraint enforcement (unique, foreign key, check); testing migration scripts; validating ORM-generated SQL; or testing transaction isolation behavior. Use mocks when: testing business logic that happens to call a repository (mock the repository interface); testing error handling paths (easier to simulate specific failures); or when container startup time is unacceptable for the feedback loop (though this is rarely the case with modern Testcontainers). The key principle: mock at boundaries you own (your repository interface), but don't mock the database itself when testing data access code. A repository test with a mocked database proves nothing — it only verifies that your mock behaves as you expect, not that your SQL is correct."
+          "type": "interview",
+          "question": "How do you handle flaky E2E tests in CI/CD pipelines?",
+          "answer": "Flaky tests erode team trust and slow delivery. Multi-layered approach: (1) Prevention: Use deterministic waits (waitForSelector, not sleep), isolate test data (each test creates its own), disable animations in test mode, and use stable selectors (data-testid, roles). (2) Detection: Track test pass rates over time — a test that fails 5% of runs is flaky even if it passes on retry. Quarantine flaky tests into a separate suite that doesn't block deployment. (3) Retry strategy: Allow 1-2 retries in CI but flag retried tests for investigation. A test that needs retries has a bug. (4) Root cause analysis: Common causes are timing issues (add explicit waits), shared state (isolate data), external dependencies (mock or stub), and resource contention (increase CI resources or reduce parallelism). (5) Architecture: Run E2E tests against a dedicated, stable environment — not a shared staging that other teams deploy to mid-test."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle flaky E2E tests in CI/CD pipelines?"
+          "type": "interview",
+          "question": "Explain the Page Object Model pattern. What are its benefits and when might you deviate from it?",
+          "answer": "Page Object Model (POM) encapsulates page interactions behind a class with methods representing user actions and properties representing page state. Benefits: (1) Single point of change — when a selector changes, update one page object, not 50 tests. (2) Readable tests — checkoutPage.fillShippingAddress(address) is clearer than 5 lines of page.fill() calls. (3) Reusability — multiple tests share the same page interactions. (4) Abstraction — tests describe what the user does, not how the UI is structured. Deviations: For simple pages with 1-2 interactions, a page object adds unnecessary indirection. For component-level tests (testing a single widget), direct selectors are clearer. Some teams prefer \"screenplay pattern\" (action-focused) over page objects (page-focused) for complex workflows that span multiple pages. The key is consistency within a project — pick one pattern and apply it uniformly."
         },
         {
-          "type": "paragraph",
-          "text": "A: Flaky tests erode team trust and slow delivery. Multi-layered approach: (1) Prevention: Use deterministic waits (waitForSelector, not sleep), isolate test data (each test creates its own), disable animations in test mode, and use stable selectors (data-testid, roles). (2) Detection: Track test pass rates over time — a test that fails 5% of runs is flaky even if it passes on retry. Quarantine flaky tests into a separate suite that doesn't block deployment. (3) Retry strategy: Allow 1-2 retries in CI but flag retried tests for investigation. A test that needs retries has a bug. (4) Root cause analysis: Common causes are timing issues (add explicit waits), shared state (isolate data), external dependencies (mock or stub), and resource contention (increase CI resources or reduce parallelism). (5) Architecture: Run E2E tests against a dedicated, stable environment — not a shared staging that other teams deploy to mid-test."
+          "type": "interview",
+          "question": "How would you implement visual regression testing in a CI/CD pipeline?",
+          "answer": "Implementation steps: (1) Capture: Use Playwright's toHaveScreenshot() or a service like Percy/Chromatic to capture screenshots during E2E test runs. Capture at multiple viewport sizes and in both light/dark themes. (2) Baseline management: Store baseline screenshots in the repository (Playwright) or in the service's cloud (Percy). Update baselines explicitly when intentional visual changes are made. (3) Comparison: On each PR, compare new screenshots against baselines. Use perceptual diff algorithms that ignore anti-aliasing differences but catch layout shifts. Set a threshold (e.g., 0.1% pixel difference allowed) to avoid false positives from rendering engine variations. (4) Review workflow: When diffs are detected, generate side-by-side comparison images for human review. Integrate with PR checks — visual changes require explicit approval before merge. (5) Stability: Disable animations, use fixed timestamps/dates, mock dynamic content (avatars, ads), and ensure consistent font rendering across CI environments (install specific fonts in Docker)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the Page Object Model pattern. What are its benefits and when might you deviate from it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Page Object Model (POM) encapsulates page interactions behind a class with methods representing user actions and properties representing page state. Benefits: (1) Single point of change — when a selector changes, update one page object, not 50 tests. (2) Readable tests — checkoutPage.fillShippingAddress(address) is clearer than 5 lines of page.fill() calls. (3) Reusability — multiple tests share the same page interactions. (4) Abstraction — tests describe what the user does, not how the UI is structured. Deviations: For simple pages with 1-2 interactions, a page object adds unnecessary indirection. For component-level tests (testing a single widget), direct selectors are clearer. Some teams prefer \"screenplay pattern\" (action-focused) over page objects (page-focused) for complex workflows that span multiple pages. The key is consistency within a project — pick one pattern and apply it uniformly."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement visual regression testing in a CI/CD pipeline?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Implementation steps: (1) Capture: Use Playwright's toHaveScreenshot() or a service like Percy/Chromatic to capture screenshots during E2E test runs. Capture at multiple viewport sizes and in both light/dark themes. (2) Baseline management: Store baseline screenshots in the repository (Playwright) or in the service's cloud (Percy). Update baselines explicitly when intentional visual changes are made. (3) Comparison: On each PR, compare new screenshots against baselines. Use perceptual diff algorithms that ignore anti-aliasing differences but catch layout shifts. Set a threshold (e.g., 0.1% pixel difference allowed) to avoid false positives from rendering engine variations. (4) Review workflow: When diffs are detected, generate side-by-side comparison images for human review. Integrate with PR checks — visual changes require explicit approval before merge. (5) Stability: Disable animations, use fixed timestamps/dates, mock dynamic content (avatars, ads), and ensure consistent font rendering across CI environments (install specific fonts in Docker)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What's the difference between Playwright and Cypress? When would you choose each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Playwright: Multi-browser (Chromium, Firefox, WebKit) with true parallel execution across browsers and test files. Runs outside the browser (Node.js process controlling browsers via CDP/WebSocket). Supports multiple tabs, browser contexts, and cross-origin navigation natively. Better for: teams needing cross-browser coverage, complex multi-tab scenarios, mobile browser testing (WebKit = Safari), and large test suites benefiting from parallelism. Cypress: Runs inside the browser alongside the application. Excellent debugging with time-travel snapshots, automatic waiting, and real-time reloading. Primarily Chromium-based (Firefox support is experimental). Better for: developer experience during test writing, component testing (renders components in isolation), teams that value the interactive test runner, and applications that only need Chromium testing. Key tradeoffs: Cypress has better DX for writing/debugging tests; Playwright has better CI performance and browser coverage. Cypress struggles with multi-tab and cross-origin; Playwright handles these natively. Both are production-ready choices — the decision often comes down to team preference and browser requirements."
+          "type": "interview",
+          "question": "What's the difference between Playwright and Cypress? When would you choose each?",
+          "answer": "Playwright: Multi-browser (Chromium, Firefox, WebKit) with true parallel execution across browsers and test files. Runs outside the browser (Node.js process controlling browsers via CDP/WebSocket). Supports multiple tabs, browser contexts, and cross-origin navigation natively. Better for: teams needing cross-browser coverage, complex multi-tab scenarios, mobile browser testing (WebKit = Safari), and large test suites benefiting from parallelism. Cypress: Runs inside the browser alongside the application. Excellent debugging with time-travel snapshots, automatic waiting, and real-time reloading. Primarily Chromium-based (Firefox support is experimental). Better for: developer experience during test writing, component testing (renders components in isolation), teams that value the interactive test runner, and applications that only need Chromium testing. Key tradeoffs: Cypress has better DX for writing/debugging tests; Playwright has better CI performance and browser coverage. Cypress struggles with multi-tab and cross-origin; Playwright handles these natively. Both are production-ready choices — the decision often comes down to team preference and browser requirements."
         }
       ],
-      "wordCount": 767,
+      "wordCount": 757,
       "subsections": []
     },
     {
@@ -348,7 +333,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/integration-testing/database-and-e2e.md",
-    "wordCount": 2469,
+    "wordCount": 2459,
     "sectionCount": 14
   }
 }

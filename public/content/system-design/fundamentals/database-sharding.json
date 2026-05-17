@@ -151,39 +151,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you choose a shard key for a multi-tenant SaaS application?"
+          "type": "interview",
+          "question": "How would you choose a shard key for a multi-tenant SaaS application?",
+          "answer": "Tenant ID is the natural shard key for multi-tenant applications because: (1) Most queries are scoped to a single tenant (user sees only their organization's data). (2) It provides good distribution if tenants are numerous. (3) It aligns with data isolation requirements. The main risk is tenant size imbalance: a few large tenants may overwhelm their shard while small tenants leave their shards underutilized. Mitigate with: virtual sharding (large tenants span multiple virtual shards), dedicated shards for the largest tenants, and monitoring shard utilization with automated alerts when imbalance exceeds thresholds. For queries that span tenants (admin dashboards, billing aggregation), maintain separate analytics replicas or use a CQRS pattern with a denormalized read model."
         },
         {
-          "type": "paragraph",
-          "text": "A: Tenant ID is the natural shard key for multi-tenant applications because: (1) Most queries are scoped to a single tenant (user sees only their organization's data). (2) It provides good distribution if tenants are numerous. (3) It aligns with data isolation requirements. The main risk is tenant size imbalance: a few large tenants may overwhelm their shard while small tenants leave their shards underutilized. Mitigate with: virtual sharding (large tenants span multiple virtual shards), dedicated shards for the largest tenants, and monitoring shard utilization with automated alerts when imbalance exceeds thresholds. For queries that span tenants (admin dashboards, billing aggregation), maintain separate analytics replicas or use a CQRS pattern with a denormalized read model."
+          "type": "interview",
+          "question": "When would you choose range-based sharding over hash-based sharding?",
+          "answer": "Range-based sharding maps contiguous key ranges to shards (e.g., users A-H on shard 1, I-P on shard 2). Choose it when your primary access pattern involves range queries (time-series data queried by date range, alphabetical listings, sequential ID ranges). The tradeoff is potential hot spots: if recent data is accessed most frequently and new data always goes to the latest range, one shard handles disproportionate load. Hash-based sharding distributes keys uniformly regardless of their natural ordering, eliminating hot spots but making range queries impossible without scatter-gather. Choose hash-based when distribution uniformity matters more than range query efficiency, which is the common case for most OLTP workloads."
         },
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose range-based sharding over hash-based sharding?"
+          "type": "interview",
+          "question": "How do you handle database migrations (schema changes) across a sharded database?",
+          "answer": "Schema changes across shards must be coordinated carefully: (1) Use online DDL tools (pt-online-schema-change for MySQL, pg_repack for PostgreSQL) that create a new table, copy data, and swap atomically without locking. (2) Roll out changes shard-by-shard rather than simultaneously, monitoring for issues after each shard. (3) Make changes backward-compatible: add columns as nullable first, deploy application code that handles both schemas, then make columns non-nullable in a subsequent migration. (4) For Vitess/similar systems, use their built-in online DDL that coordinates across shards automatically. (5) Never run ALTER TABLE directly on production shards; always use tooling that avoids long-running locks."
         },
         {
-          "type": "paragraph",
-          "text": "A: Range-based sharding maps contiguous key ranges to shards (e.g., users A-H on shard 1, I-P on shard 2). Choose it when your primary access pattern involves range queries (time-series data queried by date range, alphabetical listings, sequential ID ranges). The tradeoff is potential hot spots: if recent data is accessed most frequently and new data always goes to the latest range, one shard handles disproportionate load. Hash-based sharding distributes keys uniformly regardless of their natural ordering, eliminating hot spots but making range queries impossible without scatter-gather. Choose hash-based when distribution uniformity matters more than range query efficiency, which is the common case for most OLTP workloads."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle database migrations (schema changes) across a sharded database?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Schema changes across shards must be coordinated carefully: (1) Use online DDL tools (pt-online-schema-change for MySQL, pg_repack for PostgreSQL) that create a new table, copy data, and swap atomically without locking. (2) Roll out changes shard-by-shard rather than simultaneously, monitoring for issues after each shard. (3) Make changes backward-compatible: add columns as nullable first, deploy application code that handles both schemas, then make columns non-nullable in a subsequent migration. (4) For Vitess/similar systems, use their built-in online DDL that coordinates across shards automatically. (5) Never run ALTER TABLE directly on production shards; always use tooling that avoids long-running locks."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the tradeoffs between application-level sharding and using a NewSQL database like CockroachDB."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Application-level sharding gives you full control over data placement, query routing, and shard management. You can optimize for your specific access patterns and use any database engine. The cost is significant engineering effort for the sharding layer, cross-shard queries, resharding tooling, and operational complexity. NewSQL databases (CockroachDB, TiDB, Spanner) handle sharding transparently with automatic data distribution, rebalancing, and distributed transactions. The tradeoffs are: higher per-query latency (distributed transaction coordination), less control over data placement, vendor lock-in to the NewSQL engine, and potentially higher infrastructure cost. Choose application-level sharding when you need maximum performance, have well-defined access patterns, and can invest in the engineering. Choose NewSQL when you need distributed transactions, want operational simplicity, and can accept the latency overhead."
+          "type": "interview",
+          "question": "Explain the tradeoffs between application-level sharding and using a NewSQL database like CockroachDB.",
+          "answer": "Application-level sharding gives you full control over data placement, query routing, and shard management. You can optimize for your specific access patterns and use any database engine. The cost is significant engineering effort for the sharding layer, cross-shard queries, resharding tooling, and operational complexity. NewSQL databases (CockroachDB, TiDB, Spanner) handle sharding transparently with automatic data distribution, rebalancing, and distributed transactions. The tradeoffs are: higher per-query latency (distributed transaction coordination), less control over data placement, vendor lock-in to the NewSQL engine, and potentially higher infrastructure cost. Choose application-level sharding when you need maximum performance, have well-defined access patterns, and can invest in the engineering. Choose NewSQL when you need distributed transactions, want operational simplicity, and can accept the latency overhead."
         }
       ],
-      "wordCount": 492,
+      "wordCount": 484,
       "subsections": []
     },
     {
@@ -250,7 +238,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/database-sharding.md",
-    "wordCount": 1997,
+    "wordCount": 1989,
     "sectionCount": 11
   }
 }

@@ -132,39 +132,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between L4 and L7 load balancing with specific use cases for each."
+          "type": "interview",
+          "question": "Explain the difference between L4 and L7 load balancing with specific use cases for each.",
+          "answer": "L4 load balancers operate at the transport layer, making routing decisions based on source/destination IP and port without inspecting the payload. They're faster (no payload parsing), handle any TCP/UDP protocol, and add minimal latency (microseconds). Use L4 for: database connection routing, gaming servers, any non-HTTP protocol, or when maximum throughput matters. L7 load balancers operate at the application layer, inspecting HTTP headers, URLs, cookies, and even request bodies. They enable: path-based routing (/api → service A, /web → service B), header-based routing (A/B testing via cookie), SSL termination, request/response modification, and WebSocket-aware routing. Use L7 for: microservice routing, canary deployments, API gateways, and any scenario requiring content-aware decisions. The trade-off is throughput and latency (L7 adds milliseconds) vs routing intelligence."
         },
         {
-          "type": "paragraph",
-          "text": "A: L4 load balancers operate at the transport layer, making routing decisions based on source/destination IP and port without inspecting the payload. They're faster (no payload parsing), handle any TCP/UDP protocol, and add minimal latency (microseconds). Use L4 for: database connection routing, gaming servers, any non-HTTP protocol, or when maximum throughput matters. L7 load balancers operate at the application layer, inspecting HTTP headers, URLs, cookies, and even request bodies. They enable: path-based routing (/api → service A, /web → service B), header-based routing (A/B testing via cookie), SSL termination, request/response modification, and WebSocket-aware routing. Use L7 for: microservice routing, canary deployments, API gateways, and any scenario requiring content-aware decisions. The trade-off is throughput and latency (L7 adds milliseconds) vs routing intelligence."
+          "type": "interview",
+          "question": "How does consistent hashing work, and why is it preferred for distributed caches?",
+          "answer": "Consistent hashing maps both servers and keys onto a circular hash space (ring). To find which server handles a key, hash the key and walk clockwise on the ring until hitting a server. When a server is added, only keys between it and its counter-clockwise neighbor redistribute — approximately 1/N of total keys. When a server is removed, its keys move to the next clockwise server. This is critical for distributed caches because traditional hash-mod-N redistributes ALL keys when N changes (adding one server invalidates the entire cache). With consistent hashing, adding a server to a 10-server cluster only invalidates ~10% of cached data. Virtual nodes (100-200 hash positions per physical server) ensure uniform distribution, and weighting virtual node count by server capacity handles heterogeneous hardware."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does consistent hashing work, and why is it preferred for distributed caches?"
+          "type": "interview",
+          "question": "Design a health check system for a load balancer. What types of checks would you implement?",
+          "answer": "Implement three layers: 1) Shallow checks (TCP connect) — verify the server is reachable and accepting connections. Fast (milliseconds) but doesn't verify application health. 2) Deep checks (HTTP GET /health) — verify the application is initialized, can reach its database, and is ready to serve traffic. The health endpoint should check critical dependencies and return 200 (healthy) or 503 (not ready). 3) Passive monitoring — track real request success/error rates per server. If error rate exceeds a threshold (e.g., 50% over 10 requests), mark unhealthy immediately without waiting for the next active check. Configure thresholds: unhealthy after 2-3 consecutive failures (fast detection), healthy after 3-5 consecutive successes (prevent flapping). Implement slow start: newly healthy servers receive gradually increasing traffic to warm caches and connection pools before taking full load."
         },
         {
-          "type": "paragraph",
-          "text": "A: Consistent hashing maps both servers and keys onto a circular hash space (ring). To find which server handles a key, hash the key and walk clockwise on the ring until hitting a server. When a server is added, only keys between it and its counter-clockwise neighbor redistribute — approximately 1/N of total keys. When a server is removed, its keys move to the next clockwise server. This is critical for distributed caches because traditional hash-mod-N redistributes ALL keys when N changes (adding one server invalidates the entire cache). With consistent hashing, adding a server to a 10-server cluster only invalidates ~10% of cached data. Virtual nodes (100-200 hash positions per physical server) ensure uniform distribution, and weighting virtual node count by server capacity handles heterogeneous hardware."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Design a health check system for a load balancer. What types of checks would you implement?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Implement three layers: 1) Shallow checks (TCP connect) — verify the server is reachable and accepting connections. Fast (milliseconds) but doesn't verify application health. 2) Deep checks (HTTP GET /health) — verify the application is initialized, can reach its database, and is ready to serve traffic. The health endpoint should check critical dependencies and return 200 (healthy) or 503 (not ready). 3) Passive monitoring — track real request success/error rates per server. If error rate exceeds a threshold (e.g., 50% over 10 requests), mark unhealthy immediately without waiting for the next active check. Configure thresholds: unhealthy after 2-3 consecutive failures (fast detection), healthy after 3-5 consecutive successes (prevent flapping). Implement slow start: newly healthy servers receive gradually increasing traffic to warm caches and connection pools before taking full load."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you handle a rolling deployment without dropping requests?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Implement connection draining with the load balancer: 1) Mark the target server as \"draining\" — it stops receiving new connections but continues processing in-flight requests. 2) Wait for in-flight requests to complete (with a maximum drain timeout, e.g., 30 seconds). 3) Once drained (or timeout reached), remove the server and deploy the new version. 4) After deployment, add the server back with slow start (gradually increasing traffic weight over 30-60 seconds) to warm caches and connection pools. 5) Repeat for the next server. For zero-downtime, ensure enough capacity remains during the rolling update — if you have 4 servers, update one at a time so 75% capacity is always available. Kubernetes implements this with maxUnavailable and maxSurge in rolling update strategy, combined with readiness probes that gate traffic until the new pod is ready."
+          "type": "interview",
+          "question": "How would you handle a rolling deployment without dropping requests?",
+          "answer": "Implement connection draining with the load balancer: 1) Mark the target server as \"draining\" — it stops receiving new connections but continues processing in-flight requests. 2) Wait for in-flight requests to complete (with a maximum drain timeout, e.g., 30 seconds). 3) Once drained (or timeout reached), remove the server and deploy the new version. 4) After deployment, add the server back with slow start (gradually increasing traffic weight over 30-60 seconds) to warm caches and connection pools. 5) Repeat for the next server. For zero-downtime, ensure enough capacity remains during the rolling update — if you have 4 servers, update one at a time so 75% capacity is always available. Kubernetes implements this with maxUnavailable and maxSurge in rolling update strategy, combined with readiness probes that gate traffic until the new pod is ready."
         }
       ],
-      "wordCount": 571,
+      "wordCount": 563,
       "subsections": []
     },
     {
@@ -228,7 +216,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/networking/real-time-and-infrastructure/load-balancing.md",
-    "wordCount": 1912,
+    "wordCount": 1904,
     "sectionCount": 8
   }
 }

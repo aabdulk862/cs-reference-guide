@@ -249,47 +249,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose embedding over referencing in MongoDB?"
+          "type": "interview",
+          "question": "When would you choose embedding over referencing in MongoDB?",
+          "answer": "Embed when: (1) the relationship is one-to-one or one-to-few with a bounded upper limit; (2) the embedded data is always accessed with the parent (no independent access pattern); (3) updates to the embedded data are infrequent or can be done atomically with the parent; (4) the embedded data doesn't push the document near 16MB. Reference when: (1) the relationship is one-to-many with unbounded growth; (2) the related data is frequently accessed independently; (3) many-to-many relationships exist; (4) the related data is large and would bloat the parent document. The hybrid approach (embed a summary, reference the full document) works well when you need fast reads of key fields but the full related data is large or independently accessed."
         },
         {
-          "type": "paragraph",
-          "text": "A: Embed when: (1) the relationship is one-to-one or one-to-few with a bounded upper limit; (2) the embedded data is always accessed with the parent (no independent access pattern); (3) updates to the embedded data are infrequent or can be done atomically with the parent; (4) the embedded data doesn't push the document near 16MB. Reference when: (1) the relationship is one-to-many with unbounded growth; (2) the related data is frequently accessed independently; (3) many-to-many relationships exist; (4) the related data is large and would bloat the parent document. The hybrid approach (embed a summary, reference the full document) works well when you need fast reads of key fields but the full related data is large or independently accessed."
+          "type": "interview",
+          "question": "Explain the Bucket Pattern and when you'd use it over individual documents.",
+          "answer": "The Bucket Pattern groups related documents into fixed-size containers. Instead of one document per event (e.g., one per sensor reading per second = 86,400 documents/day/sensor), you create one document per time bucket (e.g., one per hour = 24 documents/day/sensor). Each bucket contains an array of measurements plus pre-computed statistics (min, max, avg, count). Benefits: 60x fewer documents reduces index size and improves query performance; pre-computed stats enable fast aggregations without scanning individual readings; time-range queries read fewer documents. Use it for: IoT telemetry, financial tick data, user activity logs, or any time-series data with high write frequency. The trade-off is more complex insert logic (upsert into current bucket) and potential for uneven bucket sizes if data arrives irregularly."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the Bucket Pattern and when you'd use it over individual documents."
+          "type": "interview",
+          "question": "How do you handle schema changes in MongoDB without downtime?",
+          "answer": "Use the Schema Versioning Pattern: add a schemaVersion field to every document. When the schema evolves, increment the version for new documents but don't migrate existing ones immediately. The application layer includes a normalization function that transforms any version to the current expected shape on read. Optionally, write the normalized version back (lazy migration). For bulk migration, run a background process during off-peak hours that reads old-version documents in batches and updates them. This approach provides zero-downtime schema evolution because: old and new documents coexist in the same collection, the application handles both transparently, and migration happens gradually without locking. Combine with MongoDB's schema validation ($jsonSchema) set to warn mode during transition periods to log non-conforming documents without rejecting writes."
         },
         {
-          "type": "paragraph",
-          "text": "A: The Bucket Pattern groups related documents into fixed-size containers. Instead of one document per event (e.g., one per sensor reading per second = 86,400 documents/day/sensor), you create one document per time bucket (e.g., one per hour = 24 documents/day/sensor). Each bucket contains an array of measurements plus pre-computed statistics (min, max, avg, count). Benefits: 60x fewer documents reduces index size and improves query performance; pre-computed stats enable fast aggregations without scanning individual readings; time-range queries read fewer documents. Use it for: IoT telemetry, financial tick data, user activity logs, or any time-series data with high write frequency. The trade-off is more complex insert logic (upsert into current bucket) and potential for uneven bucket sizes if data arrives irregularly."
+          "type": "interview",
+          "question": "What are the anti-patterns in MongoDB schema design?",
+          "answer": "The major anti-patterns are: (1) Massive arrays — embedding unbounded arrays that grow indefinitely, eventually hitting 16MB or causing write amplification on every push; (2) Unnecessary normalization — splitting data into many collections and using $lookup everywhere, negating MongoDB's document model advantages; (3) Bloated documents — storing large binary data (images, files) inline instead of using GridFS or external storage; (4) Deep nesting — documents nested 4+ levels deep that are impossible to index and painful to update with positional operators; (5) No schema at all — treating MongoDB as truly \"schemaless\" without any structure, leading to inconsistent data that breaks application logic; (6) Using MongoDB as a queue — polling a collection for unprocessed documents instead of using a proper message queue; (7) Storing computed values without refresh logic — denormalized counts/sums that drift from reality because the update logic doesn't handle all edge cases."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle schema changes in MongoDB without downtime?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use the Schema Versioning Pattern: add a schemaVersion field to every document. When the schema evolves, increment the version for new documents but don't migrate existing ones immediately. The application layer includes a normalization function that transforms any version to the current expected shape on read. Optionally, write the normalized version back (lazy migration). For bulk migration, run a background process during off-peak hours that reads old-version documents in batches and updates them. This approach provides zero-downtime schema evolution because: old and new documents coexist in the same collection, the application handles both transparently, and migration happens gradually without locking. Combine with MongoDB's schema validation ($jsonSchema) set to warn mode during transition periods to log non-conforming documents without rejecting writes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are the anti-patterns in MongoDB schema design?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The major anti-patterns are: (1) Massive arrays — embedding unbounded arrays that grow indefinitely, eventually hitting 16MB or causing write amplification on every push; (2) Unnecessary normalization — splitting data into many collections and using $lookup everywhere, negating MongoDB's document model advantages; (3) Bloated documents — storing large binary data (images, files) inline instead of using GridFS or external storage; (4) Deep nesting — documents nested 4+ levels deep that are impossible to index and painful to update with positional operators; (5) No schema at all — treating MongoDB as truly \"schemaless\" without any structure, leading to inconsistent data that breaks application logic; (6) Using MongoDB as a queue — polling a collection for unprocessed documents instead of using a proper message queue; (7) Storing computed values without refresh logic — denormalized counts/sums that drift from reality because the update logic doesn't handle all edge cases."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you model a many-to-many relationship in MongoDB?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Three approaches depending on the access pattern: (1) Embed array of references on both sides — store an array of related IDs in both documents. Works when both sides are bounded (e.g., students and courses where a student takes < 50 courses and a course has < 500 students). (2) Embed on the side you query most — if you always query \"which courses does this student take?\" but rarely \"which students are in this course?\", embed course references only in the student document. (3) Junction collection — create a separate collection with documents like { studentId, courseId, enrolledAt, grade }. This is best when the relationship itself has attributes, when both sides are unbounded, or when you need to query the relationships independently. In practice, most many-to-many relationships in MongoDB use approach 1 or 2 with denormalized summary data to avoid joins."
+          "type": "interview",
+          "question": "How would you model a many-to-many relationship in MongoDB?",
+          "answer": "Three approaches depending on the access pattern: (1) Embed array of references on both sides — store an array of related IDs in both documents. Works when both sides are bounded (e.g., students and courses where a student takes < 50 courses and a course has < 500 students). (2) Embed on the side you query most — if you always query \"which courses does this student take?\" but rarely \"which students are in this course?\", embed course references only in the student document. (3) Junction collection — create a separate collection with documents like { studentId, courseId, enrolledAt, grade }. This is best when the relationship itself has attributes, when both sides are unbounded, or when you need to query the relationships independently. In practice, most many-to-many relationships in MongoDB use approach 1 or 2 with denormalized summary data to avoid joins."
         }
       ],
-      "wordCount": 703,
+      "wordCount": 693,
       "subsections": []
     },
     {
@@ -378,7 +363,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/schema-design-patterns.md",
-    "wordCount": 1971,
+    "wordCount": 1961,
     "sectionCount": 16
   }
 }

@@ -145,39 +145,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a rate limiter for a distributed API gateway?"
+          "type": "interview",
+          "question": "How would you design a rate limiter for a distributed API gateway?",
+          "answer": "I would start by clarifying requirements: what granularity (per-user, per-IP, per-endpoint), what limits (requests per second, per minute), and whether we need hard limits or soft limits with degradation. For a distributed system, I would use a sliding window counter stored in Redis with atomic increment operations. Each API gateway instance checks Redis before processing a request. The key would be {user_id}:{endpoint}:{window_start} with a TTL matching the window duration. For high availability, I would use Redis Cluster with read replicas. The trade-off is that Redis adds 1-2ms latency per request, but this is acceptable for the consistency guarantee. An alternative token bucket algorithm provides smoother rate limiting but requires more complex state management. I would implement a 429 response with Retry-After header and expose rate limit headers (X-RateLimit-Remaining) for client-side optimization."
         },
         {
-          "type": "paragraph",
-          "text": "A: I would start by clarifying requirements: what granularity (per-user, per-IP, per-endpoint), what limits (requests per second, per minute), and whether we need hard limits or soft limits with degradation. For a distributed system, I would use a sliding window counter stored in Redis with atomic increment operations. Each API gateway instance checks Redis before processing a request. The key would be {user_id}:{endpoint}:{window_start} with a TTL matching the window duration. For high availability, I would use Redis Cluster with read replicas. The trade-off is that Redis adds 1-2ms latency per request, but this is acceptable for the consistency guarantee. An alternative token bucket algorithm provides smoother rate limiting but requires more complex state management. I would implement a 429 response with Retry-After header and expose rate limit headers (X-RateLimit-Remaining) for client-side optimization."
+          "type": "interview",
+          "question": "Design a notification system that handles millions of notifications per day across multiple channels (push, email, SMS).",
+          "answer": "The core challenge is handling high throughput with varying delivery latencies across channels while maintaining delivery guarantees. I would design a pipeline: API receives notification requests and writes to a message queue (Kafka for durability and ordering). Channel-specific consumer groups process messages at their own pace — push notifications need sub-second delivery while email can tolerate minutes of delay. Each channel has its own retry logic with exponential backoff and dead letter queues for permanent failures. A notification status service tracks delivery state per message per channel, enabling idempotent retries. For user preferences, a separate service manages opt-in/opt-out per channel with a caching layer. The key trade-off is eventual consistency in delivery status — we prioritize sending speed over real-time status accuracy. At scale, I would partition by user_id to maintain per-user ordering guarantees."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Design a notification system that handles millions of notifications per day across multiple channels (push, email, SMS)."
+          "type": "interview",
+          "question": "How would you design a real-time collaborative document editor like Google Docs?",
+          "answer": "The fundamental challenge is conflict resolution when multiple users edit simultaneously. I would use Operational Transformation (OT) or CRDTs for conflict-free concurrent editing. The architecture has three layers: a WebSocket gateway for real-time communication, an operation transformation service that resolves conflicts and maintains document state, and a persistence layer that periodically snapshots the document. Each client maintains a local copy and sends operations (insert, delete, format) to the server. The server transforms concurrent operations against each other to maintain consistency, then broadcasts the transformed operations to all connected clients. For scalability, documents are partitioned across servers by document_id, with a coordination service handling user-to-server routing. The trade-off is complexity — OT algorithms are notoriously difficult to implement correctly, so I would evaluate using an existing library like Yjs (CRDT-based) rather than building from scratch. Persistence uses a combination of operation logs for recent history and periodic full snapshots for recovery."
         },
         {
-          "type": "paragraph",
-          "text": "A: The core challenge is handling high throughput with varying delivery latencies across channels while maintaining delivery guarantees. I would design a pipeline: API receives notification requests and writes to a message queue (Kafka for durability and ordering). Channel-specific consumer groups process messages at their own pace — push notifications need sub-second delivery while email can tolerate minutes of delay. Each channel has its own retry logic with exponential backoff and dead letter queues for permanent failures. A notification status service tracks delivery state per message per channel, enabling idempotent retries. For user preferences, a separate service manages opt-in/opt-out per channel with a caching layer. The key trade-off is eventual consistency in delivery status — we prioritize sending speed over real-time status accuracy. At scale, I would partition by user_id to maintain per-user ordering guarantees."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design a real-time collaborative document editor like Google Docs?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The fundamental challenge is conflict resolution when multiple users edit simultaneously. I would use Operational Transformation (OT) or CRDTs for conflict-free concurrent editing. The architecture has three layers: a WebSocket gateway for real-time communication, an operation transformation service that resolves conflicts and maintains document state, and a persistence layer that periodically snapshots the document. Each client maintains a local copy and sends operations (insert, delete, format) to the server. The server transforms concurrent operations against each other to maintain consistency, then broadcasts the transformed operations to all connected clients. For scalability, documents are partitioned across servers by document_id, with a coordination service handling user-to-server routing. The trade-off is complexity — OT algorithms are notoriously difficult to implement correctly, so I would evaluate using an existing library like Yjs (CRDT-based) rather than building from scratch. Persistence uses a combination of operation logs for recent history and periodic full snapshots for recovery."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Design a search autocomplete system that provides suggestions within 100ms."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The latency requirement drives the architecture toward pre-computed suggestions with aggressive caching. I would build a trie data structure storing the top-K suggestions for each prefix, updated asynchronously from search analytics. The serving layer uses a distributed cache (Redis) with prefix keys mapping to ranked suggestion lists. When a user types, the client sends the current prefix to an API that performs a cache lookup — cache hits return in under 10ms. Cache misses fall through to a trie service that computes suggestions and populates the cache. Suggestion ranking uses a combination of query frequency, recency, and personalization signals. Updates flow through a streaming pipeline: search logs → aggregation → trie rebuild → cache invalidation. The key trade-off is freshness versus latency — suggestions may be minutes to hours stale, which is acceptable for most use cases. For personalization, I would add a lightweight user-specific layer that re-ranks the global suggestions based on the user's search history."
+          "type": "interview",
+          "question": "Design a search autocomplete system that provides suggestions within 100ms.",
+          "answer": "The latency requirement drives the architecture toward pre-computed suggestions with aggressive caching. I would build a trie data structure storing the top-K suggestions for each prefix, updated asynchronously from search analytics. The serving layer uses a distributed cache (Redis) with prefix keys mapping to ranked suggestion lists. When a user types, the client sends the current prefix to an API that performs a cache lookup — cache hits return in under 10ms. Cache misses fall through to a trie service that computes suggestions and populates the cache. Suggestion ranking uses a combination of query frequency, recency, and personalization signals. Updates flow through a streaming pipeline: search logs → aggregation → trie rebuild → cache invalidation. The key trade-off is freshness versus latency — suggestions may be minutes to hours stale, which is acceptable for most use cases. For personalization, I would add a lightweight user-specific layer that re-ranks the global suggestions based on the user's search history."
         }
       ],
-      "wordCount": 631,
+      "wordCount": 623,
       "subsections": []
     },
     {
@@ -235,7 +223,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/interview-prep/technical/system-design-interviews.md",
-    "wordCount": 1982,
+    "wordCount": 1974,
     "sectionCount": 10
   }
 }

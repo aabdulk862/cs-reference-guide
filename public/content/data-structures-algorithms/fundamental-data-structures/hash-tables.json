@@ -259,47 +259,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does a hash table handle collisions, and what are the trade-offs between chaining and open addressing?"
+          "type": "interview",
+          "question": "How does a hash table handle collisions, and what are the trade-offs between chaining and open addressing?",
+          "answer": "Collisions occur when two keys hash to the same bucket index. Separate chaining stores colliding entries in a linked list (or tree) at each bucket, allowing unlimited entries per bucket at the cost of pointer overhead and cache misses. Open addressing stores all entries in the array itself, probing subsequent slots on collision (linear, quadratic, or double hashing). Open addressing has better cache locality and lower memory overhead but degrades rapidly as load factor approaches 1.0 and requires tombstone markers for deletion. In practice, chaining is simpler to implement correctly and handles high load factors gracefully, while open addressing (used by Python's dict and Rust's HashMap) offers better performance at moderate load factors."
         },
         {
-          "type": "paragraph",
-          "text": "A: Collisions occur when two keys hash to the same bucket index. Separate chaining stores colliding entries in a linked list (or tree) at each bucket, allowing unlimited entries per bucket at the cost of pointer overhead and cache misses. Open addressing stores all entries in the array itself, probing subsequent slots on collision (linear, quadratic, or double hashing). Open addressing has better cache locality and lower memory overhead but degrades rapidly as load factor approaches 1.0 and requires tombstone markers for deletion. In practice, chaining is simpler to implement correctly and handles high load factors gracefully, while open addressing (used by Python's dict and Rust's HashMap) offers better performance at moderate load factors."
+          "type": "interview",
+          "question": "What happens when a HashMap exceeds its load factor, and how does this affect performance?",
+          "answer": "When the number of entries exceeds capacity multiplied by the load factor (default 0.75 in Java), the HashMap allocates a new internal array of double the size and rehashes every existing entry into the new array. This resize operation is O(n) but occurs infrequently enough that the amortized cost per insertion remains O(1). The resize causes a latency spike proportional to the table size. To avoid this in latency-sensitive code, pre-size the HashMap with new HashMap<>((int)(expectedSize / 0.75) + 1). Java 8+ also converts long chains (8+ entries) to red-black trees during resize, improving worst-case lookup from O(n) to O(log n) per bucket."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What happens when a HashMap exceeds its load factor, and how does this affect performance?"
+          "type": "interview",
+          "question": "How would you design a hash table that supports O(1) worst-case lookups?",
+          "answer": "Use cuckoo hashing, which maintains two hash tables with independent hash functions. Each key has exactly two possible positions (one in each table). On insertion, if both positions are occupied, the new key displaces an existing key, which is then re-inserted into its alternate position. This cascading displacement guarantees that lookup always checks exactly two positions — O(1) worst case. The trade-off is that insertion can trigger a chain of displacements and may require table rebuilding if a cycle is detected. Cuckoo hashing works well at load factors below 0.5 and is used in network hardware (TCAM alternatives) and high-performance systems where predictable latency matters more than space efficiency."
         },
         {
-          "type": "paragraph",
-          "text": "A: When the number of entries exceeds capacity multiplied by the load factor (default 0.75 in Java), the HashMap allocates a new internal array of double the size and rehashes every existing entry into the new array. This resize operation is O(n) but occurs infrequently enough that the amortized cost per insertion remains O(1). The resize causes a latency spike proportional to the table size. To avoid this in latency-sensitive code, pre-size the HashMap with new HashMap<>((int)(expectedSize / 0.75) + 1). Java 8+ also converts long chains (8+ entries) to red-black trees during resize, improving worst-case lookup from O(n) to O(log n) per bucket."
+          "type": "interview",
+          "question": "Explain consistent hashing and why it matters for distributed systems.",
+          "answer": "Consistent hashing maps both keys and nodes onto a circular hash space (ring). Each key is assigned to the first node encountered clockwise from its hash position. When a node is added or removed, only keys that map to the affected arc of the ring need redistribution — approximately 1/n of total keys for n nodes. This contrasts with naive modular hashing where adding a node redistributes nearly all keys. Virtual nodes (multiple hash positions per physical node) improve load balance. Consistent hashing is used in DynamoDB, Cassandra, Memcached, and content delivery networks to minimize data movement during scaling events."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a hash table that supports O(1) worst-case lookups?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use cuckoo hashing, which maintains two hash tables with independent hash functions. Each key has exactly two possible positions (one in each table). On insertion, if both positions are occupied, the new key displaces an existing key, which is then re-inserted into its alternate position. This cascading displacement guarantees that lookup always checks exactly two positions — O(1) worst case. The trade-off is that insertion can trigger a chain of displacements and may require table rebuilding if a cycle is detected. Cuckoo hashing works well at load factors below 0.5 and is used in network hardware (TCAM alternatives) and high-performance systems where predictable latency matters more than space efficiency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain consistent hashing and why it matters for distributed systems."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Consistent hashing maps both keys and nodes onto a circular hash space (ring). Each key is assigned to the first node encountered clockwise from its hash position. When a node is added or removed, only keys that map to the affected arc of the ring need redistribution — approximately 1/n of total keys for n nodes. This contrasts with naive modular hashing where adding a node redistributes nearly all keys. Virtual nodes (multiple hash positions per physical node) improve load balance. Consistent hashing is used in DynamoDB, Cassandra, Memcached, and content delivery networks to minimize data movement during scaling events."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between HashMap and ConcurrentHashMap in Java?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: HashMap is not thread-safe; concurrent modification causes infinite loops, lost updates, and corrupted state. ConcurrentHashMap uses fine-grained locking (lock striping in Java 7, CAS operations with synchronized blocks on individual bins in Java 8+) to allow concurrent reads and writes without blocking the entire map. ConcurrentHashMap does not allow null keys or values (to disambiguate \"key not found\" from \"value is null\" without locking). It provides atomic compound operations like putIfAbsent, compute, and merge that are impossible to implement safely with external synchronization on HashMap."
+          "type": "interview",
+          "question": "What is the difference between HashMap and ConcurrentHashMap in Java?",
+          "answer": "HashMap is not thread-safe; concurrent modification causes infinite loops, lost updates, and corrupted state. ConcurrentHashMap uses fine-grained locking (lock striping in Java 7, CAS operations with synchronized blocks on individual bins in Java 8+) to allow concurrent reads and writes without blocking the entire map. ConcurrentHashMap does not allow null keys or values (to disambiguate \"key not found\" from \"value is null\" without locking). It provides atomic compound operations like putIfAbsent, compute, and merge that are impossible to implement safely with external synchronization on HashMap."
         }
       ],
-      "wordCount": 584,
+      "wordCount": 574,
       "subsections": []
     },
     {
@@ -369,7 +354,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/data-structures-and-algorithms/fundamental-data-structures/hash-tables.md",
-    "wordCount": 2147,
+    "wordCount": 2137,
     "sectionCount": 13
   }
 }

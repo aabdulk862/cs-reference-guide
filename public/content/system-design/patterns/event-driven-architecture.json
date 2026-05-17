@@ -147,39 +147,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between choreography and orchestration in saga patterns. When would you choose each?"
+          "type": "interview",
+          "question": "Explain the difference between choreography and orchestration in saga patterns. When would you choose each?",
+          "answer": "In choreography, each service listens for events and decides independently what to do next. Service A publishes \"OrderCreated\", Service B hears it and reserves inventory, publishes \"InventoryReserved\", Service C hears that and processes payment. There is no central coordinator. In orchestration, a saga orchestrator explicitly tells each service what to do: \"Service B, reserve inventory for order X\", waits for the response, then \"Service C, charge payment for order X\". Choose choreography when: services are truly independent, the workflow is simple (3-4 steps), and you want maximum decoupling. Choose orchestration when: the workflow is complex (5+ steps with conditional logic), you need visibility into the overall process state, compensation logic is complex, or you need to add/modify steps frequently. Choreography's weakness is that the workflow logic is distributed across services, making it hard to understand and debug. Orchestration's weakness is that the orchestrator becomes a single point of failure and a coupling point. In practice, most production systems use orchestration for complex business workflows and choreography for simple event propagation."
         },
         {
-          "type": "paragraph",
-          "text": "A: In choreography, each service listens for events and decides independently what to do next. Service A publishes \"OrderCreated\", Service B hears it and reserves inventory, publishes \"InventoryReserved\", Service C hears that and processes payment. There is no central coordinator. In orchestration, a saga orchestrator explicitly tells each service what to do: \"Service B, reserve inventory for order X\", waits for the response, then \"Service C, charge payment for order X\". Choose choreography when: services are truly independent, the workflow is simple (3-4 steps), and you want maximum decoupling. Choose orchestration when: the workflow is complex (5+ steps with conditional logic), you need visibility into the overall process state, compensation logic is complex, or you need to add/modify steps frequently. Choreography's weakness is that the workflow logic is distributed across services, making it hard to understand and debug. Orchestration's weakness is that the orchestrator becomes a single point of failure and a coupling point. In practice, most production systems use orchestration for complex business workflows and choreography for simple event propagation."
+          "type": "interview",
+          "question": "How do you achieve exactly-once processing in an event-driven system?",
+          "answer": "True exactly-once delivery is impossible in distributed systems (proven by the Two Generals Problem). Instead, achieve effectively-once processing through idempotent consumers combined with at-least-once delivery. The pattern: (1) assign a unique ID to every event at the producer, (2) the consumer checks an idempotency table before processing (has this event ID been processed?), (3) process the event and record the event ID in the same database transaction (atomic), (4) acknowledge the message to the broker only after the transaction commits. If the consumer crashes after processing but before acknowledging, the broker redelivers the event, but the idempotency check prevents duplicate processing. For the producer side, use the transactional outbox pattern: store events in a database table within the business transaction, then publish them asynchronously. This ensures events are published if and only if the business operation committed. Kafka also provides idempotent producers (deduplication at the broker level) and transactional writes (atomic writes across multiple partitions)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you achieve exactly-once processing in an event-driven system?"
+          "type": "interview",
+          "question": "Design an event sourcing system for a banking application. How do you handle snapshots and projections?",
+          "answer": "The event store captures all account state changes as immutable events: AccountOpened, MoneyDeposited, MoneyWithdrawn, TransferInitiated, TransferCompleted. Current balance is derived by replaying all events for an account. For performance, take periodic snapshots: after every 100 events, store the current state (balance, status, last transaction) as a snapshot. To load an account, read the latest snapshot and replay only events after it. Projections are read-optimized views built from the event stream: a \"transaction history\" projection stores events in a format optimized for the statement page, a \"balance\" projection maintains current balances for quick lookups, and an \"analytics\" projection aggregates data for reporting. Each projection is an independent consumer that can be rebuilt from scratch by replaying all events. For consistency, the write side (event store) is the source of truth. Projections are eventually consistent but can be made strongly consistent for critical reads by reading directly from the event store. Handle schema evolution by versioning events and using upcasters that transform old event formats to new ones during replay."
         },
         {
-          "type": "paragraph",
-          "text": "A: True exactly-once delivery is impossible in distributed systems (proven by the Two Generals Problem). Instead, achieve effectively-once processing through idempotent consumers combined with at-least-once delivery. The pattern: (1) assign a unique ID to every event at the producer, (2) the consumer checks an idempotency table before processing (has this event ID been processed?), (3) process the event and record the event ID in the same database transaction (atomic), (4) acknowledge the message to the broker only after the transaction commits. If the consumer crashes after processing but before acknowledging, the broker redelivers the event, but the idempotency check prevents duplicate processing. For the producer side, use the transactional outbox pattern: store events in a database table within the business transaction, then publish them asynchronously. This ensures events are published if and only if the business operation committed. Kafka also provides idempotent producers (deduplication at the broker level) and transactional writes (atomic writes across multiple partitions)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Design an event sourcing system for a banking application. How do you handle snapshots and projections?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The event store captures all account state changes as immutable events: AccountOpened, MoneyDeposited, MoneyWithdrawn, TransferInitiated, TransferCompleted. Current balance is derived by replaying all events for an account. For performance, take periodic snapshots: after every 100 events, store the current state (balance, status, last transaction) as a snapshot. To load an account, read the latest snapshot and replay only events after it. Projections are read-optimized views built from the event stream: a \"transaction history\" projection stores events in a format optimized for the statement page, a \"balance\" projection maintains current balances for quick lookups, and an \"analytics\" projection aggregates data for reporting. Each projection is an independent consumer that can be rebuilt from scratch by replaying all events. For consistency, the write side (event store) is the source of truth. Projections are eventually consistent but can be made strongly consistent for critical reads by reading directly from the event store. Handle schema evolution by versioning events and using upcasters that transform old event formats to new ones during replay."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you handle a scenario where a saga compensation fails?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Compensation failure is one of the hardest problems in distributed systems. First, implement retries with exponential backoff for transient failures (network timeouts, temporary unavailability). If retries are exhausted, escalate: (1) store the failed compensation in a \"stuck sagas\" table with full context (saga ID, step, error, original event), (2) alert operations team via PagerDuty/Slack, (3) provide a dashboard showing stuck sagas with one-click retry and manual resolution options. For the system to remain consistent during the stuck period, design compensations to be safe to retry (idempotent) and safe to delay (the system should be in a valid, if suboptimal, state). For example, if a refund compensation fails, the customer still has their money charged but the order is cancelled. The system is inconsistent but not dangerous. The operations team can manually trigger the refund. Design your saga state machine to track compensation status separately from forward progress, and implement a \"compensation timeout\" after which the saga is flagged for manual intervention."
+          "type": "interview",
+          "question": "How would you handle a scenario where a saga compensation fails?",
+          "answer": "Compensation failure is one of the hardest problems in distributed systems. First, implement retries with exponential backoff for transient failures (network timeouts, temporary unavailability). If retries are exhausted, escalate: (1) store the failed compensation in a \"stuck sagas\" table with full context (saga ID, step, error, original event), (2) alert operations team via PagerDuty/Slack, (3) provide a dashboard showing stuck sagas with one-click retry and manual resolution options. For the system to remain consistent during the stuck period, design compensations to be safe to retry (idempotent) and safe to delay (the system should be in a valid, if suboptimal, state). For example, if a refund compensation fails, the customer still has their money charged but the order is cancelled. The system is inconsistent but not dangerous. The operations team can manually trigger the refund. Design your saga state machine to track compensation status separately from forward progress, and implement a \"compensation timeout\" after which the saga is flagged for manual intervention."
         }
       ],
-      "wordCount": 714,
+      "wordCount": 706,
       "subsections": []
     },
     {
@@ -243,7 +231,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/event-driven-architecture.md",
-    "wordCount": 2300,
+    "wordCount": 2292,
     "sectionCount": 11
   }
 }

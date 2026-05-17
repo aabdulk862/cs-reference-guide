@@ -227,47 +227,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does Cache Fusion work in Oracle RAC, and what problem does it solve?"
+          "type": "interview",
+          "question": "How does Cache Fusion work in Oracle RAC, and what problem does it solve?",
+          "answer": "Cache Fusion solves the problem of multiple instances needing access to the same data blocks without constantly writing to and reading from shared disk. When Instance 1 holds a modified block in its buffer cache and Instance 2 needs that block, Cache Fusion transfers the block directly over the private interconnect from Instance 1's SGA to Instance 2's SGA — a memory-to-memory transfer that avoids disk I/O entirely. This is managed by the Global Cache Service (GCS) which tracks block ownership and the Global Enqueue Service (GES) which manages lock coordination. The transfer typically completes in under 1ms over InfiniBand. Without Cache Fusion, every cross-instance data access would require a disk write followed by a disk read, making RAC impractical for OLTP workloads."
         },
         {
-          "type": "paragraph",
-          "text": "A: Cache Fusion solves the problem of multiple instances needing access to the same data blocks without constantly writing to and reading from shared disk. When Instance 1 holds a modified block in its buffer cache and Instance 2 needs that block, Cache Fusion transfers the block directly over the private interconnect from Instance 1's SGA to Instance 2's SGA — a memory-to-memory transfer that avoids disk I/O entirely. This is managed by the Global Cache Service (GCS) which tracks block ownership and the Global Enqueue Service (GES) which manages lock coordination. The transfer typically completes in under 1ms over InfiniBand. Without Cache Fusion, every cross-instance data access would require a disk write followed by a disk read, making RAC impractical for OLTP workloads."
+          "type": "interview",
+          "question": "What is the difference between switchover and failover in Data Guard?",
+          "answer": "A switchover is a planned, graceful role reversal where the primary transitions to standby and the standby transitions to primary. Both databases remain synchronized throughout — no data is lost, and both databases are available in their new roles immediately. Use switchover for planned maintenance, patching, or hardware upgrades. A failover is an unplanned operation performed when the primary is unavailable (crashed, site lost). The standby is promoted to primary unilaterally. Depending on the protection mode, some redo may not have been received by the standby, resulting in potential data loss (in Maximum Performance mode). After failover, the old primary cannot simply rejoin — it must be reinstated using Flashback Database or rebuilt from the new primary."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between switchover and failover in Data Guard?"
+          "type": "interview",
+          "question": "Explain the three Data Guard protection modes and their trade-offs.",
+          "answer": "Maximum Protection guarantees zero data loss — the primary will shut itself down rather than commit a transaction that hasn't been confirmed by at least one synchronous standby. This provides the strongest guarantee but risks primary availability if all standbys become unreachable. Maximum Availability also provides zero data loss under normal operation (synchronous transport), but if the standby becomes unreachable, the primary continues operating in Maximum Performance mode temporarily, then resynchronizes when connectivity returns. This balances data protection with availability. Maximum Performance (default) uses asynchronous transport — the primary commits without waiting for standby acknowledgment. This has zero performance impact on the primary but allows potential data loss equal to the transport lag (typically seconds). Choose based on your RPO requirements and acceptable impact on primary commit latency."
         },
         {
-          "type": "paragraph",
-          "text": "A: A switchover is a planned, graceful role reversal where the primary transitions to standby and the standby transitions to primary. Both databases remain synchronized throughout — no data is lost, and both databases are available in their new roles immediately. Use switchover for planned maintenance, patching, or hardware upgrades. A failover is an unplanned operation performed when the primary is unavailable (crashed, site lost). The standby is promoted to primary unilaterally. Depending on the protection mode, some redo may not have been received by the standby, resulting in potential data loss (in Maximum Performance mode). After failover, the old primary cannot simply rejoin — it must be reinstated using Flashback Database or rebuilt from the new primary."
+          "type": "interview",
+          "question": "When would you choose GoldenGate over Data Guard for replication?",
+          "answer": "Choose GoldenGate when you need: (1) heterogeneous replication — Oracle to non-Oracle databases or vice versa; (2) bidirectional/active-active replication with conflict resolution; (3) selective replication of specific tables or rows with filtering and transformation; (4) replication between different Oracle versions or platforms where Data Guard isn't supported; (5) zero-downtime migrations between different database versions or platforms. Data Guard is superior for pure DR scenarios because it's simpler, has lower overhead (ships raw redo vs. logical change capture), replicates everything (DDL, sequences, system changes), and is included in Enterprise Edition licensing. GoldenGate requires a separate license and more complex configuration but provides flexibility that Data Guard cannot match."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the three Data Guard protection modes and their trade-offs."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Maximum Protection guarantees zero data loss — the primary will shut itself down rather than commit a transaction that hasn't been confirmed by at least one synchronous standby. This provides the strongest guarantee but risks primary availability if all standbys become unreachable. Maximum Availability also provides zero data loss under normal operation (synchronous transport), but if the standby becomes unreachable, the primary continues operating in Maximum Performance mode temporarily, then resynchronizes when connectivity returns. This balances data protection with availability. Maximum Performance (default) uses asynchronous transport — the primary commits without waiting for standby acknowledgment. This has zero performance impact on the primary but allows potential data loss equal to the transport lag (typically seconds). Choose based on your RPO requirements and acceptable impact on primary commit latency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: When would you choose GoldenGate over Data Guard for replication?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Choose GoldenGate when you need: (1) heterogeneous replication — Oracle to non-Oracle databases or vice versa; (2) bidirectional/active-active replication with conflict resolution; (3) selective replication of specific tables or rows with filtering and transformation; (4) replication between different Oracle versions or platforms where Data Guard isn't supported; (5) zero-downtime migrations between different database versions or platforms. Data Guard is superior for pure DR scenarios because it's simpler, has lower overhead (ships raw redo vs. logical change capture), replicates everything (DDL, sequences, system changes), and is included in Enterprise Edition licensing. GoldenGate requires a separate license and more complex configuration but provides flexibility that Data Guard cannot match."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does SCAN (Single Client Access Name) work in RAC?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: SCAN provides a single DNS name that resolves to multiple IP addresses (typically 3) for client connections to a RAC cluster. Clients connect to the SCAN name, and the SCAN listener (running on any node via Grid Infrastructure) routes the connection to the appropriate instance based on the requested service and current load. This decouples clients from specific node addresses — nodes can be added or removed without changing client connection strings. The SCAN listener performs server-side load balancing using Runtime Connection Load Balancing (RCLB) metrics, directing new connections to the least-loaded instance. DNS round-robin distributes initial connections across SCAN IPs, while the SCAN listener on each IP handles the actual routing decision."
+          "type": "interview",
+          "question": "How does SCAN (Single Client Access Name) work in RAC?",
+          "answer": "SCAN provides a single DNS name that resolves to multiple IP addresses (typically 3) for client connections to a RAC cluster. Clients connect to the SCAN name, and the SCAN listener (running on any node via Grid Infrastructure) routes the connection to the appropriate instance based on the requested service and current load. This decouples clients from specific node addresses — nodes can be added or removed without changing client connection strings. The SCAN listener performs server-side load balancing using Runtime Connection Load Balancing (RCLB) metrics, directing new connections to the least-loaded instance. DNS round-robin distributes initial connections across SCAN IPs, while the SCAN listener on each IP handles the actual routing decision."
         }
       ],
-      "wordCount": 653,
+      "wordCount": 643,
       "subsections": []
     },
     {
@@ -346,7 +331,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/oracle/rac-and-data-guard.md",
-    "wordCount": 1976,
+    "wordCount": 1966,
     "sectionCount": 14
   }
 }

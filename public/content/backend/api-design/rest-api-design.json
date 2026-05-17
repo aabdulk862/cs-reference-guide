@@ -143,31 +143,22 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle API versioning and what are the trade-offs of different approaches?"
+          "type": "interview",
+          "question": "How do you handle API versioning and what are the trade-offs of different approaches?",
+          "answer": "Three main approaches: URI versioning (/v1/users), header versioning (Accept: application/vnd.api.v1+json), and query parameter (/users?version=1). URI versioning is most common because it is explicit, easy to route, cacheable by CDNs, and simple to document. The trade-off is that it violates REST's principle that a URI should identify a resource (the resource is the user, not \"v1 of the user\"). Header versioning is more RESTful but harder to test (can't just paste a URL in a browser), harder to cache, and requires client awareness. My recommendation: use URI versioning for major breaking changes (resource restructuring, removed fields) and evolve within a version using additive changes (new optional fields, new endpoints). Deprecate old versions with a sunset header and 12-month migration window. Never maintain more than 2 major versions simultaneously."
         },
         {
-          "type": "paragraph",
-          "text": "A: Three main approaches: URI versioning (/v1/users), header versioning (Accept: application/vnd.api.v1+json), and query parameter (/users?version=1). URI versioning is most common because it is explicit, easy to route, cacheable by CDNs, and simple to document. The trade-off is that it violates REST's principle that a URI should identify a resource (the resource is the user, not \"v1 of the user\"). Header versioning is more RESTful but harder to test (can't just paste a URL in a browser), harder to cache, and requires client awareness. My recommendation: use URI versioning for major breaking changes (resource restructuring, removed fields) and evolve within a version using additive changes (new optional fields, new endpoints). Deprecate old versions with a sunset header and 12-month migration window. Never maintain more than 2 major versions simultaneously."
+          "type": "interview",
+          "question": "Explain cursor-based pagination and why it's preferred over offset-based for large datasets.",
+          "answer": "Offset-based pagination (?page=5&size=20) translates to OFFSET 80 LIMIT 20 in SQL, which requires the database to scan and discard 80 rows before returning 20. At page 10,000, the database scans 200,000 rows — performance degrades linearly with page depth. Additionally, if records are inserted or deleted between page requests, items can be skipped or duplicated. Cursor-based pagination uses an opaque token (typically an encoded primary key or timestamp) that marks the position: ?cursor=eyJpZCI6MTIzfQ&limit=20 translates to WHERE id > 123 LIMIT 20, which uses an index seek regardless of position in the dataset. Trade-offs: cursor-based doesn't support \"jump to page N\" (no random access), making it unsuitable for UIs with page number navigation. It also requires a stable sort order. Use cursor-based for infinite scroll, feeds, and large datasets; offset-based for admin dashboards with page numbers and small, stable datasets."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain cursor-based pagination and why it's preferred over offset-based for large datasets."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Offset-based pagination (?page=5&size=20) translates to OFFSET 80 LIMIT 20 in SQL, which requires the database to scan and discard 80 rows before returning 20. At page 10,000, the database scans 200,000 rows — performance degrades linearly with page depth. Additionally, if records are inserted or deleted between page requests, items can be skipped or duplicated. Cursor-based pagination uses an opaque token (typically an encoded primary key or timestamp) that marks the position: ?cursor=eyJpZCI6MTIzfQ&limit=20 translates to WHERE id > 123 LIMIT 20, which uses an index seek regardless of position in the dataset. Trade-offs: cursor-based doesn't support \"jump to page N\" (no random access), making it unsuitable for UIs with page number navigation. It also requires a stable sort order. Use cursor-based for infinite scroll, feeds, and large datasets; offset-based for admin dashboards with page numbers and small, stable datasets."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design idempotency for a payment API?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Require clients to send an Idempotency-Key header (UUID) with every POST request that creates resources or triggers side effects. Server-side implementation: before processing, check if the idempotency key exists in a store (Redis with TTL or DynamoDB). If found, return the stored response without re-executing the operation. If not found, process the request, store the response keyed by the idempotency key with a 24-hour TTL, then return the response. Critical details: the store must be checked and written atomically (use Redis SET NX or DynamoDB conditional writes) to prevent race conditions with concurrent retries. Store the full response (status code, headers, body) so retries get identical responses. Handle in-flight requests by storing a \"processing\" sentinel — if a retry arrives while the first request is still executing, return 409 or block briefly. Expire keys after 24 hours to bound storage. This pattern is essential for payment APIs where network timeouts can cause clients to retry, potentially creating duplicate charges."
+          "type": "interview",
+          "question": "How would you design idempotency for a payment API?",
+          "answer": "Require clients to send an Idempotency-Key header (UUID) with every POST request that creates resources or triggers side effects. Server-side implementation: before processing, check if the idempotency key exists in a store (Redis with TTL or DynamoDB). If found, return the stored response without re-executing the operation. If not found, process the request, store the response keyed by the idempotency key with a 24-hour TTL, then return the response. Critical details: the store must be checked and written atomically (use Redis SET NX or DynamoDB conditional writes) to prevent race conditions with concurrent retries. Store the full response (status code, headers, body) so retries get identical responses. Handle in-flight requests by storing a \"processing\" sentinel — if a retry arrives while the first request is still executing, return 409 or block briefly. Expire keys after 24 hours to bound storage. This pattern is essential for payment APIs where network timeouts can cause clients to retry, potentially creating duplicate charges."
         }
       ],
-      "wordCount": 466,
+      "wordCount": 460,
       "subsections": []
     },
     {
@@ -230,7 +221,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/api-design/rest-api-design.md",
-    "wordCount": 1302,
+    "wordCount": 1296,
     "sectionCount": 11
   }
 }

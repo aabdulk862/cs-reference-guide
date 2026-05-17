@@ -242,47 +242,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose a GIN index over a B-tree index?"
+          "type": "interview",
+          "question": "When would you choose a GIN index over a B-tree index?",
+          "answer": "GIN indexes are designed for composite values where a single column contains multiple elements — arrays, JSONB documents, or full-text search vectors. Choose GIN when your queries use containment operators (@>, ?, ?|, ?&) or text search operators (@@). For example, if you have a tags text[] column and query WHERE tags @> ARRAY['urgent'], a GIN index provides O(1) lookup per element. B-tree cannot efficiently handle \"does this array contain X?\" queries. The trade-off: GIN indexes are 2-3x larger than B-tree, slower to build, and have higher write amplification due to the pending list mechanism. Use fastupdate=off and gin_pending_list_limit tuning for write-heavy workloads."
         },
         {
-          "type": "paragraph",
-          "text": "A: GIN indexes are designed for composite values where a single column contains multiple elements — arrays, JSONB documents, or full-text search vectors. Choose GIN when your queries use containment operators (@>, ?, ?|, ?&) or text search operators (@@). For example, if you have a tags text[] column and query WHERE tags @> ARRAY['urgent'], a GIN index provides O(1) lookup per element. B-tree cannot efficiently handle \"does this array contain X?\" queries. The trade-off: GIN indexes are 2-3x larger than B-tree, slower to build, and have higher write amplification due to the pending list mechanism. Use fastupdate=off and gin_pending_list_limit tuning for write-heavy workloads."
+          "type": "interview",
+          "question": "Explain the difference between Index Scan, Index Only Scan, and Bitmap Index Scan.",
+          "answer": "An Index Scan traverses the B-tree to find matching entries, then fetches each corresponding heap tuple one by one (random I/O). An Index Only Scan reads data directly from the index without touching the heap — possible only when all required columns are in the index (covering index) AND the visibility map confirms all tuples on the page are visible (no recent modifications). A Bitmap Index Scan builds an in-memory bitmap of all matching heap page locations, sorts them, then fetches pages sequentially — converting random I/O to sequential I/O. The planner chooses bitmap scans when selectivity is moderate (too many rows for individual index lookups, too few for a full sequential scan), or when combining multiple indexes with BitmapAnd/BitmapOr."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between Index Scan, Index Only Scan, and Bitmap Index Scan."
+          "type": "interview",
+          "question": "How does PostgreSQL's autovacuum work, and when does it need tuning?",
+          "answer": "Autovacuum launches worker processes that scan tables for dead tuples (left by UPDATE/DELETE due to MVCC) and reclaim their space. It triggers when dead tuples exceed autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor * table_size. The default scale factor of 0.2 means a 100-million-row table won't vacuum until 20 million rows are dead — far too late. Tune it down to 0.01-0.05 for large tables. Also increase autovacuum_vacuum_cost_limit to let workers do more work per cycle. Signs you need tuning: table bloat growing (check pg_stat_user_tables.n_dead_tup), transaction ID wraparound warnings, or queries slowing down as tables grow despite stable data volume."
         },
         {
-          "type": "paragraph",
-          "text": "A: An Index Scan traverses the B-tree to find matching entries, then fetches each corresponding heap tuple one by one (random I/O). An Index Only Scan reads data directly from the index without touching the heap — possible only when all required columns are in the index (covering index) AND the visibility map confirms all tuples on the page are visible (no recent modifications). A Bitmap Index Scan builds an in-memory bitmap of all matching heap page locations, sorts them, then fetches pages sequentially — converting random I/O to sequential I/O. The planner chooses bitmap scans when selectivity is moderate (too many rows for individual index lookups, too few for a full sequential scan), or when combining multiple indexes with BitmapAnd/BitmapOr."
+          "type": "interview",
+          "question": "What is partition pruning and how does it improve query performance?",
+          "answer": "Partition pruning is the optimizer's ability to exclude irrelevant partitions from a query plan entirely. For a table partitioned by month, a query with WHERE created_at >= '2024-03-01' AND created_at < '2024-04-01' will only scan the March 2024 partition, completely ignoring all other partitions. This happens at plan time (static pruning) or execution time (dynamic pruning, when the filter value comes from a subquery or parameter). The performance improvement is proportional to the number of partitions skipped — querying one month out of 60 monthly partitions means scanning 1/60th of the data. Verify pruning is working by checking EXPLAIN output for \"Subplans Removed\" or seeing only relevant partitions in the plan."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does PostgreSQL's autovacuum work, and when does it need tuning?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Autovacuum launches worker processes that scan tables for dead tuples (left by UPDATE/DELETE due to MVCC) and reclaim their space. It triggers when dead tuples exceed autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor * table_size. The default scale factor of 0.2 means a 100-million-row table won't vacuum until 20 million rows are dead — far too late. Tune it down to 0.01-0.05 for large tables. Also increase autovacuum_vacuum_cost_limit to let workers do more work per cycle. Signs you need tuning: table bloat growing (check pg_stat_user_tables.n_dead_tup), transaction ID wraparound warnings, or queries slowing down as tables grow despite stable data volume."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is partition pruning and how does it improve query performance?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Partition pruning is the optimizer's ability to exclude irrelevant partitions from a query plan entirely. For a table partitioned by month, a query with WHERE created_at >= '2024-03-01' AND created_at < '2024-04-01' will only scan the March 2024 partition, completely ignoring all other partitions. This happens at plan time (static pruning) or execution time (dynamic pruning, when the filter value comes from a subquery or parameter). The performance improvement is proportional to the number of partitions skipped — querying one month out of 60 monthly partitions means scanning 1/60th of the data. Verify pruning is working by checking EXPLAIN output for \"Subplans Removed\" or seeing only relevant partitions in the plan."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you diagnose and fix a query that suddenly became slow?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: First, run EXPLAIN (ANALYZE, BUFFERS) to see the actual execution plan. Compare estimated vs actual rows — a large discrepancy indicates stale statistics (fix with ANALYZE table). Check for sequential scans where index scans are expected — the planner may have chosen seq scan because statistics suggest the query returns most of the table. Look at shared_blks_read vs shared_blks_hit — high reads mean cold cache or table bloat. Check pg_stat_user_tables for bloat (high n_dead_tup). Review pg_stat_statements to see if the query's mean time changed recently. Common causes: statistics drift after bulk load, index corruption (run REINDEX CONCURRENTLY), table bloat from missed vacuums, or plan regression from a PostgreSQL minor version update (use pg_hint_plan or SQL Plan Management as a workaround)."
+          "type": "interview",
+          "question": "How would you diagnose and fix a query that suddenly became slow?",
+          "answer": "First, run EXPLAIN (ANALYZE, BUFFERS) to see the actual execution plan. Compare estimated vs actual rows — a large discrepancy indicates stale statistics (fix with ANALYZE table). Check for sequential scans where index scans are expected — the planner may have chosen seq scan because statistics suggest the query returns most of the table. Look at shared_blks_read vs shared_blks_hit — high reads mean cold cache or table bloat. Check pg_stat_user_tables for bloat (high n_dead_tup). Review pg_stat_statements to see if the query's mean time changed recently. Common causes: statistics drift after bulk load, index corruption (run REINDEX CONCURRENTLY), table bloat from missed vacuums, or plan regression from a PostgreSQL minor version update (use pg_hint_plan or SQL Plan Management as a workaround)."
         }
       ],
-      "wordCount": 618,
+      "wordCount": 608,
       "subsections": []
     },
     {
@@ -371,7 +356,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/performance-and-indexing.md",
-    "wordCount": 1923,
+    "wordCount": 1913,
     "sectionCount": 15
   }
 }

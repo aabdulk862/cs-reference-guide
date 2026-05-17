@@ -216,47 +216,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare Zustand, Jotai, and Valtio. When would you choose each?"
+          "type": "interview",
+          "question": "Compare Zustand, Jotai, and Valtio. When would you choose each?",
+          "answer": "All three are lightweight alternatives to Redux from the same team, but with different mental models. Zustand: single store with selectors, closest to Redux's model but with 90% less boilerplate. Choose for applications that need a central store with clear actions but don't need Redux's middleware ecosystem. Jotai: atomic model where each piece of state is independent. Choose when you have many independent state values that different components subscribe to — avoids the \"selector optimization\" problem entirely because atoms are already granular. Valtio: proxy-based mutation model. Choose when your team prefers mutable state (coming from Vue/MobX) or when the domain involves frequent small mutations (canvas editors, real-time data). Performance characteristics are similar; the choice is primarily about developer ergonomics and mental model fit."
         },
         {
-          "type": "paragraph",
-          "text": "A: All three are lightweight alternatives to Redux from the same team, but with different mental models. Zustand: single store with selectors, closest to Redux's model but with 90% less boilerplate. Choose for applications that need a central store with clear actions but don't need Redux's middleware ecosystem. Jotai: atomic model where each piece of state is independent. Choose when you have many independent state values that different components subscribe to — avoids the \"selector optimization\" problem entirely because atoms are already granular. Valtio: proxy-based mutation model. Choose when your team prefers mutable state (coming from Vue/MobX) or when the domain involves frequent small mutations (canvas editors, real-time data). Performance characteristics are similar; the choice is primarily about developer ergonomics and mental model fit."
+          "type": "interview",
+          "question": "How does Zustand achieve re-render optimization without React Context?",
+          "answer": "Zustand stores state outside React's component tree using a vanilla JavaScript subscription model. When you call useStore(selector), the hook subscribes to the store and only triggers a re-render when the selector's return value changes (compared by Object.is by default, or shallow equality with useShallow). This avoids Context's fundamental limitation where any context value change re-renders all consumers. Zustand's approach means: no Provider wrapper needed, no re-render cascading, and selectors are just functions (not memoized components). The store itself is a closure holding state and a Set of listener functions — when set() is called, it notifies all listeners, each of which runs its selector and only triggers React's setState if the selected value changed."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Zustand achieve re-render optimization without React Context?"
+          "type": "interview",
+          "question": "How would you handle server-side rendering with Zustand in Next.js?",
+          "answer": "The challenge is that module-level stores (create(...)) are singletons shared across all server requests. Solution: (1) For client-only state (cart, UI preferences), use the store normally but skip hydration — initialize from localStorage on the client. (2) For state that needs server data, create stores per-request using createStore() (vanilla, not a hook) and pass them via React context or Next.js page props. (3) Use Zustand's persist middleware with skipHydration: true and manually call useStore.persist.rehydrate() in a client-side effect. (4) For Next.js App Router, create the store in a client component boundary and pass initial data as props from server components. The key principle: never let server-rendered state leak between requests."
         },
         {
-          "type": "paragraph",
-          "text": "A: Zustand stores state outside React's component tree using a vanilla JavaScript subscription model. When you call useStore(selector), the hook subscribes to the store and only triggers a re-render when the selector's return value changes (compared by Object.is by default, or shallow equality with useShallow). This avoids Context's fundamental limitation where any context value change re-renders all consumers. Zustand's approach means: no Provider wrapper needed, no re-render cascading, and selectors are just functions (not memoized components). The store itself is a closure holding state and a Set of listener functions — when set() is called, it notifies all listeners, each of which runs its selector and only triggers React's setState if the selected value changed."
+          "type": "interview",
+          "question": "What are the performance implications of Valtio's proxy-based approach compared to immutable updates?",
+          "answer": "Valtio's proxies track which properties each component accesses during render (via useSnapshot). On state mutation, Valtio knows exactly which components read the changed property and only notifies those components. This is more granular than selector-based approaches where the selector function must run to determine if the output changed. The trade-off: proxy creation has overhead for deeply nested objects (each nested object gets its own proxy), and snapshot() creates a frozen copy on every access (though it's cached between mutations). For most applications, the performance difference is negligible. Valtio can be faster for fine-grained updates (changing one property in a large object) but slower for bulk updates (replacing an entire array) compared to immutable approaches that can short-circuit with reference equality."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you handle server-side rendering with Zustand in Next.js?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The challenge is that module-level stores (create(...)) are singletons shared across all server requests. Solution: (1) For client-only state (cart, UI preferences), use the store normally but skip hydration — initialize from localStorage on the client. (2) For state that needs server data, create stores per-request using createStore() (vanilla, not a hook) and pass them via React context or Next.js page props. (3) Use Zustand's persist middleware with skipHydration: true and manually call useStore.persist.rehydrate() in a client-side effect. (4) For Next.js App Router, create the store in a client component boundary and pass initial data as props from server components. The key principle: never let server-rendered state leak between requests."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are the performance implications of Valtio's proxy-based approach compared to immutable updates?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Valtio's proxies track which properties each component accesses during render (via useSnapshot). On state mutation, Valtio knows exactly which components read the changed property and only notifies those components. This is more granular than selector-based approaches where the selector function must run to determine if the output changed. The trade-off: proxy creation has overhead for deeply nested objects (each nested object gets its own proxy), and snapshot() creates a frozen copy on every access (though it's cached between mutations). For most applications, the performance difference is negligible. Valtio can be faster for fine-grained updates (changing one property in a large object) but slower for bulk updates (replacing an entire array) compared to immutable approaches that can short-circuit with reference equality."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you test components that use Zustand stores?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Three approaches depending on test goals. (1) Reset store state in beforeEach: call useStore.setState(initialState) to ensure clean state per test. This tests the real store logic. (2) Mock the store entirely: use jest.mock() or Vitest's vi.mock() to replace the store module with controlled values. Useful for testing component rendering without store logic. (3) Test store logic independently: import the store, call actions via useStore.getState().actionName(), and assert state via useStore.getState() — no React rendering needed. For integration tests, prefer approach (1) because it tests the real interaction between component and store. For unit tests of complex components, approach (2) isolates the component from store implementation details."
+          "type": "interview",
+          "question": "How do you test components that use Zustand stores?",
+          "answer": "Three approaches depending on test goals. (1) Reset store state in beforeEach: call useStore.setState(initialState) to ensure clean state per test. This tests the real store logic. (2) Mock the store entirely: use jest.mock() or Vitest's vi.mock() to replace the store module with controlled values. Useful for testing component rendering without store logic. (3) Test store logic independently: import the store, call actions via useStore.getState().actionName(), and assert state via useStore.getState() — no React rendering needed. For integration tests, prefer approach (1) because it tests the real interaction between component and store. For unit tests of complex components, approach (2) isolates the component from store implementation details."
         }
       ],
-      "wordCount": 633,
+      "wordCount": 623,
       "subsections": []
     },
     {
@@ -336,7 +321,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/zustand.md",
-    "wordCount": 1824,
+    "wordCount": 1814,
     "sectionCount": 14
   }
 }

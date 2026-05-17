@@ -242,47 +242,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between switchMap, mergeMap, concatMap, and exhaustMap. When would you use each?"
+          "type": "interview",
+          "question": "Explain the difference between switchMap, mergeMap, concatMap, and exhaustMap. When would you use each?",
+          "answer": "These are higher-order mapping operators that handle inner Observable subscriptions differently. switchMap unsubscribes from the previous inner Observable when a new outer value arrives — use for search autocomplete, route changes, or any scenario where only the latest result matters. mergeMap subscribes to all inner Observables concurrently — use for independent parallel operations like saving multiple items or sending analytics events. concatMap queues inner Observables and processes them one at a time in order — use for sequential operations like file uploads or ordered API calls. exhaustMap ignores new outer values while an inner Observable is active — use for preventing double-submission on button clicks or login forms. The key decision factor is: do you want to cancel (switch), run in parallel (merge), queue (concat), or ignore (exhaust)?"
         },
         {
-          "type": "paragraph",
-          "text": "A: These are higher-order mapping operators that handle inner Observable subscriptions differently. switchMap unsubscribes from the previous inner Observable when a new outer value arrives — use for search autocomplete, route changes, or any scenario where only the latest result matters. mergeMap subscribes to all inner Observables concurrently — use for independent parallel operations like saving multiple items or sending analytics events. concatMap queues inner Observables and processes them one at a time in order — use for sequential operations like file uploads or ordered API calls. exhaustMap ignores new outer values while an inner Observable is active — use for preventing double-submission on button clicks or login forms. The key decision factor is: do you want to cancel (switch), run in parallel (merge), queue (concat), or ignore (exhaust)?"
+          "type": "interview",
+          "question": "How do you prevent memory leaks from Observable subscriptions in Angular components?",
+          "answer": "Multiple strategies exist, ordered by preference. First, use the async pipe in templates — it automatically subscribes on component init and unsubscribes on destroy, plus it works correctly with OnPush change detection. Second, use takeUntilDestroyed() from @angular/core/rxjs-interop (Angular 16+) which completes the Observable when the injection context is destroyed. Third, for older Angular versions, create a private destroy$ = new Subject<void>(), call this.destroy$.next() in ngOnDestroy, and add .pipe(takeUntil(this.destroy$)) to all subscriptions. Fourth, collect subscriptions in a Subscription object and call unsubscribe() in ngOnDestroy. The async pipe is preferred because it eliminates an entire class of bugs — you can't forget to unsubscribe if you never manually subscribe."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you prevent memory leaks from Observable subscriptions in Angular components?"
+          "type": "interview",
+          "question": "What is shareReplay and when should you use it? What are the gotchas?",
+          "answer": "shareReplay multicasts an Observable (shares a single subscription among multiple subscribers) and replays the specified number of past emissions to late subscribers. Common use: preventing duplicate HTTP requests when multiple components need the same data. Without sharing, each | async pipe on the same Observable triggers a separate HTTP call. Gotchas: (1) Without refCount: true, the source subscription stays active forever even after all subscribers unsubscribe — this leaks for Observables that never complete. Use shareReplay({ bufferSize: 1, refCount: true }) for cleanup. (2) Shared Observables cache errors too — if the source errors, all future subscribers receive the cached error. Add catchError before shareReplay to handle this. (3) shareReplay makes Observables \"hot\" — the source executes regardless of subscribers after the first subscription, which can be surprising for side-effectful operations."
         },
         {
-          "type": "paragraph",
-          "text": "A: Multiple strategies exist, ordered by preference. First, use the async pipe in templates — it automatically subscribes on component init and unsubscribes on destroy, plus it works correctly with OnPush change detection. Second, use takeUntilDestroyed() from @angular/core/rxjs-interop (Angular 16+) which completes the Observable when the injection context is destroyed. Third, for older Angular versions, create a private destroy$ = new Subject<void>(), call this.destroy$.next() in ngOnDestroy, and add .pipe(takeUntil(this.destroy$)) to all subscriptions. Fourth, collect subscriptions in a Subscription object and call unsubscribe() in ngOnDestroy. The async pipe is preferred because it eliminates an entire class of bugs — you can't forget to unsubscribe if you never manually subscribe."
+          "type": "interview",
+          "question": "How would you implement optimistic updates with rollback using RxJS?",
+          "answer": "Optimistic updates show the result immediately in the UI before the server confirms, then rollback if the server rejects. Implementation: (1) Store the current state before the update. (2) Apply the optimistic change to the UI state immediately (update BehaviorSubject). (3) Send the API request. (4) On success, optionally reconcile with the server response (server may add timestamps, IDs). (5) On error, revert the BehaviorSubject to the stored previous state and show an error notification. In RxJS, this looks like: tap(() => applyOptimistic()) → switchMap(() => apiCall$) → tap(() => reconcile()) with catchError(() => { rollback(); return EMPTY; }). For lists, use immutable updates so rollback is simply reassigning the previous array reference. Consider debouncing rapid optimistic updates and only sending the final state to avoid race conditions."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is shareReplay and when should you use it? What are the gotchas?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: shareReplay multicasts an Observable (shares a single subscription among multiple subscribers) and replays the specified number of past emissions to late subscribers. Common use: preventing duplicate HTTP requests when multiple components need the same data. Without sharing, each | async pipe on the same Observable triggers a separate HTTP call. Gotchas: (1) Without refCount: true, the source subscription stays active forever even after all subscribers unsubscribe — this leaks for Observables that never complete. Use shareReplay({ bufferSize: 1, refCount: true }) for cleanup. (2) Shared Observables cache errors too — if the source errors, all future subscribers receive the cached error. Add catchError before shareReplay to handle this. (3) shareReplay makes Observables \"hot\" — the source executes regardless of subscribers after the first subscription, which can be surprising for side-effectful operations."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement optimistic updates with rollback using RxJS?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Optimistic updates show the result immediately in the UI before the server confirms, then rollback if the server rejects. Implementation: (1) Store the current state before the update. (2) Apply the optimistic change to the UI state immediately (update BehaviorSubject). (3) Send the API request. (4) On success, optionally reconcile with the server response (server may add timestamps, IDs). (5) On error, revert the BehaviorSubject to the stored previous state and show an error notification. In RxJS, this looks like: tap(() => applyOptimistic()) → switchMap(() => apiCall$) → tap(() => reconcile()) with catchError(() => { rollback(); return EMPTY; }). For lists, use immutable updates so rollback is simply reassigning the previous array reference. Consider debouncing rapid optimistic updates and only sending the final state to avoid race conditions."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain cold vs hot Observables. How does this affect Angular applications?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cold Observables create a new producer (data source) for each subscriber — like a function that runs fresh each time. HttpClient returns cold Observables: each subscription makes a new HTTP request. Hot Observables share a single producer among all subscribers — like a live event stream. Subjects are hot: all subscribers receive the same emissions simultaneously. This distinction matters in Angular because: (1) Multiple | async pipes on the same cold Observable (like an HTTP call) trigger multiple requests — use shareReplay to make it hot. (2) Hot Observables (WebSockets, Subjects) emit regardless of subscribers, so late subscribers miss past values unless you use BehaviorSubject or ReplaySubject. (3) Unsubscribing from a cold Observable stops the producer (cancels the HTTP request), but unsubscribing from a hot Observable just removes the listener — the producer continues. Understanding this prevents duplicate requests, missed events, and resource leaks."
+          "type": "interview",
+          "question": "Explain cold vs hot Observables. How does this affect Angular applications?",
+          "answer": "Cold Observables create a new producer (data source) for each subscriber — like a function that runs fresh each time. HttpClient returns cold Observables: each subscription makes a new HTTP request. Hot Observables share a single producer among all subscribers — like a live event stream. Subjects are hot: all subscribers receive the same emissions simultaneously. This distinction matters in Angular because: (1) Multiple | async pipes on the same cold Observable (like an HTTP call) trigger multiple requests — use shareReplay to make it hot. (2) Hot Observables (WebSockets, Subjects) emit regardless of subscribers, so late subscribers miss past values unless you use BehaviorSubject or ReplaySubject. (3) Unsubscribing from a cold Observable stops the producer (cancels the HTTP request), but unsubscribing from a hot Observable just removes the listener — the producer continues. Understanding this prevents duplicate requests, missed events, and resource leaks."
         }
       ],
-      "wordCount": 708,
+      "wordCount": 698,
       "subsections": []
     },
     {
@@ -368,7 +353,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/rxjs-and-reactive.md",
-    "wordCount": 2336,
+    "wordCount": 2326,
     "sectionCount": 15
   }
 }

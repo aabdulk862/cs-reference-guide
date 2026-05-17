@@ -235,47 +235,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain Redux's three principles and why they matter for large applications."
+          "type": "interview",
+          "question": "Explain Redux's three principles and why they matter for large applications.",
+          "answer": "(1) Single source of truth: the entire application state lives in one store object. This makes state predictable, debuggable (one place to inspect), and enables features like undo/redo and state persistence. (2) State is read-only: components cannot directly mutate state; they must dispatch actions describing what happened. This creates an audit trail of every state change and prevents race conditions from concurrent mutations. (3) Changes via pure functions: reducers are pure functions (state, action) => newState with no side effects. This makes state transitions testable (given this state and this action, expect this result), predictable, and replayable. Together, these principles trade flexibility for predictability — in a 50-developer team, everyone follows the same pattern, making code reviews and debugging consistent regardless of who wrote the feature."
         },
         {
-          "type": "paragraph",
-          "text": "A: (1) Single source of truth: the entire application state lives in one store object. This makes state predictable, debuggable (one place to inspect), and enables features like undo/redo and state persistence. (2) State is read-only: components cannot directly mutate state; they must dispatch actions describing what happened. This creates an audit trail of every state change and prevents race conditions from concurrent mutations. (3) Changes via pure functions: reducers are pure functions (state, action) => newState with no side effects. This makes state transitions testable (given this state and this action, expect this result), predictable, and replayable. Together, these principles trade flexibility for predictability — in a 50-developer team, everyone follows the same pattern, making code reviews and debugging consistent regardless of who wrote the feature."
+          "type": "interview",
+          "question": "How does RTK Query differ from React Query/TanStack Query? When would you choose one over the other?",
+          "answer": "RTK Query is built into Redux Toolkit and stores server cache in the Redux store, making it accessible to Redux middleware, DevTools, and existing Redux selectors. React Query is standalone and stores cache in its own context. Choose RTK Query when: you already use Redux for client state and want unified DevTools, you need middleware to react to cache events, or you want selectors that combine server and client state. Choose React Query when: you don't use Redux (no need to add it just for data fetching), you want framework-agnostic caching (works with Vue, Svelte), or you need features RTK Query lacks (infinite queries, optimistic mutations are simpler in React Query). Both handle caching, deduplication, background refetching, and stale-while-revalidate. The choice is primarily about whether Redux is already in your architecture."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does RTK Query differ from React Query/TanStack Query? When would you choose one over the other?"
+          "type": "interview",
+          "question": "How would you test Redux slices, thunks, and selectors?",
+          "answer": "Test each layer independently. Reducers: call the reducer function directly with a state and action, assert the returned state — no store needed, pure function testing. Selectors: call the selector with a mock state object, assert the derived value. For createSelector, verify memoization by calling twice with the same input and checking reference equality. Thunks: use a mock store (configureStore with the real reducer) or test the thunk function directly by providing mock dispatch and getState. For RTK Query: use setupServer from MSW to mock API responses, render components with the real store, and assert that hooks return expected data/loading/error states. Integration tests that render a component connected to a real store with mocked APIs provide the highest confidence."
         },
         {
-          "type": "paragraph",
-          "text": "A: RTK Query is built into Redux Toolkit and stores server cache in the Redux store, making it accessible to Redux middleware, DevTools, and existing Redux selectors. React Query is standalone and stores cache in its own context. Choose RTK Query when: you already use Redux for client state and want unified DevTools, you need middleware to react to cache events, or you want selectors that combine server and client state. Choose React Query when: you don't use Redux (no need to add it just for data fetching), you want framework-agnostic caching (works with Vue, Svelte), or you need features RTK Query lacks (infinite queries, optimistic mutations are simpler in React Query). Both handle caching, deduplication, background refetching, and stale-while-revalidate. The choice is primarily about whether Redux is already in your architecture."
+          "type": "interview",
+          "question": "What is normalized state and why does createEntityAdapter use it?",
+          "answer": "Normalized state stores entities in a lookup table ({ [id]: entity }) with a separate array of IDs for ordering. Without normalization, the same entity might exist in multiple places (a product in the product list, in the cart, in recently viewed) — updating it requires finding and updating every copy. With normalization, each entity exists once; references use IDs. createEntityAdapter provides this pattern with pre-built CRUD operations (addOne, updateOne, removeOne, setAll) and selectors (selectById, selectAll). It also handles sorting via sortComparer. The trade-off is slightly more complex component code (must look up entities by ID) but dramatically simpler update logic and guaranteed consistency."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you test Redux slices, thunks, and selectors?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Test each layer independently. Reducers: call the reducer function directly with a state and action, assert the returned state — no store needed, pure function testing. Selectors: call the selector with a mock state object, assert the derived value. For createSelector, verify memoization by calling twice with the same input and checking reference equality. Thunks: use a mock store (configureStore with the real reducer) or test the thunk function directly by providing mock dispatch and getState. For RTK Query: use setupServer from MSW to mock API responses, render components with the real store, and assert that hooks return expected data/loading/error states. Integration tests that render a component connected to a real store with mocked APIs provide the highest confidence."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is normalized state and why does createEntityAdapter use it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Normalized state stores entities in a lookup table ({ [id]: entity }) with a separate array of IDs for ordering. Without normalization, the same entity might exist in multiple places (a product in the product list, in the cart, in recently viewed) — updating it requires finding and updating every copy. With normalization, each entity exists once; references use IDs. createEntityAdapter provides this pattern with pre-built CRUD operations (addOne, updateOne, removeOne, setAll) and selectors (selectById, selectAll). It also handles sorting via sortComparer. The trade-off is slightly more complex component code (must look up entities by ID) but dramatically simpler update logic and guaranteed consistency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain middleware in Redux. How do thunks, sagas, and the listener middleware differ?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Middleware intercepts dispatched actions before they reach reducers, enabling side effects. Thunks (default in RTK): dispatch a function instead of an action object; the function receives dispatch and getState. Simple, good for basic async (API calls, conditional dispatch). Sagas (redux-saga): use generator functions to describe complex async flows declaratively — support cancellation, racing, debouncing, and complex orchestration. Higher learning curve but powerful for complex workflows. Listener middleware (RTK): a modern alternative to sagas — register listeners that react to specific actions or state changes. Supports take patterns, fork for background tasks, and condition for waiting. Lighter than sagas, built into RTK. Choose thunks for simple async, listener middleware for reactive patterns and moderate complexity, sagas only for very complex orchestration (rare in modern apps)."
+          "type": "interview",
+          "question": "Explain middleware in Redux. How do thunks, sagas, and the listener middleware differ?",
+          "answer": "Middleware intercepts dispatched actions before they reach reducers, enabling side effects. Thunks (default in RTK): dispatch a function instead of an action object; the function receives dispatch and getState. Simple, good for basic async (API calls, conditional dispatch). Sagas (redux-saga): use generator functions to describe complex async flows declaratively — support cancellation, racing, debouncing, and complex orchestration. Higher learning curve but powerful for complex workflows. Listener middleware (RTK): a modern alternative to sagas — register listeners that react to specific actions or state changes. Supports take patterns, fork for background tasks, and condition for waiting. Lighter than sagas, built into RTK. Choose thunks for simple async, listener middleware for reactive patterns and moderate complexity, sagas only for very complex orchestration (rare in modern apps)."
         }
       ],
-      "wordCount": 674,
+      "wordCount": 664,
       "subsections": []
     },
     {
@@ -360,7 +345,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/redux.md",
-    "wordCount": 1886,
+    "wordCount": 1876,
     "sectionCount": 15
   }
 }

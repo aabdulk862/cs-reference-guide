@@ -221,47 +221,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How do you choose between orchestration and choreography for sagas?"
+          "type": "interview",
+          "question": "How do you choose between orchestration and choreography for sagas?",
+          "answer": "Orchestration uses a central coordinator that explicitly controls the saga flow — it knows all steps, handles compensation, and maintains saga state. Choose orchestration when the workflow is complex (5+ steps), when you need visibility into saga progress, or when compensation logic is intricate. Choreography uses events — each service reacts to events and publishes its own, with no central coordinator. Choose choreography for simple flows (2-3 steps), when services are truly independent, or when you want maximum decoupling. The tradeoff: orchestration is easier to understand and debug but creates a single point of coordination; choreography is more resilient but harder to trace and reason about. In practice, most systems use orchestration for critical business flows (payments, orders) and choreography for non-critical flows (notifications, analytics)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Orchestration uses a central coordinator that explicitly controls the saga flow — it knows all steps, handles compensation, and maintains saga state. Choose orchestration when the workflow is complex (5+ steps), when you need visibility into saga progress, or when compensation logic is intricate. Choreography uses events — each service reacts to events and publishes its own, with no central coordinator. Choose choreography for simple flows (2-3 steps), when services are truly independent, or when you want maximum decoupling. The tradeoff: orchestration is easier to understand and debug but creates a single point of coordination; choreography is more resilient but harder to trace and reason about. In practice, most systems use orchestration for critical business flows (payments, orders) and choreography for non-critical flows (notifications, analytics)."
+          "type": "interview",
+          "question": "Explain the circuit breaker pattern and its three states.",
+          "answer": "A circuit breaker monitors calls to a downstream service and prevents cascade failures. In the Closed state, requests flow normally and failures are counted. When the failure rate exceeds a threshold (e.g., 50% of the last 10 calls), the breaker transitions to Open — all requests fail immediately without calling the downstream service, returning a fallback response. After a configured wait period (e.g., 30 seconds), the breaker enters Half-Open — a limited number of test requests are allowed through. If they succeed, the breaker returns to Closed; if they fail, it returns to Open. Key configuration parameters: failure rate threshold, slow call threshold, sliding window size, wait duration in open state, and permitted calls in half-open state. In production, combine circuit breakers with retries (retry first, then circuit breaker) and bulkheads (isolate thread pools per downstream service)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the circuit breaker pattern and its three states."
+          "type": "interview",
+          "question": "What is the database-per-service pattern, and how do you handle queries that span multiple services?",
+          "answer": "Database-per-service means each microservice owns its data store exclusively — no other service reads from or writes to it directly. This ensures loose coupling, independent schema evolution, and technology freedom (one service uses PostgreSQL, another uses MongoDB). For cross-service queries, you have several options: API composition (a service or gateway queries multiple services and joins results in memory — simple but has latency and availability concerns), CQRS with materialized views (services publish events, a read service builds denormalized views optimized for specific queries), or event-driven data replication (services maintain local copies of data they need, updated via events). The choice depends on consistency requirements, query complexity, and acceptable latency. API composition works for simple joins; CQRS is necessary for complex aggregations across many services."
         },
         {
-          "type": "paragraph",
-          "text": "A: A circuit breaker monitors calls to a downstream service and prevents cascade failures. In the Closed state, requests flow normally and failures are counted. When the failure rate exceeds a threshold (e.g., 50% of the last 10 calls), the breaker transitions to Open — all requests fail immediately without calling the downstream service, returning a fallback response. After a configured wait period (e.g., 30 seconds), the breaker enters Half-Open — a limited number of test requests are allowed through. If they succeed, the breaker returns to Closed; if they fail, it returns to Open. Key configuration parameters: failure rate threshold, slow call threshold, sliding window size, wait duration in open state, and permitted calls in half-open state. In production, combine circuit breakers with retries (retry first, then circuit breaker) and bulkheads (isolate thread pools per downstream service)."
+          "type": "interview",
+          "question": "How does a service mesh differ from implementing resilience patterns in application code?",
+          "answer": "A service mesh (Istio, Linkerd) moves cross-cutting concerns — mTLS encryption, retries, circuit breaking, load balancing, observability — from application code into infrastructure-level sidecar proxies (Envoy). Benefits: consistent behavior across all services regardless of language/framework, no library dependencies in application code, centralized policy management, and uniform observability. Tradeoffs: added latency per hop (1-3ms per sidecar), operational complexity of managing the mesh control plane, resource overhead (each sidecar consumes CPU/memory), and debugging difficulty when the mesh itself misbehaves. Use a service mesh when you have 20+ services in multiple languages and need consistent security/observability. For smaller deployments (under 10 services in one language), application-level libraries (Resilience4j, Spring Cloud) are simpler and sufficient."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the database-per-service pattern, and how do you handle queries that span multiple services?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Database-per-service means each microservice owns its data store exclusively — no other service reads from or writes to it directly. This ensures loose coupling, independent schema evolution, and technology freedom (one service uses PostgreSQL, another uses MongoDB). For cross-service queries, you have several options: API composition (a service or gateway queries multiple services and joins results in memory — simple but has latency and availability concerns), CQRS with materialized views (services publish events, a read service builds denormalized views optimized for specific queries), or event-driven data replication (services maintain local copies of data they need, updated via events). The choice depends on consistency requirements, query complexity, and acceptable latency. API composition works for simple joins; CQRS is necessary for complex aggregations across many services."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does a service mesh differ from implementing resilience patterns in application code?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: A service mesh (Istio, Linkerd) moves cross-cutting concerns — mTLS encryption, retries, circuit breaking, load balancing, observability — from application code into infrastructure-level sidecar proxies (Envoy). Benefits: consistent behavior across all services regardless of language/framework, no library dependencies in application code, centralized policy management, and uniform observability. Tradeoffs: added latency per hop (1-3ms per sidecar), operational complexity of managing the mesh control plane, resource overhead (each sidecar consumes CPU/memory), and debugging difficulty when the mesh itself misbehaves. Use a service mesh when you have 20+ services in multiple languages and need consistent security/observability. For smaller deployments (under 10 services in one language), application-level libraries (Resilience4j, Spring Cloud) are simpler and sufficient."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe the strangler fig pattern for migrating from a monolith to microservices."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The strangler fig pattern incrementally replaces monolith functionality by intercepting requests at the edge and routing them to new services. Implementation: place a routing layer (API Gateway or reverse proxy) in front of the monolith. For each feature being migrated, build the new microservice, route a percentage of traffic to it (canary), validate correctness, then route 100% to the new service. The monolith shrinks over time as features are extracted. Key practices: use an anti-corruption layer to translate between old and new data models, maintain feature parity before cutting over, keep the monolith deployable throughout migration (never break it), and extract high-change-frequency modules first for maximum ROI. The migration is complete when the monolith contains only stable, low-value code that is not worth extracting."
+          "type": "interview",
+          "question": "Describe the strangler fig pattern for migrating from a monolith to microservices.",
+          "answer": "The strangler fig pattern incrementally replaces monolith functionality by intercepting requests at the edge and routing them to new services. Implementation: place a routing layer (API Gateway or reverse proxy) in front of the monolith. For each feature being migrated, build the new microservice, route a percentage of traffic to it (canary), validate correctness, then route 100% to the new service. The monolith shrinks over time as features are extracted. Key practices: use an anti-corruption layer to translate between old and new data models, maintain feature parity before cutting over, keep the monolith deployable throughout migration (never break it), and extract high-change-frequency modules first for maximum ROI. The migration is complete when the monolith contains only stable, low-value code that is not worth extracting."
         }
       ],
-      "wordCount": 690,
+      "wordCount": 680,
       "subsections": []
     },
     {
@@ -348,7 +333,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/microservices-patterns.md",
-    "wordCount": 2105,
+    "wordCount": 2095,
     "sectionCount": 14
   }
 }

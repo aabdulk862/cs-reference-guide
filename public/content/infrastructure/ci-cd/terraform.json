@@ -234,47 +234,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does Terraform state work, and what problems does remote state solve?"
+          "type": "interview",
+          "question": "How does Terraform state work, and what problems does remote state solve?",
+          "answer": "Terraform state is a JSON file that maps resource addresses in configuration (like aws_instance.web) to real infrastructure IDs (like i-0abc123). It tracks metadata, dependencies, and attribute values. Without state, Terraform cannot determine what exists or what needs changing. Remote state solves three problems: team collaboration (multiple engineers can run Terraform without conflicting), state locking (DynamoDB or similar prevents concurrent modifications that corrupt state), and security (state contains sensitive outputs and should be encrypted at rest, not stored in Git). Remote backends also enable terraform_remote_state data sources for cross-stack references."
         },
         {
-          "type": "paragraph",
-          "text": "A: Terraform state is a JSON file that maps resource addresses in configuration (like aws_instance.web) to real infrastructure IDs (like i-0abc123). It tracks metadata, dependencies, and attribute values. Without state, Terraform cannot determine what exists or what needs changing. Remote state solves three problems: team collaboration (multiple engineers can run Terraform without conflicting), state locking (DynamoDB or similar prevents concurrent modifications that corrupt state), and security (state contains sensitive outputs and should be encrypted at rest, not stored in Git). Remote backends also enable terraform_remote_state data sources for cross-stack references."
+          "type": "interview",
+          "question": "Explain the difference between terraform import and moved blocks. When would you use each?",
+          "answer": "terraform import brings existing infrastructure under Terraform management — it adds a resource to state that was created outside Terraform (manually or by another tool). You write the resource configuration, then import maps the real resource ID to that config. moved blocks handle refactoring within Terraform — renaming resources, moving resources into modules, or splitting modules. The key difference: import adds new resources to state, while moved relocates existing state entries without touching real infrastructure. Use import when adopting legacy infrastructure; use moved when reorganizing your Terraform codebase."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between terraform import and moved blocks. When would you use each?"
+          "type": "interview",
+          "question": "What is the blast radius problem in Terraform, and how do you mitigate it?",
+          "answer": "Blast radius refers to the scope of potential damage from a single Terraform operation. A monolithic state file means one misconfigured resource or provider bug can affect all infrastructure during plan/apply. Mitigation strategies: split state by service boundary (networking, data, compute), use separate state files per environment, implement Terraform workspaces for isolation, apply least-privilege IAM roles per state file (the role applying network changes cannot modify databases), and use prevent_destroy lifecycle rules on critical resources. Atlantis or Terraform Cloud add approval workflows that prevent unreviewed changes from reaching production."
         },
         {
-          "type": "paragraph",
-          "text": "A: terraform import brings existing infrastructure under Terraform management — it adds a resource to state that was created outside Terraform (manually or by another tool). You write the resource configuration, then import maps the real resource ID to that config. moved blocks handle refactoring within Terraform — renaming resources, moving resources into modules, or splitting modules. The key difference: import adds new resources to state, while moved relocates existing state entries without touching real infrastructure. Use import when adopting legacy infrastructure; use moved when reorganizing your Terraform codebase."
+          "type": "interview",
+          "question": "How do you handle secrets in Terraform without exposing them in state?",
+          "answer": "Terraform state stores all attribute values in plaintext, including sensitive outputs. Strategies: encrypt state at rest (S3 server-side encryption, Terraform Cloud encryption), restrict state access via IAM policies, mark outputs as sensitive = true to prevent display in CLI output, use external secret managers (AWS Secrets Manager, HashiCorp Vault) with data sources to read secrets at plan time rather than storing them in variables, and use the ephemeral resource type (Terraform 1.7+) for values that should never persist in state. Never pass secrets as environment variables in CI logs."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the blast radius problem in Terraform, and how do you mitigate it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Blast radius refers to the scope of potential damage from a single Terraform operation. A monolithic state file means one misconfigured resource or provider bug can affect all infrastructure during plan/apply. Mitigation strategies: split state by service boundary (networking, data, compute), use separate state files per environment, implement Terraform workspaces for isolation, apply least-privilege IAM roles per state file (the role applying network changes cannot modify databases), and use prevent_destroy lifecycle rules on critical resources. Atlantis or Terraform Cloud add approval workflows that prevent unreviewed changes from reaching production."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle secrets in Terraform without exposing them in state?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Terraform state stores all attribute values in plaintext, including sensitive outputs. Strategies: encrypt state at rest (S3 server-side encryption, Terraform Cloud encryption), restrict state access via IAM policies, mark outputs as sensitive = true to prevent display in CLI output, use external secret managers (AWS Secrets Manager, HashiCorp Vault) with data sources to read secrets at plan time rather than storing them in variables, and use the ephemeral resource type (Terraform 1.7+) for values that should never persist in state. Never pass secrets as environment variables in CI logs."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe how you would migrate a Terraform monolith into multiple state files."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: First, identify logical boundaries (networking, data stores, application services). Create new backend configurations for each boundary. Use terraform state mv to move resources from the monolith state to new state files, or use terraform state rm combined with terraform import in the new configuration. For complex migrations, use terraform state pull to export state as JSON, manipulate it programmatically, then terraform state push to the new backends. Always backup state before operations. After migration, use terraform_remote_state data sources or Terraform Cloud run triggers to maintain cross-state references. Validate with terraform plan in each new state — it should show no changes."
+          "type": "interview",
+          "question": "Describe how you would migrate a Terraform monolith into multiple state files.",
+          "answer": "First, identify logical boundaries (networking, data stores, application services). Create new backend configurations for each boundary. Use terraform state mv to move resources from the monolith state to new state files, or use terraform state rm combined with terraform import in the new configuration. For complex migrations, use terraform state pull to export state as JSON, manipulate it programmatically, then terraform state push to the new backends. Always backup state before operations. After migration, use terraform_remote_state data sources or Terraform Cloud run triggers to maintain cross-state references. Validate with terraform plan in each new state — it should show no changes."
         }
       ],
-      "wordCount": 530,
+      "wordCount": 520,
       "subsections": []
     },
     {
@@ -364,7 +349,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/ci-cd/terraform.md",
-    "wordCount": 1874,
+    "wordCount": 1864,
     "sectionCount": 15
   }
 }

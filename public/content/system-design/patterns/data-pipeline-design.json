@@ -250,47 +250,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare Lambda and Kappa architectures. When would you choose each?"
+          "type": "interview",
+          "question": "Compare Lambda and Kappa architectures. When would you choose each?",
+          "answer": "Lambda architecture maintains two parallel processing paths: a batch layer that processes the complete dataset for accuracy (recomputing views from raw data) and a speed layer that processes recent data for low latency (approximate, incremental results). A serving layer merges both views for queries. Choose Lambda when you need guaranteed accuracy (batch corrects speed layer approximations), when reprocessing logic differs fundamentally from real-time logic, or when your streaming framework cannot handle historical reprocessing. Kappa architecture eliminates the batch layer — everything is a stream, and reprocessing means replaying the log from an earlier offset through an updated processor version. Choose Kappa when your streaming framework supports reprocessing (Kafka with retention, Flink with savepoints), when batch and stream logic are identical, and when operational simplicity matters more than the ability to run fundamentally different batch algorithms. The tradeoff: Lambda gives flexibility at the cost of maintaining two codebases; Kappa gives simplicity at the cost of requiring your streaming framework to handle both real-time and historical scale."
         },
         {
-          "type": "paragraph",
-          "text": "A: Lambda architecture maintains two parallel processing paths: a batch layer that processes the complete dataset for accuracy (recomputing views from raw data) and a speed layer that processes recent data for low latency (approximate, incremental results). A serving layer merges both views for queries. Choose Lambda when you need guaranteed accuracy (batch corrects speed layer approximations), when reprocessing logic differs fundamentally from real-time logic, or when your streaming framework cannot handle historical reprocessing. Kappa architecture eliminates the batch layer — everything is a stream, and reprocessing means replaying the log from an earlier offset through an updated processor version. Choose Kappa when your streaming framework supports reprocessing (Kafka with retention, Flink with savepoints), when batch and stream logic are identical, and when operational simplicity matters more than the ability to run fundamentally different batch algorithms. The tradeoff: Lambda gives flexibility at the cost of maintaining two codebases; Kappa gives simplicity at the cost of requiring your streaming framework to handle both real-time and historical scale."
+          "type": "interview",
+          "question": "How does Change Data Capture work, and what are its advantages over traditional ETL?",
+          "answer": "CDC captures row-level changes (inserts, updates, deletes) from a database's transaction log (PostgreSQL WAL, MySQL binlog, Oracle redo log) and streams them as events. Tools like Debezium read the log without querying the database, adding zero load to the source system. Advantages over traditional ETL: near-real-time data freshness (seconds vs. hours), no impact on source database performance (log reading vs. full table scans), captures all changes including intermediate states (batch ETL misses updates between snapshots), and naturally produces an event stream consumable by multiple downstream systems. Challenges: log retention limits (WAL segments are recycled), schema changes require connector reconfiguration, and initial snapshot for existing data can be resource-intensive. CDC is ideal for keeping read replicas, search indexes, caches, and data warehouses synchronized with operational databases."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Change Data Capture work, and what are its advantages over traditional ETL?"
+          "type": "interview",
+          "question": "Explain exactly-once semantics in stream processing. How is it achieved?",
+          "answer": "Exactly-once means each input record affects the output exactly once, even in the presence of failures and retries. It is achieved through the combination of three mechanisms: idempotent producers (Kafka assigns sequence numbers to detect and discard duplicate sends), transactional writes (Kafka transactions atomically commit offsets and output records together — either both succeed or neither does), and checkpoint-based recovery (Flink periodically snapshots operator state and Kafka offsets; on failure, it restores the last checkpoint and replays from the saved offset, reprocessing records but producing the same output due to deterministic processing). The key insight: exactly-once is not about preventing reprocessing — it is about ensuring reprocessing produces no observable duplicates in the output. End-to-end exactly-once requires the sink to support idempotent writes (upserts, deduplication) or transactional commits. The cost is increased latency (checkpoint barriers, transactional overhead) and reduced throughput (typically 20-40% compared to at-least-once)."
         },
         {
-          "type": "paragraph",
-          "text": "A: CDC captures row-level changes (inserts, updates, deletes) from a database's transaction log (PostgreSQL WAL, MySQL binlog, Oracle redo log) and streams them as events. Tools like Debezium read the log without querying the database, adding zero load to the source system. Advantages over traditional ETL: near-real-time data freshness (seconds vs. hours), no impact on source database performance (log reading vs. full table scans), captures all changes including intermediate states (batch ETL misses updates between snapshots), and naturally produces an event stream consumable by multiple downstream systems. Challenges: log retention limits (WAL segments are recycled), schema changes require connector reconfiguration, and initial snapshot for existing data can be resource-intensive. CDC is ideal for keeping read replicas, search indexes, caches, and data warehouses synchronized with operational databases."
+          "type": "interview",
+          "question": "How do you handle schema evolution in a data pipeline without breaking consumers?",
+          "answer": "Use a schema registry (Confluent Schema Registry, AWS Glue Schema Registry) that enforces compatibility rules. Backward compatibility means new schemas can read data written with old schemas — achieved by only adding fields with defaults and never removing or renaming fields. Forward compatibility means old schemas can read data written with new schemas. Full compatibility satisfies both. In practice: use Avro or Protobuf (not JSON) for schema-enforced serialization, register schemas in CI/CD pipelines with compatibility checks before deployment, version schemas explicitly, and design consumers to ignore unknown fields. For breaking changes that cannot maintain compatibility: create a new topic/table version, run both old and new pipelines in parallel during migration, switch consumers to the new version, then decommission the old pipeline. Never make breaking schema changes in-place on a production topic."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain exactly-once semantics in stream processing. How is it achieved?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Exactly-once means each input record affects the output exactly once, even in the presence of failures and retries. It is achieved through the combination of three mechanisms: idempotent producers (Kafka assigns sequence numbers to detect and discard duplicate sends), transactional writes (Kafka transactions atomically commit offsets and output records together — either both succeed or neither does), and checkpoint-based recovery (Flink periodically snapshots operator state and Kafka offsets; on failure, it restores the last checkpoint and replays from the saved offset, reprocessing records but producing the same output due to deterministic processing). The key insight: exactly-once is not about preventing reprocessing — it is about ensuring reprocessing produces no observable duplicates in the output. End-to-end exactly-once requires the sink to support idempotent writes (upserts, deduplication) or transactional commits. The cost is increased latency (checkpoint barriers, transactional overhead) and reduced throughput (typically 20-40% compared to at-least-once)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle schema evolution in a data pipeline without breaking consumers?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use a schema registry (Confluent Schema Registry, AWS Glue Schema Registry) that enforces compatibility rules. Backward compatibility means new schemas can read data written with old schemas — achieved by only adding fields with defaults and never removing or renaming fields. Forward compatibility means old schemas can read data written with new schemas. Full compatibility satisfies both. In practice: use Avro or Protobuf (not JSON) for schema-enforced serialization, register schemas in CI/CD pipelines with compatibility checks before deployment, version schemas explicitly, and design consumers to ignore unknown fields. For breaking changes that cannot maintain compatibility: create a new topic/table version, run both old and new pipelines in parallel during migration, switch consumers to the new version, then decommission the old pipeline. Never make breaking schema changes in-place on a production topic."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is backpressure, and how do you implement it in a streaming pipeline?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Backpressure is a mechanism for slow consumers to signal fast producers to reduce their sending rate, preventing unbounded buffer growth and eventual system failure. Implementation approaches: pull-based consumption (Kafka consumers control their own read rate by polling — if processing is slow, they simply poll less frequently, and lag increases visibly), reactive streams demand signaling (Project Reactor, RxJava — downstream operators request N items from upstream, upstream produces only what is requested), bounded buffers with overflow policies (drop oldest, drop newest, or block the producer when the buffer is full), and rate limiting at ingestion (return HTTP 429 or pause Kafka partitions when the pipeline cannot keep up). In Kafka specifically, consumer lag is the primary backpressure signal — monitoring lag and scaling consumers horizontally when lag exceeds thresholds provides elastic backpressure. The key principle: make backpressure visible through metrics and alerts rather than letting it manifest as OOM errors or data loss."
+          "type": "interview",
+          "question": "What is backpressure, and how do you implement it in a streaming pipeline?",
+          "answer": "Backpressure is a mechanism for slow consumers to signal fast producers to reduce their sending rate, preventing unbounded buffer growth and eventual system failure. Implementation approaches: pull-based consumption (Kafka consumers control their own read rate by polling — if processing is slow, they simply poll less frequently, and lag increases visibly), reactive streams demand signaling (Project Reactor, RxJava — downstream operators request N items from upstream, upstream produces only what is requested), bounded buffers with overflow policies (drop oldest, drop newest, or block the producer when the buffer is full), and rate limiting at ingestion (return HTTP 429 or pause Kafka partitions when the pipeline cannot keep up). In Kafka specifically, consumer lag is the primary backpressure signal — monitoring lag and scaling consumers horizontally when lag exceeds thresholds provides elastic backpressure. The key principle: make backpressure visible through metrics and alerts rather than letting it manifest as OOM errors or data loss."
         }
       ],
-      "wordCount": 789,
+      "wordCount": 779,
       "subsections": []
     },
     {
@@ -391,7 +376,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/data-pipeline-design.md",
-    "wordCount": 2673,
+    "wordCount": 2663,
     "sectionCount": 15
   }
 }

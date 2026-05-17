@@ -302,39 +302,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the OAuth 2.0 authorization code flow with PKCE. Why is PKCE necessary for public clients?"
+          "type": "interview",
+          "question": "Explain the OAuth 2.0 authorization code flow with PKCE. Why is PKCE necessary for public clients?",
+          "answer": "The authorization code flow with PKCE works as follows: (1) The client generates a random code verifier and derives a code challenge (SHA-256 hash). (2) The client redirects the user to the authorization server with the code challenge. (3) After user consent, the auth server redirects back with an authorization code. (4) The client exchanges the code for tokens, including the original code verifier. (5) The auth server verifies the code verifier matches the challenge before issuing tokens. PKCE is necessary for public clients (SPAs, mobile apps) because they cannot securely store a client secret. Without PKCE, an attacker who intercepts the authorization code (via malicious app on the same device, browser extension, or network interception) could exchange it for tokens. With PKCE, the attacker would also need the code verifier, which never leaves the client's memory."
         },
         {
-          "type": "paragraph",
-          "text": "A: The authorization code flow with PKCE works as follows: (1) The client generates a random code verifier and derives a code challenge (SHA-256 hash). (2) The client redirects the user to the authorization server with the code challenge. (3) After user consent, the auth server redirects back with an authorization code. (4) The client exchanges the code for tokens, including the original code verifier. (5) The auth server verifies the code verifier matches the challenge before issuing tokens. PKCE is necessary for public clients (SPAs, mobile apps) because they cannot securely store a client secret. Without PKCE, an attacker who intercepts the authorization code (via malicious app on the same device, browser extension, or network interception) could exchange it for tokens. With PKCE, the attacker would also need the code verifier, which never leaves the client's memory."
+          "type": "interview",
+          "question": "How would you implement token revocation in a stateless JWT-based system?",
+          "answer": "Pure stateless JWTs cannot be revoked before expiry — this is their fundamental limitation. Practical approaches include: (1) Short-lived access tokens (5-15 minutes) with refresh token rotation, limiting the window of exposure. (2) Token blacklisting using a distributed cache (Redis) that stores revoked token JTIs; services check the blacklist on each request. The blacklist only needs entries for unexpired tokens, so it stays small. (3) Token versioning where each user has a token version counter; incrementing it invalidates all existing tokens. (4) For critical operations, use token introspection (RFC 7662) where the service calls the auth server to verify token validity in real-time. The trade-off is always between statelessness (performance, scalability) and revocability (security). Most production systems use approach (1) + (2) for a practical balance."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement token revocation in a stateless JWT-based system?"
+          "type": "interview",
+          "question": "Compare SAML 2.0 and OpenID Connect. When would you choose one over the other?",
+          "answer": "SAML 2.0 is XML-based, uses SOAP/HTTP-POST bindings, and was designed for enterprise web SSO. OIDC is JSON-based, built on OAuth 2.0, and designed for modern web and mobile applications. Choose SAML when: integrating with enterprise identity infrastructure (ADFS, legacy IdPs), partners mandate SAML, or you need attribute-based assertions with complex policies. Choose OIDC when: building new applications, supporting mobile clients, needing lightweight JSON tokens, or requiring OAuth 2.0 API authorization alongside authentication. Key technical differences: SAML assertions are typically larger (XML + signatures), SAML requires more complex parsing, OIDC has better mobile support, and OIDC's discovery mechanism (.well-known/openid-configuration) simplifies client configuration. Many organizations run both, using SAML for B2B federation and OIDC for consumer-facing applications."
         },
         {
-          "type": "paragraph",
-          "text": "A: Pure stateless JWTs cannot be revoked before expiry — this is their fundamental limitation. Practical approaches include: (1) Short-lived access tokens (5-15 minutes) with refresh token rotation, limiting the window of exposure. (2) Token blacklisting using a distributed cache (Redis) that stores revoked token JTIs; services check the blacklist on each request. The blacklist only needs entries for unexpired tokens, so it stays small. (3) Token versioning where each user has a token version counter; incrementing it invalidates all existing tokens. (4) For critical operations, use token introspection (RFC 7662) where the service calls the auth server to verify token validity in real-time. The trade-off is always between statelessness (performance, scalability) and revocability (security). Most production systems use approach (1) + (2) for a practical balance."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Compare SAML 2.0 and OpenID Connect. When would you choose one over the other?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: SAML 2.0 is XML-based, uses SOAP/HTTP-POST bindings, and was designed for enterprise web SSO. OIDC is JSON-based, built on OAuth 2.0, and designed for modern web and mobile applications. Choose SAML when: integrating with enterprise identity infrastructure (ADFS, legacy IdPs), partners mandate SAML, or you need attribute-based assertions with complex policies. Choose OIDC when: building new applications, supporting mobile clients, needing lightweight JSON tokens, or requiring OAuth 2.0 API authorization alongside authentication. Key technical differences: SAML assertions are typically larger (XML + signatures), SAML requires more complex parsing, OIDC has better mobile support, and OIDC's discovery mechanism (.well-known/openid-configuration) simplifies client configuration. Many organizations run both, using SAML for B2B federation and OIDC for consumer-facing applications."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you securely store and manage refresh tokens? What happens if a refresh token is compromised?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Refresh tokens should be: (1) Stored as hashed values in the database (SHA-256), never plaintext. (2) Bound to the client that requested them (client_id validation). (3) Rotated on every use — each refresh generates a new refresh token and invalidates the old one. (4) Grouped into token families for reuse detection. If a refresh token is compromised and the attacker uses it after the legitimate user has already rotated it, the system detects the reuse (the old token was already consumed), revokes the entire token family, and forces re-authentication. If the attacker uses it before the legitimate user, the legitimate user's next refresh attempt will fail (their token was consumed by the attacker), triggering the same family revocation. This limits the damage window and provides detection capability."
+          "type": "interview",
+          "question": "How do you securely store and manage refresh tokens? What happens if a refresh token is compromised?",
+          "answer": "Refresh tokens should be: (1) Stored as hashed values in the database (SHA-256), never plaintext. (2) Bound to the client that requested them (client_id validation). (3) Rotated on every use — each refresh generates a new refresh token and invalidates the old one. (4) Grouped into token families for reuse detection. If a refresh token is compromised and the attacker uses it after the legitimate user has already rotated it, the system detects the reuse (the old token was already consumed), revokes the entire token family, and forces re-authentication. If the attacker uses it before the legitimate user, the legitimate user's next refresh attempt will fail (their token was consumed by the attacker), triggering the same family revocation. This limits the damage window and provides detection capability."
         }
       ],
-      "wordCount": 571,
+      "wordCount": 563,
       "subsections": []
     },
     {
@@ -409,7 +397,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/application-security/authentication-patterns.md",
-    "wordCount": 1913,
+    "wordCount": 1905,
     "sectionCount": 14
   }
 }

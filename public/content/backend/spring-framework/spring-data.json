@@ -198,71 +198,47 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain transaction propagation levels in Spring."
+          "type": "interview",
+          "question": "Explain transaction propagation levels in Spring.",
+          "answer": "Propagation defines how transactions relate when methods call other transactional methods. REQUIRED (default) joins an existing transaction or creates a new one. REQUIRES_NEW always creates a new transaction, suspending any existing one (useful for audit logging that must persist regardless of outer transaction outcome). NESTED creates a savepoint within the existing transaction. SUPPORTS participates if one exists but doesn't create one. NOT_SUPPORTED suspends any existing transaction. MANDATORY requires an existing transaction or throws. NEVER throws if a transaction exists."
         },
         {
-          "type": "paragraph",
-          "text": "A: Propagation defines how transactions relate when methods call other transactional methods. REQUIRED (default) joins an existing transaction or creates a new one. REQUIRES_NEW always creates a new transaction, suspending any existing one (useful for audit logging that must persist regardless of outer transaction outcome). NESTED creates a savepoint within the existing transaction. SUPPORTS participates if one exists but doesn't create one. NOT_SUPPORTED suspends any existing transaction. MANDATORY requires an existing transaction or throws. NEVER throws if a transaction exists."
+          "type": "interview",
+          "question": "How do you handle the N+1 query problem in Spring Data JPA?",
+          "answer": "Multiple strategies exist. JOIN FETCH in JPQL eagerly loads relationships in a single query but cannot be combined with pagination. @EntityGraph declaratively specifies which associations to fetch eagerly for specific repository methods. @BatchSize(size = 50) on the relationship tells Hibernate to load lazy collections in batches rather than one at a time. For complex scenarios, use a DTO projection query that selects only needed columns, avoiding entity loading entirely. The choice depends on whether you need the full entity graph or just specific fields."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle the N+1 query problem in Spring Data JPA?"
+          "type": "interview",
+          "question": "What is the difference between save() and saveAndFlush() in Spring Data JPA?",
+          "answer": "save() marks the entity as managed in the persistence context but does not immediately execute SQL. The actual INSERT or UPDATE is deferred until the transaction commits or the persistence context is flushed. saveAndFlush() immediately executes the SQL statement and synchronizes the persistence context with the database. Use saveAndFlush() when you need the database-generated ID immediately, when you need to catch constraint violations before the transaction ends, or when subsequent native queries need to see the persisted data."
         },
         {
-          "type": "paragraph",
-          "text": "A: Multiple strategies exist. JOIN FETCH in JPQL eagerly loads relationships in a single query but cannot be combined with pagination. @EntityGraph declaratively specifies which associations to fetch eagerly for specific repository methods. @BatchSize(size = 50) on the relationship tells Hibernate to load lazy collections in batches rather than one at a time. For complex scenarios, use a DTO projection query that selects only needed columns, avoiding entity loading entirely. The choice depends on whether you need the full entity graph or just specific fields."
+          "type": "interview",
+          "question": "How does optimistic locking work with @Version?",
+          "answer": "The @Version field is automatically incremented on each update. When Hibernate generates an UPDATE statement, it includes WHERE version = :currentVersion. If another transaction modified the entity (incrementing the version), the WHERE clause matches zero rows, and Hibernate throws OptimisticLockException. This prevents lost updates without database-level locks, allowing high concurrency for read-heavy workloads where conflicts are rare. Always implement retry logic for operations where conflicts are expected."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between save() and saveAndFlush() in Spring Data JPA?"
+          "type": "interview",
+          "question": "What are the differences between interface-based and class-based projections?",
+          "answer": "Interface-based projections define getter methods matching entity property names — Spring Data generates a proxy at runtime that returns only the projected columns. They support nested projections and SpEL expressions but cannot contain custom logic. Class-based projections (DTOs with constructors) are instantiated directly from query results, support custom logic in methods, and work with native queries. Interface projections generate optimized SQL selecting only declared columns. For GraalVM native images, class-based projections are preferred because they avoid runtime proxy generation."
         },
         {
-          "type": "paragraph",
-          "text": "A: save() marks the entity as managed in the persistence context but does not immediately execute SQL. The actual INSERT or UPDATE is deferred until the transaction commits or the persistence context is flushed. saveAndFlush() immediately executes the SQL statement and synchronizes the persistence context with the database. Use saveAndFlush() when you need the database-generated ID immediately, when you need to catch constraint violations before the transaction ends, or when subsequent native queries need to see the persisted data."
+          "type": "interview",
+          "question": "How do you implement soft deletes with Spring Data JPA?",
+          "answer": "Add a deleted boolean or deletedAt timestamp column. Apply Hibernate's @SQLRestriction(\"deleted = false\") (Hibernate 6.3+) on the entity to automatically filter soft-deleted records from all queries. Override the repository's delete method to set the flag instead of executing SQL DELETE. For queries that need to include deleted records, use native queries or a separate repository without the filter. Combine with @PreRemove lifecycle callback to set the deletion timestamp."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does optimistic locking work with @Version?"
+          "type": "interview",
+          "question": "Explain the difference between Page<T> and Slice<T> in Spring Data.",
+          "answer": "Page<T> executes an additional COUNT query to determine total elements and total pages, enabling full pagination metadata. Slice<T> only knows if there is a next page (by requesting one extra element), avoiding the expensive COUNT query. Use Page<T> when you need to display total page count (traditional pagination UI). Use Slice<T> for infinite scroll or \"load more\" patterns where total count is unnecessary. For tables with millions of rows, the COUNT query can take seconds — Slice<T> provides significantly better performance."
         },
         {
-          "type": "paragraph",
-          "text": "A: The @Version field is automatically incremented on each update. When Hibernate generates an UPDATE statement, it includes WHERE version = :currentVersion. If another transaction modified the entity (incrementing the version), the WHERE clause matches zero rows, and Hibernate throws OptimisticLockException. This prevents lost updates without database-level locks, allowing high concurrency for read-heavy workloads where conflicts are rare. Always implement retry logic for operations where conflicts are expected."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are the differences between interface-based and class-based projections?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Interface-based projections define getter methods matching entity property names — Spring Data generates a proxy at runtime that returns only the projected columns. They support nested projections and SpEL expressions but cannot contain custom logic. Class-based projections (DTOs with constructors) are instantiated directly from query results, support custom logic in methods, and work with native queries. Interface projections generate optimized SQL selecting only declared columns. For GraalVM native images, class-based projections are preferred because they avoid runtime proxy generation."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you implement soft deletes with Spring Data JPA?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Add a deleted boolean or deletedAt timestamp column. Apply Hibernate's @SQLRestriction(\"deleted = false\") (Hibernate 6.3+) on the entity to automatically filter soft-deleted records from all queries. Override the repository's delete method to set the flag instead of executing SQL DELETE. For queries that need to include deleted records, use native queries or a separate repository without the filter. Combine with @PreRemove lifecycle callback to set the deletion timestamp."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between Page<T> and Slice<T> in Spring Data."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Page<T> executes an additional COUNT query to determine total elements and total pages, enabling full pagination metadata. Slice<T> only knows if there is a next page (by requesting one extra element), avoiding the expensive COUNT query. Use Page<T> when you need to display total page count (traditional pagination UI). Use Slice<T> for infinite scroll or \"load more\" patterns where total count is unnecessary. For tables with millions of rows, the COUNT query can take seconds — Slice<T> provides significantly better performance."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Spring Data's query derivation work?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Spring Data parses repository method names into JPQL queries at application startup. It splits the method name into subject (find, count, exists, delete), predicate keywords (By, And, Or), property references (entity field names), and comparison operators (After, Before, Between, Like, In, IsNull, OrderBy). For example, findByStatusAndCreatedAtAfterOrderByTotalAmountDesc generates SELECT o FROM Order o WHERE o.status = ?1 AND o.createdAt > ?2 ORDER BY o.totalAmount DESC. If the method name doesn't match entity properties, the application fails to start with a clear error message."
+          "type": "interview",
+          "question": "How does Spring Data's query derivation work?",
+          "answer": "Spring Data parses repository method names into JPQL queries at application startup. It splits the method name into subject (find, count, exists, delete), predicate keywords (By, And, Or), property references (entity field names), and comparison operators (After, Before, Between, Like, In, IsNull, OrderBy). For example, findByStatusAndCreatedAtAfterOrderByTotalAmountDesc generates SELECT o FROM Order o WHERE o.status = ?1 AND o.createdAt > ?2 ORDER BY o.totalAmount DESC. If the method name doesn't match entity properties, the application fails to start with a clear error message."
         }
       ],
-      "wordCount": 707,
+      "wordCount": 691,
       "subsections": []
     },
     {
@@ -343,7 +319,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-data.md",
-    "wordCount": 1871,
+    "wordCount": 1855,
     "sectionCount": 14
   }
 }

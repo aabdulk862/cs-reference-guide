@@ -290,47 +290,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare Zustand, Jotai, and Valtio. When would you choose each?"
+          "type": "interview",
+          "question": "Compare Zustand, Jotai, and Valtio. When would you choose each?",
+          "answer": "All three are from the same team (pmndrs) but solve different problems. Zustand is a general-purpose store — think of it as \"Redux without the boilerplate.\" Choose it when you want a single store with actions and selectors, familiar patterns for Redux developers, and middleware support (persist, devtools). Best for: most applications, especially those migrating from Redux. Jotai is atomic state — think of it as \"React useState that can be shared.\" Choose it when state is naturally independent pieces (not one big object), you want automatic dependency tracking for derived state, or you need React Suspense integration for async data. Best for: applications with many independent state pieces, dashboards with independent widgets. Valtio is proxy-based — think of it as \"Vue reactivity in React.\" Choose it when you prefer mutable APIs, have deeply nested state that's painful to update immutably, or are building real-time collaborative features where applying patches to mutable state is natural. Best for: complex nested state, real-time applications, developers from Vue/MobX backgrounds."
         },
         {
-          "type": "paragraph",
-          "text": "A: All three are from the same team (pmndrs) but solve different problems. Zustand is a general-purpose store — think of it as \"Redux without the boilerplate.\" Choose it when you want a single store with actions and selectors, familiar patterns for Redux developers, and middleware support (persist, devtools). Best for: most applications, especially those migrating from Redux. Jotai is atomic state — think of it as \"React useState that can be shared.\" Choose it when state is naturally independent pieces (not one big object), you want automatic dependency tracking for derived state, or you need React Suspense integration for async data. Best for: applications with many independent state pieces, dashboards with independent widgets. Valtio is proxy-based — think of it as \"Vue reactivity in React.\" Choose it when you prefer mutable APIs, have deeply nested state that's painful to update immutably, or are building real-time collaborative features where applying patches to mutable state is natural. Best for: complex nested state, real-time applications, developers from Vue/MobX backgrounds."
+          "type": "interview",
+          "question": "What are signals and how do they differ from React's state model? What are the tradeoffs?",
+          "answer": "React's state model is component-centric: when state changes, the entire component function re-executes, produces new JSX, and React diffs the virtual DOM to find what changed in the actual DOM. Signals are value-centric: a signal is a reactive variable that knows which DOM nodes reference it. When a signal's value changes, it updates those specific DOM nodes directly — no component re-render, no virtual DOM diff, no reconciliation. Tradeoffs favoring signals: dramatically better performance for frequently-updating values (real-time data, animations), simpler mental model for derived state (computed signals auto-track dependencies). Tradeoffs favoring React's model: better ecosystem support, more predictable rendering behavior (component boundaries are clear), easier debugging (you can log in the component body to see re-renders), and React's concurrent features (Suspense, transitions) are designed around the component re-render model. Signals are gaining adoption (Angular 16+, Solid, Preact) but remain experimental in React's ecosystem."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What are signals and how do they differ from React's state model? What are the tradeoffs?"
+          "type": "interview",
+          "question": "How do you handle server-side rendering with modern state management libraries?",
+          "answer": "SSR introduces the \"singleton problem\" — module-level stores (Zustand, Valtio) persist across requests on the server, leaking state between users. Solutions vary by library: Zustand: Use createStore (non-hook API) and pass the store via React context, creating a new store per request. Or use the zustand/traditional API with createWithEqualityFn. Jotai: Naturally SSR-safe because atoms are scoped to a Provider. Each request gets its own Provider with fresh atom values. Use useHydrateAtoms to initialize atoms with server-fetched data. Valtio: Most challenging for SSR — create proxy state inside a request handler and pass via context, or use snapshot to serialize state for hydration. General pattern: Initialize state on the server, serialize to JSON, embed in HTML, and hydrate on the client. Ensure no references to browser APIs (window, localStorage) during server-side store creation."
         },
         {
-          "type": "paragraph",
-          "text": "A: React's state model is component-centric: when state changes, the entire component function re-executes, produces new JSX, and React diffs the virtual DOM to find what changed in the actual DOM. Signals are value-centric: a signal is a reactive variable that knows which DOM nodes reference it. When a signal's value changes, it updates those specific DOM nodes directly — no component re-render, no virtual DOM diff, no reconciliation. Tradeoffs favoring signals: dramatically better performance for frequently-updating values (real-time data, animations), simpler mental model for derived state (computed signals auto-track dependencies). Tradeoffs favoring React's model: better ecosystem support, more predictable rendering behavior (component boundaries are clear), easier debugging (you can log in the component body to see re-renders), and React's concurrent features (Suspense, transitions) are designed around the component re-render model. Signals are gaining adoption (Angular 16+, Solid, Preact) but remain experimental in React's ecosystem."
+          "type": "interview",
+          "question": "How would you migrate a large Redux application to Zustand incrementally?",
+          "answer": "Incremental migration avoids a risky big-bang rewrite. Strategy: (1) Start with leaf slices that have few cross-slice dependencies — convert one Redux slice to a Zustand store while keeping the rest in Redux. (2) For the transition period, both stores coexist. If Zustand state needs Redux state, subscribe to the Redux store from Zustand (store.subscribe(() => zustandStore.setState(...))). (3) Convert selectors to Zustand selectors — the API is similar (useSelector(selectX) becomes useStore(state => state.x)). (4) Replace thunks with async actions inside the Zustand store. (5) Move middleware logic (logging, persistence) to Zustand middleware equivalents. (6) Once all slices are migrated, remove Redux dependencies. Key insight: you don't need to migrate everything — some complex slices with heavy middleware usage might stay in Redux while simpler state moves to Zustand. The two can coexist permanently."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle server-side rendering with modern state management libraries?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: SSR introduces the \"singleton problem\" — module-level stores (Zustand, Valtio) persist across requests on the server, leaking state between users. Solutions vary by library: Zustand: Use createStore (non-hook API) and pass the store via React context, creating a new store per request. Or use the zustand/traditional API with createWithEqualityFn. Jotai: Naturally SSR-safe because atoms are scoped to a Provider. Each request gets its own Provider with fresh atom values. Use useHydrateAtoms to initialize atoms with server-fetched data. Valtio: Most challenging for SSR — create proxy state inside a request handler and pass via context, or use snapshot to serialize state for hydration. General pattern: Initialize state on the server, serialize to JSON, embed in HTML, and hydrate on the client. Ensure no references to browser APIs (window, localStorage) during server-side store creation."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you migrate a large Redux application to Zustand incrementally?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Incremental migration avoids a risky big-bang rewrite. Strategy: (1) Start with leaf slices that have few cross-slice dependencies — convert one Redux slice to a Zustand store while keeping the rest in Redux. (2) For the transition period, both stores coexist. If Zustand state needs Redux state, subscribe to the Redux store from Zustand (store.subscribe(() => zustandStore.setState(...))). (3) Convert selectors to Zustand selectors — the API is similar (useSelector(selectX) becomes useStore(state => state.x)). (4) Replace thunks with async actions inside the Zustand store. (5) Move middleware logic (logging, persistence) to Zustand middleware equivalents. (6) Once all slices are migrated, remove Redux dependencies. Key insight: you don't need to migrate everything — some complex slices with heavy middleware usage might stay in Redux while simpler state moves to Zustand. The two can coexist permanently."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What performance optimizations do these libraries provide over React Context for global state?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: React Context has a fundamental performance problem: when context value changes, ALL consumers re-render, regardless of whether they use the changed portion of state. If context holds { user, theme, cart } and only cart changes, components that only read theme still re-render. Modern libraries solve this differently: Zustand uses selectors — components subscribe to specific state slices and only re-render when their selected value changes (reference equality check). Jotai uses atoms — components subscribe to individual atoms, so changing one atom doesn't affect components subscribed to other atoms. Valtio uses Proxy tracking — during render, it records which properties were accessed and only re-renders when those specific properties change. Signals bypass React's rendering entirely — they update DOM nodes directly. All approaches achieve O(1) update propagation (only affected components re-render) versus Context's O(n) (all consumers re-render). This matters when you have 50+ components consuming global state."
+          "type": "interview",
+          "question": "What performance optimizations do these libraries provide over React Context for global state?",
+          "answer": "React Context has a fundamental performance problem: when context value changes, ALL consumers re-render, regardless of whether they use the changed portion of state. If context holds { user, theme, cart } and only cart changes, components that only read theme still re-render. Modern libraries solve this differently: Zustand uses selectors — components subscribe to specific state slices and only re-render when their selected value changes (reference equality check). Jotai uses atoms — components subscribe to individual atoms, so changing one atom doesn't affect components subscribed to other atoms. Valtio uses Proxy tracking — during render, it records which properties were accessed and only re-renders when those specific properties change. Signals bypass React's rendering entirely — they update DOM nodes directly. All approaches achieve O(1) update propagation (only affected components re-render) versus Context's O(n) (all consumers re-render). This matters when you have 50+ components consuming global state."
         }
       ],
-      "wordCount": 793,
+      "wordCount": 783,
       "subsections": []
     },
     {
@@ -406,7 +391,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/modern-alternatives.md",
-    "wordCount": 2465,
+    "wordCount": 2455,
     "sectionCount": 14
   }
 }

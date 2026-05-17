@@ -158,39 +158,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between Security Groups and Network ACLs. When would you use each?"
+          "type": "interview",
+          "question": "Explain the difference between Security Groups and Network ACLs. When would you use each?",
+          "answer": "Security Groups are stateful firewalls attached to ENIs (network interfaces) that evaluate rules based on the aggregate of all rules — if any rule allows traffic, it is permitted. They track connection state, so return traffic is automatically allowed. NACLs are stateless firewalls at the subnet level that evaluate rules in numbered order (first match wins) and require explicit rules for both inbound and outbound traffic including return traffic on ephemeral ports. Use Security Groups as the primary access control mechanism for application-level rules (which services can talk to which). Use NACLs as a defense-in-depth layer for subnet-level segmentation, particularly for compliance requirements that mandate network-level isolation. In practice, most traffic control is done via Security Groups, with NACLs providing a safety net on sensitive subnets."
         },
         {
-          "type": "paragraph",
-          "text": "A: Security Groups are stateful firewalls attached to ENIs (network interfaces) that evaluate rules based on the aggregate of all rules — if any rule allows traffic, it is permitted. They track connection state, so return traffic is automatically allowed. NACLs are stateless firewalls at the subnet level that evaluate rules in numbered order (first match wins) and require explicit rules for both inbound and outbound traffic including return traffic on ephemeral ports. Use Security Groups as the primary access control mechanism for application-level rules (which services can talk to which). Use NACLs as a defense-in-depth layer for subnet-level segmentation, particularly for compliance requirements that mandate network-level isolation. In practice, most traffic control is done via Security Groups, with NACLs providing a safety net on sensitive subnets."
+          "type": "interview",
+          "question": "How would you design a VPC for a three-tier web application that needs high availability?",
+          "answer": "Design a VPC spanning three Availability Zones with three subnet tiers per AZ. Public subnets (small CIDR, /24) host only the Application Load Balancer and NAT Gateways. Private subnets with egress (larger CIDR, /20) host application containers in ECS or EKS with routes to NAT Gateways for outbound internet access. Isolated private subnets (medium CIDR, /22) host RDS instances in a Multi-AZ deployment with no internet route. Security Groups enforce tier-to-tier access: ALB accepts HTTPS from internet, application accepts traffic only from ALB, database accepts connections only from application tier. Deploy NAT Gateways in at least two AZs for redundancy. Add VPC Endpoints for S3, DynamoDB, ECR, and CloudWatch to reduce NAT costs and improve latency."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a VPC for a three-tier web application that needs high availability?"
+          "type": "interview",
+          "question": "What is a VPC Endpoint and when would you choose a Gateway Endpoint versus an Interface Endpoint?",
+          "answer": "VPC Endpoints provide private connectivity to AWS services without traffic leaving the AWS network. Gateway Endpoints are free, route-table-based entries that work only for S3 and DynamoDB — they add a route to the subnet's route table directing service traffic through the endpoint. Interface Endpoints use AWS PrivateLink, creating ENIs in your subnets with private IP addresses that DNS resolves to — they work for 100+ AWS services and third-party services. Choose Gateway Endpoints for S3 and DynamoDB (free, no bandwidth limits). Choose Interface Endpoints for all other services (ECR, CloudWatch, SQS, etc.) when you need private connectivity, when compliance requires traffic to stay within the VPC, or when you want to avoid NAT Gateway data processing charges for AWS API calls."
         },
         {
-          "type": "paragraph",
-          "text": "A: Design a VPC spanning three Availability Zones with three subnet tiers per AZ. Public subnets (small CIDR, /24) host only the Application Load Balancer and NAT Gateways. Private subnets with egress (larger CIDR, /20) host application containers in ECS or EKS with routes to NAT Gateways for outbound internet access. Isolated private subnets (medium CIDR, /22) host RDS instances in a Multi-AZ deployment with no internet route. Security Groups enforce tier-to-tier access: ALB accepts HTTPS from internet, application accepts traffic only from ALB, database accepts connections only from application tier. Deploy NAT Gateways in at least two AZs for redundancy. Add VPC Endpoints for S3, DynamoDB, ECR, and CloudWatch to reduce NAT costs and improve latency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is a VPC Endpoint and when would you choose a Gateway Endpoint versus an Interface Endpoint?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: VPC Endpoints provide private connectivity to AWS services without traffic leaving the AWS network. Gateway Endpoints are free, route-table-based entries that work only for S3 and DynamoDB — they add a route to the subnet's route table directing service traffic through the endpoint. Interface Endpoints use AWS PrivateLink, creating ENIs in your subnets with private IP addresses that DNS resolves to — they work for 100+ AWS services and third-party services. Choose Gateway Endpoints for S3 and DynamoDB (free, no bandwidth limits). Choose Interface Endpoints for all other services (ECR, CloudWatch, SQS, etc.) when you need private connectivity, when compliance requires traffic to stay within the VPC, or when you want to avoid NAT Gateway data processing charges for AWS API calls."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you troubleshoot connectivity issues between two services in different subnets?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Follow a systematic approach: First, verify Security Group rules allow the traffic in both directions (inbound on destination, outbound on source). Second, check NACL rules on both subnets — remember NACLs are stateless, so you need rules for both the request and the ephemeral port response. Third, verify route tables have routes to the destination CIDR (especially for cross-VPC or cross-subnet traffic). Fourth, check VPC Flow Logs for REJECT entries matching the traffic pattern — the log shows which component rejected the traffic. Fifth, verify DNS resolution if using service names rather than IPs. Sixth, check if the target service is actually listening on the expected port. Use VPC Reachability Analyzer for automated path analysis that identifies the blocking component without sending actual traffic."
+          "type": "interview",
+          "question": "How do you troubleshoot connectivity issues between two services in different subnets?",
+          "answer": "Follow a systematic approach: First, verify Security Group rules allow the traffic in both directions (inbound on destination, outbound on source). Second, check NACL rules on both subnets — remember NACLs are stateless, so you need rules for both the request and the ephemeral port response. Third, verify route tables have routes to the destination CIDR (especially for cross-VPC or cross-subnet traffic). Fourth, check VPC Flow Logs for REJECT entries matching the traffic pattern — the log shows which component rejected the traffic. Fifth, verify DNS resolution if using service names rather than IPs. Sixth, check if the target service is actually listening on the expected port. Use VPC Reachability Analyzer for automated path analysis that identifies the blocking component without sending actual traffic."
         }
       ],
-      "wordCount": 554,
+      "wordCount": 546,
       "subsections": []
     },
     {
@@ -263,7 +251,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/aws/vpc-and-networking.md",
-    "wordCount": 1754,
+    "wordCount": 1746,
     "sectionCount": 12
   }
 }

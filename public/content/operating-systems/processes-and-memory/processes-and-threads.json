@@ -168,47 +168,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between a process and a thread. When would you choose one over the other?"
+          "type": "interview",
+          "question": "Explain the difference between a process and a thread. When would you choose one over the other?",
+          "answer": "A process has its own address space, file descriptors, and signal handlers, providing strong isolation but expensive creation (~10ms) and communication (requires IPC). Threads share the process address space and resources, enabling fast communication through shared memory but requiring explicit synchronization and offering no fault isolation. Choose processes when you need security boundaries (web server handling untrusted code), fault isolation (a crash in one worker shouldn't kill others), or different privilege levels. Choose threads when you need shared state (in-memory caches, connection pools), low-latency communication, or when memory overhead matters (threads share code/data segments). Modern architectures often combine both: multiple processes for fault domains with multiple threads per process for parallelism."
         },
         {
-          "type": "paragraph",
-          "text": "A: A process has its own address space, file descriptors, and signal handlers, providing strong isolation but expensive creation (~10ms) and communication (requires IPC). Threads share the process address space and resources, enabling fast communication through shared memory but requiring explicit synchronization and offering no fault isolation. Choose processes when you need security boundaries (web server handling untrusted code), fault isolation (a crash in one worker shouldn't kill others), or different privilege levels. Choose threads when you need shared state (in-memory caches, connection pools), low-latency communication, or when memory overhead matters (threads share code/data segments). Modern architectures often combine both: multiple processes for fault domains with multiple threads per process for parallelism."
+          "type": "interview",
+          "question": "What is a context switch and what makes it expensive?",
+          "answer": "A context switch saves the current execution context (registers, program counter, stack pointer, floating-point state) to the process/thread control block and loads another context. The direct cost is 1-5μs for register save/restore and kernel bookkeeping. The indirect costs dominate: TLB flush on process switches invalidates cached address translations (subsequent memory accesses incur page table walks), CPU cache pollution means the new process starts with cold caches (L1/L2/L3 misses), and branch predictor state is lost. For threads within the same process, TLB flush is avoided (shared address space), making thread switches cheaper. Minimize context switches by sizing thread pools appropriately, using I/O multiplexing instead of thread-per-connection, and pinning latency-sensitive threads to dedicated cores."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is a context switch and what makes it expensive?"
+          "type": "interview",
+          "question": "How does fork() work and what is copy-on-write?",
+          "answer": "fork() creates a new process that is an exact copy of the parent — same code, data, heap, stack, and open file descriptors. With copy-on-write (COW), the kernel doesn't actually copy physical memory pages. Instead, both parent and child share the same physical pages marked read-only. When either process writes to a shared page, the MMU triggers a page fault, the kernel allocates a new physical frame, copies the page content, and updates the writer's page table to point to the new frame. This makes fork() nearly O(1) regardless of process memory size (only page table entries are copied, not data). COW is why fork()+exec() is efficient for spawning new programs — most pages are never written before exec() replaces the address space entirely."
         },
         {
-          "type": "paragraph",
-          "text": "A: A context switch saves the current execution context (registers, program counter, stack pointer, floating-point state) to the process/thread control block and loads another context. The direct cost is 1-5μs for register save/restore and kernel bookkeeping. The indirect costs dominate: TLB flush on process switches invalidates cached address translations (subsequent memory accesses incur page table walks), CPU cache pollution means the new process starts with cold caches (L1/L2/L3 misses), and branch predictor state is lost. For threads within the same process, TLB flush is avoided (shared address space), making thread switches cheaper. Minimize context switches by sizing thread pools appropriately, using I/O multiplexing instead of thread-per-connection, and pinning latency-sensitive threads to dedicated cores."
+          "type": "interview",
+          "question": "Describe the IPC mechanisms available on Linux and their tradeoffs.",
+          "answer": "Pipes provide unidirectional byte streams between related processes (64KB kernel buffer, simple but limited to parent-child). Named pipes (FIFOs) extend pipes to unrelated processes via filesystem paths. Shared memory (mmap MAP_SHARED or shm_open) is the fastest IPC — zero-copy data exchange through mapped memory regions, but requires explicit synchronization (semaphores/futexes). Unix domain sockets provide bidirectional, connection-oriented communication with the socket API, faster than TCP loopback (no network stack overhead), and support file descriptor passing (SCM_RIGHTS). Message queues (POSIX mq_*) provide structured, prioritized messages with built-in synchronization. Signals are asynchronous notifications carrying minimal data (signal number only), used for control flow rather than data transfer. Choose shared memory for maximum throughput (databases, multimedia), Unix sockets for general-purpose bidirectional communication, and pipes for simple streaming between related processes."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does fork() work and what is copy-on-write?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: fork() creates a new process that is an exact copy of the parent — same code, data, heap, stack, and open file descriptors. With copy-on-write (COW), the kernel doesn't actually copy physical memory pages. Instead, both parent and child share the same physical pages marked read-only. When either process writes to a shared page, the MMU triggers a page fault, the kernel allocates a new physical frame, copies the page content, and updates the writer's page table to point to the new frame. This makes fork() nearly O(1) regardless of process memory size (only page table entries are copied, not data). COW is why fork()+exec() is efficient for spawning new programs — most pages are never written before exec() replaces the address space entirely."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe the IPC mechanisms available on Linux and their tradeoffs."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Pipes provide unidirectional byte streams between related processes (64KB kernel buffer, simple but limited to parent-child). Named pipes (FIFOs) extend pipes to unrelated processes via filesystem paths. Shared memory (mmap MAP_SHARED or shm_open) is the fastest IPC — zero-copy data exchange through mapped memory regions, but requires explicit synchronization (semaphores/futexes). Unix domain sockets provide bidirectional, connection-oriented communication with the socket API, faster than TCP loopback (no network stack overhead), and support file descriptor passing (SCM_RIGHTS). Message queues (POSIX mq_*) provide structured, prioritized messages with built-in synchronization. Signals are asynchronous notifications carrying minimal data (signal number only), used for control flow rather than data transfer. Choose shared memory for maximum throughput (databases, multimedia), Unix sockets for general-purpose bidirectional communication, and pipes for simple streaming between related processes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are zombie and orphan processes?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: A zombie process has terminated but its parent hasn't called wait() to collect its exit status. It occupies a process table entry (storing exit code, resource usage stats) but consumes no CPU or memory. Zombies accumulate if the parent ignores SIGCHLD or never waits, eventually exhausting the PID space. Fix by calling waitpid() in a SIGCHLD handler or setting SIGCHLD to SIG_IGN. An orphan process is a running process whose parent has terminated. The kernel re-parents orphans to PID 1 (init/systemd), which periodically calls wait() to reap them. In containers, if PID 1 doesn't reap children (common with application processes as PID 1), zombies accumulate — this is why container init processes (tini) exist."
+          "type": "interview",
+          "question": "What are zombie and orphan processes?",
+          "answer": "A zombie process has terminated but its parent hasn't called wait() to collect its exit status. It occupies a process table entry (storing exit code, resource usage stats) but consumes no CPU or memory. Zombies accumulate if the parent ignores SIGCHLD or never waits, eventually exhausting the PID space. Fix by calling waitpid() in a SIGCHLD handler or setting SIGCHLD to SIG_IGN. An orphan process is a running process whose parent has terminated. The kernel re-parents orphans to PID 1 (init/systemd), which periodically calls wait() to reap them. In containers, if PID 1 doesn't reap children (common with application processes as PID 1), zombies accumulate — this is why container init processes (tini) exist."
         }
       ],
-      "wordCount": 648,
+      "wordCount": 638,
       "subsections": []
     },
     {
@@ -276,7 +261,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/processes-and-memory/processes-and-threads.md",
-    "wordCount": 1931,
+    "wordCount": 1921,
     "sectionCount": 12
   }
 }

@@ -11,6 +11,8 @@ export type {
   InteractiveType,
   ContentNode,
   TaskListItem,
+  CompareOption,
+  PrereqLink,
   ContentSection,
   ParsedContent,
   Topic,

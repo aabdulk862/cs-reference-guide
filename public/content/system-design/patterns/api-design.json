@@ -146,39 +146,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you design an API versioning strategy for a public API with thousands of consumers?"
+          "type": "interview",
+          "question": "How would you design an API versioning strategy for a public API with thousands of consumers?",
+          "answer": "Use URL-path versioning (/v1/, /v2/) for major breaking changes because it is the most discoverable and debuggable approach. Within a version, use additive-only changes (new fields, new endpoints) that do not break existing clients. For the transition between versions: (1) announce deprecation with a timeline (minimum 12 months for public APIs), (2) add Deprecation and Sunset HTTP headers to old version responses, (3) provide migration guides and automated tooling where possible, (4) monitor old version usage and reach out to high-volume consumers directly, (5) maintain the old version in read-only mode after sunset before full removal. Internally, implement a transformation layer that converts between the canonical internal representation and each API version's format. This avoids maintaining separate codepaths for each version. The key tradeoff is between version proliferation (too many versions to maintain) and breaking changes (forcing consumers to update too frequently)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use URL-path versioning (/v1/, /v2/) for major breaking changes because it is the most discoverable and debuggable approach. Within a version, use additive-only changes (new fields, new endpoints) that do not break existing clients. For the transition between versions: (1) announce deprecation with a timeline (minimum 12 months for public APIs), (2) add Deprecation and Sunset HTTP headers to old version responses, (3) provide migration guides and automated tooling where possible, (4) monitor old version usage and reach out to high-volume consumers directly, (5) maintain the old version in read-only mode after sunset before full removal. Internally, implement a transformation layer that converts between the canonical internal representation and each API version's format. This avoids maintaining separate codepaths for each version. The key tradeoff is between version proliferation (too many versions to maintain) and breaking changes (forcing consumers to update too frequently)."
+          "type": "interview",
+          "question": "Compare REST and GraphQL. When would you choose each?",
+          "answer": "REST excels when: resources map cleanly to CRUD operations, HTTP caching is important (GET requests are cacheable by default), the API serves many different client types with similar data needs, and simplicity and broad tooling support matter. GraphQL excels when: clients have diverse data requirements (mobile needs less data than web), the data model is deeply nested with many relationships, frontend teams need to iterate quickly without backend changes, and reducing round-trips is critical (single request for complex data). REST's weaknesses are over-fetching (getting fields you do not need) and under-fetching (needing multiple requests for related data). GraphQL's weaknesses are caching complexity (no HTTP-level caching for POST queries), query cost unpredictability (a single query can be trivial or extremely expensive), and the N+1 problem requiring DataLoader patterns. In practice, many organizations use both: GraphQL for client-facing BFF APIs and REST for service-to-service communication where simplicity and cacheability matter more."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Compare REST and GraphQL. When would you choose each?"
+          "type": "interview",
+          "question": "How do you handle backward-compatible API evolution without versioning?",
+          "answer": "Use additive-only changes within a version: add new optional fields to responses (clients ignore unknown fields), add new optional parameters to requests (server uses defaults for missing params), add new endpoints for new functionality, and add new enum values only if clients handle unknown values gracefully. Never remove fields, rename fields, change field types, make optional fields required, or change the semantic meaning of existing fields. Use feature flags or capability negotiation for gradual rollouts: clients can opt into new behavior via headers (X-Feature: new-pricing-model). For response format evolution, use the \"tolerant reader\" pattern where clients only parse fields they need and ignore everything else. This approach works well for internal APIs but has limits for public APIs where breaking changes are eventually necessary (hence versioning)."
         },
         {
-          "type": "paragraph",
-          "text": "A: REST excels when: resources map cleanly to CRUD operations, HTTP caching is important (GET requests are cacheable by default), the API serves many different client types with similar data needs, and simplicity and broad tooling support matter. GraphQL excels when: clients have diverse data requirements (mobile needs less data than web), the data model is deeply nested with many relationships, frontend teams need to iterate quickly without backend changes, and reducing round-trips is critical (single request for complex data). REST's weaknesses are over-fetching (getting fields you do not need) and under-fetching (needing multiple requests for related data). GraphQL's weaknesses are caching complexity (no HTTP-level caching for POST queries), query cost unpredictability (a single query can be trivial or extremely expensive), and the N+1 problem requiring DataLoader patterns. In practice, many organizations use both: GraphQL for client-facing BFF APIs and REST for service-to-service communication where simplicity and cacheability matter more."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle backward-compatible API evolution without versioning?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use additive-only changes within a version: add new optional fields to responses (clients ignore unknown fields), add new optional parameters to requests (server uses defaults for missing params), add new endpoints for new functionality, and add new enum values only if clients handle unknown values gracefully. Never remove fields, rename fields, change field types, make optional fields required, or change the semantic meaning of existing fields. Use feature flags or capability negotiation for gradual rollouts: clients can opt into new behavior via headers (X-Feature: new-pricing-model). For response format evolution, use the \"tolerant reader\" pattern where clients only parse fields they need and ignore everything else. This approach works well for internal APIs but has limits for public APIs where breaking changes are eventually necessary (hence versioning)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Design a pagination strategy for an API that serves a real-time feed with frequent insertions."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cursor-based pagination is essential here because offset-based pagination breaks when items are inserted: page 2 with offset 20 might show items that were already on page 1 if new items were inserted. Use an opaque cursor that encodes the last seen item's sort key (typically a timestamp + ID for uniqueness). The query becomes WHERE (created_at, id) < (cursor_timestamp, cursor_id) ORDER BY created_at DESC, id DESC LIMIT 21 (fetch one extra to determine hasNext). For real-time feeds, also provide a \"newer items\" mechanism: return a since cursor that clients can poll with to get items newer than their latest. Combine with WebSocket push for truly real-time updates, using the cursor as a checkpoint for reconnection. The cursor should be opaque (base64-encoded) so you can change the underlying implementation without breaking clients."
+          "type": "interview",
+          "question": "Design a pagination strategy for an API that serves a real-time feed with frequent insertions.",
+          "answer": "Cursor-based pagination is essential here because offset-based pagination breaks when items are inserted: page 2 with offset 20 might show items that were already on page 1 if new items were inserted. Use an opaque cursor that encodes the last seen item's sort key (typically a timestamp + ID for uniqueness). The query becomes WHERE (created_at, id) < (cursor_timestamp, cursor_id) ORDER BY created_at DESC, id DESC LIMIT 21 (fetch one extra to determine hasNext). For real-time feeds, also provide a \"newer items\" mechanism: return a since cursor that clients can poll with to get items newer than their latest. Combine with WebSocket push for truly real-time updates, using the cursor as a checkpoint for reconnection. The cursor should be opaque (base64-encoded) so you can change the underlying implementation without breaking clients."
         }
       ],
-      "wordCount": 605,
+      "wordCount": 597,
       "subsections": []
     },
     {
@@ -241,7 +229,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/api-design.md",
-    "wordCount": 1946,
+    "wordCount": 1938,
     "sectionCount": 11
   }
 }

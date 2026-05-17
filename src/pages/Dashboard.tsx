@@ -170,6 +170,13 @@ export default function Dashboard() {
       <h2>Dashboard</h2>
       <p className="page-dashboard__subtitle">Track your progress and pick up where you left off.</p>
 
+      <div className="dashboard-pinned-links">
+        <Link to="/behavioral-guide" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">🎯</span>
+          Behavioral Interview Guide
+        </Link>
+      </div>
+
       {/* Resume Prompt */}
       <section className="dashboard-widget" aria-label="Resume prompt">
         <ResumePrompt />

@@ -230,63 +230,42 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does the Spring Security filter chain work?"
+          "type": "interview",
+          "question": "How does the Spring Security filter chain work?",
+          "answer": "Spring Security inserts a DelegatingFilterProxy into the servlet filter chain, which delegates to a FilterChainProxy managing one or more SecurityFilterChain instances. Each chain has a request matcher and an ordered list of security filters (typically 15-20 filters). The first chain whose matcher matches the request processes it. Key filters include SecurityContextPersistenceFilter (loads/saves context), UsernamePasswordAuthenticationFilter (form login), BearerTokenAuthenticationFilter (JWT), ExceptionTranslationFilter (converts exceptions to HTTP responses), and AuthorizationFilter (URL-based access control)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Spring Security inserts a DelegatingFilterProxy into the servlet filter chain, which delegates to a FilterChainProxy managing one or more SecurityFilterChain instances. Each chain has a request matcher and an ordered list of security filters (typically 15-20 filters). The first chain whose matcher matches the request processes it. Key filters include SecurityContextPersistenceFilter (loads/saves context), UsernamePasswordAuthenticationFilter (form login), BearerTokenAuthenticationFilter (JWT), ExceptionTranslationFilter (converts exceptions to HTTP responses), and AuthorizationFilter (URL-based access control)."
+          "type": "interview",
+          "question": "What is the difference between @Secured, @PreAuthorize, and @RolesAllowed?",
+          "answer": "@Secured accepts role names as strings and supports only role-based checks (no SpEL). @RolesAllowed is the JSR-250 equivalent with identical functionality. @PreAuthorize uses Spring Expression Language (SpEL) and supports complex expressions including method parameters (#id), custom bean references (@beanName.method()), and boolean logic. @PreAuthorize is the most flexible and recommended approach. @PostAuthorize evaluates after method execution with access to returnObject. @PreFilter/@PostFilter filter collection parameters/return values."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between @Secured, @PreAuthorize, and @RolesAllowed?"
+          "type": "interview",
+          "question": "How would you implement token refresh in a stateless API?",
+          "answer": "Issue a short-lived access token (5-15 minutes) and a longer-lived refresh token (7-30 days) at login. Store a hashed refresh token in the database with metadata (device, IP, creation time). When the access token expires, the client sends the refresh token to /auth/refresh. The server validates it hasn't been revoked, issues a new access token, and rotates the refresh token (invalidating the old one). If a revoked token is reused, revoke all tokens in that family (indicating theft). Set absolute expiration on refresh tokens regardless of activity."
         },
         {
-          "type": "paragraph",
-          "text": "A: @Secured accepts role names as strings and supports only role-based checks (no SpEL). @RolesAllowed is the JSR-250 equivalent with identical functionality. @PreAuthorize uses Spring Expression Language (SpEL) and supports complex expressions including method parameters (#id), custom bean references (@beanName.method()), and boolean logic. @PreAuthorize is the most flexible and recommended approach. @PostAuthorize evaluates after method execution with access to returnObject. @PreFilter/@PostFilter filter collection parameters/return values."
+          "type": "interview",
+          "question": "How does Spring Security handle CSRF protection?",
+          "answer": "Spring Security generates a unique CSRF token per session and expects it in every state-changing request (POST, PUT, DELETE). For server-rendered forms, the token is included as a hidden field. For SPAs, CookieCsrfTokenRepository.withHttpOnlyFalse() stores the token in a cookie readable by JavaScript, which the client includes in a custom header (X-XSRF-TOKEN). Stateless APIs using JWT typically disable CSRF because the token itself serves as proof of authentication and is not automatically sent by browsers like cookies are."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement token refresh in a stateless API?"
+          "type": "interview",
+          "question": "How does Spring Security 6's OAuth2 Resource Server validate JWT tokens?",
+          "answer": "The auto-configuration fetches the authorization server's public keys from the JWKS endpoint (derived from issuer-uri). For each request, it extracts the Bearer token from the Authorization header, validates the JWT signature against cached public keys, checks standard claims (expiration, issuer, audience), and converts claims to GrantedAuthority objects via JwtAuthenticationConverter. The validated JWT becomes the Authentication object in the SecurityContext. Token validation is stateless — no session or database lookup required."
         },
         {
-          "type": "paragraph",
-          "text": "A: Issue a short-lived access token (5-15 minutes) and a longer-lived refresh token (7-30 days) at login. Store a hashed refresh token in the database with metadata (device, IP, creation time). When the access token expires, the client sends the refresh token to /auth/refresh. The server validates it hasn't been revoked, issues a new access token, and rotates the refresh token (invalidating the old one). If a revoked token is reused, revoke all tokens in that family (indicating theft). Set absolute expiration on refresh tokens regardless of activity."
+          "type": "interview",
+          "question": "What changed in Spring Security 6 compared to Spring Security 5?",
+          "answer": "Major changes: WebSecurityConfigurerAdapter is removed — use SecurityFilterChain beans. antMatchers()/mvcMatchers()/regexMatchers() replaced by unified requestMatchers(). @EnableGlobalMethodSecurity replaced by @EnableMethodSecurity (enables @PreAuthorize by default). Lambda DSL is the standard configuration style. AuthorizationManager replaces legacy AccessDecisionManager/AccessDecisionVoter. SecurityContextHolder requires explicit propagation for virtual threads. The Customizer.withDefaults() pattern replaces .and() chaining."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Spring Security handle CSRF protection?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Spring Security generates a unique CSRF token per session and expects it in every state-changing request (POST, PUT, DELETE). For server-rendered forms, the token is included as a hidden field. For SPAs, CookieCsrfTokenRepository.withHttpOnlyFalse() stores the token in a cookie readable by JavaScript, which the client includes in a custom header (X-XSRF-TOKEN). Stateless APIs using JWT typically disable CSRF because the token itself serves as proof of authentication and is not automatically sent by browsers like cookies are."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Spring Security 6's OAuth2 Resource Server validate JWT tokens?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The auto-configuration fetches the authorization server's public keys from the JWKS endpoint (derived from issuer-uri). For each request, it extracts the Bearer token from the Authorization header, validates the JWT signature against cached public keys, checks standard claims (expiration, issuer, audience), and converts claims to GrantedAuthority objects via JwtAuthenticationConverter. The validated JWT becomes the Authentication object in the SecurityContext. Token validation is stateless — no session or database lookup required."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What changed in Spring Security 6 compared to Spring Security 5?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Major changes: WebSecurityConfigurerAdapter is removed — use SecurityFilterChain beans. antMatchers()/mvcMatchers()/regexMatchers() replaced by unified requestMatchers(). @EnableGlobalMethodSecurity replaced by @EnableMethodSecurity (enables @PreAuthorize by default). Lambda DSL is the standard configuration style. AuthorizationManager replaces legacy AccessDecisionManager/AccessDecisionVoter. SecurityContextHolder requires explicit propagation for virtual threads. The Customizer.withDefaults() pattern replaces .and() chaining."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you configure CORS properly with Spring Security?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CORS must be configured in the security filter chain because security filters execute before Spring MVC's CORS processing. Use .cors(cors -> cors.configurationSource(source)) in the SecurityFilterChain configuration. The CorsConfigurationSource bean defines allowed origins, methods, headers, and credentials per URL pattern. Never use allowedOrigins(\"*\") with allowCredentials(true) — browsers reject this combination. For preflight OPTIONS requests, ensure the security chain permits them without authentication."
+          "type": "interview",
+          "question": "How do you configure CORS properly with Spring Security?",
+          "answer": "CORS must be configured in the security filter chain because security filters execute before Spring MVC's CORS processing. Use .cors(cors -> cors.configurationSource(source)) in the SecurityFilterChain configuration. The CorsConfigurationSource bean defines allowed origins, methods, headers, and credentials per URL pattern. Never use allowedOrigins(\"*\") with allowCredentials(true) — browsers reject this combination. For preflight OPTIONS requests, ensure the security chain permits them without authentication."
         }
       ],
-      "wordCount": 553,
+      "wordCount": 539,
       "subsections": []
     },
     {
@@ -372,7 +351,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-security.md",
-    "wordCount": 1766,
+    "wordCount": 1752,
     "sectionCount": 16
   }
 }

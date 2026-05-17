@@ -194,39 +194,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain PostgreSQL's MVCC implementation and why VACUUM is necessary."
+          "type": "interview",
+          "question": "Explain PostgreSQL's MVCC implementation and why VACUUM is necessary.",
+          "answer": "PostgreSQL implements MVCC by keeping multiple physical versions of each row (tuples). When a row is updated, PostgreSQL creates a new tuple with the new values and marks the old tuple's xmax with the updating transaction's ID. Readers with older snapshots still see the old tuple; newer transactions see the new one. DELETE similarly marks tuples as dead without physically removing them. VACUUM is necessary because these dead tuples accumulate and waste space — they bloat tables and indexes, slow sequential scans, and consume I/O. VACUUM marks dead tuple space as reusable (but doesn't return it to the OS unless VACUUM FULL). Additionally, PostgreSQL uses 32-bit transaction IDs that wrap around after ~4 billion transactions; VACUUM freezes old tuples to prevent wraparound. If VACUUM falls behind, the database eventually shuts down to prevent data corruption."
         },
         {
-          "type": "paragraph",
-          "text": "A: PostgreSQL implements MVCC by keeping multiple physical versions of each row (tuples). When a row is updated, PostgreSQL creates a new tuple with the new values and marks the old tuple's xmax with the updating transaction's ID. Readers with older snapshots still see the old tuple; newer transactions see the new one. DELETE similarly marks tuples as dead without physically removing them. VACUUM is necessary because these dead tuples accumulate and waste space — they bloat tables and indexes, slow sequential scans, and consume I/O. VACUUM marks dead tuple space as reusable (but doesn't return it to the OS unless VACUUM FULL). Additionally, PostgreSQL uses 32-bit transaction IDs that wrap around after ~4 billion transactions; VACUUM freezes old tuples to prevent wraparound. If VACUUM falls behind, the database eventually shuts down to prevent data corruption."
+          "type": "interview",
+          "question": "When would you choose a GIN index over a GiST index, and vice versa?",
+          "answer": "GIN (Generalized Inverted Index) is optimized for values that contain multiple elements — full-text search vectors, JSONB documents, arrays, and hstore. It provides exact matches and is faster for reads but slower for writes due to the inverted index structure. GiST (Generalized Search Tree) is a balanced tree that supports approximate matches, nearest-neighbor searches, and range operations. Choose GIN when: read-heavy workload, need exact containment queries on JSONB (@>), or full-text search. Choose GiST when: write-heavy workload (GiST updates are cheaper), need nearest-neighbor queries (ORDER BY ... <-> for PostGIS), range type exclusion constraints, or fuzzy text matching with pg_trgm. For JSONB specifically, GIN with jsonb_path_ops is 2-3x smaller and faster than default GIN for containment queries, but only supports the @> operator."
         },
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose a GIN index over a GiST index, and vice versa?"
+          "type": "interview",
+          "question": "How does declarative partitioning improve performance and what are its limitations?",
+          "answer": "Declarative partitioning splits a logical table into physical partitions based on a partition key (range, list, or hash). Performance benefits include: partition pruning eliminates irrelevant partitions from query plans (a query for January data only scans the January partition), smaller indexes per partition fit in memory better, VACUUM operates on individual partitions reducing lock contention, and old data can be dropped instantly by detaching a partition. Limitations: queries without the partition key in the WHERE clause must scan all partitions; each partition needs its own indexes (more total index maintenance); unique constraints must include the partition key; foreign keys referencing partitioned tables weren't supported until PostgreSQL 12; and the query planner adds overhead evaluating partition pruning — tables with hundreds of partitions can see planning time increase significantly. The sweet spot is 10-100 partitions with clear access patterns aligned to the partition key."
         },
         {
-          "type": "paragraph",
-          "text": "A: GIN (Generalized Inverted Index) is optimized for values that contain multiple elements — full-text search vectors, JSONB documents, arrays, and hstore. It provides exact matches and is faster for reads but slower for writes due to the inverted index structure. GiST (Generalized Search Tree) is a balanced tree that supports approximate matches, nearest-neighbor searches, and range operations. Choose GIN when: read-heavy workload, need exact containment queries on JSONB (@>), or full-text search. Choose GiST when: write-heavy workload (GiST updates are cheaper), need nearest-neighbor queries (ORDER BY ... <-> for PostGIS), range type exclusion constraints, or fuzzy text matching with pg_trgm. For JSONB specifically, GIN with jsonb_path_ops is 2-3x smaller and faster than default GIN for containment queries, but only supports the @> operator."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does declarative partitioning improve performance and what are its limitations?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Declarative partitioning splits a logical table into physical partitions based on a partition key (range, list, or hash). Performance benefits include: partition pruning eliminates irrelevant partitions from query plans (a query for January data only scans the January partition), smaller indexes per partition fit in memory better, VACUUM operates on individual partitions reducing lock contention, and old data can be dropped instantly by detaching a partition. Limitations: queries without the partition key in the WHERE clause must scan all partitions; each partition needs its own indexes (more total index maintenance); unique constraints must include the partition key; foreign keys referencing partitioned tables weren't supported until PostgreSQL 12; and the query planner adds overhead evaluating partition pruning — tables with hundreds of partitions can see planning time increase significantly. The sweet spot is 10-100 partitions with clear access patterns aligned to the partition key."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe a production PgBouncer configuration and explain the trade-offs between pooling modes."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: PgBouncer offers three modes: session (connection held for entire client session), transaction (released after each transaction), and statement (released after each statement). Transaction mode is standard for production — it provides 10-50x connection multiplexing while supporting most application patterns. A typical config: default_pool_size=50 (server connections per database/user pair), max_client_conn=5000, reserve_pool_size=5 (extra connections for burst traffic), server_idle_timeout=600 (close idle server connections after 10 minutes). The trade-off: transaction mode breaks session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY, temp tables). Statement mode offers maximum multiplexing but breaks multi-statement transactions entirely. Most applications use transaction mode with application-level workarounds for prepared statements (either disable them or use protocol-level extended query protocol)."
+          "type": "interview",
+          "question": "Describe a production PgBouncer configuration and explain the trade-offs between pooling modes.",
+          "answer": "PgBouncer offers three modes: session (connection held for entire client session), transaction (released after each transaction), and statement (released after each statement). Transaction mode is standard for production — it provides 10-50x connection multiplexing while supporting most application patterns. A typical config: default_pool_size=50 (server connections per database/user pair), max_client_conn=5000, reserve_pool_size=5 (extra connections for burst traffic), server_idle_timeout=600 (close idle server connections after 10 minutes). The trade-off: transaction mode breaks session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY, temp tables). Statement mode offers maximum multiplexing but breaks multi-statement transactions entirely. Most applications use transaction mode with application-level workarounds for prepared statements (either disable them or use protocol-level extended query protocol)."
         }
       ],
-      "wordCount": 564,
+      "wordCount": 556,
       "subsections": []
     },
     {
@@ -302,7 +290,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/postgresql.md",
-    "wordCount": 2264,
+    "wordCount": 2256,
     "sectionCount": 13
   }
 }

@@ -229,47 +229,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does Redis Cluster handle data partitioning, and what are hash slots?"
+          "type": "interview",
+          "question": "How does Redis Cluster handle data partitioning, and what are hash slots?",
+          "answer": "Redis Cluster divides the keyspace into 16,384 hash slots. Each key is assigned to a slot using CRC16(key) mod 16384. Each master node in the cluster owns a subset of these slots (e.g., with 3 masters: node A owns slots 0-5460, node B owns 5461-10922, node C owns 10923-16383). When a client sends a command, it computes the hash slot for the key and routes the request to the correct node. If the client sends to the wrong node, it receives a MOVED redirection with the correct node's address. Hash tags (curly braces in key names like {user}:profile) allow forcing multiple keys to the same slot by hashing only the tagged portion. This enables multi-key operations on related keys."
         },
         {
-          "type": "paragraph",
-          "text": "A: Redis Cluster divides the keyspace into 16,384 hash slots. Each key is assigned to a slot using CRC16(key) mod 16384. Each master node in the cluster owns a subset of these slots (e.g., with 3 masters: node A owns slots 0-5460, node B owns 5461-10922, node C owns 10923-16383). When a client sends a command, it computes the hash slot for the key and routes the request to the correct node. If the client sends to the wrong node, it receives a MOVED redirection with the correct node's address. Hash tags (curly braces in key names like {user}:profile) allow forcing multiple keys to the same slot by hashing only the tagged portion. This enables multi-key operations on related keys."
+          "type": "interview",
+          "question": "What is the difference between Redis Sentinel and Redis Cluster?",
+          "answer": "Redis Sentinel provides high availability (automatic failover) for a single master with replicas — it monitors the master, detects failures, and promotes a replica to master. It does NOT partition data; all data lives on one master. Redis Cluster provides both data partitioning (sharding across multiple masters) AND high availability (each master has replicas that can be promoted). Use Sentinel when your data fits on one node but you need failover. Use Cluster when you need to scale beyond one node's memory/throughput. Sentinel is simpler to operate and supports all Redis commands without restrictions. Cluster has limitations: multi-key operations require hash tags, Lua scripts can only access keys on one node, and pub/sub broadcasts to all nodes."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between Redis Sentinel and Redis Cluster?"
+          "type": "interview",
+          "question": "How does failover work in Redis Cluster when a master fails?",
+          "answer": "When a master becomes unreachable, its replicas and other masters detect the failure via the cluster bus (gossip protocol). After cluster-node-timeout milliseconds without a response, nodes mark the master as PFAIL (possibly failed). When a majority of masters agree it's unreachable, it's marked FAIL. The failed master's replicas then initiate an election: each replica requests votes from all masters, and masters vote for the replica with the most recent replication offset (most data). The replica that receives votes from a majority of masters promotes itself, takes ownership of the failed master's slots, and announces the new configuration via the cluster bus. The entire process typically takes 5-15 seconds. During this window, the failed master's slots are unavailable for writes."
         },
         {
-          "type": "paragraph",
-          "text": "A: Redis Sentinel provides high availability (automatic failover) for a single master with replicas — it monitors the master, detects failures, and promotes a replica to master. It does NOT partition data; all data lives on one master. Redis Cluster provides both data partitioning (sharding across multiple masters) AND high availability (each master has replicas that can be promoted). Use Sentinel when your data fits on one node but you need failover. Use Cluster when you need to scale beyond one node's memory/throughput. Sentinel is simpler to operate and supports all Redis commands without restrictions. Cluster has limitations: multi-key operations require hash tags, Lua scripts can only access keys on one node, and pub/sub broadcasts to all nodes."
+          "type": "interview",
+          "question": "How do you handle the split-brain problem in Redis?",
+          "answer": "Split-brain occurs when a network partition isolates a master from the majority of the cluster, and a new master is elected on the majority side. The isolated old master may continue accepting writes that will be lost when the partition heals. Mitigation strategies: (1) Configure min-replicas-to-write N — the master stops accepting writes if fewer than N replicas are reachable, so an isolated master with no reachable replicas rejects writes immediately. (2) Set min-replicas-max-lag to a low value (e.g., 10 seconds) so the master detects replica disconnection quickly. (3) In Sentinel setups, ensure Sentinels are distributed across the same failure domains as Redis instances so the quorum decision reflects actual network state. (4) Use cluster-require-full-coverage no so the majority partition continues serving available slots rather than going completely down."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does failover work in Redis Cluster when a master fails?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: When a master becomes unreachable, its replicas and other masters detect the failure via the cluster bus (gossip protocol). After cluster-node-timeout milliseconds without a response, nodes mark the master as PFAIL (possibly failed). When a majority of masters agree it's unreachable, it's marked FAIL. The failed master's replicas then initiate an election: each replica requests votes from all masters, and masters vote for the replica with the most recent replication offset (most data). The replica that receives votes from a majority of masters promotes itself, takes ownership of the failed master's slots, and announces the new configuration via the cluster bus. The entire process typically takes 5-15 seconds. During this window, the failed master's slots are unavailable for writes."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle the split-brain problem in Redis?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Split-brain occurs when a network partition isolates a master from the majority of the cluster, and a new master is elected on the majority side. The isolated old master may continue accepting writes that will be lost when the partition heals. Mitigation strategies: (1) Configure min-replicas-to-write N — the master stops accepting writes if fewer than N replicas are reachable, so an isolated master with no reachable replicas rejects writes immediately. (2) Set min-replicas-max-lag to a low value (e.g., 10 seconds) so the master detects replica disconnection quickly. (3) In Sentinel setups, ensure Sentinels are distributed across the same failure domains as Redis instances so the quorum decision reflects actual network state. (4) Use cluster-require-full-coverage no so the majority partition continues serving available slots rather than going completely down."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are the limitations of Redis Cluster that you need to design around?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Key limitations: (1) Multi-key operations require all keys on the same slot — use hash tags or redesign data access patterns. (2) Transactions (MULTI/EXEC) only work within a single slot. (3) Lua scripts can only access keys that hash to the slot of the first key argument. (4) SELECT (multiple databases) is not supported — only database 0 exists. (5) Large keys can't be split across nodes — a single sorted set with millions of members must fit on one node. (6) Pub/Sub messages are broadcast to all nodes, creating O(N) network amplification. (7) Resharding moves data online but adds latency during migration (ASK redirections). (8) Maximum 1000 nodes is the tested limit. Design your application to work within these constraints from the start — retrofitting hash tags or splitting large data structures is significantly harder after deployment."
+          "type": "interview",
+          "question": "What are the limitations of Redis Cluster that you need to design around?",
+          "answer": "Key limitations: (1) Multi-key operations require all keys on the same slot — use hash tags or redesign data access patterns. (2) Transactions (MULTI/EXEC) only work within a single slot. (3) Lua scripts can only access keys that hash to the slot of the first key argument. (4) SELECT (multiple databases) is not supported — only database 0 exists. (5) Large keys can't be split across nodes — a single sorted set with millions of members must fit on one node. (6) Pub/Sub messages are broadcast to all nodes, creating O(N) network amplification. (7) Resharding moves data online but adds latency during migration (ASK redirections). (8) Maximum 1000 nodes is the tested limit. Design your application to work within these constraints from the start — retrofitting hash tags or splitting large data structures is significantly harder after deployment."
         }
       ],
-      "wordCount": 687,
+      "wordCount": 677,
       "subsections": []
     },
     {
@@ -353,7 +338,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/redis/clustering-and-ha.md",
-    "wordCount": 1887,
+    "wordCount": 1877,
     "sectionCount": 14
   }
 }

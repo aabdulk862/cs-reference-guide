@@ -149,39 +149,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: A user updates their profile picture but sees the old one when they refresh. What consistency model is in play and how would you fix it?"
+          "type": "interview",
+          "question": "A user updates their profile picture but sees the old one when they refresh. What consistency model is in play and how would you fix it?",
+          "answer": "This is eventual consistency where the read hit a replica that has not yet received the write. Fixes include: (1) read-your-writes consistency by routing the user's subsequent reads to the same replica or primary that accepted the write, (2) sticky sessions that pin a user to a specific replica, (3) including a version token in the write response and passing it on subsequent reads so the system can wait for the replica to catch up, or (4) reading from the primary for a short window after writes (with fallback to replicas after the replication lag window passes)."
         },
         {
-          "type": "paragraph",
-          "text": "A: This is eventual consistency where the read hit a replica that has not yet received the write. Fixes include: (1) read-your-writes consistency by routing the user's subsequent reads to the same replica or primary that accepted the write, (2) sticky sessions that pin a user to a specific replica, (3) including a version token in the write response and passing it on subsequent reads so the system can wait for the replica to catch up, or (4) reading from the primary for a short window after writes (with fallback to replicas after the replication lag window passes)."
+          "type": "interview",
+          "question": "When would you choose Cassandra over PostgreSQL, and what consistency tradeoffs are you making?",
+          "answer": "Choose Cassandra when you need high write throughput across multiple datacenters, can tolerate eventual consistency for most operations, and your access patterns are known upfront (Cassandra requires query-driven data modeling). You are trading linearizable reads and ACID transactions for availability during partitions, horizontal write scaling, and multi-datacenter replication. PostgreSQL with synchronous replication gives you strong consistency and SQL flexibility but limits write scaling to a single primary and becomes unavailable during partitions if the primary is on the minority side."
         },
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose Cassandra over PostgreSQL, and what consistency tradeoffs are you making?"
+          "type": "interview",
+          "question": "Explain how quorum reads and writes provide tunable consistency.",
+          "answer": "With N replicas, write quorum W, and read quorum R, setting W + R > N guarantees that any read quorum overlaps with any write quorum by at least one node, ensuring the read sees the latest write. Tuning W and R trades consistency against availability and latency: W=N, R=1 gives fast reads but writes fail if any replica is down; W=1, R=N gives fast writes but reads are slow and fail if any replica is down; W=⌈(N+1)/2⌉, R=⌈(N+1)/2⌉ (majority quorum) balances both. Lower quorums improve availability (tolerate more failures) at the cost of potentially stale reads."
         },
         {
-          "type": "paragraph",
-          "text": "A: Choose Cassandra when you need high write throughput across multiple datacenters, can tolerate eventual consistency for most operations, and your access patterns are known upfront (Cassandra requires query-driven data modeling). You are trading linearizable reads and ACID transactions for availability during partitions, horizontal write scaling, and multi-datacenter replication. PostgreSQL with synchronous replication gives you strong consistency and SQL flexibility but limits write scaling to a single primary and becomes unavailable during partitions if the primary is on the minority side."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain how quorum reads and writes provide tunable consistency."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: With N replicas, write quorum W, and read quorum R, setting W + R > N guarantees that any read quorum overlaps with any write quorum by at least one node, ensuring the read sees the latest write. Tuning W and R trades consistency against availability and latency: W=N, R=1 gives fast reads but writes fail if any replica is down; W=1, R=N gives fast writes but reads are slow and fail if any replica is down; W=⌈(N+1)/2⌉, R=⌈(N+1)/2⌉ (majority quorum) balances both. Lower quorums improve availability (tolerate more failures) at the cost of potentially stale reads."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are CRDTs and when would you use them instead of consensus-based replication?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CRDTs are data structures designed so that concurrent updates always converge without coordination. They achieve strong eventual consistency: once all updates are delivered (in any order), all replicas have identical state. Use CRDTs when you need low-latency writes across multiple datacenters without coordination overhead, when your data model fits CRDT semantics (counters, sets, registers, maps), and when you can tolerate the space overhead of metadata (vector clocks, tombstones). Use consensus-based replication when you need linearizability, complex transactions, or data models that do not map naturally to CRDT types."
+          "type": "interview",
+          "question": "What are CRDTs and when would you use them instead of consensus-based replication?",
+          "answer": "CRDTs are data structures designed so that concurrent updates always converge without coordination. They achieve strong eventual consistency: once all updates are delivered (in any order), all replicas have identical state. Use CRDTs when you need low-latency writes across multiple datacenters without coordination overhead, when your data model fits CRDT semantics (counters, sets, registers, maps), and when you can tolerate the space overhead of metadata (vector clocks, tombstones). Use consensus-based replication when you need linearizability, complex transactions, or data models that do not map naturally to CRDT types."
         }
       ],
-      "wordCount": 432,
+      "wordCount": 424,
       "subsections": []
     },
     {
@@ -245,7 +233,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/consistency-models.md",
-    "wordCount": 1532,
+    "wordCount": 1524,
     "sectionCount": 11
   }
 }

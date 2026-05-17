@@ -169,47 +169,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare blocking I/O, non-blocking I/O, I/O multiplexing, and async I/O. When would you use each?"
+          "type": "interview",
+          "question": "Compare blocking I/O, non-blocking I/O, I/O multiplexing, and async I/O. When would you use each?",
+          "answer": "Blocking I/O: thread sleeps until operation completes. Simple to program but requires one thread per connection, limiting scalability to ~10K connections (thread memory and scheduling overhead). Use for simple clients or low-concurrency servers. Non-blocking I/O: operations return immediately with EAGAIN if not ready. Requires application-level polling loop, wasting CPU. Rarely used alone. I/O multiplexing (epoll/kqueue): register interest in multiple FDs, block until any is ready. One thread handles thousands of connections efficiently. Use for high-concurrency servers (web servers, proxies, databases). Async I/O (io_uring/IOCP): submit operations to the kernel, get notified on completion. True async — no blocking, no polling. Use for maximum throughput on modern kernels, especially for disk I/O where epoll doesn't help (regular files are always \"ready\" in epoll)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Blocking I/O: thread sleeps until operation completes. Simple to program but requires one thread per connection, limiting scalability to ~10K connections (thread memory and scheduling overhead). Use for simple clients or low-concurrency servers. Non-blocking I/O: operations return immediately with EAGAIN if not ready. Requires application-level polling loop, wasting CPU. Rarely used alone. I/O multiplexing (epoll/kqueue): register interest in multiple FDs, block until any is ready. One thread handles thousands of connections efficiently. Use for high-concurrency servers (web servers, proxies, databases). Async I/O (io_uring/IOCP): submit operations to the kernel, get notified on completion. True async — no blocking, no polling. Use for maximum throughput on modern kernels, especially for disk I/O where epoll doesn't help (regular files are always \"ready\" in epoll)."
+          "type": "interview",
+          "question": "Explain how epoll works and why it's more efficient than select/poll for large numbers of connections.",
+          "answer": "select/poll require passing the entire set of file descriptors to the kernel on every call, and the kernel scans all of them to find ready ones — O(n) per call where n is total FDs monitored. epoll maintains a persistent interest set in the kernel (epoll_ctl adds/removes FDs once). epoll_wait returns only the ready FDs — O(1) for adding the ready event, O(k) total where k is the number of ready FDs (typically much smaller than n). For 100K connections where 100 are ready, select scans 100K FDs while epoll returns just 100. epoll also avoids copying the FD set between user and kernel space on every call. Edge-triggered mode (EPOLLET) further reduces notifications by only reporting state transitions rather than current state."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain how epoll works and why it's more efficient than select/poll for large numbers of connections."
+          "type": "interview",
+          "question": "What is the Completely Fair Scheduler (CFS) and how does it achieve fairness?",
+          "answer": "CFS maintains a red-black tree of runnable tasks, ordered by virtual runtime (vruntime). The task with the lowest vruntime (least CPU time relative to its weight) is always scheduled next — O(log n) to find and rebalance. Virtual runtime advances inversely proportional to the task's weight (derived from nice value): high-weight tasks accumulate vruntime slowly, getting more CPU time. A nice-0 task with weight 1024 and a nice-5 task with weight 335 sharing a CPU get ~75% and ~25% respectively. The scheduling period (target latency) is divided proportionally among all runnable tasks, with a minimum granularity to prevent excessive context switching. CFS provides proportional fairness without fixed time slices or priority levels."
         },
         {
-          "type": "paragraph",
-          "text": "A: select/poll require passing the entire set of file descriptors to the kernel on every call, and the kernel scans all of them to find ready ones — O(n) per call where n is total FDs monitored. epoll maintains a persistent interest set in the kernel (epoll_ctl adds/removes FDs once). epoll_wait returns only the ready FDs — O(1) for adding the ready event, O(k) total where k is the number of ready FDs (typically much smaller than n). For 100K connections where 100 are ready, select scans 100K FDs while epoll returns just 100. epoll also avoids copying the FD set between user and kernel space on every call. Edge-triggered mode (EPOLLET) further reduces notifications by only reporting state transitions rather than current state."
+          "type": "interview",
+          "question": "How does io_uring improve upon traditional Linux async I/O (aio)?",
+          "answer": "Linux's legacy aio (io_submit/io_getevents) only supports direct I/O on files (not buffered I/O, not network), requires aligned buffers, and has high per-operation overhead from system calls. io_uring solves these limitations: (1) Shared ring buffers between user and kernel space eliminate system call overhead — submissions and completions are written to memory-mapped rings without syscalls (with SQPOLL mode). (2) Universal — supports all I/O operations (files, network, timers, even non-I/O operations like openat, statx). (3) Batching — submit multiple operations with a single io_uring_enter() call. (4) Linked operations — chain dependent operations (read then write) without returning to userspace between them. (5) Fixed buffers/files — pre-register resources to avoid per-operation kernel validation. io_uring achieves 2-10x higher IOPS than epoll+read for storage workloads."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the Completely Fair Scheduler (CFS) and how does it achieve fairness?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CFS maintains a red-black tree of runnable tasks, ordered by virtual runtime (vruntime). The task with the lowest vruntime (least CPU time relative to its weight) is always scheduled next — O(log n) to find and rebalance. Virtual runtime advances inversely proportional to the task's weight (derived from nice value): high-weight tasks accumulate vruntime slowly, getting more CPU time. A nice-0 task with weight 1024 and a nice-5 task with weight 335 sharing a CPU get ~75% and ~25% respectively. The scheduling period (target latency) is divided proportionally among all runnable tasks, with a minimum granularity to prevent excessive context switching. CFS provides proportional fairness without fixed time slices or priority levels."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does io_uring improve upon traditional Linux async I/O (aio)?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Linux's legacy aio (io_submit/io_getevents) only supports direct I/O on files (not buffered I/O, not network), requires aligned buffers, and has high per-operation overhead from system calls. io_uring solves these limitations: (1) Shared ring buffers between user and kernel space eliminate system call overhead — submissions and completions are written to memory-mapped rings without syscalls (with SQPOLL mode). (2) Universal — supports all I/O operations (files, network, timers, even non-I/O operations like openat, statx). (3) Batching — submit multiple operations with a single io_uring_enter() call. (4) Linked operations — chain dependent operations (read then write) without returning to userspace between them. (5) Fixed buffers/files — pre-register resources to avoid per-operation kernel validation. io_uring achieves 2-10x higher IOPS than epoll+read for storage workloads."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain CFS bandwidth throttling and its impact on containerized applications."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CFS bandwidth control limits a cgroup's CPU usage to quota microseconds per period (default 100ms). A container with 200m CPU limit gets 20ms per 100ms period. If the container's threads consume their 20ms quota in a burst (e.g., handling a request spike in the first 5ms), all threads are throttled for the remaining 95ms — causing a latency spike visible as p99 tail latency. This is the \"CFS throttling\" problem. Mitigations: (1) Set CPU limits higher than average usage to accommodate bursts. (2) Increase the period (cpu.cfs_period_us = 10ms) so throttling is shorter and more frequent. (3) Use cpu.shares (proportional, no hard cap) instead of quotas for latency-sensitive services. (4) Monitor nr_throttled and throttled_time in cpu.stat. (5) In Kubernetes, set requests (shares) without limits (no quota) for latency-sensitive pods."
+          "type": "interview",
+          "question": "Explain CFS bandwidth throttling and its impact on containerized applications.",
+          "answer": "CFS bandwidth control limits a cgroup's CPU usage to quota microseconds per period (default 100ms). A container with 200m CPU limit gets 20ms per 100ms period. If the container's threads consume their 20ms quota in a burst (e.g., handling a request spike in the first 5ms), all threads are throttled for the remaining 95ms — causing a latency spike visible as p99 tail latency. This is the \"CFS throttling\" problem. Mitigations: (1) Set CPU limits higher than average usage to accommodate bursts. (2) Increase the period (cpu.cfs_period_us = 10ms) so throttling is shorter and more frequent. (3) Use cpu.shares (proportional, no hard cap) instead of quotas for latency-sensitive services. (4) Monitor nr_throttled and throttled_time in cpu.stat. (5) In Kubernetes, set requests (shares) without limits (no quota) for latency-sensitive pods."
         }
       ],
-      "wordCount": 680,
+      "wordCount": 670,
       "subsections": []
     },
     {
@@ -277,7 +262,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/systems-and-io/io-and-scheduling.md",
-    "wordCount": 2107,
+    "wordCount": 2097,
     "sectionCount": 12
   }
 }

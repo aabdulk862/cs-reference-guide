@@ -234,47 +234,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain Redux's three principles and why they matter for large applications."
+          "type": "interview",
+          "question": "Explain Redux's three principles and why they matter for large applications.",
+          "answer": "Single source of truth means the entire application state lives in one store object, making it inspectable, serializable, and debuggable — you can export the entire state for bug reproduction or hydrate it for SSR. State is read-only means components cannot directly mutate state; they must dispatch actions describing what happened. This creates an audit trail of every state change, enables time-travel debugging, and makes state transitions predictable. Pure reducer functions mean given the same state and action, you always get the same result — no side effects, no API calls, no randomness inside reducers. This makes state transitions testable (just call the reducer with inputs and assert outputs) and enables features like action replay. Together, these principles trade some verbosity for predictability, debuggability, and testability — qualities that compound in value as applications and teams grow."
         },
         {
-          "type": "paragraph",
-          "text": "A: Single source of truth means the entire application state lives in one store object, making it inspectable, serializable, and debuggable — you can export the entire state for bug reproduction or hydrate it for SSR. State is read-only means components cannot directly mutate state; they must dispatch actions describing what happened. This creates an audit trail of every state change, enables time-travel debugging, and makes state transitions predictable. Pure reducer functions mean given the same state and action, you always get the same result — no side effects, no API calls, no randomness inside reducers. This makes state transitions testable (just call the reducer with inputs and assert outputs) and enables features like action replay. Together, these principles trade some verbosity for predictability, debuggability, and testability — qualities that compound in value as applications and teams grow."
+          "type": "interview",
+          "question": "How does RTK Query differ from React Query/TanStack Query? When would you choose one over the other?",
+          "answer": "RTK Query is built into Redux Toolkit and integrates with the Redux store — cached data lives in Redux state, is visible in DevTools, and can be accessed by selectors alongside other Redux state. React Query is standalone and stores cache in its own context. Choose RTK Query when: you already use Redux for other state, you need cached server data to interact with client state in selectors, or you want a single DevTools view of all state. Choose React Query when: you don't use Redux otherwise (adding Redux just for data fetching is overkill), you need more advanced caching features (infinite queries, structural sharing, garbage collection), or you're using a framework other than React. RTK Query has fewer features but tighter Redux integration; React Query has more features but exists outside Redux's ecosystem. Both handle caching, deduplication, background refetching, and optimistic updates."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does RTK Query differ from React Query/TanStack Query? When would you choose one over the other?"
+          "type": "interview",
+          "question": "How would you implement undo/redo functionality with Redux?",
+          "answer": "The classic approach uses a \"higher-order reducer\" that wraps your state in { past: [], present: currentState, future: [] }. On each action, push the current state to past and set the new state as present. On undo, pop from past into present and push old present to future. On redo, reverse the process. With Redux Toolkit, implement this as middleware or a slice wrapper. Considerations: (1) Not all actions should be undoable — filter by action type. (2) Consecutive similar actions (typing characters) should be grouped into single undo steps using debouncing. (3) Store state diffs (patches) instead of full snapshots to reduce memory usage — Immer's produceWithPatches generates minimal patches. (4) Set a maximum history length (50-100 steps) to bound memory. (5) Some actions have side effects (API calls) that can't be undone by state reversal alone — these need compensating actions (e.g., re-creating a deleted resource)."
         },
         {
-          "type": "paragraph",
-          "text": "A: RTK Query is built into Redux Toolkit and integrates with the Redux store — cached data lives in Redux state, is visible in DevTools, and can be accessed by selectors alongside other Redux state. React Query is standalone and stores cache in its own context. Choose RTK Query when: you already use Redux for other state, you need cached server data to interact with client state in selectors, or you want a single DevTools view of all state. Choose React Query when: you don't use Redux otherwise (adding Redux just for data fetching is overkill), you need more advanced caching features (infinite queries, structural sharing, garbage collection), or you're using a framework other than React. RTK Query has fewer features but tighter Redux integration; React Query has more features but exists outside Redux's ecosystem. Both handle caching, deduplication, background refetching, and optimistic updates."
+          "type": "interview",
+          "question": "What is the difference between createAsyncThunk and createListenerMiddleware? When would you use each?",
+          "answer": "createAsyncThunk is for request-response async operations: fetch data, submit a form, upload a file. It dispatches lifecycle actions (pending/fulfilled/rejected) that reducers handle to update loading states. It's action-initiated — you dispatch the thunk and it runs once. createListenerMiddleware is for reactive side effects: \"when X happens, do Y.\" It listens for actions or state changes and runs effects in response. Use it for: cross-slice coordination (when auth changes, clear user data), debounced reactions (when search query changes, fetch results after 300ms), WebSocket management (when connected, listen for messages until disconnected), or complex workflows that span multiple actions. Think of thunks as \"imperative async\" (do this now) and listeners as \"reactive async\" (whenever this happens, do that). Listeners replaced redux-saga for most use cases with simpler, more TypeScript-friendly APIs."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement undo/redo functionality with Redux?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The classic approach uses a \"higher-order reducer\" that wraps your state in { past: [], present: currentState, future: [] }. On each action, push the current state to past and set the new state as present. On undo, pop from past into present and push old present to future. On redo, reverse the process. With Redux Toolkit, implement this as middleware or a slice wrapper. Considerations: (1) Not all actions should be undoable — filter by action type. (2) Consecutive similar actions (typing characters) should be grouped into single undo steps using debouncing. (3) Store state diffs (patches) instead of full snapshots to reduce memory usage — Immer's produceWithPatches generates minimal patches. (4) Set a maximum history length (50-100 steps) to bound memory. (5) Some actions have side effects (API calls) that can't be undone by state reversal alone — these need compensating actions (e.g., re-creating a deleted resource)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between createAsyncThunk and createListenerMiddleware? When would you use each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: createAsyncThunk is for request-response async operations: fetch data, submit a form, upload a file. It dispatches lifecycle actions (pending/fulfilled/rejected) that reducers handle to update loading states. It's action-initiated — you dispatch the thunk and it runs once. createListenerMiddleware is for reactive side effects: \"when X happens, do Y.\" It listens for actions or state changes and runs effects in response. Use it for: cross-slice coordination (when auth changes, clear user data), debounced reactions (when search query changes, fetch results after 300ms), WebSocket management (when connected, listen for messages until disconnected), or complex workflows that span multiple actions. Think of thunks as \"imperative async\" (do this now) and listeners as \"reactive async\" (whenever this happens, do that). Listeners replaced redux-saga for most use cases with simpler, more TypeScript-friendly APIs."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle code splitting with Redux in a large application?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Redux's single store doesn't mean all reducers must be loaded upfront. Use dynamic reducer injection: (1) Configure the store with only the reducers needed for the initial route. (2) When a lazy-loaded route mounts, inject its reducer into the store using store.replaceReducer() with the new combined reducer. (3) RTK Query APIs can also be code-split — define endpoints in the feature module and inject them into the base API using api.injectEndpoints(). (4) For the reducer manager pattern, create a utility that tracks active reducers and handles injection/removal. (5) Consider whether removed reducers should clear their state or preserve it for when the user returns. This approach keeps the initial bundle small while maintaining a single store. The tradeoff is slightly more complex store setup and the need to handle the case where selectors access state from not-yet-loaded slices."
+          "type": "interview",
+          "question": "How do you handle code splitting with Redux in a large application?",
+          "answer": "Redux's single store doesn't mean all reducers must be loaded upfront. Use dynamic reducer injection: (1) Configure the store with only the reducers needed for the initial route. (2) When a lazy-loaded route mounts, inject its reducer into the store using store.replaceReducer() with the new combined reducer. (3) RTK Query APIs can also be code-split — define endpoints in the feature module and inject them into the base API using api.injectEndpoints(). (4) For the reducer manager pattern, create a utility that tracks active reducers and handles injection/removal. (5) Consider whether removed reducers should clear their state or preserve it for when the user returns. This approach keeps the initial bundle small while maintaining a single store. The tradeoff is slightly more complex store setup and the need to handle the case where selectors access state from not-yet-loaded slices."
         }
       ],
-      "wordCount": 766,
+      "wordCount": 756,
       "subsections": []
     },
     {
@@ -360,7 +345,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/state-management/redux-patterns.md",
-    "wordCount": 2341,
+    "wordCount": 2331,
     "sectionCount": 15
   }
 }

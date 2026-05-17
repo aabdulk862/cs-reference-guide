@@ -132,39 +132,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Walk through the TLS 1.3 handshake and explain how it achieves 1-RTT."
+          "type": "interview",
+          "question": "Walk through the TLS 1.3 handshake and explain how it achieves 1-RTT.",
+          "answer": "In TLS 1.3, the client sends ClientHello with supported cipher suites AND key shares (guessing which key exchange the server will choose — typically X25519 or P-256). The server responds with ServerHello (chosen cipher suite and its key share), encrypted extensions, its certificate, and a Finished message — all in one flight. The client verifies the certificate, computes the shared secret from the key shares, sends its Finished message, and can immediately send application data. This is 1-RTT because the client sends data after receiving one server response. For resumed connections, 0-RTT is possible: the client includes early data encrypted with a pre-shared key from a previous session, allowing the server to process it before the handshake completes. The trade-off is that 0-RTT data is not forward-secret and is vulnerable to replay attacks, so it should only be used for idempotent requests."
         },
         {
-          "type": "paragraph",
-          "text": "A: In TLS 1.3, the client sends ClientHello with supported cipher suites AND key shares (guessing which key exchange the server will choose — typically X25519 or P-256). The server responds with ServerHello (chosen cipher suite and its key share), encrypted extensions, its certificate, and a Finished message — all in one flight. The client verifies the certificate, computes the shared secret from the key shares, sends its Finished message, and can immediately send application data. This is 1-RTT because the client sends data after receiving one server response. For resumed connections, 0-RTT is possible: the client includes early data encrypted with a pre-shared key from a previous session, allowing the server to process it before the handshake completes. The trade-off is that 0-RTT data is not forward-secret and is vulnerable to replay attacks, so it should only be used for idempotent requests."
+          "type": "interview",
+          "question": "Explain mTLS and how it differs from standard TLS. When would you use it?",
+          "answer": "Standard TLS authenticates only the server — the client verifies the server's certificate but the server doesn't verify the client's identity (authentication happens at the application layer via tokens, cookies, etc.). mTLS adds client certificate verification: the server sends a CertificateRequest during the handshake, the client responds with its certificate, and the server verifies it against a trusted CA. This provides cryptographic proof of the client's identity at the transport layer. Use mTLS for: service-to-service communication (each service has a certificate identifying it), zero-trust architectures (network location doesn't imply trust), API access from trusted partners, and IoT device authentication. The operational complexity is higher — you need a CA infrastructure, certificate distribution, rotation automation, and revocation handling — which is why service meshes that automate this are popular."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain mTLS and how it differs from standard TLS. When would you use it?"
+          "type": "interview",
+          "question": "How would you implement certificate rotation with zero downtime?",
+          "answer": "Use short-lived certificates (24-72 hours) with automated renewal at 2/3 of lifetime. The rotation process: 1) Generate a new private key and CSR. 2) Submit CSR to the CA (Vault PKI, cert-manager, ACME). 3) Receive the signed certificate. 4) Write new cert and key to a staging location. 5) Atomically swap (rename) the new files over the old ones. 6) Signal the application to reload TLS configuration (SIGHUP, API call, or file watcher). Most modern servers (Nginx, Envoy, Go's tls.Config with GetCertificate) support hot-reloading certificates without restarting. For the brief moment during reload, some connections may use the old cert and some the new — both are valid since the old cert hasn't expired yet. In Kubernetes, cert-manager handles this by updating the Secret, and the pod's volume mount reflects the change within ~60 seconds."
         },
         {
-          "type": "paragraph",
-          "text": "A: Standard TLS authenticates only the server — the client verifies the server's certificate but the server doesn't verify the client's identity (authentication happens at the application layer via tokens, cookies, etc.). mTLS adds client certificate verification: the server sends a CertificateRequest during the handshake, the client responds with its certificate, and the server verifies it against a trusted CA. This provides cryptographic proof of the client's identity at the transport layer. Use mTLS for: service-to-service communication (each service has a certificate identifying it), zero-trust architectures (network location doesn't imply trust), API access from trusted partners, and IoT device authentication. The operational complexity is higher — you need a CA infrastructure, certificate distribution, rotation automation, and revocation handling — which is why service meshes that automate this are popular."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement certificate rotation with zero downtime?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use short-lived certificates (24-72 hours) with automated renewal at 2/3 of lifetime. The rotation process: 1) Generate a new private key and CSR. 2) Submit CSR to the CA (Vault PKI, cert-manager, ACME). 3) Receive the signed certificate. 4) Write new cert and key to a staging location. 5) Atomically swap (rename) the new files over the old ones. 6) Signal the application to reload TLS configuration (SIGHUP, API call, or file watcher). Most modern servers (Nginx, Envoy, Go's tls.Config with GetCertificate) support hot-reloading certificates without restarting. For the brief moment during reload, some connections may use the old cert and some the new — both are valid since the old cert hasn't expired yet. In Kubernetes, cert-manager handles this by updating the Secret, and the pod's volume mount reflects the change within ~60 seconds."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is forward secrecy and why does TLS 1.3 mandate it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Forward secrecy (or perfect forward secrecy) means that compromising the server's long-term private key doesn't allow decryption of past recorded traffic. This is achieved by using ephemeral key exchange (ECDHE): each connection generates a unique shared secret that's discarded after the session ends. Even if an attacker records encrypted traffic and later obtains the server's private key, they cannot derive the ephemeral session keys. TLS 1.3 mandates forward secrecy by removing RSA key exchange (where the client encrypts a pre-master secret with the server's public key — if the private key is later compromised, all past sessions are decryptable). This is critical because: nation-state adversaries record encrypted traffic for future decryption, server key compromise happens (Heartbleed), and long-term key storage is a liability. With forward secrecy, each session's confidentiality is independent of long-term key security."
+          "type": "interview",
+          "question": "What is forward secrecy and why does TLS 1.3 mandate it?",
+          "answer": "Forward secrecy (or perfect forward secrecy) means that compromising the server's long-term private key doesn't allow decryption of past recorded traffic. This is achieved by using ephemeral key exchange (ECDHE): each connection generates a unique shared secret that's discarded after the session ends. Even if an attacker records encrypted traffic and later obtains the server's private key, they cannot derive the ephemeral session keys. TLS 1.3 mandates forward secrecy by removing RSA key exchange (where the client encrypts a pre-master secret with the server's public key — if the private key is later compromised, all past sessions are decryptable). This is critical because: nation-state adversaries record encrypted traffic for future decryption, server key compromise happens (Heartbleed), and long-term key storage is a liability. With forward secrecy, each session's confidentiality is independent of long-term key security."
         }
       ],
-      "wordCount": 594,
+      "wordCount": 586,
       "subsections": []
     },
     {
@@ -228,7 +216,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/networking/protocols/tls-mtls.md",
-    "wordCount": 1936,
+    "wordCount": 1928,
     "sectionCount": 8
   }
 }

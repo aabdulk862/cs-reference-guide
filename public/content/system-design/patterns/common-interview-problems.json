@@ -145,39 +145,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Design a URL shortener that handles 100 million URLs and 10 billion redirects per month. What are the key design decisions?"
+          "type": "interview",
+          "question": "Design a URL shortener that handles 100 million URLs and 10 billion redirects per month. What are the key design decisions?",
+          "answer": "Key decisions: (1) ID generation: use a distributed counter (Snowflake) rather than hashing to avoid collisions and enable sequential storage. Base62 encode the counter for short URLs (7 chars = 3.5 trillion combinations). (2) Storage: use a key-value store (DynamoDB or Cassandra) optimized for point lookups by short code. Separate analytics data into a time-series store. (3) Caching: with 10B redirects/month (~3,800/sec), cache hot URLs in Redis. The 80/20 rule means 20% of URLs get 80% of traffic, so a modest cache handles most reads. (4) Redirect type: use 302 (temporary) if you need analytics on every click, 301 (permanent) if you want browsers to cache and reduce server load. (5) Geographic distribution: deploy read replicas and cache layers in multiple regions for low-latency redirects globally. (6) Analytics: process click events asynchronously via Kafka to avoid adding latency to the redirect path. Storage estimate: 100M URLs × 1KB = 100GB, easily fits on a single database with replication."
         },
         {
-          "type": "paragraph",
-          "text": "A: Key decisions: (1) ID generation: use a distributed counter (Snowflake) rather than hashing to avoid collisions and enable sequential storage. Base62 encode the counter for short URLs (7 chars = 3.5 trillion combinations). (2) Storage: use a key-value store (DynamoDB or Cassandra) optimized for point lookups by short code. Separate analytics data into a time-series store. (3) Caching: with 10B redirects/month (~3,800/sec), cache hot URLs in Redis. The 80/20 rule means 20% of URLs get 80% of traffic, so a modest cache handles most reads. (4) Redirect type: use 302 (temporary) if you need analytics on every click, 301 (permanent) if you want browsers to cache and reduce server load. (5) Geographic distribution: deploy read replicas and cache layers in multiple regions for low-latency redirects globally. (6) Analytics: process click events asynchronously via Kafka to avoid adding latency to the redirect path. Storage estimate: 100M URLs × 1KB = 100GB, easily fits on a single database with replication."
+          "type": "interview",
+          "question": "Design a notification service that delivers push notifications, emails, and SMS to 500 million users.",
+          "answer": "Architecture: (1) API layer accepts notification requests with priority, channel preferences, and template ID. (2) Priority queue (Kafka with priority topics or SQS with separate queues per priority) buffers notifications for processing. (3) Worker fleet processes notifications: resolves templates, applies user preferences (opt-outs, quiet hours, channel preferences), rate limits per user (max 5 push/hour), and routes to channel-specific senders. (4) Channel adapters: push (APNs for iOS, FCM for Android), email (SES/SendGrid), SMS (Twilio). Each has different throughput limits and failure modes. (5) Delivery tracking: store delivery status (sent, delivered, opened, failed) for each notification with retry logic (exponential backoff, max 3 retries). (6) Rate limiting: per-user limits prevent notification fatigue, per-channel limits respect provider quotas. Key tradeoffs: exactly-once delivery is impossible across channels, so design for at-least-once with deduplication at the device level. Batch similar notifications (e.g., \"3 people liked your post\" instead of 3 separate notifications). Use dead letter queues for permanently failed deliveries."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Design a notification service that delivers push notifications, emails, and SMS to 500 million users."
+          "type": "interview",
+          "question": "How would you design a distributed cache that handles 1 million requests per second with 99.9% availability?",
+          "answer": "(1) Partitioning: use consistent hashing with virtual nodes to distribute keys across cache nodes. Virtual nodes (150-200 per physical node) ensure even distribution and smooth rebalancing when nodes are added/removed. (2) Replication: replicate each partition to 2-3 nodes for fault tolerance. Use async replication for performance (accept brief inconsistency on failover). (3) Client routing: clients use a consistent hash ring to route directly to the correct node (no proxy bottleneck). Library handles failover to replica nodes. (4) Hot key handling: detect hot keys via access counting, replicate them to multiple nodes, and load-balance reads across replicas. (5) Eviction: LRU with memory pressure monitoring. Alert at 80% capacity, evict aggressively at 90%. (6) Failure handling: when a node fails, its replicas serve traffic immediately. A new node is provisioned and warmed from replicas. The consistent hash ring is updated, and only 1/N of keys need to be redistributed. (7) Capacity: at 1M req/sec with average 1KB values, you need ~10 nodes (each handling 100K req/sec, which is within Redis's capability). Deploy across 3 availability zones for zone-level fault tolerance."
         },
         {
-          "type": "paragraph",
-          "text": "A: Architecture: (1) API layer accepts notification requests with priority, channel preferences, and template ID. (2) Priority queue (Kafka with priority topics or SQS with separate queues per priority) buffers notifications for processing. (3) Worker fleet processes notifications: resolves templates, applies user preferences (opt-outs, quiet hours, channel preferences), rate limits per user (max 5 push/hour), and routes to channel-specific senders. (4) Channel adapters: push (APNs for iOS, FCM for Android), email (SES/SendGrid), SMS (Twilio). Each has different throughput limits and failure modes. (5) Delivery tracking: store delivery status (sent, delivered, opened, failed) for each notification with retry logic (exponential backoff, max 3 retries). (6) Rate limiting: per-user limits prevent notification fatigue, per-channel limits respect provider quotas. Key tradeoffs: exactly-once delivery is impossible across channels, so design for at-least-once with deduplication at the device level. Batch similar notifications (e.g., \"3 people liked your post\" instead of 3 separate notifications). Use dead letter queues for permanently failed deliveries."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design a distributed cache that handles 1 million requests per second with 99.9% availability?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: (1) Partitioning: use consistent hashing with virtual nodes to distribute keys across cache nodes. Virtual nodes (150-200 per physical node) ensure even distribution and smooth rebalancing when nodes are added/removed. (2) Replication: replicate each partition to 2-3 nodes for fault tolerance. Use async replication for performance (accept brief inconsistency on failover). (3) Client routing: clients use a consistent hash ring to route directly to the correct node (no proxy bottleneck). Library handles failover to replica nodes. (4) Hot key handling: detect hot keys via access counting, replicate them to multiple nodes, and load-balance reads across replicas. (5) Eviction: LRU with memory pressure monitoring. Alert at 80% capacity, evict aggressively at 90%. (6) Failure handling: when a node fails, its replicas serve traffic immediately. A new node is provisioned and warmed from replicas. The consistent hash ring is updated, and only 1/N of keys need to be redistributed. (7) Capacity: at 1M req/sec with average 1KB values, you need ~10 nodes (each handling 100K req/sec, which is within Redis's capability). Deploy across 3 availability zones for zone-level fault tolerance."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Design a chat system that supports 1:1 messaging, group chats (up to 500 members), and message history. How do you handle ordering and delivery guarantees?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: (1) Connection layer: WebSocket servers maintain persistent connections. Use Redis Pub/Sub or a message broker to route messages between servers when sender and recipient are on different instances. (2) Message ordering: assign a per-conversation monotonically increasing sequence number (Redis INCR on conversation key). Clients use sequence numbers to detect gaps and request missing messages. (3) Delivery guarantees: store messages in database before acknowledging to sender. Mark as \"sent\" when persisted, \"delivered\" when recipient's device acknowledges, \"read\" when user opens the conversation. (4) Group messages: for groups under 500 members, fan-out on write (send to each member's message queue). For each member, check if they are online (deliver via WebSocket) or offline (store for later delivery + push notification). (5) Offline handling: queue messages per user in Redis sorted set (score = timestamp). On reconnect, deliver queued messages in order and clear the queue. (6) Message history: store in Cassandra partitioned by conversation_id with clustering key on timestamp. This enables efficient range queries for loading chat history. (7) Presence: heartbeat every 10 seconds, mark offline after 30 seconds of no heartbeat. Publish presence changes to conversation members."
+          "type": "interview",
+          "question": "Design a chat system that supports 1:1 messaging, group chats (up to 500 members), and message history. How do you handle ordering and delivery guarantees?",
+          "answer": "(1) Connection layer: WebSocket servers maintain persistent connections. Use Redis Pub/Sub or a message broker to route messages between servers when sender and recipient are on different instances. (2) Message ordering: assign a per-conversation monotonically increasing sequence number (Redis INCR on conversation key). Clients use sequence numbers to detect gaps and request missing messages. (3) Delivery guarantees: store messages in database before acknowledging to sender. Mark as \"sent\" when persisted, \"delivered\" when recipient's device acknowledges, \"read\" when user opens the conversation. (4) Group messages: for groups under 500 members, fan-out on write (send to each member's message queue). For each member, check if they are online (deliver via WebSocket) or offline (store for later delivery + push notification). (5) Offline handling: queue messages per user in Redis sorted set (score = timestamp). On reconnect, deliver queued messages in order and clear the queue. (6) Message history: store in Cassandra partitioned by conversation_id with clustering key on timestamp. This enables efficient range queries for loading chat history. (7) Presence: heartbeat every 10 seconds, mark offline after 30 seconds of no heartbeat. Publish presence changes to conversation members."
         }
       ],
-      "wordCount": 763,
+      "wordCount": 755,
       "subsections": []
     },
     {
@@ -241,7 +229,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/common-interview-problems.md",
-    "wordCount": 2151,
+    "wordCount": 2143,
     "sectionCount": 11
   }
 }

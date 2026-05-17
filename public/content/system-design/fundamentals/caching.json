@@ -151,39 +151,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a caching strategy for a social media feed that serves 100M daily active users?"
+          "type": "interview",
+          "question": "How would you design a caching strategy for a social media feed that serves 100M daily active users?",
+          "answer": "Use a multi-level approach: (1) CDN caches the feed page shell and static assets. (2) A distributed cache (Redis Cluster) stores pre-computed feed data per user, with TTL of 60 seconds. (3) Fan-out-on-write pre-computes feeds for most users when new posts are created, storing results directly in cache. (4) For users following high-volume accounts (celebrities), use fan-out-on-read to merge cached follower feeds with celebrity posts at read time. (5) Implement cache warming for users likely to open the app (based on historical patterns). The key tradeoff is between write amplification (fan-out-on-write to millions of follower caches) and read latency (fan-out-on-read computing feeds on demand). The hybrid approach optimizes both by treating high-follower accounts differently."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use a multi-level approach: (1) CDN caches the feed page shell and static assets. (2) A distributed cache (Redis Cluster) stores pre-computed feed data per user, with TTL of 60 seconds. (3) Fan-out-on-write pre-computes feeds for most users when new posts are created, storing results directly in cache. (4) For users following high-volume accounts (celebrities), use fan-out-on-read to merge cached follower feeds with celebrity posts at read time. (5) Implement cache warming for users likely to open the app (based on historical patterns). The key tradeoff is between write amplification (fan-out-on-write to millions of follower caches) and read latency (fan-out-on-read computing feeds on demand). The hybrid approach optimizes both by treating high-follower accounts differently."
+          "type": "interview",
+          "question": "Explain cache invalidation strategies and their tradeoffs.",
+          "answer": "TTL-based expiration is simplest: set a time limit and accept staleness within that window. Low operational complexity but no control over freshness. Event-driven invalidation publishes cache-bust messages when data changes, offering near-real-time freshness at the cost of infrastructure complexity (message broker, consumers, delivery guarantees). Write-through invalidation deletes or updates the cache on every write, ensuring consistency but coupling write performance to cache operations. Versioned keys append a version to the cache key, allowing atomic transitions between versions without race conditions. In practice, combine TTL as a safety net (catches missed invalidation events) with event-driven invalidation for freshness. The choice depends on your staleness tolerance, write frequency, and operational complexity budget."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain cache invalidation strategies and their tradeoffs."
+          "type": "interview",
+          "question": "What is the thundering herd problem and how do you solve it?",
+          "answer": "Thundering herd occurs when a popular cache key expires and many concurrent requests simultaneously miss the cache, all hitting the database at once. This can overwhelm the database and cause cascading failures. Solutions: (1) Singleflight/request coalescing: only one request fetches from the database while others wait for the result. Implemented with a concurrent map of in-flight requests. (2) Probabilistic early expiration: each request has a small probability of refreshing the cache before TTL expires, spreading refreshes over time. (3) Lock-based approach: acquire a distributed lock before fetching; other requests either wait or serve stale data. (4) Stale-while-revalidate: serve the expired cached value immediately while one request refreshes in the background. (5) Never-expire with background refresh: cache keys never expire; a background process refreshes them periodically."
         },
         {
-          "type": "paragraph",
-          "text": "A: TTL-based expiration is simplest: set a time limit and accept staleness within that window. Low operational complexity but no control over freshness. Event-driven invalidation publishes cache-bust messages when data changes, offering near-real-time freshness at the cost of infrastructure complexity (message broker, consumers, delivery guarantees). Write-through invalidation deletes or updates the cache on every write, ensuring consistency but coupling write performance to cache operations. Versioned keys append a version to the cache key, allowing atomic transitions between versions without race conditions. In practice, combine TTL as a safety net (catches missed invalidation events) with event-driven invalidation for freshness. The choice depends on your staleness tolerance, write frequency, and operational complexity budget."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the thundering herd problem and how do you solve it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Thundering herd occurs when a popular cache key expires and many concurrent requests simultaneously miss the cache, all hitting the database at once. This can overwhelm the database and cause cascading failures. Solutions: (1) Singleflight/request coalescing: only one request fetches from the database while others wait for the result. Implemented with a concurrent map of in-flight requests. (2) Probabilistic early expiration: each request has a small probability of refreshing the cache before TTL expires, spreading refreshes over time. (3) Lock-based approach: acquire a distributed lock before fetching; other requests either wait or serve stale data. (4) Stale-while-revalidate: serve the expired cached value immediately while one request refreshes in the background. (5) Never-expire with background refresh: cache keys never expire; a background process refreshes them periodically."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle cache consistency in a microservices architecture where multiple services cache the same data?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Publish domain events to a message broker (Kafka, SNS) when data changes. Each service subscribes to events relevant to its cached data and invalidates or refreshes accordingly. This decouples services while ensuring caches stay reasonably fresh. Combine with TTL as a safety net for missed events (message broker delivery is at-least-once, not exactly-once). For critical data, use a cache-aside pattern where each service owns its cache and is responsible for invalidation. For shared reference data (product catalog, configuration), consider a dedicated caching service that other services query, centralizing invalidation logic. The key principle is that the service that owns the data is responsible for publishing change events, and consuming services decide how to react."
+          "type": "interview",
+          "question": "How do you handle cache consistency in a microservices architecture where multiple services cache the same data?",
+          "answer": "Publish domain events to a message broker (Kafka, SNS) when data changes. Each service subscribes to events relevant to its cached data and invalidates or refreshes accordingly. This decouples services while ensuring caches stay reasonably fresh. Combine with TTL as a safety net for missed events (message broker delivery is at-least-once, not exactly-once). For critical data, use a cache-aside pattern where each service owns its cache and is responsible for invalidation. For shared reference data (product catalog, configuration), consider a dedicated caching service that other services query, centralizing invalidation logic. The key principle is that the service that owns the data is responsible for publishing change events, and consuming services decide how to react."
         }
       ],
-      "wordCount": 525,
+      "wordCount": 517,
       "subsections": []
     },
     {
@@ -247,7 +235,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/caching.md",
-    "wordCount": 1987,
+    "wordCount": 1979,
     "sectionCount": 11
   }
 }

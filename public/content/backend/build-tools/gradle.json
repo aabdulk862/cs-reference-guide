@@ -239,47 +239,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between Gradle's implementation and api configurations."
+          "type": "interview",
+          "question": "Explain the difference between Gradle's implementation and api configurations.",
+          "answer": "implementation declares a dependency that is used internally by the module but not exposed to consumers. If module A uses implementation(\"com.google.guava:guava\"), modules depending on A cannot see Guava on their compile classpath. api declares a dependency that is part of the module's public API — if A's public method returns a Guava ImmutableList, consumers need Guava on their compile classpath, so A must use api. The distinction matters for compilation performance: changing an implementation dependency only recompiles the declaring module, while changing an api dependency triggers recompilation of all consumers. Rule of thumb: use implementation by default, switch to api only when the dependency's types appear in your public API signatures."
         },
         {
-          "type": "paragraph",
-          "text": "A: implementation declares a dependency that is used internally by the module but not exposed to consumers. If module A uses implementation(\"com.google.guava:guava\"), modules depending on A cannot see Guava on their compile classpath. api declares a dependency that is part of the module's public API — if A's public method returns a Guava ImmutableList, consumers need Guava on their compile classpath, so A must use api. The distinction matters for compilation performance: changing an implementation dependency only recompiles the declaring module, while changing an api dependency triggers recompilation of all consumers. Rule of thumb: use implementation by default, switch to api only when the dependency's types appear in your public API signatures."
+          "type": "interview",
+          "question": "How does Gradle's build cache work, and what determines cache key computation?",
+          "answer": "Gradle's build cache stores task outputs keyed by a hash of the task's inputs. The cache key is computed from: the task implementation class (bytecode hash), the task's input properties (file contents, string values, etc.), and the task's classpath. When a task executes, Gradle checks the local cache first, then the remote cache. If a matching key exists, outputs are restored without execution. Cache correctness depends on complete input/output declarations — if a task reads a file not declared as an input, the cache may serve stale results. The local cache lives on disk (~/.gradle/caches/build-cache-1/); the remote cache is an HTTP server (Gradle Enterprise, custom, or cloud storage). CI agents push to remote; developers pull. This means a developer building code that CI already built gets instant cache hits."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Gradle's build cache work, and what determines cache key computation?"
+          "type": "interview",
+          "question": "What is the Gradle configuration cache, and how does it differ from the build cache?",
+          "answer": "The build cache caches task outputs (compiled classes, test results, JARs). The configuration cache caches the result of the configuration phase — the task graph itself. Without configuration cache, Gradle evaluates all build.gradle.kts files on every invocation to build the task graph (typically 2-10 seconds for large projects). With configuration cache enabled, Gradle serializes the configured task graph after the first run and deserializes it on subsequent runs, skipping configuration entirely. The cache is invalidated when build scripts, gradle.properties, or environment variables change. Restrictions: configuration-phase code cannot use certain APIs (like Project references in task actions), requiring code changes to be compatible. The combination of both caches means: configuration cache skips graph building, build cache skips task execution — resulting in near-instant builds for unchanged code."
         },
         {
-          "type": "paragraph",
-          "text": "A: Gradle's build cache stores task outputs keyed by a hash of the task's inputs. The cache key is computed from: the task implementation class (bytecode hash), the task's input properties (file contents, string values, etc.), and the task's classpath. When a task executes, Gradle checks the local cache first, then the remote cache. If a matching key exists, outputs are restored without execution. Cache correctness depends on complete input/output declarations — if a task reads a file not declared as an input, the cache may serve stale results. The local cache lives on disk (~/.gradle/caches/build-cache-1/); the remote cache is an HTTP server (Gradle Enterprise, custom, or cloud storage). CI agents push to remote; developers pull. This means a developer building code that CI already built gets instant cache hits."
+          "type": "interview",
+          "question": "How do you handle dependency version conflicts in Gradle?",
+          "answer": "Gradle resolves conflicts using \"highest version wins\" by default — if two dependencies transitively pull different versions of the same library, Gradle selects the highest. To control this: use failOnVersionConflict() in resolutionStrategy to make conflicts build failures, use force(\"group:artifact:version\") to pin a specific version, use strictly(\"version\") in dependency declarations to prevent upgrades beyond that version, or use exclude(group = \"...\", module = \"...\") to remove unwanted transitive dependencies. For visibility, run ./gradlew dependencyInsight --dependency <name> to trace why a specific version was selected. Version catalogs with explicit versions and enforcedPlatform() (BOM with forced versions) provide the most maintainable approach for large projects."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the Gradle configuration cache, and how does it differ from the build cache?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The build cache caches task outputs (compiled classes, test results, JARs). The configuration cache caches the result of the configuration phase — the task graph itself. Without configuration cache, Gradle evaluates all build.gradle.kts files on every invocation to build the task graph (typically 2-10 seconds for large projects). With configuration cache enabled, Gradle serializes the configured task graph after the first run and deserializes it on subsequent runs, skipping configuration entirely. The cache is invalidated when build scripts, gradle.properties, or environment variables change. Restrictions: configuration-phase code cannot use certain APIs (like Project references in task actions), requiring code changes to be compatible. The combination of both caches means: configuration cache skips graph building, build cache skips task execution — resulting in near-instant builds for unchanged code."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle dependency version conflicts in Gradle?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Gradle resolves conflicts using \"highest version wins\" by default — if two dependencies transitively pull different versions of the same library, Gradle selects the highest. To control this: use failOnVersionConflict() in resolutionStrategy to make conflicts build failures, use force(\"group:artifact:version\") to pin a specific version, use strictly(\"version\") in dependency declarations to prevent upgrades beyond that version, or use exclude(group = \"...\", module = \"...\") to remove unwanted transitive dependencies. For visibility, run ./gradlew dependencyInsight --dependency <name> to trace why a specific version was selected. Version catalogs with explicit versions and enforcedPlatform() (BOM with forced versions) provide the most maintainable approach for large projects."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Compare Gradle's task-based model with Maven's lifecycle-based model."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Maven defines fixed lifecycle phases (compile → test → package → verify → install → deploy) that always execute in order — running mvn package always runs compile and test first. Gradle uses a task DAG where tasks declare dependencies on other tasks, and only requested tasks and their dependencies execute. This means ./gradlew jar runs compilation but not tests (unless jar depends on test). Gradle's model is more flexible: you can define arbitrary tasks, create complex dependency graphs, and skip unnecessary work. Maven's model is more predictable: every developer knows what mvn verify does. Gradle's approach enables better performance (skip unneeded tasks) and customization (insert tasks anywhere in the graph), while Maven's approach provides stronger conventions and simpler mental models."
+          "type": "interview",
+          "question": "Compare Gradle's task-based model with Maven's lifecycle-based model.",
+          "answer": "Maven defines fixed lifecycle phases (compile → test → package → verify → install → deploy) that always execute in order — running mvn package always runs compile and test first. Gradle uses a task DAG where tasks declare dependencies on other tasks, and only requested tasks and their dependencies execute. This means ./gradlew jar runs compilation but not tests (unless jar depends on test). Gradle's model is more flexible: you can define arbitrary tasks, create complex dependency graphs, and skip unnecessary work. Maven's model is more predictable: every developer knows what mvn verify does. Gradle's approach enables better performance (skip unneeded tasks) and customization (insert tasks anywhere in the graph), while Maven's approach provides stronger conventions and simpler mental models."
         }
       ],
-      "wordCount": 652,
+      "wordCount": 642,
       "subsections": []
     },
     {
@@ -379,7 +364,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/build-tools/gradle.md",
-    "wordCount": 2075,
+    "wordCount": 2065,
     "sectionCount": 14
   }
 }

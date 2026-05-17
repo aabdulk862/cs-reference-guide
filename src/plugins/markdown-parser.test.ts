@@ -766,4 +766,144 @@ Text with footnote[^1] in it.
       }
     });
   });
+
+  describe('comparison blocks', () => {
+    it('parses [!COMPARE] blockquote with 2 options into compare node', () => {
+      const md = `# Topic
+## Section
+> [!COMPARE]
+> REST vs GraphQL
+>
+> ### REST
+> Resource-oriented with fixed endpoints.
+> Pros:
+> - Simple caching
+> - Well-understood
+> Cons:
+> - Over-fetching
+> - Multiple round trips
+>
+> ### GraphQL
+> Query-oriented with single endpoint.
+> Pros:
+> - Precise data fetching
+> - Single request
+> Cons:
+> - Complex caching
+> - N+1 query risk
+`;
+      const result = parseMarkdown(md, 'test.md', 'general');
+
+      const compareNode = result.sections[0].content.find((n) => n.type === 'compare');
+      expect(compareNode).toBeDefined();
+      if (compareNode && compareNode.type === 'compare') {
+        expect(compareNode.title).toBe('REST vs GraphQL');
+        expect(compareNode.options).toHaveLength(2);
+        expect(compareNode.options[0].name).toBe('REST');
+        expect(compareNode.options[0].body).toBe('Resource-oriented with fixed endpoints.');
+        expect(compareNode.options[0].pros).toEqual(['Simple caching', 'Well-understood']);
+        expect(compareNode.options[0].cons).toEqual(['Over-fetching', 'Multiple round trips']);
+        expect(compareNode.options[1].name).toBe('GraphQL');
+        expect(compareNode.options[1].body).toBe('Query-oriented with single endpoint.');
+        expect(compareNode.options[1].pros).toEqual(['Precise data fetching', 'Single request']);
+        expect(compareNode.options[1].cons).toEqual(['Complex caching', 'N+1 query risk']);
+      }
+    });
+
+    it('falls through to standard blockquote when fewer than 2 options', () => {
+      const md = `# Topic
+## Section
+> [!COMPARE]
+> Only One Option
+>
+> ### Single
+> Just one option here.
+`;
+      const result = parseMarkdown(md, 'test.md', 'general');
+
+      const compareNode = result.sections[0].content.find((n) => n.type === 'compare');
+      expect(compareNode).toBeUndefined();
+      const blockquoteNode = result.sections[0].content.find((n) => n.type === 'blockquote');
+      expect(blockquoteNode).toBeDefined();
+    });
+
+    it('falls through to standard blockquote when more than 4 options', () => {
+      const md = `# Topic
+## Section
+> [!COMPARE]
+> Too Many Options
+>
+> ### Option 1
+> Body 1
+> ### Option 2
+> Body 2
+> ### Option 3
+> Body 3
+> ### Option 4
+> Body 4
+> ### Option 5
+> Body 5
+`;
+      const result = parseMarkdown(md, 'test.md', 'general');
+
+      const compareNode = result.sections[0].content.find((n) => n.type === 'compare');
+      expect(compareNode).toBeUndefined();
+      const blockquoteNode = result.sections[0].content.find((n) => n.type === 'blockquote');
+      expect(blockquoteNode).toBeDefined();
+    });
+
+    it('parses compare block with options that have no pros/cons', () => {
+      const md = `# Topic
+## Section
+> [!COMPARE]
+> SQL vs NoSQL
+>
+> ### SQL
+> Relational databases with structured schemas.
+>
+> ### NoSQL
+> Document or key-value stores with flexible schemas.
+`;
+      const result = parseMarkdown(md, 'test.md', 'general');
+
+      const compareNode = result.sections[0].content.find((n) => n.type === 'compare');
+      expect(compareNode).toBeDefined();
+      if (compareNode && compareNode.type === 'compare') {
+        expect(compareNode.title).toBe('SQL vs NoSQL');
+        expect(compareNode.options).toHaveLength(2);
+        expect(compareNode.options[0].name).toBe('SQL');
+        expect(compareNode.options[0].body).toBe('Relational databases with structured schemas.');
+        expect(compareNode.options[0].pros).toBeUndefined();
+        expect(compareNode.options[0].cons).toBeUndefined();
+        expect(compareNode.options[1].name).toBe('NoSQL');
+        expect(compareNode.options[1].body).toBe('Document or key-value stores with flexible schemas.');
+      }
+    });
+
+    it('parses compare block with 4 options (maximum valid)', () => {
+      const md = `# Topic
+## Section
+> [!COMPARE]
+> Database Types
+>
+> ### SQL
+> Relational.
+> ### NoSQL
+> Document-based.
+> ### Graph
+> Relationship-focused.
+> ### Time-Series
+> Temporal data.
+`;
+      const result = parseMarkdown(md, 'test.md', 'general');
+
+      const compareNode = result.sections[0].content.find((n) => n.type === 'compare');
+      expect(compareNode).toBeDefined();
+      if (compareNode && compareNode.type === 'compare') {
+        expect(compareNode.options).toHaveLength(4);
+        expect(compareNode.options[0].name).toBe('SQL');
+        expect(compareNode.options[3].name).toBe('Time-Series');
+      }
+    });
+  });
 });

@@ -150,39 +150,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement zero-downtime deployments using a load balancer?"
+          "type": "interview",
+          "question": "How would you implement zero-downtime deployments using a load balancer?",
+          "answer": "Use rolling deployment with connection draining: (1) Deploy new version to a subset of instances. (2) Run health checks against new instances until they pass. (3) Add new instances to the load balancer rotation. (4) Remove old instances from rotation with connection draining enabled (stop new requests, allow in-flight requests 30-60 seconds to complete). (5) Repeat until all instances are updated. For more control, use blue-green deployment: maintain two identical environments, deploy to the inactive one, run smoke tests, then switch the load balancer to point to the new environment. If issues arise, switch back immediately. Canary deployment routes a small percentage (1-5%) of traffic to the new version first, monitoring error rates and latency before proceeding with full rollout."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use rolling deployment with connection draining: (1) Deploy new version to a subset of instances. (2) Run health checks against new instances until they pass. (3) Add new instances to the load balancer rotation. (4) Remove old instances from rotation with connection draining enabled (stop new requests, allow in-flight requests 30-60 seconds to complete). (5) Repeat until all instances are updated. For more control, use blue-green deployment: maintain two identical environments, deploy to the inactive one, run smoke tests, then switch the load balancer to point to the new environment. If issues arise, switch back immediately. Canary deployment routes a small percentage (1-5%) of traffic to the new version first, monitoring error rates and latency before proceeding with full rollout."
+          "type": "interview",
+          "question": "What is the difference between Layer 4 and Layer 7 load balancing, and when would you choose each?",
+          "answer": "Layer 4 operates at the transport layer, routing based on source/destination IP and port without inspecting packet contents. It is faster (no payload parsing), supports any protocol (not just HTTP), and handles more connections per instance. Choose Layer 4 for high-throughput TCP services, database connection routing, or when content-based routing is unnecessary. Layer 7 operates at the application layer, inspecting HTTP headers, URLs, cookies, and request bodies. It enables content-based routing, URL rewriting, SSL termination, request/response modification, and WebSocket upgrade handling. Choose Layer 7 when you need path-based routing to different backends, A/B testing via header inspection, or authentication at the load balancer level. Many architectures use both: Layer 4 at the edge for raw throughput, Layer 7 internally for intelligent routing."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between Layer 4 and Layer 7 load balancing, and when would you choose each?"
+          "type": "interview",
+          "question": "How does consistent hashing improve load balancer behavior compared to simple round-robin?",
+          "answer": "Consistent hashing maps both servers and requests to positions on a hash ring. Each request is routed to the next server clockwise on the ring. The key advantage is minimal disruption when servers are added or removed: only keys between the new/removed server and its predecessor are redistributed, while all other mappings remain stable. With round-robin, adding or removing a server changes the routing for nearly all requests. This matters for stateful services (WebSocket connections, in-memory caches) where re-routing means losing state. Virtual nodes (multiple ring positions per physical server) improve distribution uniformity. The tradeoff is that consistent hashing does not account for server load, so it is often combined with bounded-load consistent hashing that redistributes keys from overloaded servers."
         },
         {
-          "type": "paragraph",
-          "text": "A: Layer 4 operates at the transport layer, routing based on source/destination IP and port without inspecting packet contents. It is faster (no payload parsing), supports any protocol (not just HTTP), and handles more connections per instance. Choose Layer 4 for high-throughput TCP services, database connection routing, or when content-based routing is unnecessary. Layer 7 operates at the application layer, inspecting HTTP headers, URLs, cookies, and request bodies. It enables content-based routing, URL rewriting, SSL termination, request/response modification, and WebSocket upgrade handling. Choose Layer 7 when you need path-based routing to different backends, A/B testing via header inspection, or authentication at the load balancer level. Many architectures use both: Layer 4 at the edge for raw throughput, Layer 7 internally for intelligent routing."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does consistent hashing improve load balancer behavior compared to simple round-robin?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Consistent hashing maps both servers and requests to positions on a hash ring. Each request is routed to the next server clockwise on the ring. The key advantage is minimal disruption when servers are added or removed: only keys between the new/removed server and its predecessor are redistributed, while all other mappings remain stable. With round-robin, adding or removing a server changes the routing for nearly all requests. This matters for stateful services (WebSocket connections, in-memory caches) where re-routing means losing state. Virtual nodes (multiple ring positions per physical server) improve distribution uniformity. The tradeoff is that consistent hashing does not account for server load, so it is often combined with bounded-load consistent hashing that redistributes keys from overloaded servers."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle the thundering herd problem when a backend recovers after failure?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: When a backend recovers, all queued requests and retries can flood it simultaneously, causing immediate re-failure. Solutions include: (1) Slow start: the load balancer gradually increases traffic to the recovered backend over 30-60 seconds rather than immediately sending full load. (2) Request queuing with rate limiting: limit the rate of requests sent to a recovering backend regardless of demand. (3) Client-side exponential backoff with jitter: clients that were retrying spread their retry attempts over time rather than all retrying at the same instant. (4) Health check hysteresis: require multiple consecutive successful health checks before adding the backend back to rotation, ensuring it is truly recovered rather than briefly responsive."
+          "type": "interview",
+          "question": "How do you handle the thundering herd problem when a backend recovers after failure?",
+          "answer": "When a backend recovers, all queued requests and retries can flood it simultaneously, causing immediate re-failure. Solutions include: (1) Slow start: the load balancer gradually increases traffic to the recovered backend over 30-60 seconds rather than immediately sending full load. (2) Request queuing with rate limiting: limit the rate of requests sent to a recovering backend regardless of demand. (3) Client-side exponential backoff with jitter: clients that were retrying spread their retry attempts over time rather than all retrying at the same instant. (4) Health check hysteresis: require multiple consecutive successful health checks before adding the backend back to rotation, ensuring it is truly recovered rather than briefly responsive."
         }
       ],
-      "wordCount": 533,
+      "wordCount": 525,
       "subsections": []
     },
     {
@@ -246,7 +234,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/load-balancing.md",
-    "wordCount": 1811,
+    "wordCount": 1803,
     "sectionCount": 11
   }
 }

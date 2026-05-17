@@ -34,7 +34,13 @@ describe('MermaidRenderer', () => {
     await waitFor(() => {
       const container = document.querySelector('.mermaid-renderer--success');
       expect(container).toBeInTheDocument();
-      expect(container?.innerHTML).toBe(svgOutput);
+      // SVG is wrapped in a responsive container with width="100%" and preserveAspectRatio
+      const svgContainer = container?.querySelector('.mermaid-renderer__svg-container');
+      expect(svgContainer).toBeInTheDocument();
+      const svgEl = svgContainer?.querySelector('svg');
+      expect(svgEl).toBeInTheDocument();
+      expect(svgEl?.getAttribute('width')).toBe('100%');
+      expect(svgEl?.getAttribute('preserveAspectRatio')).toBe('xMidYMid meet');
     });
   });
 
@@ -111,10 +117,10 @@ describe('MermaidRenderer', () => {
     render(<MermaidRenderer source="graph TD; A-->B" />);
 
     await waitFor(() => {
-      const container = document.querySelector('.mermaid-renderer--success');
-      expect(container).toBeInTheDocument();
-      expect(container?.getAttribute('role')).toBe('img');
-      expect(container?.getAttribute('aria-label')).toBe('Mermaid diagram');
+      const svgContainer = document.querySelector('.mermaid-renderer__svg-container');
+      expect(svgContainer).toBeInTheDocument();
+      expect(svgContainer?.getAttribute('role')).toBe('img');
+      expect(svgContainer?.getAttribute('aria-label')).toBe('Mermaid diagram');
     });
   });
 

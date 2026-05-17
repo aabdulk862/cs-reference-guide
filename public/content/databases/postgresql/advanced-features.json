@@ -234,47 +234,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: When would you use JSONB vs a normalized relational schema in PostgreSQL?"
+          "type": "interview",
+          "question": "When would you use JSONB vs a normalized relational schema in PostgreSQL?",
+          "answer": "Use JSONB for genuinely variable/sparse attributes where different rows have different structures — product attributes varying by category, user preferences, event payloads with evolving schemas, or third-party API responses you need to store and query. Use normalized columns for data that is consistently structured across rows, frequently used in JOINs or WHERE clauses, needs referential integrity (foreign keys), or requires strict type enforcement. The hybrid approach is common: core relational columns for structured data (id, name, status, created_at) plus a JSONB column for flexible metadata. Key trade-offs: JSONB queries are slower than column queries even with indexes, JSONB doesn't support CHECK constraints on nested values (use application validation), and schema evolution in JSONB is invisible to database tooling."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use JSONB for genuinely variable/sparse attributes where different rows have different structures — product attributes varying by category, user preferences, event payloads with evolving schemas, or third-party API responses you need to store and query. Use normalized columns for data that is consistently structured across rows, frequently used in JOINs or WHERE clauses, needs referential integrity (foreign keys), or requires strict type enforcement. The hybrid approach is common: core relational columns for structured data (id, name, status, created_at) plus a JSONB column for flexible metadata. Key trade-offs: JSONB queries are slower than column queries even with indexes, JSONB doesn't support CHECK constraints on nested values (use application validation), and schema evolution in JSONB is invisible to database tooling."
+          "type": "interview",
+          "question": "Explain PostgreSQL's full-text search architecture. How does it compare to Elasticsearch?",
+          "answer": "PostgreSQL FTS converts text to tsvector (sorted list of lexemes with positions) using language-specific dictionaries that handle stemming, stop words, and normalization. Queries use tsquery with boolean operators (&, |, !) and phrase matching (<->). GIN indexes on tsvector columns provide fast lookup. Compared to Elasticsearch: PostgreSQL FTS is simpler to operate (no separate cluster), supports ACID transactions (search is always consistent with data), and handles most search use cases adequately. Elasticsearch wins for: massive scale (billions of documents), complex analyzers (CJK languages, custom tokenizers), faceted search with aggregations, near-real-time indexing across distributed nodes, and sub-10ms latency requirements at scale. Choose PostgreSQL FTS when search is a feature of your application; choose Elasticsearch when search IS your application."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain PostgreSQL's full-text search architecture. How does it compare to Elasticsearch?"
+          "type": "interview",
+          "question": "How does declarative partitioning work in PostgreSQL? What are the performance implications?",
+          "answer": "Declarative partitioning splits a logical table into physical partitions based on a partition key (RANGE, LIST, or HASH). The query planner performs partition pruning — eliminating partitions that cannot contain matching rows based on WHERE clause conditions. For a time-partitioned table with 60 monthly partitions, a query filtering on created_at > '2024-01-01' only scans relevant partitions, not all 60. Performance benefits: smaller indexes per partition (fit in memory), efficient bulk deletion (DROP partition vs DELETE), parallel scans across partitions, and better vacuum performance (each partition vacuumed independently). Costs: slightly higher planning time, partition-wise joins require matching partition schemes, unique constraints must include the partition key, and foreign keys referencing partitioned tables have limitations."
         },
         {
-          "type": "paragraph",
-          "text": "A: PostgreSQL FTS converts text to tsvector (sorted list of lexemes with positions) using language-specific dictionaries that handle stemming, stop words, and normalization. Queries use tsquery with boolean operators (&, |, !) and phrase matching (<->). GIN indexes on tsvector columns provide fast lookup. Compared to Elasticsearch: PostgreSQL FTS is simpler to operate (no separate cluster), supports ACID transactions (search is always consistent with data), and handles most search use cases adequately. Elasticsearch wins for: massive scale (billions of documents), complex analyzers (CJK languages, custom tokenizers), faceted search with aggregations, near-real-time indexing across distributed nodes, and sub-10ms latency requirements at scale. Choose PostgreSQL FTS when search is a feature of your application; choose Elasticsearch when search IS your application."
+          "type": "interview",
+          "question": "What are LATERAL joins and when are they more appropriate than regular subqueries?",
+          "answer": "LATERAL allows a subquery in the FROM clause to reference columns from preceding tables — essentially a correlated subquery that returns multiple rows/columns. Use LATERAL when you need \"for each row in table A, compute something from table B\" patterns: top-N per group (top 3 orders per customer), set-returning functions that depend on outer row values, or complex aggregations that vary per row. Without LATERAL, you'd need window functions (which can't LIMIT per group) or multiple queries in application code. LATERAL is more readable than equivalent window function approaches for top-N queries and more efficient than correlated subqueries because the planner can choose optimal join strategies. The key insight: LATERAL turns a subquery into a parameterized function called once per outer row."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does declarative partitioning work in PostgreSQL? What are the performance implications?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Declarative partitioning splits a logical table into physical partitions based on a partition key (RANGE, LIST, or HASH). The query planner performs partition pruning — eliminating partitions that cannot contain matching rows based on WHERE clause conditions. For a time-partitioned table with 60 monthly partitions, a query filtering on created_at > '2024-01-01' only scans relevant partitions, not all 60. Performance benefits: smaller indexes per partition (fit in memory), efficient bulk deletion (DROP partition vs DELETE), parallel scans across partitions, and better vacuum performance (each partition vacuumed independently). Costs: slightly higher planning time, partition-wise joins require matching partition schemes, unique constraints must include the partition key, and foreign keys referencing partitioned tables have limitations."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What are LATERAL joins and when are they more appropriate than regular subqueries?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: LATERAL allows a subquery in the FROM clause to reference columns from preceding tables — essentially a correlated subquery that returns multiple rows/columns. Use LATERAL when you need \"for each row in table A, compute something from table B\" patterns: top-N per group (top 3 orders per customer), set-returning functions that depend on outer row values, or complex aggregations that vary per row. Without LATERAL, you'd need window functions (which can't LIMIT per group) or multiple queries in application code. LATERAL is more readable than equivalent window function approaches for top-N queries and more efficient than correlated subqueries because the planner can choose optimal join strategies. The key insight: LATERAL turns a subquery into a parameterized function called once per outer row."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement a job scheduling system using pg_cron and what are its limitations?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: pg_cron runs scheduled SQL commands inside PostgreSQL using cron syntax. Implementation: create a jobs table tracking scheduled tasks, use pg_cron to trigger a dispatcher function that picks up pending jobs and executes them. Advantages: no external scheduler dependency, jobs run in the same transaction context as the database, and scheduling survives application restarts. Limitations: pg_cron runs only on one node (the primary in a replicated setup), has no built-in retry logic or dead-letter queue, cannot schedule sub-minute intervals, and jobs that fail silently unless you implement logging. For production, combine pg_cron with a jobs table that tracks execution status, implements retry with exponential backoff, and alerts on failures. For complex workflows requiring DAGs, dependencies, or distributed execution, use a dedicated scheduler (Airflow, Temporal) instead."
+          "type": "interview",
+          "question": "How would you implement a job scheduling system using pg_cron and what are its limitations?",
+          "answer": "pg_cron runs scheduled SQL commands inside PostgreSQL using cron syntax. Implementation: create a jobs table tracking scheduled tasks, use pg_cron to trigger a dispatcher function that picks up pending jobs and executes them. Advantages: no external scheduler dependency, jobs run in the same transaction context as the database, and scheduling survives application restarts. Limitations: pg_cron runs only on one node (the primary in a replicated setup), has no built-in retry logic or dead-letter queue, cannot schedule sub-minute intervals, and jobs that fail silently unless you implement logging. For production, combine pg_cron with a jobs table that tracks execution status, implements retry with exponential backoff, and alerts on failures. For complex workflows requiring DAGs, dependencies, or distributed execution, use a dedicated scheduler (Airflow, Temporal) instead."
         }
       ],
-      "wordCount": 668,
+      "wordCount": 658,
       "subsections": []
     },
     {
@@ -360,7 +345,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/advanced-features.md",
-    "wordCount": 2356,
+    "wordCount": 2346,
     "sectionCount": 15
   }
 }

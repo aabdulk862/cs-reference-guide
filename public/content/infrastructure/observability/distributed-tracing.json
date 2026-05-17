@@ -143,39 +143,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between head-based and tail-based sampling. When would you use each?"
+          "type": "interview",
+          "question": "Explain the difference between head-based and tail-based sampling. When would you use each?",
+          "answer": "Head-based sampling makes the sampling decision at the trace entry point (first service) and propagates that decision to all downstream services. It is simple to implement, has low overhead, and ensures complete traces (all spans for a sampled trace are captured). The downside: you cannot sample based on trace characteristics (duration, error status) because those are unknown at the start. Tail-based sampling collects all spans from all services, assembles complete traces in a collector, then decides which traces to keep based on their characteristics (keep all traces with errors, keep traces exceeding 5 seconds, keep traces touching specific services). It captures interesting traces that head-based sampling might miss but requires a stateful collector that buffers spans and has higher infrastructure cost. Use head-based for most production workloads (simple, predictable cost). Use tail-based when you need guaranteed capture of error traces and slow traces regardless of sampling rate."
         },
         {
-          "type": "paragraph",
-          "text": "A: Head-based sampling makes the sampling decision at the trace entry point (first service) and propagates that decision to all downstream services. It is simple to implement, has low overhead, and ensures complete traces (all spans for a sampled trace are captured). The downside: you cannot sample based on trace characteristics (duration, error status) because those are unknown at the start. Tail-based sampling collects all spans from all services, assembles complete traces in a collector, then decides which traces to keep based on their characteristics (keep all traces with errors, keep traces exceeding 5 seconds, keep traces touching specific services). It captures interesting traces that head-based sampling might miss but requires a stateful collector that buffers spans and has higher infrastructure cost. Use head-based for most production workloads (simple, predictable cost). Use tail-based when you need guaranteed capture of error traces and slow traces regardless of sampling rate."
+          "type": "interview",
+          "question": "How does trace context propagation work in a microservices architecture?",
+          "answer": "Trace context propagation passes trace identity (trace ID, span ID, sampling decision) between services so that spans from different services can be assembled into a single trace. The W3C Trace Context standard defines two headers: traceparent (contains trace ID, parent span ID, and trace flags) and tracestate (vendor-specific data). When Service A calls Service B via HTTP, the instrumentation library injects these headers into the outgoing request. Service B's instrumentation extracts the headers, creates a new span with the received trace ID and the received span ID as its parent, and continues propagation to any downstream calls. For non-HTTP communication (message queues, gRPC), the same context is injected into message metadata or gRPC headers. OpenTelemetry provides propagators for all common protocols and formats (W3C, B3, Jaeger, X-Ray)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does trace context propagation work in a microservices architecture?"
+          "type": "interview",
+          "question": "How would you implement distributed tracing in an existing microservices architecture with minimal code changes?",
+          "answer": "Use OpenTelemetry auto-instrumentation which hooks into common libraries (HTTP clients, database drivers, message queue clients) without code changes. For Java, use the OpenTelemetry Java agent (-javaagent:opentelemetry-javaagent.jar) which instruments Spring, JDBC, Redis, Kafka, and gRPC automatically. For Node.js, use @opentelemetry/auto-instrumentations-node which patches HTTP, Express, pg, and Redis modules. Deploy an OpenTelemetry Collector as a sidecar or DaemonSet that receives spans and exports to your chosen backend (X-Ray, Jaeger, Datadog). The only code change needed is adding the agent/SDK initialization and configuring the exporter endpoint. Add custom spans for business logic only after auto-instrumentation is working and you need more granular visibility into specific operations."
         },
         {
-          "type": "paragraph",
-          "text": "A: Trace context propagation passes trace identity (trace ID, span ID, sampling decision) between services so that spans from different services can be assembled into a single trace. The W3C Trace Context standard defines two headers: traceparent (contains trace ID, parent span ID, and trace flags) and tracestate (vendor-specific data). When Service A calls Service B via HTTP, the instrumentation library injects these headers into the outgoing request. Service B's instrumentation extracts the headers, creates a new span with the received trace ID and the received span ID as its parent, and continues propagation to any downstream calls. For non-HTTP communication (message queues, gRPC), the same context is injected into message metadata or gRPC headers. OpenTelemetry provides propagators for all common protocols and formats (W3C, B3, Jaeger, X-Ray)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you implement distributed tracing in an existing microservices architecture with minimal code changes?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use OpenTelemetry auto-instrumentation which hooks into common libraries (HTTP clients, database drivers, message queue clients) without code changes. For Java, use the OpenTelemetry Java agent (-javaagent:opentelemetry-javaagent.jar) which instruments Spring, JDBC, Redis, Kafka, and gRPC automatically. For Node.js, use @opentelemetry/auto-instrumentations-node which patches HTTP, Express, pg, and Redis modules. Deploy an OpenTelemetry Collector as a sidecar or DaemonSet that receives spans and exports to your chosen backend (X-Ray, Jaeger, Datadog). The only code change needed is adding the agent/SDK initialization and configuring the exporter endpoint. Add custom spans for business logic only after auto-instrumentation is working and you need more granular visibility into specific operations."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What attributes should you add to spans to make traces useful for debugging?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Add attributes at multiple levels. For HTTP spans: method, URL path (parameterized, not with actual IDs), status code, request/response size, client IP. For database spans: database system, statement (parameterized), operation type, table name, rows affected. For business logic spans: entity IDs (order ID, customer ID), operation outcome, relevant counts (items processed, records updated). For error spans: exception type, message, stack trace (via recordException). Add resource attributes identifying the service: name, version, environment, region, instance ID. Avoid high-cardinality attributes that would explode storage (full request bodies, large arrays). The goal is enabling trace filtering by business context (\"show me all traces for customer X\") and quick identification of what went wrong without reading logs."
+          "type": "interview",
+          "question": "What attributes should you add to spans to make traces useful for debugging?",
+          "answer": "Add attributes at multiple levels. For HTTP spans: method, URL path (parameterized, not with actual IDs), status code, request/response size, client IP. For database spans: database system, statement (parameterized), operation type, table name, rows affected. For business logic spans: entity IDs (order ID, customer ID), operation outcome, relevant counts (items processed, records updated). For error spans: exception type, message, stack trace (via recordException). Add resource attributes identifying the service: name, version, environment, region, instance ID. Avoid high-cardinality attributes that would explode storage (full request bodies, large arrays). The goal is enabling trace filtering by business context (\"show me all traces for customer X\") and quick identification of what went wrong without reading logs."
         }
       ],
-      "wordCount": 549,
+      "wordCount": 541,
       "subsections": []
     },
     {
@@ -238,7 +226,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/observability/distributed-tracing.md",
-    "wordCount": 1816,
+    "wordCount": 1808,
     "sectionCount": 11
   }
 }

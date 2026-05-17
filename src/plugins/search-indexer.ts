@@ -61,6 +61,14 @@ function extractTextFromNode(node: ContentNode): string {
       return node.raw;
     case 'interactive':
       return '';
+    case 'interview':
+      return `${node.question} ${node.answer}`;
+    case 'compare':
+      return `${node.title} ${node.options.map(o => `${o.name} ${o.body} ${(o.pros || []).join(' ')} ${(o.cons || []).join(' ')}`).join(' ')}`;
+    case 'prereq':
+      return node.links.map(l => l.text).join(' ');
+    case 'chart':
+      return node.title || '';
     default:
       return '';
   }

@@ -235,47 +235,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between streaming replication and logical replication in PostgreSQL? When would you choose one over the other?"
+          "type": "interview",
+          "question": "What is the difference between streaming replication and logical replication in PostgreSQL? When would you choose one over the other?",
+          "answer": "Streaming replication ships raw WAL bytes to create an exact physical copy of the primary — every database, table, index, and system catalog is replicated. It's used for HA failover because the standby is immediately promotable. Logical replication decodes WAL into logical change events (INSERT, UPDATE, DELETE) and applies them to subscriber tables. Choose streaming for HA/failover (identical copy, fast promotion). Choose logical for selective table replication, cross-version replication, zero-downtime upgrades, or when the subscriber needs to have additional indexes or local tables not present on the publisher. Key limitation: logical replication doesn't replicate DDL, sequences, or large objects automatically."
         },
         {
-          "type": "paragraph",
-          "text": "A: Streaming replication ships raw WAL bytes to create an exact physical copy of the primary — every database, table, index, and system catalog is replicated. It's used for HA failover because the standby is immediately promotable. Logical replication decodes WAL into logical change events (INSERT, UPDATE, DELETE) and applies them to subscriber tables. Choose streaming for HA/failover (identical copy, fast promotion). Choose logical for selective table replication, cross-version replication, zero-downtime upgrades, or when the subscriber needs to have additional indexes or local tables not present on the publisher. Key limitation: logical replication doesn't replicate DDL, sequences, or large objects automatically."
+          "type": "interview",
+          "question": "How does Patroni handle a split-brain scenario during a network partition?",
+          "answer": "Patroni prevents split-brain through the distributed consensus store (DCS). The primary must continuously renew its leader key in etcd/ZooKeeper/Consul within the TTL period. During a network partition, if the primary cannot reach the DCS, it cannot renew its key and must demote itself to read-only (or shut down PostgreSQL entirely if watchdog.mode = required). The remaining nodes that can reach the DCS will elect a new leader from the available standbys. The key insight is that the DCS acts as a fencing mechanism — a node that cannot prove it's the leader must assume it isn't. This is why the DCS cluster itself must be highly available (minimum 3 nodes, ideally 5) and distributed across failure domains."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Patroni handle a split-brain scenario during a network partition?"
+          "type": "interview",
+          "question": "Explain PgBouncer's pool modes and why transaction mode is preferred for most applications.",
+          "answer": "PgBouncer offers three pool modes: session mode (client owns a server connection for the entire session), transaction mode (client gets a server connection only during a transaction), and statement mode (connection returned after each statement). Transaction mode is preferred because it maximizes connection sharing — a typical web request holds a connection for milliseconds during queries but the session lasts seconds. With transaction mode, 10,000 application connections can share 100 PostgreSQL connections because at any given moment only ~100 are actively in a transaction. The trade-off: session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY) don't work across transactions because you may get a different backend connection. Applications must either avoid these features or use server_reset_query to clean state between transactions."
         },
         {
-          "type": "paragraph",
-          "text": "A: Patroni prevents split-brain through the distributed consensus store (DCS). The primary must continuously renew its leader key in etcd/ZooKeeper/Consul within the TTL period. During a network partition, if the primary cannot reach the DCS, it cannot renew its key and must demote itself to read-only (or shut down PostgreSQL entirely if watchdog.mode = required). The remaining nodes that can reach the DCS will elect a new leader from the available standbys. The key insight is that the DCS acts as a fencing mechanism — a node that cannot prove it's the leader must assume it isn't. This is why the DCS cluster itself must be highly available (minimum 3 nodes, ideally 5) and distributed across failure domains."
+          "type": "interview",
+          "question": "How would you design a PostgreSQL HA architecture that achieves RPO=0 and RTO<30 seconds?",
+          "answer": "For RPO=0 (zero data loss), configure synchronous streaming replication with at least one synchronous standby (synchronous_commit = on, synchronous_standby_names = 'FIRST 1 (standby1, standby2)'). This ensures every committed transaction is confirmed written to at least one standby's WAL before acknowledging to the client. For RTO<30s, deploy Patroni with aggressive timing: ttl=20, loop_wait=5, retry_timeout=10. Use PgBouncer with health checks every 5 seconds so it detects the new primary quickly. The architecture: 3 PostgreSQL nodes across 3 AZs, Patroni on each node, 5-node etcd cluster (also cross-AZ), PgBouncer on application servers or as a separate tier with HAProxy for load balancing. Test failover monthly in production to verify RTO meets requirements."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain PgBouncer's pool modes and why transaction mode is preferred for most applications."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: PgBouncer offers three pool modes: session mode (client owns a server connection for the entire session), transaction mode (client gets a server connection only during a transaction), and statement mode (connection returned after each statement). Transaction mode is preferred because it maximizes connection sharing — a typical web request holds a connection for milliseconds during queries but the session lasts seconds. With transaction mode, 10,000 application connections can share 100 PostgreSQL connections because at any given moment only ~100 are actively in a transaction. The trade-off: session-level features (prepared statements, SET commands, advisory locks, LISTEN/NOTIFY) don't work across transactions because you may get a different backend connection. Applications must either avoid these features or use server_reset_query to clean state between transactions."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design a PostgreSQL HA architecture that achieves RPO=0 and RTO<30 seconds?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: For RPO=0 (zero data loss), configure synchronous streaming replication with at least one synchronous standby (synchronous_commit = on, synchronous_standby_names = 'FIRST 1 (standby1, standby2)'). This ensures every committed transaction is confirmed written to at least one standby's WAL before acknowledging to the client. For RTO<30s, deploy Patroni with aggressive timing: ttl=20, loop_wait=5, retry_timeout=10. Use PgBouncer with health checks every 5 seconds so it detects the new primary quickly. The architecture: 3 PostgreSQL nodes across 3 AZs, Patroni on each node, 5-node etcd cluster (also cross-AZ), PgBouncer on application servers or as a separate tier with HAProxy for load balancing. Test failover monthly in production to verify RTO meets requirements."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What happens to in-flight transactions during a PostgreSQL failover?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: During failover, all in-flight transactions on the old primary are lost — they were never committed, so they don't exist in WAL and aren't replicated. Clients connected to the old primary receive connection errors. With synchronous replication, any transaction that received a COMMIT acknowledgment is guaranteed to exist on the new primary. Transactions that were in the COMMIT phase but hadn't received acknowledgment may or may not be on the new primary depending on exact timing. Applications must handle this by implementing idempotent operations and retry logic. PgBouncer clients will see connection errors and must reconnect — well-designed applications retry failed transactions automatically with exponential backoff."
+          "type": "interview",
+          "question": "What happens to in-flight transactions during a PostgreSQL failover?",
+          "answer": "During failover, all in-flight transactions on the old primary are lost — they were never committed, so they don't exist in WAL and aren't replicated. Clients connected to the old primary receive connection errors. With synchronous replication, any transaction that received a COMMIT acknowledgment is guaranteed to exist on the new primary. Transactions that were in the COMMIT phase but hadn't received acknowledgment may or may not be on the new primary depending on exact timing. Applications must handle this by implementing idempotent operations and retry logic. PgBouncer clients will see connection errors and must reconnect — well-designed applications retry failed transactions automatically with exponential backoff."
         }
       ],
-      "wordCount": 630,
+      "wordCount": 620,
       "subsections": []
     },
     {
@@ -360,7 +345,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/replication-and-ha.md",
-    "wordCount": 2336,
+    "wordCount": 2326,
     "sectionCount": 15
   }
 }

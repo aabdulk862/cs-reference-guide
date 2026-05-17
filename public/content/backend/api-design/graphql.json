@@ -157,39 +157,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the N+1 problem in GraphQL and how DataLoader solves it."
+          "type": "interview",
+          "question": "Explain the N+1 problem in GraphQL and how DataLoader solves it.",
+          "answer": "The N+1 problem occurs when resolving a list field triggers individual database queries for each item. Example: querying 100 users with their orders generates 1 query for users + 100 queries for orders (one per user). DataLoader solves this by batching and caching within a single request execution. When multiple resolvers call loader.load(userId) during the same tick of the event loop, DataLoader collects all IDs and makes a single batch call (SELECT * FROM orders WHERE user_id IN (...)) instead of 100 individual calls. Key implementation details: create new DataLoader instances per request (to avoid cross-request caching that could leak data between users), ensure the batch function returns results in the same order as input keys, and handle missing results by returning Error objects for individual keys rather than throwing. DataLoader also deduplicates — if the same user ID appears multiple times in a query, it's fetched only once."
         },
         {
-          "type": "paragraph",
-          "text": "A: The N+1 problem occurs when resolving a list field triggers individual database queries for each item. Example: querying 100 users with their orders generates 1 query for users + 100 queries for orders (one per user). DataLoader solves this by batching and caching within a single request execution. When multiple resolvers call loader.load(userId) during the same tick of the event loop, DataLoader collects all IDs and makes a single batch call (SELECT * FROM orders WHERE user_id IN (...)) instead of 100 individual calls. Key implementation details: create new DataLoader instances per request (to avoid cross-request caching that could leak data between users), ensure the batch function returns results in the same order as input keys, and handle missing results by returning Error objects for individual keys rather than throwing. DataLoader also deduplicates — if the same user ID appears multiple times in a query, it's fetched only once."
+          "type": "interview",
+          "question": "How would you implement authorization in a GraphQL API?",
+          "answer": "Layer authorization at multiple levels. First, operation-level: use middleware/plugins to check authentication before any resolver executes. Second, field-level: use schema directives (@auth(requires: ADMIN)) that wrap resolvers with permission checks. Third, data-level: resolvers filter results based on the authenticated user's permissions (a user can only see their own orders). Implementation pattern: inject the authenticated user into context, create an authorization layer that resolvers call (ctx.authorize('order:read', order)), and return null or throw FORBIDDEN for unauthorized fields. For federation, each subgraph handles its own authorization since it owns its data. Critical consideration: GraphQL's type system means a non-null field that fails authorization will null out the parent object. Design nullable fields for data that may be restricted, and use union types (type OrderResult = Order | UnauthorizedError) for explicit error handling."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement authorization in a GraphQL API?"
+          "type": "interview",
+          "question": "Compare GraphQL Federation and Schema Stitching. When would you use each?",
+          "answer": "Schema Stitching merges multiple schemas at the gateway level — the gateway fetches schemas from subservices and combines them, resolving cross-service references via delegated resolvers. Federation (Apollo) is a specification where each subgraph declares its own types and how they compose, and a router automatically builds the unified schema. Federation advantages: subgraphs are independently deployable, each team owns their portion of the schema, the router handles query planning automatically, and there's no central gateway code to maintain. Stitching advantages: works with any GraphQL server (no federation spec required), more flexible for legacy service integration, and simpler for small teams. Choose Federation when you have multiple teams owning different domains (users team, orders team, products team) and need independent deployment. Choose Stitching when integrating third-party GraphQL APIs you don't control, or when your services predate Federation and migration cost is high."
         },
         {
-          "type": "paragraph",
-          "text": "A: Layer authorization at multiple levels. First, operation-level: use middleware/plugins to check authentication before any resolver executes. Second, field-level: use schema directives (@auth(requires: ADMIN)) that wrap resolvers with permission checks. Third, data-level: resolvers filter results based on the authenticated user's permissions (a user can only see their own orders). Implementation pattern: inject the authenticated user into context, create an authorization layer that resolvers call (ctx.authorize('order:read', order)), and return null or throw FORBIDDEN for unauthorized fields. For federation, each subgraph handles its own authorization since it owns its data. Critical consideration: GraphQL's type system means a non-null field that fails authorization will null out the parent object. Design nullable fields for data that may be restricted, and use union types (type OrderResult = Order | UnauthorizedError) for explicit error handling."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Compare GraphQL Federation and Schema Stitching. When would you use each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Schema Stitching merges multiple schemas at the gateway level — the gateway fetches schemas from subservices and combines them, resolving cross-service references via delegated resolvers. Federation (Apollo) is a specification where each subgraph declares its own types and how they compose, and a router automatically builds the unified schema. Federation advantages: subgraphs are independently deployable, each team owns their portion of the schema, the router handles query planning automatically, and there's no central gateway code to maintain. Stitching advantages: works with any GraphQL server (no federation spec required), more flexible for legacy service integration, and simpler for small teams. Choose Federation when you have multiple teams owning different domains (users team, orders team, products team) and need independent deployment. Choose Stitching when integrating third-party GraphQL APIs you don't control, or when your services predate Federation and migration cost is high."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle caching in GraphQL given that most queries use POST?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Multiple strategies: First, persisted queries — hash query strings and use GET requests with the hash as a query parameter (GET /graphql?extensions={\"persistedQuery\":{\"sha256Hash\":\"abc123\"}}), enabling standard HTTP/CDN caching. Second, response-level caching — cache full responses keyed by (query hash + variables + auth context) in Redis with TTLs based on the most volatile field in the response. Third, field-level caching — use @cacheControl(maxAge: 3600) directives on types/fields, and the server calculates the minimum maxAge across all resolved fields for the Cache-Control header. Fourth, DataLoader's per-request cache prevents redundant database calls within a single query. Fifth, application-level caching in resolvers (Redis/Memcached) for expensive computations. The key insight: GraphQL caching is more granular than REST because different queries touch different fields with different freshness requirements."
+          "type": "interview",
+          "question": "How do you handle caching in GraphQL given that most queries use POST?",
+          "answer": "Multiple strategies: First, persisted queries — hash query strings and use GET requests with the hash as a query parameter (GET /graphql?extensions={\"persistedQuery\":{\"sha256Hash\":\"abc123\"}}), enabling standard HTTP/CDN caching. Second, response-level caching — cache full responses keyed by (query hash + variables + auth context) in Redis with TTLs based on the most volatile field in the response. Third, field-level caching — use @cacheControl(maxAge: 3600) directives on types/fields, and the server calculates the minimum maxAge across all resolved fields for the Cache-Control header. Fourth, DataLoader's per-request cache prevents redundant database calls within a single query. Fifth, application-level caching in resolvers (Redis/Memcached) for expensive computations. The key insight: GraphQL caching is more granular than REST because different queries touch different fields with different freshness requirements."
         }
       ],
-      "wordCount": 590,
+      "wordCount": 582,
       "subsections": []
     },
     {
@@ -258,7 +246,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/api-design/graphql.md",
-    "wordCount": 1540,
+    "wordCount": 1532,
     "sectionCount": 12
   }
 }

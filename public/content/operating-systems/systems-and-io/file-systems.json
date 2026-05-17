@@ -169,39 +169,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between hard links and symbolic links. What happens when you delete the original file?"
+          "type": "interview",
+          "question": "Explain the difference between hard links and symbolic links. What happens when you delete the original file?",
+          "answer": "A hard link is an additional directory entry pointing to the same inode — the file's data blocks are shared, and the inode's link count tracks how many directory entries reference it. Deleting any one name just decrements the link count; the data is only freed when the link count reaches zero (and no processes have the file open). A symbolic link is a separate file containing a path string that is resolved at access time. If the target is deleted, the symlink becomes a \"dangling\" reference — accessing it returns ENOENT. Hard links cannot cross filesystem boundaries (different filesystems have independent inode spaces) and cannot link to directories (to prevent cycles in the directory tree). Symbolic links can cross filesystems and link to directories."
         },
         {
-          "type": "paragraph",
-          "text": "A: A hard link is an additional directory entry pointing to the same inode — the file's data blocks are shared, and the inode's link count tracks how many directory entries reference it. Deleting any one name just decrements the link count; the data is only freed when the link count reaches zero (and no processes have the file open). A symbolic link is a separate file containing a path string that is resolved at access time. If the target is deleted, the symlink becomes a \"dangling\" reference — accessing it returns ENOENT. Hard links cannot cross filesystem boundaries (different filesystems have independent inode spaces) and cannot link to directories (to prevent cycles in the directory tree). Symbolic links can cross filesystems and link to directories."
+          "type": "interview",
+          "question": "How does journaling provide crash consistency? What are the tradeoffs between metadata-only and full data journaling?",
+          "answer": "Journaling writes a description of intended changes to a sequential log (journal) before modifying the actual filesystem structures. If a crash occurs mid-operation, recovery replays committed journal entries (redo) or discards uncommitted ones (undo). Metadata-only journaling (ext4 default, data=ordered) journals structural changes (inode updates, block allocation, directory modifications) but not file data. This ensures filesystem structure is always consistent but a crash during a write can leave files with allocated blocks containing stale data. Full data journaling (data=journal) writes both metadata and file data to the journal first, providing complete consistency but at 2x write amplification cost (data written twice: journal then final location). Most production systems use metadata-only journaling with application-level WAL for data consistency."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does journaling provide crash consistency? What are the tradeoffs between metadata-only and full data journaling?"
+          "type": "interview",
+          "question": "What is the VFS layer and why does Linux need it?",
+          "answer": "The Virtual File System (VFS) is an abstraction layer that provides a uniform API (open, read, write, stat, mkdir) for all filesystem implementations. Without VFS, every application would need filesystem-specific code. VFS defines abstract operation tables (inode_operations, file_operations, super_operations, dentry_operations) that each filesystem driver implements. When an application calls read(), the VFS resolves the path through the dentry cache, finds the inode, and dispatches to the filesystem-specific read implementation. This enables transparent access to ext4, XFS, NFS, procfs, sysfs, tmpfs, FUSE filesystems, and any future filesystem through the same system calls. It also enables features like union mounts (overlayfs) and bind mounts that compose multiple filesystems."
         },
         {
-          "type": "paragraph",
-          "text": "A: Journaling writes a description of intended changes to a sequential log (journal) before modifying the actual filesystem structures. If a crash occurs mid-operation, recovery replays committed journal entries (redo) or discards uncommitted ones (undo). Metadata-only journaling (ext4 default, data=ordered) journals structural changes (inode updates, block allocation, directory modifications) but not file data. This ensures filesystem structure is always consistent but a crash during a write can leave files with allocated blocks containing stale data. Full data journaling (data=journal) writes both metadata and file data to the journal first, providing complete consistency but at 2x write amplification cost (data written twice: journal then final location). Most production systems use metadata-only journaling with application-level WAL for data consistency."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the VFS layer and why does Linux need it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The Virtual File System (VFS) is an abstraction layer that provides a uniform API (open, read, write, stat, mkdir) for all filesystem implementations. Without VFS, every application would need filesystem-specific code. VFS defines abstract operation tables (inode_operations, file_operations, super_operations, dentry_operations) that each filesystem driver implements. When an application calls read(), the VFS resolves the path through the dentry cache, finds the inode, and dispatches to the filesystem-specific read implementation. This enables transparent access to ext4, XFS, NFS, procfs, sysfs, tmpfs, FUSE filesystems, and any future filesystem through the same system calls. It also enables features like union mounts (overlayfs) and bind mounts that compose multiple filesystems."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Why do databases use O_DIRECT instead of relying on the OS page cache?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Databases use O_DIRECT to bypass the OS page cache for several reasons: (1) Avoid double-buffering — databases maintain their own buffer pool with application-specific eviction policies (LRU-2, clock sweep), so caching in the page cache wastes RAM. (2) Predictable memory usage — without O_DIRECT, the page cache grows unpredictably, potentially evicting other processes' pages or triggering OOM. (3) Control over write ordering — databases need precise control over when data hits disk (WAL before data pages); the page cache's writeback is asynchronous and unordered. (4) Avoid readahead waste — the kernel's readahead heuristics don't match database access patterns (random page reads). The tradeoff: O_DIRECT requires aligned buffers, aligned offsets, and the application must implement its own caching and readahead logic."
+          "type": "interview",
+          "question": "Why do databases use O_DIRECT instead of relying on the OS page cache?",
+          "answer": "Databases use O_DIRECT to bypass the OS page cache for several reasons: (1) Avoid double-buffering — databases maintain their own buffer pool with application-specific eviction policies (LRU-2, clock sweep), so caching in the page cache wastes RAM. (2) Predictable memory usage — without O_DIRECT, the page cache grows unpredictably, potentially evicting other processes' pages or triggering OOM. (3) Control over write ordering — databases need precise control over when data hits disk (WAL before data pages); the page cache's writeback is asynchronous and unordered. (4) Avoid readahead waste — the kernel's readahead heuristics don't match database access patterns (random page reads). The tradeoff: O_DIRECT requires aligned buffers, aligned offsets, and the application must implement its own caching and readahead logic."
         }
       ],
-      "wordCount": 532,
+      "wordCount": 524,
       "subsections": []
     },
     {
@@ -269,7 +257,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/systems-and-io/file-systems.md",
-    "wordCount": 1873,
+    "wordCount": 1865,
     "sectionCount": 12
   }
 }

@@ -144,39 +144,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare ECS Fargate, EKS with managed node groups, and EKS with Karpenter. When would you choose each?"
+          "type": "interview",
+          "question": "Compare ECS Fargate, EKS with managed node groups, and EKS with Karpenter. When would you choose each?",
+          "answer": "ECS Fargate is best for teams wanting container orchestration without infrastructure management and without needing Kubernetes-specific features. You define tasks and services; AWS handles compute. The tradeoff is 20-30% cost premium and less flexibility. EKS with managed node groups suits teams with Kubernetes expertise who want AWS to handle node provisioning and updates but need control over instance types and node configurations. You manage node group scaling policies. EKS with Karpenter provides the most flexibility — it automatically provisions right-sized instances based on pending pod requirements, supports diverse instance types, handles Spot interruptions, and consolidates underutilized nodes. Choose Karpenter when you have varied workload sizes, want optimal bin-packing, or need GPU instances provisioned on-demand without pre-configured node groups."
         },
         {
-          "type": "paragraph",
-          "text": "A: ECS Fargate is best for teams wanting container orchestration without infrastructure management and without needing Kubernetes-specific features. You define tasks and services; AWS handles compute. The tradeoff is 20-30% cost premium and less flexibility. EKS with managed node groups suits teams with Kubernetes expertise who want AWS to handle node provisioning and updates but need control over instance types and node configurations. You manage node group scaling policies. EKS with Karpenter provides the most flexibility — it automatically provisions right-sized instances based on pending pod requirements, supports diverse instance types, handles Spot interruptions, and consolidates underutilized nodes. Choose Karpenter when you have varied workload sizes, want optimal bin-packing, or need GPU instances provisioned on-demand without pre-configured node groups."
+          "type": "interview",
+          "question": "How would you design auto-scaling for a service with unpredictable traffic spikes?",
+          "answer": "Use multiple scaling dimensions rather than relying on a single metric. Configure target tracking on CPU utilization (60% target) as the baseline, add step scaling on request count per target for traffic-driven scaling, and implement scheduled scaling for known patterns (business hours, batch processing windows). Set aggressive scale-out cooldowns (60 seconds) but conservative scale-in cooldowns (300 seconds) to avoid flapping. For ECS, use Fargate Spot for burst capacity with regular Fargate as the base. For Lambda, use provisioned concurrency for the baseline with on-demand scaling for spikes. Monitor scaling events and adjust thresholds based on actual latency impact — scale before latency degrades, not after."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you design auto-scaling for a service with unpredictable traffic spikes?"
+          "type": "interview",
+          "question": "Explain how Karpenter differs from Cluster Autoscaler and why you might prefer it.",
+          "answer": "Cluster Autoscaler works with pre-defined Auto Scaling Groups (node groups) — you must configure instance types, sizes, and scaling parameters in advance. It scales by adding nodes to existing groups when pods are pending. Karpenter takes a fundamentally different approach: it directly provisions EC2 instances based on pending pod requirements without pre-defined node groups. Karpenter evaluates pod resource requests, selects the optimal instance type from a configured set, launches it, and binds pods immediately. It also consolidates — if workload decreases, it migrates pods and terminates underutilized nodes. Prefer Karpenter when you have diverse workload sizes (some pods need 256MB, others need 32GB), when you want automatic instance type selection (Graviton vs x86, Spot vs On-Demand), or when you need fast scaling (Karpenter launches instances in seconds vs minutes for Cluster Autoscaler)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use multiple scaling dimensions rather than relying on a single metric. Configure target tracking on CPU utilization (60% target) as the baseline, add step scaling on request count per target for traffic-driven scaling, and implement scheduled scaling for known patterns (business hours, batch processing windows). Set aggressive scale-out cooldowns (60 seconds) but conservative scale-in cooldowns (300 seconds) to avoid flapping. For ECS, use Fargate Spot for burst capacity with regular Fargate as the base. For Lambda, use provisioned concurrency for the baseline with on-demand scaling for spikes. Monitor scaling events and adjust thresholds based on actual latency impact — scale before latency degrades, not after."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain how Karpenter differs from Cluster Autoscaler and why you might prefer it."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cluster Autoscaler works with pre-defined Auto Scaling Groups (node groups) — you must configure instance types, sizes, and scaling parameters in advance. It scales by adding nodes to existing groups when pods are pending. Karpenter takes a fundamentally different approach: it directly provisions EC2 instances based on pending pod requirements without pre-defined node groups. Karpenter evaluates pod resource requests, selects the optimal instance type from a configured set, launches it, and binds pods immediately. It also consolidates — if workload decreases, it migrates pods and terminates underutilized nodes. Prefer Karpenter when you have diverse workload sizes (some pods need 256MB, others need 32GB), when you want automatic instance type selection (Graviton vs x86, Spot vs On-Demand), or when you need fast scaling (Karpenter launches instances in seconds vs minutes for Cluster Autoscaler)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle Lambda cold starts for latency-sensitive applications?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cold starts occur when Lambda creates a new execution environment — downloading code, initializing the runtime, and running initialization code. Mitigation strategies: Use provisioned concurrency to keep a minimum number of environments warm (eliminates cold starts for that capacity). Minimize deployment package size (use layers for dependencies, exclude dev dependencies). Choose a fast-starting runtime (Node.js and Python start faster than Java). For Java, use GraalVM native compilation or SnapStart (which snapshots the initialized JVM). Move initialization logic outside the handler function so it runs once per environment, not per invocation. Use ARM64 architecture which starts faster than x86. For critical paths, implement a warming strategy with scheduled EventBridge rules that invoke the function every 5 minutes to keep environments alive."
+          "type": "interview",
+          "question": "How do you handle Lambda cold starts for latency-sensitive applications?",
+          "answer": "Cold starts occur when Lambda creates a new execution environment — downloading code, initializing the runtime, and running initialization code. Mitigation strategies: Use provisioned concurrency to keep a minimum number of environments warm (eliminates cold starts for that capacity). Minimize deployment package size (use layers for dependencies, exclude dev dependencies). Choose a fast-starting runtime (Node.js and Python start faster than Java). For Java, use GraalVM native compilation or SnapStart (which snapshots the initialized JVM). Move initialization logic outside the handler function so it runs once per environment, not per invocation. Use ARM64 architecture which starts faster than x86. For critical paths, implement a warming strategy with scheduled EventBridge rules that invoke the function every 5 minutes to keep environments alive."
         }
       ],
-      "wordCount": 535,
+      "wordCount": 527,
       "subsections": []
     },
     {
@@ -239,7 +227,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/aws/compute-and-containers.md",
-    "wordCount": 1817,
+    "wordCount": 1809,
     "sectionCount": 11
   }
 }

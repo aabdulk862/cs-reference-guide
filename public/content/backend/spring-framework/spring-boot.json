@@ -235,71 +235,47 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does Spring Boot auto-configuration work internally?"
+          "type": "interview",
+          "question": "How does Spring Boot auto-configuration work internally?",
+          "answer": "Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or spring.factories in older versions) for auto-configuration classes. Each class uses conditional annotations like @ConditionalOnClass, @ConditionalOnMissingBean, and @ConditionalOnProperty to decide whether to create beans. User-defined beans always take precedence because @ConditionalOnMissingBean checks if you already defined one. Auto-configurations are ordered via @AutoConfigureBefore/@AutoConfigureAfter to handle dependencies between them. This is why you can override any auto-configured behavior by simply declaring your own bean."
         },
         {
-          "type": "paragraph",
-          "text": "A: Spring Boot scans META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports (or spring.factories in older versions) for auto-configuration classes. Each class uses conditional annotations like @ConditionalOnClass, @ConditionalOnMissingBean, and @ConditionalOnProperty to decide whether to create beans. User-defined beans always take precedence because @ConditionalOnMissingBean checks if you already defined one. Auto-configurations are ordered via @AutoConfigureBefore/@AutoConfigureAfter to handle dependencies between them. This is why you can override any auto-configured behavior by simply declaring your own bean."
+          "type": "interview",
+          "question": "How do you create a custom Spring Boot starter?",
+          "answer": "A custom starter consists of two modules: the autoconfigure module containing @AutoConfiguration classes with conditional bean definitions and @ConfigurationProperties for type-safe configuration, and the starter module which is a POM-only artifact aggregating the autoconfigure module plus required dependencies. Register auto-configuration classes in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Follow naming convention: {company}-spring-boot-starter for the starter, {company}-spring-boot-autoconfigure for the configuration module. Use @ConditionalOnMissingBean on all beans so consumers can override defaults."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you create a custom Spring Boot starter?"
+          "type": "interview",
+          "question": "Explain Spring Boot's externalized configuration and property resolution order.",
+          "answer": "Spring Boot resolves properties in a defined order where later sources override earlier ones: default properties → application.properties in classpath → profile-specific properties → SPRING_APPLICATION_JSON environment variable → OS environment variables → command-line arguments. This allows the same JAR to run in any environment by changing external configuration. In Kubernetes, configuration comes from ConfigMaps and Secrets mounted as environment variables or files. Spring Cloud Config Server adds centralized, versioned configuration for microservice fleets. The @ConfigurationProperties annotation binds properties to type-safe Java objects with validation."
         },
         {
-          "type": "paragraph",
-          "text": "A: A custom starter consists of two modules: the autoconfigure module containing @AutoConfiguration classes with conditional bean definitions and @ConfigurationProperties for type-safe configuration, and the starter module which is a POM-only artifact aggregating the autoconfigure module plus required dependencies. Register auto-configuration classes in META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports. Follow naming convention: {company}-spring-boot-starter for the starter, {company}-spring-boot-autoconfigure for the configuration module. Use @ConditionalOnMissingBean on all beans so consumers can override defaults."
+          "type": "interview",
+          "question": "What are the benefits and trade-offs of GraalVM native images with Spring Boot 3?",
+          "answer": "Native images compile Java applications ahead-of-time into standalone executables. Benefits include startup times under 100ms (vs. 5-30 seconds for JVM), 50-80% lower memory usage, and instant peak performance (no JIT warmup). Trade-offs include longer build times (2-5 minutes), no runtime class loading or dynamic proxies without explicit configuration, limited reflection support requiring RuntimeHints, and reduced peak throughput compared to JIT-optimized JVM for long-running applications. Use native images for serverless functions, CLI tools, and microservices where startup time matters. Keep JVM deployment for compute-intensive services that benefit from JIT optimization."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain Spring Boot's externalized configuration and property resolution order."
+          "type": "interview",
+          "question": "How do virtual threads in Spring Boot 3.2+ change application architecture?",
+          "answer": "Virtual threads (Project Loom) allow millions of concurrent threads without the memory overhead of platform threads. With spring.threads.virtual.enabled=true, each HTTP request runs on a virtual thread that can block on I/O without consuming OS thread resources. This eliminates the primary motivation for reactive programming (WebFlux) in I/O-bound applications — you get the concurrency benefits of non-blocking I/O with the simplicity of synchronous code. The main caveats are: avoid synchronized blocks (use ReentrantLock), be aware that thread-local variables are cheap but not free at scale, and ensure your connection pools can handle the increased parallelism."
         },
         {
-          "type": "paragraph",
-          "text": "A: Spring Boot resolves properties in a defined order where later sources override earlier ones: default properties → application.properties in classpath → profile-specific properties → SPRING_APPLICATION_JSON environment variable → OS environment variables → command-line arguments. This allows the same JAR to run in any environment by changing external configuration. In Kubernetes, configuration comes from ConfigMaps and Secrets mounted as environment variables or files. Spring Cloud Config Server adds centralized, versioned configuration for microservice fleets. The @ConfigurationProperties annotation binds properties to type-safe Java objects with validation."
+          "type": "interview",
+          "question": "How does Spring Boot Actuator support Kubernetes deployments?",
+          "answer": "Actuator provides separate liveness (/actuator/health/liveness) and readiness (/actuator/health/readiness) probe endpoints enabled via management.endpoint.health.probes.enabled=true. Liveness checks if the JVM is responsive (should only fail if the app is unrecoverable). Readiness checks if the app can serve traffic (database connected, caches warmed, downstream services reachable). Kubernetes uses these to decide whether to restart pods (liveness failure) or stop routing traffic (readiness failure). Actuator also exposes Prometheus-format metrics at /actuator/prometheus for monitoring, and the /actuator/info endpoint for build metadata in deployment dashboards."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What are the benefits and trade-offs of GraalVM native images with Spring Boot 3?"
+          "type": "interview",
+          "question": "What is the difference between @Component, @Service, @Repository, and @Controller?",
+          "answer": "All four are specializations of @Component and are detected by component scanning. @Service indicates business logic with no additional behavior. @Repository adds automatic exception translation (converting JDBC/JPA exceptions to Spring's DataAccessException hierarchy). @Controller marks MVC controllers for view resolution. @RestController combines @Controller with @ResponseBody. The distinction is primarily semantic for code readability, though @Repository has the concrete benefit of exception translation."
         },
         {
-          "type": "paragraph",
-          "text": "A: Native images compile Java applications ahead-of-time into standalone executables. Benefits include startup times under 100ms (vs. 5-30 seconds for JVM), 50-80% lower memory usage, and instant peak performance (no JIT warmup). Trade-offs include longer build times (2-5 minutes), no runtime class loading or dynamic proxies without explicit configuration, limited reflection support requiring RuntimeHints, and reduced peak throughput compared to JIT-optimized JVM for long-running applications. Use native images for serverless functions, CLI tools, and microservices where startup time matters. Keep JVM deployment for compute-intensive services that benefit from JIT optimization."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do virtual threads in Spring Boot 3.2+ change application architecture?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Virtual threads (Project Loom) allow millions of concurrent threads without the memory overhead of platform threads. With spring.threads.virtual.enabled=true, each HTTP request runs on a virtual thread that can block on I/O without consuming OS thread resources. This eliminates the primary motivation for reactive programming (WebFlux) in I/O-bound applications — you get the concurrency benefits of non-blocking I/O with the simplicity of synchronous code. The main caveats are: avoid synchronized blocks (use ReentrantLock), be aware that thread-local variables are cheap but not free at scale, and ensure your connection pools can handle the increased parallelism."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Spring Boot Actuator support Kubernetes deployments?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Actuator provides separate liveness (/actuator/health/liveness) and readiness (/actuator/health/readiness) probe endpoints enabled via management.endpoint.health.probes.enabled=true. Liveness checks if the JVM is responsive (should only fail if the app is unrecoverable). Readiness checks if the app can serve traffic (database connected, caches warmed, downstream services reachable). Kubernetes uses these to decide whether to restart pods (liveness failure) or stop routing traffic (readiness failure). Actuator also exposes Prometheus-format metrics at /actuator/prometheus for monitoring, and the /actuator/info endpoint for build metadata in deployment dashboards."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between @Component, @Service, @Repository, and @Controller?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: All four are specializations of @Component and are detected by component scanning. @Service indicates business logic with no additional behavior. @Repository adds automatic exception translation (converting JDBC/JPA exceptions to Spring's DataAccessException hierarchy). @Controller marks MVC controllers for view resolution. @RestController combines @Controller with @ResponseBody. The distinction is primarily semantic for code readability, though @Repository has the concrete benefit of exception translation."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle distributed transactions across microservices in Spring Boot?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Avoid distributed transactions (2PC) in microservices due to coupling and performance costs. Instead, use the Saga pattern with choreography (events) or orchestration (a coordinator service). Spring Boot supports this via Spring Cloud Stream for event-driven sagas or frameworks like Axon. For eventual consistency, implement compensating transactions and idempotent operations. Use the outbox pattern with Debezium for reliable event publishing that guarantees at-least-once delivery without distributed transactions."
+          "type": "interview",
+          "question": "How do you handle distributed transactions across microservices in Spring Boot?",
+          "answer": "Avoid distributed transactions (2PC) in microservices due to coupling and performance costs. Instead, use the Saga pattern with choreography (events) or orchestration (a coordinator service). Spring Boot supports this via Spring Cloud Stream for event-driven sagas or frameworks like Axon. For eventual consistency, implement compensating transactions and idempotent operations. Use the outbox pattern with Debezium for reliable event publishing that guarantees at-least-once delivery without distributed transactions."
         }
       ],
-      "wordCount": 699,
+      "wordCount": 683,
       "subsections": []
     },
     {
@@ -386,7 +362,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-boot.md",
-    "wordCount": 2062,
+    "wordCount": 2046,
     "sectionCount": 16
   }
 }

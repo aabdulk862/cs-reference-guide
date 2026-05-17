@@ -47,6 +47,20 @@ export interface TaskListItem {
   text: string;
 }
 
+/** An option within a comparison block */
+export interface CompareOption {
+  name: string;
+  body: string;       // Markdown body rendered as text
+  pros?: string[];    // Items from "Pros:" list
+  cons?: string[];    // Items from "Cons:" list
+}
+
+/** A prerequisite link reference */
+export interface PrereqLink {
+  text: string;       // Display text
+  path: string;       // Relative markdown path (e.g., "./arrays.md")
+}
+
 /** A union type representing all possible content node types within a section */
 export type ContentNode =
   | { type: 'paragraph'; text: string }
@@ -62,7 +76,11 @@ export type ContentNode =
   | { type: 'task-list'; items: TaskListItem[] }
   | { type: 'footnote-ref'; identifier: string; index: number }
   | { type: 'footnote-def'; identifier: string; content: string }
-  | { type: 'unparseable'; raw: string };
+  | { type: 'unparseable'; raw: string }
+  | { type: 'interview'; question: string; answer: string }
+  | { type: 'compare'; title: string; options: CompareOption[] }
+  | { type: 'prereq'; links: PrereqLink[] }
+  | { type: 'chart'; chartType: 'line' | 'bar' | 'area'; data: Record<string, unknown>[]; xKey: string; yKeys: string[]; title?: string };
 
 /** A section of content within a topic, corresponding to heading levels */
 export interface ContentSection {

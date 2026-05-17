@@ -150,39 +150,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a logging strategy for a microservices architecture with 50+ services?"
+          "type": "interview",
+          "question": "How would you design a logging strategy for a microservices architecture with 50+ services?",
+          "answer": "Establish organization-wide logging standards: JSON format with mandatory fields (timestamp, level, service, traceId, spanId, message), configurable log levels per service via centralized configuration, and consistent field naming conventions. Implement correlation ID propagation using OpenTelemetry context — every service extracts the trace ID from incoming requests and propagates it to all outbound calls. Deploy log collection agents (Fluent Bit for Kubernetes, CloudWatch agent for ECS) that forward to a centralized platform. Implement tiered retention: 7 days for DEBUG, 30 days for INFO, 90 days for ERROR, 7 years for audit logs. Use sampling for high-volume services (100% errors, 10% success). Create service-specific dashboards and shared investigation dashboards that accept trace ID as input."
         },
         {
-          "type": "paragraph",
-          "text": "A: Establish organization-wide logging standards: JSON format with mandatory fields (timestamp, level, service, traceId, spanId, message), configurable log levels per service via centralized configuration, and consistent field naming conventions. Implement correlation ID propagation using OpenTelemetry context — every service extracts the trace ID from incoming requests and propagates it to all outbound calls. Deploy log collection agents (Fluent Bit for Kubernetes, CloudWatch agent for ECS) that forward to a centralized platform. Implement tiered retention: 7 days for DEBUG, 30 days for INFO, 90 days for ERROR, 7 years for audit logs. Use sampling for high-volume services (100% errors, 10% success). Create service-specific dashboards and shared investigation dashboards that accept trace ID as input."
+          "type": "interview",
+          "question": "Explain how you would investigate a latency spike using Splunk.",
+          "answer": "Start by identifying the time window from metrics dashboards. In Splunk, search for requests exceeding the latency threshold during that window: index=microservices processingTimeMs>2000 earliest=-1h | stats count, avg(processingTimeMs) by service. This identifies which service is slow. Drill into that service: index=microservices service=\"payment-service\" earliest=-1h | timechart span=1m avg(processingTimeMs) by downstream_service. This shows which downstream dependency introduced latency. Check for correlated events: index=deployments OR index=infrastructure service=\"payment-service\" earliest=-2h | sort _time. Look for deployments, scaling events, or infrastructure changes. Finally, pick a specific slow trace and reconstruct it end-to-end: index=microservices traceid=\"abc-123\" | sort _time | table _time, service, message, processingTimeMs."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain how you would investigate a latency spike using Splunk."
+          "type": "interview",
+          "question": "What is the difference between CloudWatch Logs Insights and Splunk? When would you use each?",
+          "answer": "CloudWatch Logs Insights is a serverless query engine built into AWS — zero infrastructure to manage, pay-per-query pricing, and native integration with CloudWatch metrics and alarms. It excels at quick operational queries on AWS-generated logs and application logs already in CloudWatch. Limitations: no real-time streaming, limited query language compared to SPL, no cross-account correlation without explicit setup. Splunk is an enterprise platform supporting any data source, offering real-time search, complex correlation across millions of events, machine learning analytics, and extensive visualization. Use CloudWatch Logs Insights for day-to-day operational queries, quick debugging, and AWS-native log analysis. Use Splunk for security analytics (SIEM), cross-platform correlation, compliance reporting, and complex investigations requiring SPL's full power (transactions, lookups, subsearches, statistical analysis)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Start by identifying the time window from metrics dashboards. In Splunk, search for requests exceeding the latency threshold during that window: index=microservices processingTimeMs>2000 earliest=-1h | stats count, avg(processingTimeMs) by service. This identifies which service is slow. Drill into that service: index=microservices service=\"payment-service\" earliest=-1h | timechart span=1m avg(processingTimeMs) by downstream_service. This shows which downstream dependency introduced latency. Check for correlated events: index=deployments OR index=infrastructure service=\"payment-service\" earliest=-2h | sort _time. Look for deployments, scaling events, or infrastructure changes. Finally, pick a specific slow trace and reconstruct it end-to-end: index=microservices traceid=\"abc-123\" | sort _time | table _time, service, message, processingTimeMs."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between CloudWatch Logs Insights and Splunk? When would you use each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CloudWatch Logs Insights is a serverless query engine built into AWS — zero infrastructure to manage, pay-per-query pricing, and native integration with CloudWatch metrics and alarms. It excels at quick operational queries on AWS-generated logs and application logs already in CloudWatch. Limitations: no real-time streaming, limited query language compared to SPL, no cross-account correlation without explicit setup. Splunk is an enterprise platform supporting any data source, offering real-time search, complex correlation across millions of events, machine learning analytics, and extensive visualization. Use CloudWatch Logs Insights for day-to-day operational queries, quick debugging, and AWS-native log analysis. Use Splunk for security analytics (SIEM), cross-platform correlation, compliance reporting, and complex investigations requiring SPL's full power (transactions, lookups, subsearches, statistical analysis)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle log volume and cost at scale?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Implement a multi-layered approach. First, structured logging with appropriate levels — never log at DEBUG in production by default. Second, sampling: log 100% of errors and anomalies, sample successful requests at 1-10% depending on volume. Third, tiered storage: hot storage (7-30 days) for active investigation, warm storage (30-90 days) for historical queries, cold/frozen storage (1-7 years) for compliance. Fourth, log routing: send security-relevant logs to Splunk, operational logs to CloudWatch, and audit logs to immutable S3 storage. Fifth, field extraction optimization: use structured JSON to avoid expensive regex parsing at index time. Sixth, index design: separate indexes by retention requirement and access pattern. Monitor ingestion volume daily and alert when any service exceeds its expected baseline by 2x."
+          "type": "interview",
+          "question": "How do you handle log volume and cost at scale?",
+          "answer": "Implement a multi-layered approach. First, structured logging with appropriate levels — never log at DEBUG in production by default. Second, sampling: log 100% of errors and anomalies, sample successful requests at 1-10% depending on volume. Third, tiered storage: hot storage (7-30 days) for active investigation, warm storage (30-90 days) for historical queries, cold/frozen storage (1-7 years) for compliance. Fourth, log routing: send security-relevant logs to Splunk, operational logs to CloudWatch, and audit logs to immutable S3 storage. Fifth, field extraction optimization: use structured JSON to avoid expensive regex parsing at index time. Sixth, index design: separate indexes by retention requirement and access pattern. Monitor ingestion volume daily and alert when any service exceeds its expected baseline by 2x."
         }
       ],
-      "wordCount": 501,
+      "wordCount": 493,
       "subsections": []
     },
     {
@@ -250,7 +238,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/infrastructure/observability/log-aggregation-and-analysis.md",
-    "wordCount": 1789,
+    "wordCount": 1781,
     "sectionCount": 11
   }
 }

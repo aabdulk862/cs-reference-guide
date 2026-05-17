@@ -219,47 +219,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How do you identify and fix a slow query in PostgreSQL? Walk through your systematic approach."
+          "type": "interview",
+          "question": "How do you identify and fix a slow query in PostgreSQL? Walk through your systematic approach.",
+          "answer": "Start with pg_stat_statements to identify the query by total_exec_time (highest impact) or mean_exec_time (worst latency). Then run EXPLAIN (ANALYZE, BUFFERS) to see the actual execution plan. Look for: sequential scans on large tables (add an index), large differences between estimated and actual rows (run ANALYZE or increase statistics_target), sorts spilling to disk (increase work_mem for that session), and nested loops with high loop counts (consider hash or merge joins by adjusting join_collapse_limit or rewriting the query). After creating an index, verify with EXPLAIN that the planner uses it. Monitor pg_stat_statements after the fix to confirm improvement in production, not just in isolation."
         },
         {
-          "type": "paragraph",
-          "text": "A: Start with pg_stat_statements to identify the query by total_exec_time (highest impact) or mean_exec_time (worst latency). Then run EXPLAIN (ANALYZE, BUFFERS) to see the actual execution plan. Look for: sequential scans on large tables (add an index), large differences between estimated and actual rows (run ANALYZE or increase statistics_target), sorts spilling to disk (increase work_mem for that session), and nested loops with high loop counts (consider hash or merge joins by adjusting join_collapse_limit or rewriting the query). After creating an index, verify with EXPLAIN that the planner uses it. Monitor pg_stat_statements after the fix to confirm improvement in production, not just in isolation."
+          "type": "interview",
+          "question": "Explain the difference between B-tree, GIN, GiST, and BRIN indexes. When would you use each?",
+          "answer": "B-tree is the default, supporting equality, range, sorting, and prefix LIKE queries — use for most columns in WHERE/ORDER BY/JOIN clauses. GIN (Generalized Inverted Index) indexes individual elements within composite values — use for full-text search (tsvector), JSONB containment queries (@>), array element queries, and trigram similarity. GiST (Generalized Search Tree) supports geometric operations, range type overlaps, and nearest-neighbor searches — use for PostGIS spatial queries, range exclusion constraints, and KNN lookups. BRIN (Block Range Index) stores min/max summaries per block range — use for very large tables where data is physically ordered (time-series, append-only logs). BRIN indexes are tiny (MBs vs GBs for B-tree) but only effective when physical row order correlates with the indexed column."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between B-tree, GIN, GiST, and BRIN indexes. When would you use each?"
+          "type": "interview",
+          "question": "What is the difference between VACUUM and VACUUM FULL? When would you use each?",
+          "answer": "VACUUM marks dead tuples as reusable space within existing pages but doesn't return space to the OS or shrink the table file. It runs concurrently with reads and writes (no exclusive lock). VACUUM FULL rewrites the entire table to a new file, eliminating all bloat and returning space to the OS, but requires an exclusive lock for the entire duration (no reads or writes). Use regular VACUUM (via autovacuum) for routine maintenance — it's fast and non-blocking. Use VACUUM FULL only when a table has extreme bloat (e.g., after deleting 90% of rows) and you need to reclaim disk space. In production, prefer pg_repack over VACUUM FULL — it achieves the same result without an exclusive lock by creating a new copy and swapping atomically."
         },
         {
-          "type": "paragraph",
-          "text": "A: B-tree is the default, supporting equality, range, sorting, and prefix LIKE queries — use for most columns in WHERE/ORDER BY/JOIN clauses. GIN (Generalized Inverted Index) indexes individual elements within composite values — use for full-text search (tsvector), JSONB containment queries (@>), array element queries, and trigram similarity. GiST (Generalized Search Tree) supports geometric operations, range type overlaps, and nearest-neighbor searches — use for PostGIS spatial queries, range exclusion constraints, and KNN lookups. BRIN (Block Range Index) stores min/max summaries per block range — use for very large tables where data is physically ordered (time-series, append-only logs). BRIN indexes are tiny (MBs vs GBs for B-tree) but only effective when physical row order correlates with the indexed column."
+          "type": "interview",
+          "question": "How does PostgreSQL's query planner decide between a sequential scan and an index scan?",
+          "answer": "The planner estimates the total cost of each access method using statistics from pg_statistic and configuration parameters. For an index scan, it estimates: index page reads + heap page reads (for non-covering indexes) + CPU processing. For a sequential scan: total table pages read sequentially + CPU filtering. Key factors: selectivity (what fraction of rows match the WHERE clause), random_page_cost vs seq_page_cost (random I/O is 4x more expensive on HDD, nearly equal on SSD), table size, and correlation (how well physical row order matches index order — high correlation makes index scans cheaper because sequential heap access is likely). If the query returns more than ~5-20% of the table, a sequential scan is usually cheaper because sequential I/O is faster than random I/O, even with an index available."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between VACUUM and VACUUM FULL? When would you use each?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: VACUUM marks dead tuples as reusable space within existing pages but doesn't return space to the OS or shrink the table file. It runs concurrently with reads and writes (no exclusive lock). VACUUM FULL rewrites the entire table to a new file, eliminating all bloat and returning space to the OS, but requires an exclusive lock for the entire duration (no reads or writes). Use regular VACUUM (via autovacuum) for routine maintenance — it's fast and non-blocking. Use VACUUM FULL only when a table has extreme bloat (e.g., after deleting 90% of rows) and you need to reclaim disk space. In production, prefer pg_repack over VACUUM FULL — it achieves the same result without an exclusive lock by creating a new copy and swapping atomically."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does PostgreSQL's query planner decide between a sequential scan and an index scan?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The planner estimates the total cost of each access method using statistics from pg_statistic and configuration parameters. For an index scan, it estimates: index page reads + heap page reads (for non-covering indexes) + CPU processing. For a sequential scan: total table pages read sequentially + CPU filtering. Key factors: selectivity (what fraction of rows match the WHERE clause), random_page_cost vs seq_page_cost (random I/O is 4x more expensive on HDD, nearly equal on SSD), table size, and correlation (how well physical row order matches index order — high correlation makes index scans cheaper because sequential heap access is likely). If the query returns more than ~5-20% of the table, a sequential scan is usually cheaper because sequential I/O is faster than random I/O, even with an index available."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you tune autovacuum for a table receiving 100,000 updates per second?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Default autovacuum triggers at 20% dead tuples, which for a 100M-row table means 20M dead tuples before vacuum starts — unacceptable for a high-write table. Set per-table parameters: autovacuum_vacuum_scale_factor = 0.01 (1% = 1M dead tuples trigger), autovacuum_vacuum_threshold = 50000, autovacuum_vacuum_cost_delay = 0 (no throttling — vacuum as fast as possible), autovacuum_vacuum_cost_limit = 2000. Also increase autovacuum_max_workers globally to 6-8 so this table's vacuum doesn't block other tables. Monitor with pg_stat_user_tables.n_dead_tup and ensure dead tuple count stays below 5% of live tuples. Consider partitioning the table by time so old partitions have minimal write activity and vacuum completes quickly."
+          "type": "interview",
+          "question": "How would you tune autovacuum for a table receiving 100,000 updates per second?",
+          "answer": "Default autovacuum triggers at 20% dead tuples, which for a 100M-row table means 20M dead tuples before vacuum starts — unacceptable for a high-write table. Set per-table parameters: autovacuum_vacuum_scale_factor = 0.01 (1% = 1M dead tuples trigger), autovacuum_vacuum_threshold = 50000, autovacuum_vacuum_cost_delay = 0 (no throttling — vacuum as fast as possible), autovacuum_vacuum_cost_limit = 2000. Also increase autovacuum_max_workers globally to 6-8 so this table's vacuum doesn't block other tables. Monitor with pg_stat_user_tables.n_dead_tup and ensure dead tuple count stays below 5% of live tuples. Consider partitioning the table by time so old partitions have minimal write activity and vacuum completes quickly."
         }
       ],
-      "wordCount": 653,
+      "wordCount": 643,
       "subsections": []
     },
     {
@@ -340,7 +325,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/postgresql/performance-tuning.md",
-    "wordCount": 2269,
+    "wordCount": 2259,
     "sectionCount": 14
   }
 }

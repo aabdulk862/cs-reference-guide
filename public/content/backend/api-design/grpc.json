@@ -157,39 +157,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare gRPC and REST. When would you choose each?"
+          "type": "interview",
+          "question": "Compare gRPC and REST. When would you choose each?",
+          "answer": "Choose REST for public APIs (browser compatibility, curl-friendly, CDN caching), simple CRUD operations, and when human readability of payloads aids debugging. Choose gRPC for internal microservice communication (type safety, performance), streaming use cases (real-time feeds, file transfers), polyglot environments (proto generates clients for all languages from one definition), and when you need strict contract enforcement with backward compatibility rules. Performance comparison: gRPC is typically 5-10x faster for serialization/deserialization and produces 3-10x smaller payloads than JSON. However, gRPC's operational complexity (proto management, code generation pipelines, HTTP/2 load balancer requirements) means the performance benefit must justify the overhead. Many organizations use REST at the edge (public APIs, BFF layer) and gRPC internally between services."
         },
         {
-          "type": "paragraph",
-          "text": "A: Choose REST for public APIs (browser compatibility, curl-friendly, CDN caching), simple CRUD operations, and when human readability of payloads aids debugging. Choose gRPC for internal microservice communication (type safety, performance), streaming use cases (real-time feeds, file transfers), polyglot environments (proto generates clients for all languages from one definition), and when you need strict contract enforcement with backward compatibility rules. Performance comparison: gRPC is typically 5-10x faster for serialization/deserialization and produces 3-10x smaller payloads than JSON. However, gRPC's operational complexity (proto management, code generation pipelines, HTTP/2 load balancer requirements) means the performance benefit must justify the overhead. Many organizations use REST at the edge (public APIs, BFF layer) and gRPC internally between services."
+          "type": "interview",
+          "question": "How does gRPC handle failure scenarios and what retry strategies are appropriate?",
+          "answer": "gRPC provides rich error handling through status codes and error details. Retryable codes: UNAVAILABLE (transient network issue), RESOURCE_EXHAUSTED (rate limited, retry with backoff), ABORTED (transaction conflict, retry immediately). Non-retryable: INVALID_ARGUMENT, NOT_FOUND, PERMISSION_DENIED, UNIMPLEMENTED. gRPC supports built-in retry policies configured in service config JSON — specifying max attempts, initial backoff, max backoff, backoff multiplier, and retryable status codes. For hedged requests (sending parallel RPCs and using the first response), configure hedging policy for latency-sensitive idempotent calls. Critical: only retry idempotent operations automatically. For non-idempotent RPCs (CreateOrder), use idempotency keys and let the client decide whether to retry. Deadline propagation ensures retries don't outlive the original deadline — if 4 of 5 seconds have elapsed, don't start a retry that will timeout immediately."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does gRPC handle failure scenarios and what retry strategies are appropriate?"
+          "type": "interview",
+          "question": "Explain gRPC streaming patterns and their use cases.",
+          "answer": "Server streaming: server sends multiple responses to a single client request. Use for real-time feeds (stock prices, notifications), large result sets (database query results streamed in chunks), and long-running operations (progress updates). Client streaming: client sends multiple messages, server responds once. Use for file uploads (chunked transfer), telemetry/metrics collection (batch of measurements), and aggregation (client sends data points, server returns summary). Bidirectional streaming: both sides send messages independently. Use for chat applications, collaborative editing, real-time gaming, and interactive protocols where both sides need to send data at arbitrary times. Implementation consideration: streaming RPCs hold connections open, consuming server resources. Implement timeouts, maximum message counts, and flow control. Monitor stream duration and terminate long-lived streams that may indicate leaked connections."
         },
         {
-          "type": "paragraph",
-          "text": "A: gRPC provides rich error handling through status codes and error details. Retryable codes: UNAVAILABLE (transient network issue), RESOURCE_EXHAUSTED (rate limited, retry with backoff), ABORTED (transaction conflict, retry immediately). Non-retryable: INVALID_ARGUMENT, NOT_FOUND, PERMISSION_DENIED, UNIMPLEMENTED. gRPC supports built-in retry policies configured in service config JSON — specifying max attempts, initial backoff, max backoff, backoff multiplier, and retryable status codes. For hedged requests (sending parallel RPCs and using the first response), configure hedging policy for latency-sensitive idempotent calls. Critical: only retry idempotent operations automatically. For non-idempotent RPCs (CreateOrder), use idempotency keys and let the client decide whether to retry. Deadline propagation ensures retries don't outlive the original deadline — if 4 of 5 seconds have elapsed, don't start a retry that will timeout immediately."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain gRPC streaming patterns and their use cases."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Server streaming: server sends multiple responses to a single client request. Use for real-time feeds (stock prices, notifications), large result sets (database query results streamed in chunks), and long-running operations (progress updates). Client streaming: client sends multiple messages, server responds once. Use for file uploads (chunked transfer), telemetry/metrics collection (batch of measurements), and aggregation (client sends data points, server returns summary). Bidirectional streaming: both sides send messages independently. Use for chat applications, collaborative editing, real-time gaming, and interactive protocols where both sides need to send data at arbitrary times. Implementation consideration: streaming RPCs hold connections open, consuming server resources. Implement timeouts, maximum message counts, and flow control. Monitor stream duration and terminate long-lived streams that may indicate leaked connections."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle proto file versioning and backward compatibility across teams?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use a centralized proto registry (Buf Schema Registry, or a Git monorepo with CI validation). Enforce backward compatibility rules in CI: never remove or rename fields (deprecate instead), never change field numbers or types, never change the type of a repeated field. Use reserved keyword to prevent reuse of deleted field numbers. Version packages semantically (orders.v1, orders.v2) for breaking changes, maintaining both versions during migration. Generate client libraries in CI and publish to language-specific package registries (Maven, npm, PyPI). Use Buf's breaking change detection (buf breaking) in PR checks to catch incompatible changes before merge. For gradual migrations, servers should accept both v1 and v2 messages during the transition period using proto oneof or separate service definitions."
+          "type": "interview",
+          "question": "How do you handle proto file versioning and backward compatibility across teams?",
+          "answer": "Use a centralized proto registry (Buf Schema Registry, or a Git monorepo with CI validation). Enforce backward compatibility rules in CI: never remove or rename fields (deprecate instead), never change field numbers or types, never change the type of a repeated field. Use reserved keyword to prevent reuse of deleted field numbers. Version packages semantically (orders.v1, orders.v2) for breaking changes, maintaining both versions during migration. Generate client libraries in CI and publish to language-specific package registries (Maven, npm, PyPI). Use Buf's breaking change detection (buf breaking) in PR checks to catch incompatible changes before merge. For gradual migrations, servers should accept both v1 and v2 messages during the transition period using proto oneof or separate service definitions."
         }
       ],
-      "wordCount": 518,
+      "wordCount": 510,
       "subsections": []
     },
     {
@@ -258,7 +246,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/api-design/grpc.md",
-    "wordCount": 1373,
+    "wordCount": 1365,
     "sectionCount": 12
   }
 }

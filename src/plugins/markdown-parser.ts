@@ -20,6 +20,8 @@ import type {
   CodeBlock,
   MathExpression,
   TaskListItem,
+  CompareOption,
+  PrereqLink,
 } from '../types/content';
 import type { Root, Content, PhrasingContent } from 'mdast';
 
@@ -74,6 +76,302 @@ function phrasingToText(nodes: PhrasingContent[]): string {
       return '';
     })
     .join('');
+}
+
+/**
+ * Valid chart types for chart block parsing.
+ */
+const VALID_CHART_TYPES = ['line', 'bar', 'area'] as const;
+
+/**
+ * Parses a chart code block's JSON content and returns a chart ContentNode
+ * if valid, or a fallback code node if the JSON is invalid or missing required fields.
+ * Never throws an exception.
+ */
+function parseChartBlock(rawContent: string): ContentNode {
+  try {
+    const config = JSON.parse(rawContent);
+
+    // Validate required fields
+    const chartType = config.type;
+    if (!chartType || !VALID_CHART_TYPES.includes(chartType)) {
+      return { type: 'code', language: 'chart', code: rawContent, runnable: false };
+    }
+
+    const data = config.data;
+    if (!Array.isArray(data)) {
+      return { type: 'code', language: 'chart', code: rawContent, runnable: false };
+    }
+
+    const xKey = config.xKey;
+    if (typeof xKey !== 'string') {
+      return { type: 'code', language: 'chart', code: rawContent, runnable: false };
+    }
+
+    // yKeys: use from config if present, otherwise derive from data keys minus xKey
+    let yKeys: string[];
+    if (Array.isArray(config.yKeys) && config.yKeys.every((k: unknown) => typeof k === 'string')) {
+      yKeys = config.yKeys;
+    } else if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null) {
+      yKeys = Object.keys(data[0]).filter((k) => k !== xKey);
+    } else {
+      yKeys = [];
+    }
+
+    // title is optional
+    const title = typeof config.title === 'string' ? config.title : undefined;
+
+    return {
+      type: 'chart',
+      chartType: chartType as 'line' | 'bar' | 'area',
+      data,
+      xKey,
+      yKeys,
+      title,
+    };
+  } catch {
+    // Invalid JSON — return fallback code node
+    return { type: 'code', language: 'chart', code: rawContent, runnable: false };
+  }
+}
+
+/**
+ * Parses a [!COMPARE] blockquote into a compare ContentNode.
+ * Returns a compare node if 2–4 options are found; otherwise returns null
+ * to signal fallback to standard blockquote.
+ *
+ * Works directly with the blockquote's AST children to handle the structure
+ * produced by remark (headings, paragraphs, and lists as separate child nodes).
+ */
+function parseCompareBlock(node: Content): ContentNode | null {
+  const children: Content[] = ('children' in node && Array.isArray(node.children)) ? node.children : [];
+
+  if (children.length === 0) {
+    return null;
+  }
+
+  // First child should be a paragraph containing [!COMPARE] and the title
+  const firstChild = children[0];
+  if (firstChild.type !== 'paragraph' || !('children' in firstChild)) {
+    return null;
+  }
+
+  const firstText = phrasingToText(firstChild.children as PhrasingContent[]);
+  const compareMatch = firstText.match(/^\[!COMPARE\]\s*/);
+  if (!compareMatch) {
+    return null;
+  }
+
+  // Extract title from the text after [!COMPARE]
+  const afterMarker = firstText.slice(compareMatch[0].length).trim();
+  // Title might be on the same line or the remaining text after the marker
+  const titleLines = afterMarker.split('\n').filter(l => l.trim().length > 0);
+  const title = titleLines.length > 0 ? titleLines[0].trim() : '';
+
+  if (!title) {
+    return null;
+  }
+
+  // Parse remaining children into options
+  // Options are delimited by heading nodes (depth 3)
+  const options: CompareOption[] = [];
+  let currentOption: { name: string; bodyParts: string[]; pros: string[]; cons: string[] } | null = null;
+  let currentListContext: 'pros' | 'cons' | 'body' = 'body';
+
+  for (let i = 1; i < children.length; i++) {
+    const child = children[i];
+
+    if (child.type === 'heading' && 'depth' in child && child.depth === 3) {
+      // Save previous option
+      if (currentOption) {
+        options.push(buildCompareOptionFromParts(currentOption));
+      }
+      // Start new option
+      const headingText = ('children' in child && Array.isArray(child.children))
+        ? phrasingToText(child.children as PhrasingContent[])
+        : '';
+      currentOption = { name: headingText.trim(), bodyParts: [], pros: [], cons: [] };
+      currentListContext = 'body';
+    } else if (currentOption) {
+      if (child.type === 'paragraph' && 'children' in child) {
+        const paragraphText = phrasingToText(child.children as PhrasingContent[]);
+        // Check if paragraph text contains Pros: or Cons: labels
+        const lines = paragraphText.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed === 'Pros:' || trimmed === 'Pros') {
+            currentListContext = 'pros';
+          } else if (trimmed === 'Cons:' || trimmed === 'Cons') {
+            currentListContext = 'cons';
+          } else if (trimmed.endsWith('\nPros:') || trimmed.endsWith('Pros:')) {
+            // Body text followed by Pros: on same paragraph
+            const bodyPart = trimmed.replace(/\n?Pros:$/, '').trim();
+            if (bodyPart) {
+              currentOption.bodyParts.push(bodyPart);
+            }
+            currentListContext = 'pros';
+          } else if (trimmed.endsWith('\nCons:') || trimmed.endsWith('Cons:')) {
+            // Body text followed by Cons: on same paragraph
+            const bodyPart = trimmed.replace(/\n?Cons:$/, '').trim();
+            if (bodyPart) {
+              currentOption.bodyParts.push(bodyPart);
+            }
+            currentListContext = 'cons';
+          } else if (trimmed.length > 0) {
+            if (currentListContext === 'body') {
+              currentOption.bodyParts.push(trimmed);
+            }
+          }
+        }
+        // Handle case where paragraph contains "Body text\nPros:" pattern
+        if (paragraphText.includes('\nPros:')) {
+          const parts = paragraphText.split('\nPros:');
+          const bodyText = parts[0].trim();
+          if (bodyText && currentListContext === 'body') {
+            // Already handled above via line splitting
+          }
+          currentListContext = 'pros';
+        } else if (paragraphText.includes('\nCons:')) {
+          currentListContext = 'cons';
+        }
+      } else if (child.type === 'list' && 'children' in child && Array.isArray(child.children)) {
+        // Extract list items
+        for (const listItem of child.children) {
+          if ('children' in listItem && Array.isArray(listItem.children)) {
+            const itemText = listItem.children
+              .map((itemChild: Content) => {
+                if (itemChild.type === 'paragraph' && 'children' in itemChild) {
+                  return phrasingToText(itemChild.children as PhrasingContent[]);
+                }
+                if ('value' in itemChild && typeof itemChild.value === 'string') {
+                  return itemChild.value;
+                }
+                return '';
+              })
+              .join(' ')
+              .trim();
+
+            // Check if the item text contains a Cons: or Pros: label (remark merges them)
+            if (itemText.includes('\nCons:')) {
+              const parts = itemText.split('\nCons:');
+              const actualItem = parts[0].trim();
+              if (actualItem) {
+                if (currentListContext === 'pros') {
+                  currentOption.pros.push(actualItem);
+                } else if (currentListContext === 'cons') {
+                  currentOption.cons.push(actualItem);
+                } else {
+                  currentOption.bodyParts.push('- ' + actualItem);
+                }
+              }
+              currentListContext = 'cons';
+            } else if (itemText.includes('\nPros:')) {
+              const parts = itemText.split('\nPros:');
+              const actualItem = parts[0].trim();
+              if (actualItem) {
+                if (currentListContext === 'pros') {
+                  currentOption.pros.push(actualItem);
+                } else if (currentListContext === 'cons') {
+                  currentOption.cons.push(actualItem);
+                } else {
+                  currentOption.bodyParts.push('- ' + actualItem);
+                }
+              }
+              currentListContext = 'pros';
+            } else if (itemText.length > 0) {
+              if (currentListContext === 'pros') {
+                currentOption.pros.push(itemText);
+              } else if (currentListContext === 'cons') {
+                currentOption.cons.push(itemText);
+              } else {
+                currentOption.bodyParts.push('- ' + itemText);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Save last option
+  if (currentOption) {
+    options.push(buildCompareOptionFromParts(currentOption));
+  }
+
+  // Only emit compare node if 2–4 options; otherwise fall through
+  if (options.length < 2 || options.length > 4) {
+    return null;
+  }
+
+  return {
+    type: 'compare',
+    title,
+    options,
+  };
+}
+
+/**
+ * Builds a CompareOption from the parsed raw parts.
+ */
+function buildCompareOptionFromParts(raw: { name: string; bodyParts: string[]; pros: string[]; cons: string[] }): CompareOption {
+  const option: CompareOption = {
+    name: raw.name,
+    body: raw.bodyParts.join(' ').trim(),
+  };
+  if (raw.pros.length > 0) {
+    option.pros = raw.pros;
+  }
+  if (raw.cons.length > 0) {
+    option.cons = raw.cons;
+  }
+  return option;
+}
+
+/**
+ * Regex pattern for matching markdown links: [Display Text](./path.md)
+ */
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+/**
+ * Maximum number of prerequisite links to include in a prereq node.
+ */
+const MAX_PREREQ_LINKS = 5;
+
+/**
+ * Parses a [!PREREQ] blockquote into a prereq ContentNode.
+ * Extracts markdown links from the content lines (max 5).
+ * Returns a prereq node if at least one link is found; otherwise returns
+ * a standard blockquote node.
+ */
+function parsePrereqBlock(text: string, markerLength: number): ContentNode {
+  const contentAfterMarker = text.slice(markerLength);
+
+  // Parse all markdown links from the content
+  const links: PrereqLink[] = [];
+  let match: RegExpExecArray | null;
+
+  // Reset regex lastIndex since it's global
+  MARKDOWN_LINK_REGEX.lastIndex = 0;
+  while ((match = MARKDOWN_LINK_REGEX.exec(contentAfterMarker)) !== null) {
+    links.push({
+      text: match[1],
+      path: match[2],
+    });
+    // Stop at max links
+    if (links.length >= MAX_PREREQ_LINKS) {
+      break;
+    }
+  }
+
+  // If at least one link found, emit prereq node; otherwise standard blockquote
+  if (links.length > 0) {
+    return {
+      type: 'prereq',
+      links,
+    };
+  }
+
+  return { type: 'blockquote', text };
 }
 
 /**
@@ -139,6 +437,11 @@ function astNodeToContentNode(
           type: 'mermaid',
           source: node.value,
         };
+      }
+
+      // Detect chart fenced code blocks and emit as chart nodes
+      if (language.toLowerCase() === 'chart') {
+        return parseChartBlock(node.value);
       }
 
       const runnable = RUNNABLE_LANGUAGES.has(language.toLowerCase());
@@ -257,10 +560,20 @@ function astNodeToContentNode(
         })
         .join('\n');
 
-      // Detect GitHub-style admonitions: [!NOTE], [!WARNING], [!TIP]
-      const admonitionMatch = text.match(/^\[!(NOTE|WARNING|TIP|[A-Z]+)\]\s*/);
+      // Detect GitHub-style admonitions: [!NOTE], [!WARNING], [!TIP], [!COMPARE], [!PREREQ]
+      const admonitionMatch = text.match(/^\[!(NOTE|WARNING|TIP|COMPARE|PREREQ|[A-Z]+)\]\s*/);
       if (admonitionMatch) {
         const rawType = admonitionMatch[1].toLowerCase();
+
+        // Handle [!COMPARE] blocks — parse into comparison cards
+        if (rawType === 'compare') {
+          const compareNode = parseCompareBlock(node);
+          if (compareNode) {
+            return compareNode;
+          }
+          // Fall through to standard blockquote if parsing fails (e.g., invalid option count)
+        }
+
         const recognizedTypes = ['note', 'warning', 'tip'] as const;
         if (recognizedTypes.includes(rawType as typeof recognizedTypes[number])) {
           const admonitionContent = text.slice(admonitionMatch[0].length).trim();
@@ -270,6 +583,12 @@ function astNodeToContentNode(
             content: admonitionContent,
           };
         }
+
+        // Handle [!PREREQ] blocks — parse markdown links into prerequisite badges
+        if (rawType === 'prereq') {
+          return parsePrereqBlock(text, admonitionMatch[0].length);
+        }
+
         // Unrecognized admonition type — fall through to standard blockquote
       }
 
@@ -341,6 +660,10 @@ function calculateWordCount(content: ContentNode[]): number {
       case 'admonition':
         count += countWords(node.content);
         break;
+      case 'interview':
+        count += countWords(node.question);
+        count += countWords(node.answer);
+        break;
       case 'table':
         for (const header of node.headers) {
           count += countWords(header);
@@ -373,6 +696,144 @@ interface SectionBuilder {
   level: 1 | 2 | 3 | 4 | 5 | 6;
   content: ContentNode[];
   subsections: ContentSection[];
+}
+
+/**
+ * Extracts the question text from a Q: pattern line.
+ * Removes the "Q:" or "Q1:" prefix and any trailing ** markers.
+ */
+function extractQuestionText(text: string): string {
+  return text.replace(/^Q\d*:\s*/, '').replace(/\*\*$/, '').trim();
+}
+
+/**
+ * Extracts the answer text from an A: pattern line.
+ * Removes the "A:" prefix.
+ */
+function extractAnswerText(text: string): string {
+  return text.replace(/^A:\s*/, '').trim();
+}
+
+/**
+ * Post-processes content nodes within an "Interview Questions" section
+ * to detect Q/A pairs and emit interview nodes.
+ *
+ * Handles two patterns:
+ * 1. Blank-line separated: paragraph with bold Q text, followed by paragraph starting with "A:"
+ * 2. No blank line: single paragraph containing bold Q text + answer text (possibly multiple Q/A pairs)
+ *
+ * For pattern 2 (no blank line between Q and A), the markdown AST merges them into a single
+ * paragraph with children: [strong("Q1: ..."), text("\nAnswer..."), strong("Q2: ..."), text("\nAnswer...")]
+ * The phrasingToText function joins these into a single string like:
+ * "Q1: question text\nAnswer text\nQ2: question text\nAnswer text"
+ */
+function processInterviewContent(content: ContentNode[]): ContentNode[] {
+  const result: ContentNode[] = [];
+  let i = 0;
+
+  while (i < content.length) {
+    const node = content[i];
+
+    if (node.type === 'paragraph') {
+      const text = node.text.trim();
+
+      // Pattern 1: Paragraph starts with Q pattern (bold question)
+      // Check if the text itself contains multiple Q/A pairs (no-blank-line format)
+      const qPattern = /^Q\d*:\s/;
+
+      if (qPattern.test(text)) {
+        // Check if this paragraph contains multiple Q/A pairs inline
+        // (happens when there's no blank line between Q and A in source)
+        const multiQPattern = /Q\d*:\s/g;
+        const matches = [...text.matchAll(multiQPattern)];
+
+        if (matches.length > 1) {
+          // Multiple Q/A pairs in a single paragraph (no-blank-line format)
+          for (let m = 0; m < matches.length; m++) {
+            const matchStart = matches[m].index!;
+            const matchEnd = m + 1 < matches.length ? matches[m + 1].index! : text.length;
+            const segment = text.slice(matchStart, matchEnd).trim();
+
+            // Split segment into question and answer at the first newline
+            const newlineIdx = segment.indexOf('\n');
+            if (newlineIdx !== -1) {
+              const questionLine = segment.slice(0, newlineIdx).trim();
+              const answerText = segment.slice(newlineIdx + 1).trim();
+              const question = extractQuestionText(questionLine);
+              // Answer may or may not start with "A:"
+              const answer = answerText.startsWith('A:')
+                ? extractAnswerText(answerText)
+                : answerText;
+              result.push({ type: 'interview', question, answer });
+            } else {
+              // Q line with no answer in same paragraph — check next node
+              const question = extractQuestionText(segment);
+              // Look ahead for answer
+              if (i + 1 < content.length && content[i + 1].type === 'paragraph') {
+                const nextText = (content[i + 1] as { type: 'paragraph'; text: string }).text.trim();
+                if (nextText.startsWith('A:')) {
+                  const answer = extractAnswerText(nextText);
+                  result.push({ type: 'interview', question, answer });
+                  i++; // skip the answer paragraph
+                } else {
+                  // Next paragraph is the answer without A: prefix
+                  result.push({ type: 'interview', question, answer: nextText });
+                  i++;
+                }
+              } else {
+                // No answer found — emit as paragraph
+                result.push({ type: 'paragraph', text: segment });
+              }
+            }
+          }
+          i++;
+          continue;
+        }
+
+        // Single Q in this paragraph — check if answer is inline (after newline)
+        const newlineIdx = text.indexOf('\n');
+        if (newlineIdx !== -1) {
+          // Q and A in same paragraph (no blank line)
+          const questionLine = text.slice(0, newlineIdx).trim();
+          const answerText = text.slice(newlineIdx + 1).trim();
+          const question = extractQuestionText(questionLine);
+          const answer = answerText.startsWith('A:')
+            ? extractAnswerText(answerText)
+            : answerText;
+          result.push({ type: 'interview', question, answer });
+          i++;
+          continue;
+        }
+
+        // Single Q line — look ahead for answer in next paragraph
+        const question = extractQuestionText(text);
+        if (i + 1 < content.length && content[i + 1].type === 'paragraph') {
+          const nextText = (content[i + 1] as { type: 'paragraph'; text: string }).text.trim();
+          if (nextText.startsWith('A:')) {
+            const answer = extractAnswerText(nextText);
+            result.push({ type: 'interview', question, answer });
+            i += 2; // skip both Q and A paragraphs
+            continue;
+          } else if (!qPattern.test(nextText)) {
+            // Next paragraph doesn't start with Q — treat as answer without A: prefix
+            result.push({ type: 'interview', question, answer: nextText });
+            i += 2;
+            continue;
+          }
+        }
+        // No answer found — emit as standard paragraph
+        result.push(node);
+        i++;
+        continue;
+      }
+    }
+
+    // Non-matching node — emit as-is
+    result.push(node);
+    i++;
+  }
+
+  return result;
 }
 
 /**
@@ -489,6 +950,13 @@ function buildSections(
         content: orphanContent,
         subsections: [],
       });
+    }
+  }
+
+  // Apply interview Q/A processing to "Interview Questions" sections
+  for (const section of topSections) {
+    if (section.heading === 'Interview Questions') {
+      section.content = processInterviewContent(section.content);
     }
   }
 

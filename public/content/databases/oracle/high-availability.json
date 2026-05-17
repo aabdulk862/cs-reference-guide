@@ -232,47 +232,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between RAC and Data Guard. When would you use each, and when would you use both together?"
+          "type": "interview",
+          "question": "Explain the difference between RAC and Data Guard. When would you use each, and when would you use both together?",
+          "answer": "RAC provides local high availability through multiple instances accessing shared storage — if one server fails, others continue serving the same database with no data loss and minimal interruption (seconds). Data Guard provides disaster recovery through a separate database copy maintained via redo shipping — it protects against storage failures, site disasters, and data corruption that RAC cannot handle (since RAC shares storage). Use RAC alone when you need local HA and horizontal scaling but your DR requirements are met by backups. Use Data Guard alone when you need DR protection but a single instance provides sufficient performance. Use both together (MAA) when you need both local HA (survive server failures instantly) AND remote DR (survive site failures with zero data loss). In MAA, RAC handles local failures transparently while Data Guard handles site-level disasters."
         },
         {
-          "type": "paragraph",
-          "text": "A: RAC provides local high availability through multiple instances accessing shared storage — if one server fails, others continue serving the same database with no data loss and minimal interruption (seconds). Data Guard provides disaster recovery through a separate database copy maintained via redo shipping — it protects against storage failures, site disasters, and data corruption that RAC cannot handle (since RAC shares storage). Use RAC alone when you need local HA and horizontal scaling but your DR requirements are met by backups. Use Data Guard alone when you need DR protection but a single instance provides sufficient performance. Use both together (MAA) when you need both local HA (survive server failures instantly) AND remote DR (survive site failures with zero data loss). In MAA, RAC handles local failures transparently while Data Guard handles site-level disasters."
+          "type": "interview",
+          "question": "What is the difference between switchover and failover in Data Guard? What are the implications of each?",
+          "answer": "Switchover is a planned, graceful role reversal: the primary transitions to standby role, then the standby transitions to primary role. It's zero data loss, fully reversible, and both databases remain synchronized throughout. Use for planned maintenance, patching, or DR testing. Failover is an emergency promotion of the standby when the primary is unavailable. In Maximum Performance mode, failover may lose transactions that were committed on the primary but not yet shipped to the standby (typically <1 second of data). In Maximum Availability mode, failover is zero data loss if the standby was synchronized before the failure. After failover, the old primary cannot simply rejoin — it must be reinstated (using Flashback Database if enabled) or rebuilt from the new primary. Fast-Start Failover automates the failover decision but the reinstatement still requires DBA intervention."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between switchover and failover in Data Guard? What are the implications of each?"
+          "type": "interview",
+          "question": "How does Oracle's Cache Fusion work in RAC, and what performance problems can it cause?",
+          "answer": "Cache Fusion is RAC's mechanism for maintaining cache coherency across instances. When Instance 2 needs a block that Instance 1 has modified in its buffer cache, Cache Fusion transfers the block directly over the private interconnect (memory-to-memory, no disk I/O). This is faster than reading from disk but slower than a local buffer cache hit. Performance problems occur when: (1) multiple instances frequently modify the same blocks (\"hot blocks\") causing excessive Cache Fusion transfers and \"gc buffer busy\" waits, (2) the interconnect is saturated or has high latency, or (3) sequences with small cache sizes cause contention on the sequence block. Solutions: partition workload by service so related transactions hit the same instance, increase sequence cache size to 1000+, use reverse-key indexes to distribute inserts across blocks, and ensure the interconnect uses dedicated high-bandwidth links (10Gbps+)."
         },
         {
-          "type": "paragraph",
-          "text": "A: Switchover is a planned, graceful role reversal: the primary transitions to standby role, then the standby transitions to primary role. It's zero data loss, fully reversible, and both databases remain synchronized throughout. Use for planned maintenance, patching, or DR testing. Failover is an emergency promotion of the standby when the primary is unavailable. In Maximum Performance mode, failover may lose transactions that were committed on the primary but not yet shipped to the standby (typically <1 second of data). In Maximum Availability mode, failover is zero data loss if the standby was synchronized before the failure. After failover, the old primary cannot simply rejoin — it must be reinstated (using Flashback Database if enabled) or rebuilt from the new primary. Fast-Start Failover automates the failover decision but the reinstatement still requires DBA intervention."
+          "type": "interview",
+          "question": "Describe Oracle GoldenGate's architecture and how it achieves real-time replication.",
+          "answer": "GoldenGate uses a three-stage architecture: Extract, Trail, and Replicat. The Extract process reads the source database's redo/archive logs (not triggers or polling), capturing committed DML changes with minimal source impact. Changes are written to Trail files — portable, platform-independent binary files that serve as a reliable queue. The Replicat process reads Trail files and applies changes to the target database as DML statements. This architecture enables: sub-second latency (Extract reads redo in near-real-time), heterogeneous replication (Trail format is database-agnostic), transformation during replication (column mapping, filtering, routing), and resilience (Trail files persist changes if the target is temporarily unavailable). For bidirectional replication, each side runs both Extract and Replicat, with loop detection preventing infinite replication cycles (changes applied by Replicat are tagged and excluded by the local Extract)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Oracle's Cache Fusion work in RAC, and what performance problems can it cause?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cache Fusion is RAC's mechanism for maintaining cache coherency across instances. When Instance 2 needs a block that Instance 1 has modified in its buffer cache, Cache Fusion transfers the block directly over the private interconnect (memory-to-memory, no disk I/O). This is faster than reading from disk but slower than a local buffer cache hit. Performance problems occur when: (1) multiple instances frequently modify the same blocks (\"hot blocks\") causing excessive Cache Fusion transfers and \"gc buffer busy\" waits, (2) the interconnect is saturated or has high latency, or (3) sequences with small cache sizes cause contention on the sequence block. Solutions: partition workload by service so related transactions hit the same instance, increase sequence cache size to 1000+, use reverse-key indexes to distribute inserts across blocks, and ensure the interconnect uses dedicated high-bandwidth links (10Gbps+)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Describe Oracle GoldenGate's architecture and how it achieves real-time replication."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: GoldenGate uses a three-stage architecture: Extract, Trail, and Replicat. The Extract process reads the source database's redo/archive logs (not triggers or polling), capturing committed DML changes with minimal source impact. Changes are written to Trail files — portable, platform-independent binary files that serve as a reliable queue. The Replicat process reads Trail files and applies changes to the target database as DML statements. This architecture enables: sub-second latency (Extract reads redo in near-real-time), heterogeneous replication (Trail format is database-agnostic), transformation during replication (column mapping, filtering, routing), and resilience (Trail files persist changes if the target is temporarily unavailable). For bidirectional replication, each side runs both Extract and Replicat, with loop detection preventing infinite replication cycles (changes applied by Replicat are tagged and excluded by the local Extract)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How would you design an Oracle HA solution for an application requiring RPO=0, RTO<30 seconds, and the ability to survive a complete datacenter failure?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Deploy a 2-node RAC cluster at the primary site for local HA (survives server failures in <10 seconds with Application Continuity). Configure Data Guard with synchronous redo transport (AFFIRM) to a physical standby at the DR site (ensures RPO=0). Enable Fast-Start Failover with a 15-second threshold and place the observer on a third site (or cloud) to avoid split-brain during network partitions between sites. Configure Active Data Guard on the standby for read offloading and validation. Enable Flashback Database on both sites for fast reinstatement after failover. Application layer: use Oracle Notification Service (ONS) for fast failure detection, Application Continuity for transparent transaction replay, and connection pool configuration with Fast Connection Failover. Test: quarterly switchovers validate the full chain, monthly FSFO tests validate automatic failover. The 30-second RTO budget: ~15 seconds for failure detection + ~10 seconds for standby promotion + ~5 seconds for application reconnection."
+          "type": "interview",
+          "question": "How would you design an Oracle HA solution for an application requiring RPO=0, RTO<30 seconds, and the ability to survive a complete datacenter failure?",
+          "answer": "Deploy a 2-node RAC cluster at the primary site for local HA (survives server failures in <10 seconds with Application Continuity). Configure Data Guard with synchronous redo transport (AFFIRM) to a physical standby at the DR site (ensures RPO=0). Enable Fast-Start Failover with a 15-second threshold and place the observer on a third site (or cloud) to avoid split-brain during network partitions between sites. Configure Active Data Guard on the standby for read offloading and validation. Enable Flashback Database on both sites for fast reinstatement after failover. Application layer: use Oracle Notification Service (ONS) for fast failure detection, Application Continuity for transparent transaction replay, and connection pool configuration with Fast Connection Failover. Test: quarterly switchovers validate the full chain, monthly FSFO tests validate automatic failover. The 30-second RTO budget: ~15 seconds for failure detection + ~10 seconds for standby promotion + ~5 seconds for application reconnection."
         }
       ],
-      "wordCount": 773,
+      "wordCount": 763,
       "subsections": []
     },
     {
@@ -352,7 +337,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/oracle/high-availability.md",
-    "wordCount": 2621,
+    "wordCount": 2611,
     "sectionCount": 15
   }
 }

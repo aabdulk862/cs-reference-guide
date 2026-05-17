@@ -169,39 +169,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the 4-level page table structure on x86-64 and why it exists."
+          "type": "interview",
+          "question": "Explain the 4-level page table structure on x86-64 and why it exists.",
+          "answer": "x86-64 uses 48 bits of virtual address space (256TB), divided into 4 levels of page tables: PGD (Page Global Directory), PUD (Page Upper Directory), PMD (Page Middle Directory), and PTE (Page Table Entry). Each level uses 9 bits of the virtual address to index into a 512-entry table, with the final 12 bits as the page offset (4KB pages). The hierarchical structure exists because a flat page table for 48-bit addresses would require 512GB of memory per process. With hierarchical tables, only populated regions of the address space need page table pages allocated — a process using 100MB might only need a few hundred page table pages rather than millions. Each entry contains the physical address of the next level (or the final frame) plus permission bits (present, writable, user-accessible, no-execute)."
         },
         {
-          "type": "paragraph",
-          "text": "A: x86-64 uses 48 bits of virtual address space (256TB), divided into 4 levels of page tables: PGD (Page Global Directory), PUD (Page Upper Directory), PMD (Page Middle Directory), and PTE (Page Table Entry). Each level uses 9 bits of the virtual address to index into a 512-entry table, with the final 12 bits as the page offset (4KB pages). The hierarchical structure exists because a flat page table for 48-bit addresses would require 512GB of memory per process. With hierarchical tables, only populated regions of the address space need page table pages allocated — a process using 100MB might only need a few hundred page table pages rather than millions. Each entry contains the physical address of the next level (or the final frame) plus permission bits (present, writable, user-accessible, no-execute)."
+          "type": "interview",
+          "question": "What is the TLB and why do huge pages improve performance?",
+          "answer": "The TLB is a hardware cache in the CPU that stores recent virtual-to-physical address translations, avoiding the expensive 4-level page table walk (10-100 cycles) on every memory access. A typical L1 TLB has 64-128 entries and the L2 TLB has 1024-2048 entries. With 4KB pages, 2048 TLB entries cover only 8MB of address space — insufficient for applications with large working sets (databases, JVMs). Huge pages (2MB) allow each TLB entry to cover 512x more memory, so 2048 entries cover 4GB. This dramatically reduces TLB miss rates for applications with large, randomly-accessed memory regions. The tradeoff is increased internal fragmentation (allocating 2MB when you need 8KB wastes memory) and higher allocation cost (finding contiguous 2MB physical regions)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the TLB and why do huge pages improve performance?"
+          "type": "interview",
+          "question": "How does the OOM killer work and how do you protect critical processes?",
+          "answer": "When the system exhausts physical memory and swap, the OOM killer selects a process to terminate based on oom_score (0-1000). The score is primarily based on the process's memory consumption as a proportion of total memory, adjusted by oom_score_adj (-1000 to +1000). Higher scores mean more likely to be killed. To protect critical processes: set oom_score_adj to -1000 (OOM_SCORE_ADJ_MIN) which makes the process unkillable by OOM. In containerized environments, set cgroup memory limits so the cgroup-level OOM killer activates before the system-wide one. Monitor /proc/meminfo MemAvailable and set alerts. Best practice: don't rely on OOM killer — use memory limits, monitoring, and backpressure to prevent OOM conditions entirely."
         },
         {
-          "type": "paragraph",
-          "text": "A: The TLB is a hardware cache in the CPU that stores recent virtual-to-physical address translations, avoiding the expensive 4-level page table walk (10-100 cycles) on every memory access. A typical L1 TLB has 64-128 entries and the L2 TLB has 1024-2048 entries. With 4KB pages, 2048 TLB entries cover only 8MB of address space — insufficient for applications with large working sets (databases, JVMs). Huge pages (2MB) allow each TLB entry to cover 512x more memory, so 2048 entries cover 4GB. This dramatically reduces TLB miss rates for applications with large, randomly-accessed memory regions. The tradeoff is increased internal fragmentation (allocating 2MB when you need 8KB wastes memory) and higher allocation cost (finding contiguous 2MB physical regions)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does the OOM killer work and how do you protect critical processes?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: When the system exhausts physical memory and swap, the OOM killer selects a process to terminate based on oom_score (0-1000). The score is primarily based on the process's memory consumption as a proportion of total memory, adjusted by oom_score_adj (-1000 to +1000). Higher scores mean more likely to be killed. To protect critical processes: set oom_score_adj to -1000 (OOM_SCORE_ADJ_MIN) which makes the process unkillable by OOM. In containerized environments, set cgroup memory limits so the cgroup-level OOM killer activates before the system-wide one. Monitor /proc/meminfo MemAvailable and set alerts. Best practice: don't rely on OOM killer — use memory limits, monitoring, and backpressure to prevent OOM conditions entirely."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain copy-on-write and its implications for fork()."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Copy-on-write (COW) is an optimization where fork() doesn't copy the parent's physical memory pages. Instead, both parent and child share the same physical frames, with page table entries marked read-only. When either process writes to a shared page, the MMU triggers a protection fault, the kernel allocates a new frame, copies the original page content, updates the writer's page table entry to point to the new frame with write permission, and resumes execution. This makes fork() nearly O(1) regardless of process size. Implications: fork() in a process with a 32GB heap is fast (only page tables are copied, ~6MB for 32GB), but if the child writes to many pages (e.g., Redis during RDB save under write-heavy load), physical memory usage temporarily doubles. This is why Redis can OOM during background saves even with memory limits set to half of available RAM."
+          "type": "interview",
+          "question": "Explain copy-on-write and its implications for fork().",
+          "answer": "Copy-on-write (COW) is an optimization where fork() doesn't copy the parent's physical memory pages. Instead, both parent and child share the same physical frames, with page table entries marked read-only. When either process writes to a shared page, the MMU triggers a protection fault, the kernel allocates a new frame, copies the original page content, updates the writer's page table entry to point to the new frame with write permission, and resumes execution. This makes fork() nearly O(1) regardless of process size. Implications: fork() in a process with a 32GB heap is fast (only page tables are copied, ~6MB for 32GB), but if the child writes to many pages (e.g., Redis during RDB save under write-heavy load), physical memory usage temporarily doubles. This is why Redis can OOM during background saves even with memory limits set to half of available RAM."
         }
       ],
-      "wordCount": 548,
+      "wordCount": 540,
       "subsections": []
     },
     {
@@ -269,7 +257,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/operating-systems/processes-and-memory/memory-management.md",
-    "wordCount": 1960,
+    "wordCount": 1952,
     "sectionCount": 12
   }
 }

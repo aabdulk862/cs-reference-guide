@@ -221,47 +221,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: When would you choose embedding over referencing in MongoDB? What are the trade-offs?"
+          "type": "interview",
+          "question": "When would you choose embedding over referencing in MongoDB? What are the trade-offs?",
+          "answer": "Embed when: data is accessed together (one read serves the use case), the relationship is one-to-few with bounded growth, embedded data doesn't change independently, and the combined document stays well under 16MB. Reference when: data is accessed independently, the relationship is one-to-many or many-to-many, related data changes frequently without the parent, or embedding would cause unbounded document growth. Trade-offs: embedding provides atomic operations, no joins, and single-document reads but increases document size, duplicates data (update anomalies), and can hit the 16MB limit. Referencing keeps documents small and independently manageable but requires multiple queries or $lookup, loses atomicity across documents (need transactions for multi-document updates), and increases query latency."
         },
         {
-          "type": "paragraph",
-          "text": "A: Embed when: data is accessed together (one read serves the use case), the relationship is one-to-few with bounded growth, embedded data doesn't change independently, and the combined document stays well under 16MB. Reference when: data is accessed independently, the relationship is one-to-many or many-to-many, related data changes frequently without the parent, or embedding would cause unbounded document growth. Trade-offs: embedding provides atomic operations, no joins, and single-document reads but increases document size, duplicates data (update anomalies), and can hit the 16MB limit. Referencing keeps documents small and independently manageable but requires multiple queries or $lookup, loses atomicity across documents (need transactions for multi-document updates), and increases query latency."
+          "type": "interview",
+          "question": "Explain the bucket pattern. When is it appropriate and what problems does it solve?",
+          "answer": "The bucket pattern groups related time-series or sequential data into fixed-size documents (buckets) instead of storing one document per event. For example, IoT sensor readings bucketed by hour: one document contains all 3,600 readings for one sensor for one hour. It solves three problems: (1) document count explosion — millions of tiny documents create excessive index overhead and metadata storage, (2) query efficiency — reading one hour of data requires 1 document read instead of 3,600, (3) pre-aggregation — each bucket stores computed values (min, max, avg, count) enabling fast aggregate queries without scanning individual readings. Appropriate for: time-series data, event logs, metrics, and any high-frequency sequential data. Size buckets based on query patterns — if most queries ask for \"last hour,\" bucket by hour."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the bucket pattern. When is it appropriate and what problems does it solve?"
+          "type": "interview",
+          "question": "How would you handle schema evolution in a production MongoDB system with zero downtime?",
+          "answer": "Use schema versioning: add a schema_version field to every document. When the schema needs to change, increment the version for new documents and write application code that handles both old and new versions. Migration strategies: (1) Lazy migration — upgrade documents to the latest version when they're read, writing back the upgraded document. Gradually all active documents migrate without bulk operations. (2) Background migration — a worker process iterates through old-version documents in batches, upgrading them during off-peak hours. (3) Dual-write period — during transition, write both old and new format, then switch reads to new format, then stop writing old format. Key principles: never assume document structure without checking version, make migration functions idempotent (safe to run multiple times), and maintain backward compatibility in application code until migration is complete."
         },
         {
-          "type": "paragraph",
-          "text": "A: The bucket pattern groups related time-series or sequential data into fixed-size documents (buckets) instead of storing one document per event. For example, IoT sensor readings bucketed by hour: one document contains all 3,600 readings for one sensor for one hour. It solves three problems: (1) document count explosion — millions of tiny documents create excessive index overhead and metadata storage, (2) query efficiency — reading one hour of data requires 1 document read instead of 3,600, (3) pre-aggregation — each bucket stores computed values (min, max, avg, count) enabling fast aggregate queries without scanning individual readings. Appropriate for: time-series data, event logs, metrics, and any high-frequency sequential data. Size buckets based on query patterns — if most queries ask for \"last hour,\" bucket by hour."
+          "type": "interview",
+          "question": "What is the outlier pattern and when would you use it?",
+          "answer": "The outlier pattern handles documents that would normally use embedding but where a small percentage of documents have abnormally large embedded arrays that would exceed the 16MB limit or cause performance issues. Example: a book reviews system where 99% of books have <100 reviews (safely embedded) but bestsellers have 100,000+ reviews. Solution: embed reviews up to a threshold (e.g., 100), set a has_overflow: true flag when exceeded, and store additional reviews in an overflow collection. Application logic checks the flag and queries the overflow collection only for outlier documents. This optimizes for the common case (single document read for 99% of books) while handling outliers gracefully. The alternative — referencing all reviews for all books — penalizes the 99% to accommodate the 1%."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you handle schema evolution in a production MongoDB system with zero downtime?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use schema versioning: add a schema_version field to every document. When the schema needs to change, increment the version for new documents and write application code that handles both old and new versions. Migration strategies: (1) Lazy migration — upgrade documents to the latest version when they're read, writing back the upgraded document. Gradually all active documents migrate without bulk operations. (2) Background migration — a worker process iterates through old-version documents in batches, upgrading them during off-peak hours. (3) Dual-write period — during transition, write both old and new format, then switch reads to new format, then stop writing old format. Key principles: never assume document structure without checking version, make migration functions idempotent (safe to run multiple times), and maintain backward compatibility in application code until migration is complete."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the outlier pattern and when would you use it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The outlier pattern handles documents that would normally use embedding but where a small percentage of documents have abnormally large embedded arrays that would exceed the 16MB limit or cause performance issues. Example: a book reviews system where 99% of books have <100 reviews (safely embedded) but bestsellers have 100,000+ reviews. Solution: embed reviews up to a threshold (e.g., 100), set a has_overflow: true flag when exceeded, and store additional reviews in an overflow collection. Application logic checks the flag and queries the overflow collection only for outlier documents. This optimizes for the common case (single document read for 99% of books) while handling outliers gracefully. The alternative — referencing all reviews for all books — penalizes the 99% to accommodate the 1%."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you design a MongoDB schema for a multi-tenant SaaS application?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Three approaches with different trade-offs: (1) Shared collection with tenant_id field — simplest operationally, all tenants in one collection with tenant_id as the first field in every index (compound indexes: {tenant_id: 1, ...}). Works for thousands of small tenants. Risk: noisy neighbor if one tenant's queries impact others. (2) Collection-per-tenant — each tenant gets dedicated collections (e.g., orders_tenant123). Better isolation, easier to drop a tenant's data, but operational complexity scales with tenant count. (3) Database-per-tenant — maximum isolation, independent backup/restore, but highest operational overhead. For most SaaS applications, shared collection with tenant_id is the right starting point. Add the tenant_id to every query and every index prefix. Use MongoDB's zone sharding to physically isolate large tenants on dedicated shards if needed."
+          "type": "interview",
+          "question": "How do you design a MongoDB schema for a multi-tenant SaaS application?",
+          "answer": "Three approaches with different trade-offs: (1) Shared collection with tenant_id field — simplest operationally, all tenants in one collection with tenant_id as the first field in every index (compound indexes: {tenant_id: 1, ...}). Works for thousands of small tenants. Risk: noisy neighbor if one tenant's queries impact others. (2) Collection-per-tenant — each tenant gets dedicated collections (e.g., orders_tenant123). Better isolation, easier to drop a tenant's data, but operational complexity scales with tenant count. (3) Database-per-tenant — maximum isolation, independent backup/restore, but highest operational overhead. For most SaaS applications, shared collection with tenant_id is the right starting point. Add the tenant_id to every query and every index prefix. Use MongoDB's zone sharding to physically isolate large tenants on dedicated shards if needed."
         }
       ],
-      "wordCount": 682,
+      "wordCount": 672,
       "subsections": []
     },
     {
@@ -349,7 +334,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/schema-design.md",
-    "wordCount": 2422,
+    "wordCount": 2412,
     "sectionCount": 14
   }
 }

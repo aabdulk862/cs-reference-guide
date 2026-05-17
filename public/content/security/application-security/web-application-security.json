@@ -272,47 +272,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between stored XSS, reflected XSS, and DOM-based XSS. Which is most dangerous and why?"
+          "type": "interview",
+          "question": "Explain the difference between stored XSS, reflected XSS, and DOM-based XSS. Which is most dangerous and why?",
+          "answer": "Stored XSS persists the malicious payload in the database (e.g., a forum comment containing a script), affecting every user who views the content. Reflected XSS includes the payload in the URL or request parameters, requiring the attacker to trick a victim into clicking a crafted link. DOM-based XSS occurs entirely client-side when JavaScript reads attacker-controlled data (like location.hash) and inserts it into the DOM without sanitization. Stored XSS is generally most dangerous because it requires no social engineering after the initial injection, it scales to all users who view the affected content, and it persists until explicitly removed. However, DOM-based XSS can be harder to detect because the payload never reaches the server, bypassing server-side WAF rules and logging."
         },
         {
-          "type": "paragraph",
-          "text": "A: Stored XSS persists the malicious payload in the database (e.g., a forum comment containing a script), affecting every user who views the content. Reflected XSS includes the payload in the URL or request parameters, requiring the attacker to trick a victim into clicking a crafted link. DOM-based XSS occurs entirely client-side when JavaScript reads attacker-controlled data (like location.hash) and inserts it into the DOM without sanitization. Stored XSS is generally most dangerous because it requires no social engineering after the initial injection, it scales to all users who view the affected content, and it persists until explicitly removed. However, DOM-based XSS can be harder to detect because the payload never reaches the server, bypassing server-side WAF rules and logging."
+          "type": "interview",
+          "question": "How does Content Security Policy (CSP) prevent XSS attacks? What are the challenges of implementing CSP in a large application?",
+          "answer": "CSP is an HTTP response header that tells the browser which sources of content are trusted. For example, script-src 'self' only allows scripts from the same origin, blocking inline scripts and scripts from attacker-controlled domains. Even if an attacker injects a <script> tag via XSS, the browser refuses to execute it because the source violates the policy. The challenges in large applications include: legacy code using inline scripts and event handlers that require 'unsafe-inline' (defeating the purpose), third-party widgets and analytics that need explicit domain allowlisting, dynamically generated content that requires nonces or hashes, and the difficulty of testing CSP in development without breaking functionality. The recommended approach is to deploy in report-only mode first, analyze violations, and tighten the policy incrementally."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Content Security Policy (CSP) prevent XSS attacks? What are the challenges of implementing CSP in a large application?"
+          "type": "interview",
+          "question": "How would you design a secure session management system? What are the trade-offs between cookie-based sessions and JWTs?",
+          "answer": "Cookie-based sessions store a random session ID in an httpOnly, Secure, SameSite cookie, with session data stored server-side (Redis or database). JWTs encode claims directly in the token, eliminating server-side state. Cookie sessions are revocable instantly (delete from store), have smaller payload size, and are immune to client-side token theft via XSS (httpOnly). JWTs are stateless (no shared session store needed), work across domains, and scale horizontally without session affinity. The trade-offs: JWTs cannot be revoked before expiry without maintaining a blacklist (reintroducing state), they grow large with many claims, and if stolen they remain valid. For most applications, short-lived JWTs (15 minutes) paired with httpOnly refresh tokens stored in cookies provide a reasonable balance of statelessness and security."
         },
         {
-          "type": "paragraph",
-          "text": "A: CSP is an HTTP response header that tells the browser which sources of content are trusted. For example, script-src 'self' only allows scripts from the same origin, blocking inline scripts and scripts from attacker-controlled domains. Even if an attacker injects a <script> tag via XSS, the browser refuses to execute it because the source violates the policy. The challenges in large applications include: legacy code using inline scripts and event handlers that require 'unsafe-inline' (defeating the purpose), third-party widgets and analytics that need explicit domain allowlisting, dynamically generated content that requires nonces or hashes, and the difficulty of testing CSP in development without breaking functionality. The recommended approach is to deploy in report-only mode first, analyze violations, and tighten the policy incrementally."
+          "type": "interview",
+          "question": "Explain CORS. Why does the browser enforce it, and how can misconfiguration lead to security vulnerabilities?",
+          "answer": "CORS is a browser-enforced mechanism that restricts cross-origin HTTP requests. Without CORS, the Same-Origin Policy blocks JavaScript from reading responses from different origins. CORS relaxes this by allowing servers to declare which origins are trusted via the Access-Control-Allow-Origin header. The browser enforces it (not the server) because the threat model is protecting the user's authenticated session from malicious websites. Misconfiguration vulnerabilities include: reflecting any Origin header back as allowed (allows any site to read responses), combining wildcard origins with credentials (browsers block this, but developers work around it incorrectly), and allowing null origin (exploitable via sandboxed iframes and data: URLs). A properly configured CORS policy whitelists specific trusted origins and never dynamically reflects untrusted input."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a secure session management system? What are the trade-offs between cookie-based sessions and JWTs?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Cookie-based sessions store a random session ID in an httpOnly, Secure, SameSite cookie, with session data stored server-side (Redis or database). JWTs encode claims directly in the token, eliminating server-side state. Cookie sessions are revocable instantly (delete from store), have smaller payload size, and are immune to client-side token theft via XSS (httpOnly). JWTs are stateless (no shared session store needed), work across domains, and scale horizontally without session affinity. The trade-offs: JWTs cannot be revoked before expiry without maintaining a blacklist (reintroducing state), they grow large with many claims, and if stolen they remain valid. For most applications, short-lived JWTs (15 minutes) paired with httpOnly refresh tokens stored in cookies provide a reasonable balance of statelessness and security."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain CORS. Why does the browser enforce it, and how can misconfiguration lead to security vulnerabilities?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: CORS is a browser-enforced mechanism that restricts cross-origin HTTP requests. Without CORS, the Same-Origin Policy blocks JavaScript from reading responses from different origins. CORS relaxes this by allowing servers to declare which origins are trusted via the Access-Control-Allow-Origin header. The browser enforces it (not the server) because the threat model is protecting the user's authenticated session from malicious websites. Misconfiguration vulnerabilities include: reflecting any Origin header back as allowed (allows any site to read responses), combining wildcard origins with credentials (browsers block this, but developers work around it incorrectly), and allowing null origin (exploitable via sandboxed iframes and data: URLs). A properly configured CORS policy whitelists specific trusted origins and never dynamically reflects untrusted input."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is SSRF and how do you prevent it in a web application that needs to fetch user-provided URLs?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Server-Side Request Forgery (SSRF) occurs when an attacker tricks the server into making requests to internal resources (metadata endpoints, internal APIs, databases) by providing a malicious URL. Prevention requires: validating the URL scheme (allow only http/https), resolving DNS and checking the resulting IP against blocklists of private ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x), disabling automatic redirect following (redirects can bypass IP checks), implementing network-level controls (egress firewall rules), and using allowlists when possible. Cloud environments are especially vulnerable because the instance metadata endpoint (169.254.169.254) can expose IAM credentials."
+          "type": "interview",
+          "question": "What is SSRF and how do you prevent it in a web application that needs to fetch user-provided URLs?",
+          "answer": "Server-Side Request Forgery (SSRF) occurs when an attacker tricks the server into making requests to internal resources (metadata endpoints, internal APIs, databases) by providing a malicious URL. Prevention requires: validating the URL scheme (allow only http/https), resolving DNS and checking the resulting IP against blocklists of private ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x), disabling automatic redirect following (redirects can bypass IP checks), implementing network-level controls (egress firewall rules), and using allowlists when possible. Cloud environments are especially vulnerable because the instance metadata endpoint (169.254.169.254) can expose IAM credentials."
         }
       ],
-      "wordCount": 663,
+      "wordCount": 653,
       "subsections": []
     },
     {
@@ -402,7 +387,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/application-security/web-application-security.md",
-    "wordCount": 2152,
+    "wordCount": 2142,
     "sectionCount": 15
   }
 }

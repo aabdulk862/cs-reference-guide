@@ -223,47 +223,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does a MongoDB replica set election work, and what happens during an election?"
+          "type": "interview",
+          "question": "How does a MongoDB replica set election work, and what happens during an election?",
+          "answer": "When a secondary detects that the primary is unreachable (no heartbeat for electionTimeoutMillis, default 10 seconds), it initiates an election. The candidate increments its term number and requests votes from all other voting members. Each member votes for at most one candidate per term, preferring the candidate with the most recent oplog entry. A candidate needs votes from a strict majority (> N/2) of voting members to win. During the election (typically 1-5 seconds), the replica set has no primary — all write operations fail and must be retried by the application. Read operations continue on secondaries if the read preference allows it. After election, the new primary applies any oplog entries it received but the old primary hadn't replicated, potentially rolling back uncommitted writes on the old primary when it rejoins."
         },
         {
-          "type": "paragraph",
-          "text": "A: When a secondary detects that the primary is unreachable (no heartbeat for electionTimeoutMillis, default 10 seconds), it initiates an election. The candidate increments its term number and requests votes from all other voting members. Each member votes for at most one candidate per term, preferring the candidate with the most recent oplog entry. A candidate needs votes from a strict majority (> N/2) of voting members to win. During the election (typically 1-5 seconds), the replica set has no primary — all write operations fail and must be retried by the application. Read operations continue on secondaries if the read preference allows it. After election, the new primary applies any oplog entries it received but the old primary hadn't replicated, potentially rolling back uncommitted writes on the old primary when it rejoins."
+          "type": "interview",
+          "question": "What makes a good shard key, and what are the consequences of a bad choice?",
+          "answer": "A good shard key has three properties: (1) High cardinality — many distinct values to allow fine-grained chunk splitting and distribution; (2) Low frequency — no single value dominates, preventing jumbo chunks; (3) Non-monotonic — values don't always increase, avoiding hot shard problems. It should also align with your query patterns so most queries include the shard key (targeted queries). A bad shard key causes: uneven data distribution (some shards full, others empty), hot shards (all writes go to one shard), jumbo chunks that can't be split or moved, and scatter-gather queries that hit every shard. Prior to MongoDB 5.0, changing a shard key required migrating to a new collection. Now resharding is possible online but is still a heavy operation."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What makes a good shard key, and what are the consequences of a bad choice?"
+          "type": "interview",
+          "question": "Explain the difference between write concern w:1, w:majority, and w:0.",
+          "answer": "w:0 (unacknowledged) returns immediately without waiting for any confirmation — the driver doesn't even check for network errors. Use only for non-critical telemetry where speed matters more than durability. w:1 waits for the primary to acknowledge the write to its in-memory journal, but doesn't wait for replication. If the primary crashes before replicating, the write is lost when a new primary is elected. w:\"majority\" waits until a majority of data-bearing replica set members have acknowledged the write (written to their journals). This guarantees the write survives any single-node failure and won't be rolled back during elections. The latency cost of w:\"majority\" over w:1 is typically the replication lag to the nearest secondary (1-10ms in the same datacenter). For financial or critical data, always use w:\"majority\" with j:true."
         },
         {
-          "type": "paragraph",
-          "text": "A: A good shard key has three properties: (1) High cardinality — many distinct values to allow fine-grained chunk splitting and distribution; (2) Low frequency — no single value dominates, preventing jumbo chunks; (3) Non-monotonic — values don't always increase, avoiding hot shard problems. It should also align with your query patterns so most queries include the shard key (targeted queries). A bad shard key causes: uneven data distribution (some shards full, others empty), hot shards (all writes go to one shard), jumbo chunks that can't be split or moved, and scatter-gather queries that hit every shard. Prior to MongoDB 5.0, changing a shard key required migrating to a new collection. Now resharding is possible online but is still a heavy operation."
+          "type": "interview",
+          "question": "How does the MongoDB balancer work, and when might it cause problems?",
+          "answer": "The balancer runs on the primary of the config server replica set and monitors chunk distribution across shards. When the difference in chunk count between the most-loaded and least-loaded shard exceeds a threshold (8 chunks for < 20 total, 2 for collections with few chunks), it initiates chunk migrations. A migration copies the chunk's documents from the source to the destination shard, then updates the config server's metadata. During migration, reads and writes continue normally (the source shard serves the chunk until migration completes). Problems arise when: migrations compete with application I/O (mitigate with balancer windows), large chunks take long to migrate causing temporary inconsistency windows, or frequent migrations indicate a poor shard key choice. You can set balancer windows (sh.setBalancerState()) to restrict migrations to off-peak hours."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between write concern w:1, w:majority, and w:0."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: w:0 (unacknowledged) returns immediately without waiting for any confirmation — the driver doesn't even check for network errors. Use only for non-critical telemetry where speed matters more than durability. w:1 waits for the primary to acknowledge the write to its in-memory journal, but doesn't wait for replication. If the primary crashes before replicating, the write is lost when a new primary is elected. w:\"majority\" waits until a majority of data-bearing replica set members have acknowledged the write (written to their journals). This guarantees the write survives any single-node failure and won't be rolled back during elections. The latency cost of w:\"majority\" over w:1 is typically the replication lag to the nearest secondary (1-10ms in the same datacenter). For financial or critical data, always use w:\"majority\" with j:true."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does the MongoDB balancer work, and when might it cause problems?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The balancer runs on the primary of the config server replica set and monitors chunk distribution across shards. When the difference in chunk count between the most-loaded and least-loaded shard exceeds a threshold (8 chunks for < 20 total, 2 for collections with few chunks), it initiates chunk migrations. A migration copies the chunk's documents from the source to the destination shard, then updates the config server's metadata. During migration, reads and writes continue normally (the source shard serves the chunk until migration completes). Problems arise when: migrations compete with application I/O (mitigate with balancer windows), large chunks take long to migrate causing temporary inconsistency windows, or frequent migrations indicate a poor shard key choice. You can set balancer windows (sh.setBalancerState()) to restrict migrations to off-peak hours."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is causal consistency in MongoDB and when do you need it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Causal consistency guarantees that operations within a client session observe a causally consistent view of the data — specifically, read-your-writes, monotonic reads, and monotonic writes. Without causal consistency, a client that writes to the primary and then reads from a secondary might not see its own write (because the secondary hasn't replicated it yet). With a causally consistent session, MongoDB tracks the cluster time and operation time, ensuring that reads from secondaries only return data that includes all writes from that session. You need it when: reading from secondaries after writes (common with readPreference: secondaryPreferred), implementing read-after-write consistency in distributed applications, or when multiple operations must see a consistent progression of state. Enable it with client.startSession({ causalConsistency: true })."
+          "type": "interview",
+          "question": "What is causal consistency in MongoDB and when do you need it?",
+          "answer": "Causal consistency guarantees that operations within a client session observe a causally consistent view of the data — specifically, read-your-writes, monotonic reads, and monotonic writes. Without causal consistency, a client that writes to the primary and then reads from a secondary might not see its own write (because the secondary hasn't replicated it yet). With a causally consistent session, MongoDB tracks the cluster time and operation time, ensuring that reads from secondaries only return data that includes all writes from that session. You need it when: reading from secondaries after writes (common with readPreference: secondaryPreferred), implementing read-after-write consistency in distributed applications, or when multiple operations must see a consistent progression of state. Enable it with client.startSession({ causalConsistency: true })."
         }
       ],
-      "wordCount": 699,
+      "wordCount": 689,
       "subsections": []
     },
     {
@@ -342,7 +327,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/mongodb/replication-and-sharding.md",
-    "wordCount": 2013,
+    "wordCount": 2003,
     "sectionCount": 14
   }
 }

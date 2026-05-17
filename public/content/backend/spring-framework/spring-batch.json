@@ -241,71 +241,47 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between a Tasklet and a Chunk-oriented step?"
+          "type": "interview",
+          "question": "What is the difference between a Tasklet and a Chunk-oriented step?",
+          "answer": "A Tasklet executes a single block of code repeatedly until it returns RepeatStatus.FINISHED. It runs in its own transaction per invocation. Use tasklets for simple operations like file cleanup, sending notifications, or calling APIs. Chunk-oriented steps follow the read-process-write pattern: read items one at a time, process each, then write the entire chunk in a single transaction. Use chunks when processing large datasets where you need bounded memory, transaction management per batch, and built-in skip/retry support."
         },
         {
-          "type": "paragraph",
-          "text": "A: A Tasklet executes a single block of code repeatedly until it returns RepeatStatus.FINISHED. It runs in its own transaction per invocation. Use tasklets for simple operations like file cleanup, sending notifications, or calling APIs. Chunk-oriented steps follow the read-process-write pattern: read items one at a time, process each, then write the entire chunk in a single transaction. Use chunks when processing large datasets where you need bounded memory, transaction management per batch, and built-in skip/retry support."
+          "type": "interview",
+          "question": "How does Spring Batch handle job restartability?",
+          "answer": "Spring Batch persists execution metadata (job parameters, step status, read/write counts, commit counts) in the Job Repository database tables. When a failed job is restarted with the same parameters, Spring Batch queries the repository to find the last successful checkpoint. Cursor-based readers resume from the last committed position. Chunk-oriented steps skip already-completed chunks. The restartable attribute on the job (default true) and allow-start-if-complete on steps control this behavior."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does Spring Batch handle job restartability?"
+          "type": "interview",
+          "question": "Explain the transaction model in chunk-oriented processing.",
+          "answer": "Each chunk operates within a single transaction. The reader reads items outside the transaction boundary (reader exceptions don't cause rollback). Processing and writing happen inside the transaction. If the writer throws an exception, the entire chunk rolls back and can be retried. The commit-interval (chunk size) determines how many items are processed per transaction. You can configure no-rollback-exception-classes for exceptions that should not trigger rollback."
         },
         {
-          "type": "paragraph",
-          "text": "A: Spring Batch persists execution metadata (job parameters, step status, read/write counts, commit counts) in the Job Repository database tables. When a failed job is restarted with the same parameters, Spring Batch queries the repository to find the last successful checkpoint. Cursor-based readers resume from the last committed position. Chunk-oriented steps skip already-completed chunks. The restartable attribute on the job (default true) and allow-start-if-complete on steps control this behavior."
+          "type": "interview",
+          "question": "How would you scale a Spring Batch job that processes 100 million records?",
+          "answer": "Start with multithreaded steps (TaskExecutor on the step) to process multiple chunks in parallel. If data can be logically partitioned (by date range, ID range, or file), use partitioning to split work across threads or remote workers. For CPU-intensive processing with simple I/O, remote chunking distributes processing to worker nodes while the master handles reading and writing. Monitor throughput at each stage to identify bottlenecks — often the database write is the bottleneck, so use JdbcBatchItemWriter with large batch sizes and consider disabling indexes during bulk loads."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the transaction model in chunk-oriented processing."
+          "type": "interview",
+          "question": "What changed in Spring Batch 5 (Spring Boot 3)?",
+          "answer": "JobBuilderFactory and StepBuilderFactory are removed — use new JobBuilder(name, jobRepository) and new StepBuilder(name, jobRepository) directly. @EnableBatchProcessing is optional with Spring Boot auto-configuration. The chunk() method requires a PlatformTransactionManager parameter. Job parameters support LocalDate, LocalDateTime, and LocalTime natively. The framework requires Java 17+ and Jakarta EE 9+. The JobExplorer and JobOperator APIs are simplified."
         },
         {
-          "type": "paragraph",
-          "text": "A: Each chunk operates within a single transaction. The reader reads items outside the transaction boundary (reader exceptions don't cause rollback). Processing and writing happen inside the transaction. If the writer throws an exception, the entire chunk rolls back and can be retried. The commit-interval (chunk size) determines how many items are processed per transaction. You can configure no-rollback-exception-classes for exceptions that should not trigger rollback."
+          "type": "interview",
+          "question": "How do you handle job failures and alerting in production?",
+          "answer": "Implement a JobExecutionListener that sends alerts (PagerDuty, Slack) on failure with context: job name, parameters, step that failed, exception message, and items processed. Export batch metrics to Prometheus via Micrometer — alert on job duration exceeding SLA, skip count exceeding threshold, or status transitioning to FAILED. In Kubernetes, configure CronJob's backoffLimit for automatic retries and activeDeadlineSeconds to kill stuck jobs."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you scale a Spring Batch job that processes 100 million records?"
+          "type": "interview",
+          "question": "What is the difference between partitioning and remote chunking?",
+          "answer": "Partitioning splits the input data into independent subsets, each processed by a separate step execution (potentially on different JVMs). Each partition has its own reader, processor, and writer. Remote chunking keeps reading and writing on the master node but distributes processing to remote workers via messaging. Use partitioning when data is naturally divisible (ID ranges, date ranges, separate files) and each partition can read independently. Use remote chunking when reading is cheap but processing is expensive and you want to distribute CPU load without duplicating data access logic."
         },
         {
-          "type": "paragraph",
-          "text": "A: Start with multithreaded steps (TaskExecutor on the step) to process multiple chunks in parallel. If data can be logically partitioned (by date range, ID range, or file), use partitioning to split work across threads or remote workers. For CPU-intensive processing with simple I/O, remote chunking distributes processing to worker nodes while the master handles reading and writing. Monitor throughput at each stage to identify bottlenecks — often the database write is the bottleneck, so use JdbcBatchItemWriter with large batch sizes and consider disabling indexes during bulk loads."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What changed in Spring Batch 5 (Spring Boot 3)?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: JobBuilderFactory and StepBuilderFactory are removed — use new JobBuilder(name, jobRepository) and new StepBuilder(name, jobRepository) directly. @EnableBatchProcessing is optional with Spring Boot auto-configuration. The chunk() method requires a PlatformTransactionManager parameter. Job parameters support LocalDate, LocalDateTime, and LocalTime natively. The framework requires Java 17+ and Jakarta EE 9+. The JobExplorer and JobOperator APIs are simplified."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle job failures and alerting in production?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Implement a JobExecutionListener that sends alerts (PagerDuty, Slack) on failure with context: job name, parameters, step that failed, exception message, and items processed. Export batch metrics to Prometheus via Micrometer — alert on job duration exceeding SLA, skip count exceeding threshold, or status transitioning to FAILED. In Kubernetes, configure CronJob's backoffLimit for automatic retries and activeDeadlineSeconds to kill stuck jobs."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between partitioning and remote chunking?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Partitioning splits the input data into independent subsets, each processed by a separate step execution (potentially on different JVMs). Each partition has its own reader, processor, and writer. Remote chunking keeps reading and writing on the master node but distributes processing to remote workers via messaging. Use partitioning when data is naturally divisible (ID ranges, date ranges, separate files) and each partition can read independently. Use remote chunking when reading is cheap but processing is expensive and you want to distribute CPU load without duplicating data access logic."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you test Spring Batch jobs effectively?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Use @SpringBatchTest which provides JobLauncherTestUtils for launching jobs/steps and JobRepositoryTestUtils for cleanup. Test at multiple levels: unit test processors in isolation with plain JUnit, integration test individual steps with launchStep(), and end-to-end test complete jobs with launchJob(). Use Testcontainers for realistic database testing. Verify read counts, write counts, skip counts, and exit status. Test restart behavior by simulating failures. Include test data with known bad records to verify skip/retry policies."
+          "type": "interview",
+          "question": "How do you test Spring Batch jobs effectively?",
+          "answer": "Use @SpringBatchTest which provides JobLauncherTestUtils for launching jobs/steps and JobRepositoryTestUtils for cleanup. Test at multiple levels: unit test processors in isolation with plain JUnit, integration test individual steps with launchStep(), and end-to-end test complete jobs with launchJob(). Use Testcontainers for realistic database testing. Verify read counts, write counts, skip counts, and exit status. Test restart behavior by simulating failures. Include test data with known bad records to verify skip/retry policies."
         }
       ],
-      "wordCount": 657,
+      "wordCount": 641,
       "subsections": []
     },
     {
@@ -392,7 +368,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-batch.md",
-    "wordCount": 2041,
+    "wordCount": 2025,
     "sectionCount": 16
   }
 }

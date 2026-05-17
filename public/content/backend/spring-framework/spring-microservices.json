@@ -282,71 +282,47 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How does service discovery work with Eureka, and what happens when the Eureka server goes down?"
+          "type": "interview",
+          "question": "How does service discovery work with Eureka, and what happens when the Eureka server goes down?",
+          "answer": "Services register with Eureka on startup and send heartbeats every 30 seconds. Clients cache the registry locally and refresh every 30 seconds. If Eureka goes down, clients continue operating using their cached registry — they can still discover and call other services. However, new services cannot register and stale entries won't be evicted. For production, run Eureka in a cluster (peer-aware mode) where instances replicate registry data to each other, eliminating the single point of failure."
         },
         {
-          "type": "paragraph",
-          "text": "A: Services register with Eureka on startup and send heartbeats every 30 seconds. Clients cache the registry locally and refresh every 30 seconds. If Eureka goes down, clients continue operating using their cached registry — they can still discover and call other services. However, new services cannot register and stale entries won't be evicted. For production, run Eureka in a cluster (peer-aware mode) where instances replicate registry data to each other, eliminating the single point of failure."
+          "type": "interview",
+          "question": "Explain the circuit breaker pattern and its three states.",
+          "answer": "The circuit breaker monitors calls to a downstream service. In the Closed state, requests pass through normally while failures are counted in a sliding window. When the failure rate exceeds a threshold (e.g., 50% of the last 10 calls), it transitions to Open — all requests are immediately rejected and the fallback is invoked. After a configured wait duration, it moves to Half-Open, allowing a limited number of test requests. If they succeed, the circuit closes; if they fail, it reopens. This prevents cascading failures by failing fast rather than waiting for timeouts."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the circuit breaker pattern and its three states."
+          "type": "interview",
+          "question": "What is the difference between choreography and orchestration in microservices?",
+          "answer": "In choreography, services react to events independently — Order Service publishes \"OrderPlaced\", and Inventory, Payment, and Notification services each subscribe and act autonomously. No central coordinator exists. In orchestration, a central service explicitly tells each service what to do and handles the workflow logic, including compensation on failure. Choreography is more decoupled but harder to debug. Orchestration is easier to understand and modify but creates a central point of coupling. Choose choreography for simple flows and orchestration for complex multi-step transactions requiring compensation logic."
         },
         {
-          "type": "paragraph",
-          "text": "A: The circuit breaker monitors calls to a downstream service. In the Closed state, requests pass through normally while failures are counted in a sliding window. When the failure rate exceeds a threshold (e.g., 50% of the last 10 calls), it transitions to Open — all requests are immediately rejected and the fallback is invoked. After a configured wait duration, it moves to Half-Open, allowing a limited number of test requests. If they succeed, the circuit closes; if they fail, it reopens. This prevents cascading failures by failing fast rather than waiting for timeouts."
+          "type": "interview",
+          "question": "How do you handle distributed transactions across microservices?",
+          "answer": "Avoid distributed transactions (2PC) due to coupling and availability costs. Use the Saga pattern: a sequence of local transactions where each service commits its own transaction and publishes an event. If a step fails, compensating transactions undo previous steps. Implement with choreography (events) or orchestration (coordinator). Ensure operations are idempotent so retries are safe. Use the outbox pattern for reliable event publishing within the same database transaction as the business operation."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the difference between choreography and orchestration in microservices?"
+          "type": "interview",
+          "question": "How does Kubernetes-native service discovery differ from Eureka?",
+          "answer": "With Eureka, services register themselves and clients cache the registry. With Kubernetes-native discovery (spring-cloud-kubernetes), services are discovered via Kubernetes Service resources and cluster DNS. Kubernetes handles registration automatically when pods start. Advantages: eliminates Eureka infrastructure, leverages Kubernetes health checks, integrates with ConfigMaps. Trade-off: tightly couples to Kubernetes, making local development harder. Use Eureka for multi-platform deployments; use Kubernetes discovery for K8s-only environments."
         },
         {
-          "type": "paragraph",
-          "text": "A: In choreography, services react to events independently — Order Service publishes \"OrderPlaced\", and Inventory, Payment, and Notification services each subscribe and act autonomously. No central coordinator exists. In orchestration, a central service explicitly tells each service what to do and handles the workflow logic, including compensation on failure. Choreography is more decoupled but harder to debug. Orchestration is easier to understand and modify but creates a central point of coupling. Choose choreography for simple flows and orchestration for complex multi-step transactions requiring compensation logic."
+          "type": "interview",
+          "question": "What is the difference between Spring Cloud Gateway and a Kubernetes Ingress Controller?",
+          "answer": "Kubernetes Ingress Controllers (NGINX, Traefik) operate at the infrastructure level — TLS termination, basic path routing, load balancing. Spring Cloud Gateway operates at the application level with full access to Spring's ecosystem — business logic, request/response transformation, Spring Security integration for OAuth2 token validation, rate limiting with custom algorithms, and routing based on request body content. Use Ingress for infrastructure concerns and Spring Cloud Gateway for application-level concerns."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you handle distributed transactions across microservices?"
+          "type": "interview",
+          "question": "How does Resilience4j's bulkhead pattern prevent cascading failures?",
+          "answer": "The bulkhead pattern isolates different service calls into separate thread pools (or semaphores), preventing a slow service from consuming all available threads. If the inventory service is slow, only the threads allocated to inventory calls are blocked — other service calls (payment, shipping) continue unaffected. Resilience4j supports two bulkhead types: semaphore-based (limits concurrent calls) and thread-pool-based (dedicated thread pool per downstream service). Configure maxConcurrentCalls based on the downstream service's capacity and your acceptable queue depth."
         },
         {
-          "type": "paragraph",
-          "text": "A: Avoid distributed transactions (2PC) due to coupling and availability costs. Use the Saga pattern: a sequence of local transactions where each service commits its own transaction and publishes an event. If a step fails, compensating transactions undo previous steps. Implement with choreography (events) or orchestration (coordinator). Ensure operations are idempotent so retries are safe. Use the outbox pattern for reliable event publishing within the same database transaction as the business operation."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Kubernetes-native service discovery differ from Eureka?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: With Eureka, services register themselves and clients cache the registry. With Kubernetes-native discovery (spring-cloud-kubernetes), services are discovered via Kubernetes Service resources and cluster DNS. Kubernetes handles registration automatically when pods start. Advantages: eliminates Eureka infrastructure, leverages Kubernetes health checks, integrates with ConfigMaps. Trade-off: tightly couples to Kubernetes, making local development harder. Use Eureka for multi-platform deployments; use Kubernetes discovery for K8s-only environments."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is the difference between Spring Cloud Gateway and a Kubernetes Ingress Controller?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Kubernetes Ingress Controllers (NGINX, Traefik) operate at the infrastructure level — TLS termination, basic path routing, load balancing. Spring Cloud Gateway operates at the application level with full access to Spring's ecosystem — business logic, request/response transformation, Spring Security integration for OAuth2 token validation, rate limiting with custom algorithms, and routing based on request body content. Use Ingress for infrastructure concerns and Spring Cloud Gateway for application-level concerns."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does Resilience4j's bulkhead pattern prevent cascading failures?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The bulkhead pattern isolates different service calls into separate thread pools (or semaphores), preventing a slow service from consuming all available threads. If the inventory service is slow, only the threads allocated to inventory calls are blocked — other service calls (payment, shipping) continue unaffected. Resilience4j supports two bulkhead types: semaphore-based (limits concurrent calls) and thread-pool-based (dedicated thread pool per downstream service). Configure maxConcurrentCalls based on the downstream service's capacity and your acceptable queue depth."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you implement the Saga pattern with Spring Cloud?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: For choreography-based sagas, use Spring Cloud Stream with Kafka/RabbitMQ. Each service listens for events and publishes its own events after completing its local transaction. For orchestration-based sagas, create a dedicated saga orchestrator service that coordinates the workflow, calling each participant service in sequence and triggering compensating actions on failure. Frameworks like Axon or Temporal provide saga orchestration infrastructure. In both cases, ensure idempotent operations, store saga state for recovery, and implement dead letter queues for failed events."
+          "type": "interview",
+          "question": "How do you implement the Saga pattern with Spring Cloud?",
+          "answer": "For choreography-based sagas, use Spring Cloud Stream with Kafka/RabbitMQ. Each service listens for events and publishes its own events after completing its local transaction. For orchestration-based sagas, create a dedicated saga orchestrator service that coordinates the workflow, calling each participant service in sequence and triggering compensating actions on failure. Frameworks like Axon or Temporal provide saga orchestration infrastructure. In both cases, ensure idempotent operations, store saga state for recovery, and implement dead letter queues for failed events."
         }
       ],
-      "wordCount": 704,
+      "wordCount": 688,
       "subsections": []
     },
     {
@@ -473,7 +449,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/spring-framework/spring-microservices.md",
-    "wordCount": 1938,
+    "wordCount": 1922,
     "sectionCount": 16
   }
 }

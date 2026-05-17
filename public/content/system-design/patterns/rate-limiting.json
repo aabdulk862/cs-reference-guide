@@ -147,39 +147,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Compare token bucket and leaky bucket algorithms. When would you choose one over the other?"
+          "type": "interview",
+          "question": "Compare token bucket and leaky bucket algorithms. When would you choose one over the other?",
+          "answer": "Token bucket allows bursts up to the bucket capacity while maintaining a long-term average rate. Tokens accumulate when the system is idle and can be spent in bursts. Leaky bucket processes requests at a strictly constant rate, queuing excess requests and dropping them when the queue is full. Choose token bucket when you want to allow legitimate traffic bursts (e.g., a user loading a page that makes 20 API calls simultaneously) while still enforcing a sustained rate. Choose leaky bucket when you need smooth, constant-rate output regardless of input burstiness (e.g., writing to a database that performs best at steady throughput). In practice, token bucket is more common for API rate limiting because it provides better user experience by accommodating natural burst patterns. Leaky bucket is preferred for traffic shaping in network equipment and for protecting systems that degrade under bursty load."
         },
         {
-          "type": "paragraph",
-          "text": "A: Token bucket allows bursts up to the bucket capacity while maintaining a long-term average rate. Tokens accumulate when the system is idle and can be spent in bursts. Leaky bucket processes requests at a strictly constant rate, queuing excess requests and dropping them when the queue is full. Choose token bucket when you want to allow legitimate traffic bursts (e.g., a user loading a page that makes 20 API calls simultaneously) while still enforcing a sustained rate. Choose leaky bucket when you need smooth, constant-rate output regardless of input burstiness (e.g., writing to a database that performs best at steady throughput). In practice, token bucket is more common for API rate limiting because it provides better user experience by accommodating natural burst patterns. Leaky bucket is preferred for traffic shaping in network equipment and for protecting systems that degrade under bursty load."
+          "type": "interview",
+          "question": "How would you design a distributed rate limiter for a system with 50 instances behind a load balancer?",
+          "answer": "Use a centralized Redis cluster as the shared state store. Each application instance checks Redis before processing a request, using atomic Lua scripts to ensure correctness under concurrent access. The Lua script atomically reads the current count, checks against the limit, and increments if allowed, all in a single Redis round-trip. For fault tolerance, deploy Redis in cluster mode with replicas. If Redis becomes unavailable, fall back to local in-memory rate limiting with limits divided by the number of instances (100/50 = 2 per instance), accepting reduced accuracy. To minimize Redis latency impact, batch rate limit checks for requests that arrive within a small time window, or use a local token bucket that synchronizes with Redis periodically (every 100ms) rather than on every request. The tradeoff is accuracy versus latency: per-request Redis checks are precise but add 1-2ms latency; periodic sync is faster but allows brief over-limit bursts."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a distributed rate limiter for a system with 50 instances behind a load balancer?"
+          "type": "interview",
+          "question": "A client is hitting your rate limit but claims they need higher throughput. How do you evaluate and handle this?",
+          "answer": "First, analyze their actual usage pattern: are they hitting the limit due to legitimate traffic growth, inefficient API usage (making many small requests instead of batched ones), or retry storms? Check if they are using pagination, caching responses, and batching where possible. If their usage is efficient and legitimate, evaluate the cost of increasing their limit: will it impact other tenants, require infrastructure scaling, or violate SLAs? Options include: (1) upgrading their tier with appropriate pricing, (2) offering bulk/batch endpoints that accomplish more per request, (3) providing webhook-based push instead of polling, (4) implementing request prioritization where their critical requests get higher limits than non-critical ones. Document the decision and monitor the impact. Never simply raise limits without understanding the usage pattern, as it may mask an underlying integration problem."
         },
         {
-          "type": "paragraph",
-          "text": "A: Use a centralized Redis cluster as the shared state store. Each application instance checks Redis before processing a request, using atomic Lua scripts to ensure correctness under concurrent access. The Lua script atomically reads the current count, checks against the limit, and increments if allowed, all in a single Redis round-trip. For fault tolerance, deploy Redis in cluster mode with replicas. If Redis becomes unavailable, fall back to local in-memory rate limiting with limits divided by the number of instances (100/50 = 2 per instance), accepting reduced accuracy. To minimize Redis latency impact, batch rate limit checks for requests that arrive within a small time window, or use a local token bucket that synchronizes with Redis periodically (every 100ms) rather than on every request. The tradeoff is accuracy versus latency: per-request Redis checks are precise but add 1-2ms latency; periodic sync is faster but allows brief over-limit bursts."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: A client is hitting your rate limit but claims they need higher throughput. How do you evaluate and handle this?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: First, analyze their actual usage pattern: are they hitting the limit due to legitimate traffic growth, inefficient API usage (making many small requests instead of batched ones), or retry storms? Check if they are using pagination, caching responses, and batching where possible. If their usage is efficient and legitimate, evaluate the cost of increasing their limit: will it impact other tenants, require infrastructure scaling, or violate SLAs? Options include: (1) upgrading their tier with appropriate pricing, (2) offering bulk/batch endpoints that accomplish more per request, (3) providing webhook-based push instead of polling, (4) implementing request prioritization where their critical requests get higher limits than non-critical ones. Document the decision and monitor the impact. Never simply raise limits without understanding the usage pattern, as it may mask an underlying integration problem."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you handle rate limiting in a microservices architecture where a single user request fans out to multiple internal services?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Rate limit at the edge (API gateway) for external-facing limits, and implement separate internal rate limits between services to prevent cascading failures. The edge rate limit protects against external abuse, while internal limits protect individual services from being overwhelmed by other services. Use different strategies: external limits are strict (hard reject with 429), internal limits are softer (circuit breaker, queue, or shed load gracefully). For fan-out scenarios, reserve capacity: if a user request fans out to 5 services, the edge limit should account for the amplification factor. Implement priority-based rate limiting internally where user-facing requests get higher priority than background jobs. Use distributed tracing to attribute internal requests back to the originating user, enabling end-to-end rate limiting that accounts for the full cost of a user request across all services."
+          "type": "interview",
+          "question": "How do you handle rate limiting in a microservices architecture where a single user request fans out to multiple internal services?",
+          "answer": "Rate limit at the edge (API gateway) for external-facing limits, and implement separate internal rate limits between services to prevent cascading failures. The edge rate limit protects against external abuse, while internal limits protect individual services from being overwhelmed by other services. Use different strategies: external limits are strict (hard reject with 429), internal limits are softer (circuit breaker, queue, or shed load gracefully). For fan-out scenarios, reserve capacity: if a user request fans out to 5 services, the edge limit should account for the amplification factor. Implement priority-based rate limiting internally where user-facing requests get higher priority than background jobs. Use distributed tracing to attribute internal requests back to the originating user, enabling end-to-end rate limiting that accounts for the full cost of a user request across all services."
         }
       ],
-      "wordCount": 632,
+      "wordCount": 624,
       "subsections": []
     },
     {
@@ -243,7 +231,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/patterns/rate-limiting.md",
-    "wordCount": 2154,
+    "wordCount": 2146,
     "sectionCount": 11
   }
 }

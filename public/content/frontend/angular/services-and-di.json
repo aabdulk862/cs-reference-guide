@@ -216,47 +216,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain Angular's hierarchical dependency injection system. How does injector resolution work?"
+          "type": "interview",
+          "question": "Explain Angular's hierarchical dependency injection system. How does injector resolution work?",
+          "answer": "Angular maintains a tree of injectors that mirrors the component tree, plus module-level and platform-level injectors. When a component requests a dependency, Angular first checks the component's own injector (its providers array). If not found, it walks up the component tree checking each ancestor's injector. If still not found, it checks the module injector (for the module that declares the component), then the root injector, and finally the platform injector. This hierarchy enables powerful patterns: a service provided at a component level creates a new instance for that subtree, while providedIn: 'root' ensures a single instance application-wide. Lazy-loaded modules get their own child injector of root, which is why services provided in lazy modules aren't visible to eagerly-loaded components."
         },
         {
-          "type": "paragraph",
-          "text": "A: Angular maintains a tree of injectors that mirrors the component tree, plus module-level and platform-level injectors. When a component requests a dependency, Angular first checks the component's own injector (its providers array). If not found, it walks up the component tree checking each ancestor's injector. If still not found, it checks the module injector (for the module that declares the component), then the root injector, and finally the platform injector. This hierarchy enables powerful patterns: a service provided at a component level creates a new instance for that subtree, while providedIn: 'root' ensures a single instance application-wide. Lazy-loaded modules get their own child injector of root, which is why services provided in lazy modules aren't visible to eagerly-loaded components."
+          "type": "interview",
+          "question": "What are tree-shakable providers and why do they matter?",
+          "answer": "Tree-shakable providers use @Injectable({ providedIn: 'root' }) instead of listing the service in a module's providers array. The difference is in how the bundler resolves dependencies: with module providers, the service is always included in the bundle because the module references it. With providedIn, the service references the injector — if no component imports and injects the service, the bundler removes it entirely. This matters for large applications and shared libraries where many services exist but individual apps only use a subset. A library with 50 services but an app using only 5 will only bundle those 5 with tree-shakable providers."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What are tree-shakable providers and why do they matter?"
+          "type": "interview",
+          "question": "How would you implement a caching strategy using HTTP interceptors?",
+          "answer": "Create a functional interceptor that maintains a cache (Map or IndexedDB for persistence). For GET requests, check the cache first — if a valid (non-expired) entry exists, return it as an Observable without hitting the network. For cache misses, forward the request and store the response on success. Include cache invalidation logic: POST/PUT/DELETE to a resource should clear related cache entries. Use configurable TTL per endpoint (some data is stale after 30 seconds, other data is valid for hours). The interceptor should be positioned after auth (so cached responses don't need re-authentication) but before retry (so retries don't serve stale cache). Expose a cache-busting mechanism (custom header or service method) for force-refresh scenarios."
         },
         {
-          "type": "paragraph",
-          "text": "A: Tree-shakable providers use @Injectable({ providedIn: 'root' }) instead of listing the service in a module's providers array. The difference is in how the bundler resolves dependencies: with module providers, the service is always included in the bundle because the module references it. With providedIn, the service references the injector — if no component imports and injects the service, the bundler removes it entirely. This matters for large applications and shared libraries where many services exist but individual apps only use a subset. A library with 50 services but an app using only 5 will only bundle those 5 with tree-shakable providers."
+          "type": "interview",
+          "question": "When would you use a BehaviorSubject-based service vs NgRx for state management?",
+          "answer": "BehaviorSubject services work well for medium-complexity state: 5-15 state properties, 2-3 services managing related domains, straightforward async operations. They're simpler to understand, require no additional dependencies, and are easier to debug. Choose NgRx when: state is highly complex with many interdependent slices, you need time-travel debugging, multiple developers work on the same state domain, you want enforced unidirectional data flow, or you need sophisticated side-effect management (NgRx Effects). The break-even point is typically around 20+ actions and 5+ state slices — below that, NgRx adds ceremony without proportional benefit. Many successful production Angular apps use BehaviorSubject services exclusively."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement a caching strategy using HTTP interceptors?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Create a functional interceptor that maintains a cache (Map or IndexedDB for persistence). For GET requests, check the cache first — if a valid (non-expired) entry exists, return it as an Observable without hitting the network. For cache misses, forward the request and store the response on success. Include cache invalidation logic: POST/PUT/DELETE to a resource should clear related cache entries. Use configurable TTL per endpoint (some data is stale after 30 seconds, other data is valid for hours). The interceptor should be positioned after auth (so cached responses don't need re-authentication) but before retry (so retries don't serve stale cache). Expose a cache-busting mechanism (custom header or service method) for force-refresh scenarios."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: When would you use a BehaviorSubject-based service vs NgRx for state management?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: BehaviorSubject services work well for medium-complexity state: 5-15 state properties, 2-3 services managing related domains, straightforward async operations. They're simpler to understand, require no additional dependencies, and are easier to debug. Choose NgRx when: state is highly complex with many interdependent slices, you need time-travel debugging, multiple developers work on the same state domain, you want enforced unidirectional data flow, or you need sophisticated side-effect management (NgRx Effects). The break-even point is typically around 20+ actions and 5+ state slices — below that, NgRx adds ceremony without proportional benefit. Many successful production Angular apps use BehaviorSubject services exclusively."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between useClass, useValue, useFactory, and useExisting providers."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: These are the four provider recipes in Angular DI. useClass creates a new instance of the specified class (can be different from the token class — useful for swapping implementations). useValue provides a static value (configuration objects, constants, feature flags). useFactory calls a function to create the value, with access to other injected dependencies via deps array — use for conditional logic or complex initialization. useExisting creates an alias, making one token resolve to another token's instance — useful when you want a service accessible under multiple tokens (e.g., an abstract class token and a concrete class token pointing to the same instance). Factory providers are the most flexible but hardest to test; prefer useClass with abstract base classes for swappable implementations."
+          "type": "interview",
+          "question": "Explain the difference between useClass, useValue, useFactory, and useExisting providers.",
+          "answer": "These are the four provider recipes in Angular DI. useClass creates a new instance of the specified class (can be different from the token class — useful for swapping implementations). useValue provides a static value (configuration objects, constants, feature flags). useFactory calls a function to create the value, with access to other injected dependencies via deps array — use for conditional logic or complex initialization. useExisting creates an alias, making one token resolve to another token's instance — useful when you want a service accessible under multiple tokens (e.g., an abstract class token and a concrete class token pointing to the same instance). Factory providers are the most flexible but hardest to test; prefer useClass with abstract base classes for swappable implementations."
         }
       ],
-      "wordCount": 615,
+      "wordCount": 605,
       "subsections": []
     },
     {
@@ -336,7 +321,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/frontend/angular/services-and-di.md",
-    "wordCount": 1804,
+    "wordCount": 1794,
     "sectionCount": 14
   }
 }

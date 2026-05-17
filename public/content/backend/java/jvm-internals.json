@@ -156,47 +156,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between G1GC and ZGC. When would you choose each?"
+          "type": "interview",
+          "question": "Explain the difference between G1GC and ZGC. When would you choose each?",
+          "answer": "G1GC divides the heap into regions and performs incremental collection with a target pause time (default 200ms). It balances throughput and latency for general workloads. ZGC performs almost all GC work concurrently with application threads, achieving sub-millisecond pauses regardless of heap size (tested up to 16TB). Choose G1GC for typical microservices where 50-200ms pauses are acceptable and maximum throughput matters. Choose ZGC when your SLA requires sub-10ms tail latency (P99.9), when heap sizes exceed 8GB where G1 pauses become noticeable, or for applications where consistent response times matter more than raw throughput. ZGC uses colored pointers and load barriers, trading approximately 5-15% throughput for dramatically better latency characteristics."
         },
         {
-          "type": "paragraph",
-          "text": "A: G1GC divides the heap into regions and performs incremental collection with a target pause time (default 200ms). It balances throughput and latency for general workloads. ZGC performs almost all GC work concurrently with application threads, achieving sub-millisecond pauses regardless of heap size (tested up to 16TB). Choose G1GC for typical microservices where 50-200ms pauses are acceptable and maximum throughput matters. Choose ZGC when your SLA requires sub-10ms tail latency (P99.9), when heap sizes exceed 8GB where G1 pauses become noticeable, or for applications where consistent response times matter more than raw throughput. ZGC uses colored pointers and load barriers, trading approximately 5-15% throughput for dramatically better latency characteristics."
+          "type": "interview",
+          "question": "What is the Java Memory Model and why does it matter for concurrent programming?",
+          "answer": "The Java Memory Model (JMM) defines how threads interact through memory and what behaviors are guaranteed in concurrent programs. Without the JMM, compiler reordering, CPU instruction reordering, and CPU cache hierarchies could make concurrent programs behave unpredictably. The JMM establishes happens-before relationships that guarantee visibility: if action A happens-before action B, then B sees all memory effects of A. Key happens-before edges include volatile write → volatile read, monitor unlock → monitor lock, thread start → first action in started thread, and final field write in constructor → reading that field after construction. Understanding the JMM is essential for writing correct lock-free algorithms and understanding why volatile and synchronized are necessary even on single-processor systems where cache coherence is not an issue."
         },
         {
-          "type": "paragraph",
-          "text": "Q: What is the Java Memory Model and why does it matter for concurrent programming?"
+          "type": "interview",
+          "question": "How does JIT compilation work and what is tiered compilation?",
+          "answer": "The JVM starts by interpreting bytecode, then identifies frequently executed methods (hot spots) for compilation to native machine code. Tiered compilation uses multiple compilation levels: Level 0 (interpreter), Level 1-3 (C1 compiler with increasing profiling), and Level 4 (C2 compiler with aggressive optimizations). C1 compiles quickly with basic optimizations for fast warmup. C2 uses profiling data collected during interpretation and C1 execution to apply speculative optimizations like inlining, escape analysis, loop unrolling, and dead code elimination. If a speculative optimization proves wrong (e.g., a devirtualized call encounters a new subclass), the JVM deoptimizes back to interpreted code and recompiles with updated assumptions. This adaptive approach achieves near-native performance for long-running applications while maintaining the flexibility of dynamic dispatch."
         },
         {
-          "type": "paragraph",
-          "text": "A: The Java Memory Model (JMM) defines how threads interact through memory and what behaviors are guaranteed in concurrent programs. Without the JMM, compiler reordering, CPU instruction reordering, and CPU cache hierarchies could make concurrent programs behave unpredictably. The JMM establishes happens-before relationships that guarantee visibility: if action A happens-before action B, then B sees all memory effects of A. Key happens-before edges include volatile write → volatile read, monitor unlock → monitor lock, thread start → first action in started thread, and final field write in constructor → reading that field after construction. Understanding the JMM is essential for writing correct lock-free algorithms and understanding why volatile and synchronized are necessary even on single-processor systems where cache coherence is not an issue."
+          "type": "interview",
+          "question": "Explain escape analysis and its impact on performance.",
+          "answer": "Escape analysis determines whether an object allocated inside a method can be accessed outside that method's scope. If an object does not escape (is not stored in a field, returned, or passed to another method that might store it), the JIT compiler can apply three optimizations: scalar replacement (decomposing the object into its fields stored in registers or on the stack, eliminating heap allocation entirely), lock elision (removing synchronization on objects that are thread-local), and stack allocation (allocating the object on the stack frame instead of the heap). These optimizations dramatically reduce GC pressure for short-lived objects. For example, an iterator created in a for-each loop that does not escape the loop body can be scalar-replaced, eliminating the allocation entirely. This is why microbenchmarks must use JMH with blackhole consumption to prevent escape analysis from eliminating the measured allocations."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How does JIT compilation work and what is tiered compilation?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: The JVM starts by interpreting bytecode, then identifies frequently executed methods (hot spots) for compilation to native machine code. Tiered compilation uses multiple compilation levels: Level 0 (interpreter), Level 1-3 (C1 compiler with increasing profiling), and Level 4 (C2 compiler with aggressive optimizations). C1 compiles quickly with basic optimizations for fast warmup. C2 uses profiling data collected during interpretation and C1 execution to apply speculative optimizations like inlining, escape analysis, loop unrolling, and dead code elimination. If a speculative optimization proves wrong (e.g., a devirtualized call encounters a new subclass), the JVM deoptimizes back to interpreted code and recompiles with updated assumptions. This adaptive approach achieves near-native performance for long-running applications while maintaining the flexibility of dynamic dispatch."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Explain escape analysis and its impact on performance."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Escape analysis determines whether an object allocated inside a method can be accessed outside that method's scope. If an object does not escape (is not stored in a field, returned, or passed to another method that might store it), the JIT compiler can apply three optimizations: scalar replacement (decomposing the object into its fields stored in registers or on the stack, eliminating heap allocation entirely), lock elision (removing synchronization on objects that are thread-local), and stack allocation (allocating the object on the stack frame instead of the heap). These optimizations dramatically reduce GC pressure for short-lived objects. For example, an iterator created in a for-each loop that does not escape the loop body can be scalar-replaced, eliminating the allocation entirely. This is why microbenchmarks must use JMH with blackhole consumption to prevent escape analysis from eliminating the measured allocations."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you diagnose and fix a memory leak in a production Java application?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: First, confirm the leak by monitoring heap usage over time with metrics (Micrometer/Prometheus) looking for a sawtooth pattern where the baseline after each GC cycle gradually increases. Enable GC logging to observe Old Generation growth. Take a heap dump during high memory usage with jmap -dump:live,format=b,file=heap.hprof <pid> or trigger automatically with -XX:+HeapDumpOnOutOfMemoryError. Analyze the dump with Eclipse MAT or VisualVM, focusing on the Dominator Tree to find objects retaining the most memory, and the Leak Suspects report. Common causes include unbounded caches (use WeakHashMap or size-limited caches), unclosed resources (streams, connections), static collections that grow without eviction, and class loader leaks from ThreadLocal values surviving redeployment. Fix by adding proper resource cleanup (try-with-resources), bounding collection sizes, using weak references for caches, and ensuring ThreadLocal values are removed in finally blocks."
+          "type": "interview",
+          "question": "How do you diagnose and fix a memory leak in a production Java application?",
+          "answer": "First, confirm the leak by monitoring heap usage over time with metrics (Micrometer/Prometheus) looking for a sawtooth pattern where the baseline after each GC cycle gradually increases. Enable GC logging to observe Old Generation growth. Take a heap dump during high memory usage with jmap -dump:live,format=b,file=heap.hprof <pid> or trigger automatically with -XX:+HeapDumpOnOutOfMemoryError. Analyze the dump with Eclipse MAT or VisualVM, focusing on the Dominator Tree to find objects retaining the most memory, and the Leak Suspects report. Common causes include unbounded caches (use WeakHashMap or size-limited caches), unclosed resources (streams, connections), static collections that grow without eviction, and class loader leaks from ThreadLocal values surviving redeployment. Fix by adding proper resource cleanup (try-with-resources), bounding collection sizes, using weak references for caches, and ensuring ThreadLocal values are removed in finally blocks."
         }
       ],
-      "wordCount": 685,
+      "wordCount": 675,
       "subsections": []
     },
     {
@@ -264,7 +249,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/java/jvm-internals.md",
-    "wordCount": 2058,
+    "wordCount": 2048,
     "sectionCount": 12
   }
 }

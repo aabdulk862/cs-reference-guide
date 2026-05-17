@@ -173,39 +173,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain Oracle RAC architecture and how Cache Fusion works."
+          "type": "interview",
+          "question": "Explain Oracle RAC architecture and how Cache Fusion works.",
+          "answer": "RAC (Real Application Clusters) allows multiple Oracle instances to access a single shared database simultaneously, providing both scalability and high availability. Each instance has its own SGA and background processes but shares the same datafiles on shared storage (ASM or SAN). Cache Fusion is the mechanism that transfers data blocks between instance buffer caches over a private high-speed interconnect (typically InfiniBand or dedicated 10GbE). When instance 1 needs a block that instance 2 has modified, Cache Fusion ships the block directly from instance 2's buffer cache — avoiding the slower path of writing to disk and re-reading. Global Cache Service (GCS) tracks block ownership across instances. The key trade-off: Cache Fusion adds latency for cross-instance block transfers (typically 0.5-2ms vs 0.01ms for local buffer access), so applications benefit from affinity — routing related work to the same instance to minimize cross-instance traffic. RAC provides instance-level failover (surviving instances take over sessions from a failed instance) but does NOT provide data-level redundancy — that requires Data Guard or ASM mirroring."
         },
         {
-          "type": "paragraph",
-          "text": "A: RAC (Real Application Clusters) allows multiple Oracle instances to access a single shared database simultaneously, providing both scalability and high availability. Each instance has its own SGA and background processes but shares the same datafiles on shared storage (ASM or SAN). Cache Fusion is the mechanism that transfers data blocks between instance buffer caches over a private high-speed interconnect (typically InfiniBand or dedicated 10GbE). When instance 1 needs a block that instance 2 has modified, Cache Fusion ships the block directly from instance 2's buffer cache — avoiding the slower path of writing to disk and re-reading. Global Cache Service (GCS) tracks block ownership across instances. The key trade-off: Cache Fusion adds latency for cross-instance block transfers (typically 0.5-2ms vs 0.01ms for local buffer access), so applications benefit from affinity — routing related work to the same instance to minimize cross-instance traffic. RAC provides instance-level failover (surviving instances take over sessions from a failed instance) but does NOT provide data-level redundancy — that requires Data Guard or ASM mirroring."
+          "type": "interview",
+          "question": "How do you diagnose a performance problem using AWR and ASH?",
+          "answer": "Start with an AWR report covering the problem period. The \"Top 5 Timed Events\" section identifies whether the bottleneck is CPU, I/O, locking, or network. \"SQL ordered by Elapsed Time\" reveals the most expensive queries. \"Instance Efficiency Percentages\" shows buffer cache hit ratio, library cache hit ratio, and parse efficiency. For real-time diagnosis, query ASH (V$ACTIVE_SESSION_HISTORY): group by sql_id and event to find what active sessions are waiting on. The wait_class column categorizes waits (User I/O, Concurrency, Application, Network). For deeper analysis, use DBMS_XPLAN.DISPLAY_AWR to retrieve historical execution plans for regressed SQL. Compare plans between good and bad periods to identify optimizer changes. Common findings: plan regression after statistics gathering (fix with SQL Plan Baselines), I/O bottleneck from full table scans (add indexes or partitioning), concurrency waits from hot blocks (use reverse key indexes or hash partitioning), and library cache contention from hard parsing (implement bind variables)."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How do you diagnose a performance problem using AWR and ASH?"
+          "type": "interview",
+          "question": "What is Oracle's flashback technology and what are its different levels?",
+          "answer": "Flashback operates at multiple granularities without requiring backup restoration. Flashback Query (SELECT ... AS OF TIMESTAMP/SCN) reads data from undo segments as it existed at a past point — useful for investigating data corruption or auditing changes. Flashback Version Query shows all versions of rows between two timestamps, including the operation type (I/U/D). Flashback Table restores an entire table to a previous state using undo data, within the undo retention window. Flashback Drop recovers dropped tables from the recyclebin (FLASHBACK TABLE t TO BEFORE DROP). Flashback Database rewinds the entire database to a past point using flashback logs — faster than point-in-time recovery from backups, typically used after failed upgrades or data corruption. Flashback Data Archive (Total Recall) provides long-term history beyond undo retention by automatically archiving row changes to history tables. The key limitation: all undo-based flashback features are bounded by UNDO_RETENTION and undo tablespace size. Flashback Database requires flashback logging enabled and consumes additional I/O."
         },
         {
-          "type": "paragraph",
-          "text": "A: Start with an AWR report covering the problem period. The \"Top 5 Timed Events\" section identifies whether the bottleneck is CPU, I/O, locking, or network. \"SQL ordered by Elapsed Time\" reveals the most expensive queries. \"Instance Efficiency Percentages\" shows buffer cache hit ratio, library cache hit ratio, and parse efficiency. For real-time diagnosis, query ASH (V$ACTIVE_SESSION_HISTORY): group by sql_id and event to find what active sessions are waiting on. The wait_class column categorizes waits (User I/O, Concurrency, Application, Network). For deeper analysis, use DBMS_XPLAN.DISPLAY_AWR to retrieve historical execution plans for regressed SQL. Compare plans between good and bad periods to identify optimizer changes. Common findings: plan regression after statistics gathering (fix with SQL Plan Baselines), I/O bottleneck from full table scans (add indexes or partitioning), concurrency waits from hot blocks (use reverse key indexes or hash partitioning), and library cache contention from hard parsing (implement bind variables)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is Oracle's flashback technology and what are its different levels?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Flashback operates at multiple granularities without requiring backup restoration. Flashback Query (SELECT ... AS OF TIMESTAMP/SCN) reads data from undo segments as it existed at a past point — useful for investigating data corruption or auditing changes. Flashback Version Query shows all versions of rows between two timestamps, including the operation type (I/U/D). Flashback Table restores an entire table to a previous state using undo data, within the undo retention window. Flashback Drop recovers dropped tables from the recyclebin (FLASHBACK TABLE t TO BEFORE DROP). Flashback Database rewinds the entire database to a past point using flashback logs — faster than point-in-time recovery from backups, typically used after failed upgrades or data corruption. Flashback Data Archive (Total Recall) provides long-term history beyond undo retention by automatically archiving row changes to history tables. The key limitation: all undo-based flashback features are bounded by UNDO_RETENTION and undo tablespace size. Flashback Database requires flashback logging enabled and consumes additional I/O."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: Compare Oracle's optimizer approach with PostgreSQL's. How do SQL Plan Baselines provide plan stability?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Oracle's optimizer is more sophisticated in several ways: it supports adaptive plans (changing join methods mid-execution based on actual cardinalities), SQL profiles (optimizer corrections learned from SQL Tuning Advisor), and cardinality feedback (adjusting estimates for subsequent executions). PostgreSQL's optimizer is simpler but effective — it lacks adaptive execution and relies more heavily on accurate statistics. Oracle's hint system is far more extensive (200+ hints) compared to PostgreSQL's limited planner configuration. SQL Plan Baselines (SPM) solve the plan regression problem: when a new plan is found, it's added to the baseline as \"unaccepted.\" The optimizer only uses accepted plans unless explicitly evolved. DBMS_SPM.EVOLVE_SQL_PLAN_BASELINE tests unaccepted plans and promotes them only if they perform better. This provides plan stability (no regressions) while allowing improvement (new plans can be adopted after verification). PostgreSQL has no equivalent — it relies on pg_hint_plan extension or application-level query rewriting for plan control."
+          "type": "interview",
+          "question": "Compare Oracle's optimizer approach with PostgreSQL's. How do SQL Plan Baselines provide plan stability?",
+          "answer": "Oracle's optimizer is more sophisticated in several ways: it supports adaptive plans (changing join methods mid-execution based on actual cardinalities), SQL profiles (optimizer corrections learned from SQL Tuning Advisor), and cardinality feedback (adjusting estimates for subsequent executions). PostgreSQL's optimizer is simpler but effective — it lacks adaptive execution and relies more heavily on accurate statistics. Oracle's hint system is far more extensive (200+ hints) compared to PostgreSQL's limited planner configuration. SQL Plan Baselines (SPM) solve the plan regression problem: when a new plan is found, it's added to the baseline as \"unaccepted.\" The optimizer only uses accepted plans unless explicitly evolved. DBMS_SPM.EVOLVE_SQL_PLAN_BASELINE tests unaccepted plans and promotes them only if they perform better. This provides plan stability (no regressions) while allowing improvement (new plans can be adopted after verification). PostgreSQL has no equivalent — it relies on pg_hint_plan extension or application-level query rewriting for plan control."
         }
       ],
-      "wordCount": 672,
+      "wordCount": 664,
       "subsections": []
     },
     {
@@ -271,7 +259,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/databases/oracle/oracle-database.md",
-    "wordCount": 2579,
+    "wordCount": 2571,
     "sectionCount": 12
   }
 }

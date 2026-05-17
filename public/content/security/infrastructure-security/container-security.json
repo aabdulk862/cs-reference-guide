@@ -307,39 +307,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: How would you design a secure container image pipeline from source code to production deployment?"
+          "type": "interview",
+          "question": "How would you design a secure container image pipeline from source code to production deployment?",
+          "answer": "A secure pipeline implements security at every stage: (1) Source: Branch protection, signed commits, dependency pinning with lock files, and automated dependency updates (Renovate/Dependabot). (2) Build: Multi-stage Dockerfiles minimizing attack surface, non-root users, hardened base images from a curated internal registry. Build on ephemeral, attested infrastructure (SLSA). (3) Scan: Static analysis (Trivy/Snyk) for CVEs in OS packages and application dependencies, secret scanning (detect accidentally embedded credentials), and Dockerfile linting (hadolint). Fail on critical/high findings. (4) Sign: Keyless signing with cosign/Sigstore, generating provenance attestation and SBOM. (5) Store: Private registry with vulnerability scanning enabled, image retention policies, and access controls. (6) Deploy: Admission controllers verify signatures and scan results before allowing pods. Only digest-referenced images are permitted. (7) Runtime: Behavioral monitoring (Falco), network policies, and automated response to detected threats."
         },
         {
-          "type": "paragraph",
-          "text": "A: A secure pipeline implements security at every stage: (1) Source: Branch protection, signed commits, dependency pinning with lock files, and automated dependency updates (Renovate/Dependabot). (2) Build: Multi-stage Dockerfiles minimizing attack surface, non-root users, hardened base images from a curated internal registry. Build on ephemeral, attested infrastructure (SLSA). (3) Scan: Static analysis (Trivy/Snyk) for CVEs in OS packages and application dependencies, secret scanning (detect accidentally embedded credentials), and Dockerfile linting (hadolint). Fail on critical/high findings. (4) Sign: Keyless signing with cosign/Sigstore, generating provenance attestation and SBOM. (5) Store: Private registry with vulnerability scanning enabled, image retention policies, and access controls. (6) Deploy: Admission controllers verify signatures and scan results before allowing pods. Only digest-referenced images are permitted. (7) Runtime: Behavioral monitoring (Falco), network policies, and automated response to detected threats."
+          "type": "interview",
+          "question": "Explain the difference between container isolation and VM isolation. When is container isolation insufficient?",
+          "answer": "VMs provide hardware-level isolation — each VM has its own kernel, and the hypervisor enforces boundaries at the CPU instruction level. Containers share the host kernel and rely on Linux namespaces (PID, network, mount, user) and cgroups for isolation. Container isolation is weaker because: kernel vulnerabilities affect all containers on the host, namespace escapes are possible (though rare), and the shared kernel provides a larger attack surface. Container isolation is insufficient when: running untrusted code (use gVisor or Kata Containers for kernel-level isolation), strict regulatory requirements mandate VM-level separation, different security classification levels share infrastructure, or when kernel exploits are in your threat model. Solutions include: gVisor (user-space kernel), Kata Containers (lightweight VMs with container UX), Firecracker (microVMs), or dedicated node pools with single-tenant scheduling."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the difference between container isolation and VM isolation. When is container isolation insufficient?"
+          "type": "interview",
+          "question": "How do you manage secrets in a Kubernetes environment? Compare different approaches and their trade-offs.",
+          "answer": "Approaches from least to most secure: (1) Kubernetes Secrets (base64 encoded, stored in etcd): Simple but not encrypted by default, visible to anyone with RBAC access to the namespace. Enable etcd encryption at rest as minimum. (2) Sealed Secrets (Bitnami): Encrypted secrets that can be safely stored in Git. Decrypted only by the cluster's sealed-secrets controller. Good for GitOps but no rotation support. (3) External Secrets Operator: Syncs secrets from external stores (Vault, AWS SM, GCP SM) into Kubernetes Secrets. Supports rotation via refresh intervals. Secrets still exist as Kubernetes Secrets in memory. (4) Secrets Store CSI Driver: Mounts secrets directly from external stores as files in pod volumes. Secrets never exist as Kubernetes Secret objects. Supports auto-rotation. Most secure but requires CSI driver support. (5) Vault Agent Sidecar: Vault agent runs alongside the application, handling authentication, secret retrieval, and rotation. Most flexible but adds sidecar overhead. For production, I recommend CSI driver for static secrets and Vault agent for dynamic secrets (database credentials with TTL)."
         },
         {
-          "type": "paragraph",
-          "text": "A: VMs provide hardware-level isolation — each VM has its own kernel, and the hypervisor enforces boundaries at the CPU instruction level. Containers share the host kernel and rely on Linux namespaces (PID, network, mount, user) and cgroups for isolation. Container isolation is weaker because: kernel vulnerabilities affect all containers on the host, namespace escapes are possible (though rare), and the shared kernel provides a larger attack surface. Container isolation is insufficient when: running untrusted code (use gVisor or Kata Containers for kernel-level isolation), strict regulatory requirements mandate VM-level separation, different security classification levels share infrastructure, or when kernel exploits are in your threat model. Solutions include: gVisor (user-space kernel), Kata Containers (lightweight VMs with container UX), Firecracker (microVMs), or dedicated node pools with single-tenant scheduling."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you manage secrets in a Kubernetes environment? Compare different approaches and their trade-offs."
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Approaches from least to most secure: (1) Kubernetes Secrets (base64 encoded, stored in etcd): Simple but not encrypted by default, visible to anyone with RBAC access to the namespace. Enable etcd encryption at rest as minimum. (2) Sealed Secrets (Bitnami): Encrypted secrets that can be safely stored in Git. Decrypted only by the cluster's sealed-secrets controller. Good for GitOps but no rotation support. (3) External Secrets Operator: Syncs secrets from external stores (Vault, AWS SM, GCP SM) into Kubernetes Secrets. Supports rotation via refresh intervals. Secrets still exist as Kubernetes Secrets in memory. (4) Secrets Store CSI Driver: Mounts secrets directly from external stores as files in pod volumes. Secrets never exist as Kubernetes Secret objects. Supports auto-rotation. Most secure but requires CSI driver support. (5) Vault Agent Sidecar: Vault agent runs alongside the application, handling authentication, secret retrieval, and rotation. Most flexible but adds sidecar overhead. For production, I recommend CSI driver for static secrets and Vault agent for dynamic secrets (database credentials with TTL)."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is SLSA and how does it protect against supply chain attacks?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: SLSA (Supply-chain Levels for Software Artifacts) is a framework defining increasing levels of supply chain security guarantees. Level 1: Build process is documented and produces provenance (metadata about how the artifact was built). Level 2: Build service is hosted (not on developer laptops), and provenance is signed. Level 3: Build platform is hardened — builds run on ephemeral, isolated infrastructure, source is verified, and provenance is non-falsifiable. Level 4: All dependencies are also SLSA-compliant (hermetic builds). SLSA protects against: compromised build systems (SolarWinds-style attacks), unauthorized source changes, dependency confusion attacks, and build reproducibility issues. Implementation involves: using GitHub Actions or Cloud Build with provenance generation, signing artifacts with Sigstore, verifying provenance at deployment time via admission controllers, and generating SBOMs for vulnerability tracking. The key insight is that knowing what's in your software (SBOM) and how it was built (provenance) enables rapid response when vulnerabilities are discovered."
+          "type": "interview",
+          "question": "What is SLSA and how does it protect against supply chain attacks?",
+          "answer": "SLSA (Supply-chain Levels for Software Artifacts) is a framework defining increasing levels of supply chain security guarantees. Level 1: Build process is documented and produces provenance (metadata about how the artifact was built). Level 2: Build service is hosted (not on developer laptops), and provenance is signed. Level 3: Build platform is hardened — builds run on ephemeral, isolated infrastructure, source is verified, and provenance is non-falsifiable. Level 4: All dependencies are also SLSA-compliant (hermetic builds). SLSA protects against: compromised build systems (SolarWinds-style attacks), unauthorized source changes, dependency confusion attacks, and build reproducibility issues. Implementation involves: using GitHub Actions or Cloud Build with provenance generation, signing artifacts with Sigstore, verifying provenance at deployment time via admission controllers, and generating SBOMs for vulnerability tracking. The key insight is that knowing what's in your software (SBOM) and how it was built (provenance) enables rapid response when vulnerabilities are discovered."
         }
       ],
-      "wordCount": 631,
+      "wordCount": 623,
       "subsections": []
     },
     {
@@ -424,7 +412,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/security/infrastructure-security/container-security.md",
-    "wordCount": 2133,
+    "wordCount": 2125,
     "sectionCount": 14
   }
 }

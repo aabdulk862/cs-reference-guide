@@ -215,47 +215,32 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Why use Testcontainers instead of in-memory databases for integration testing?"
+          "type": "interview",
+          "question": "Why use Testcontainers instead of in-memory databases for integration testing?",
+          "answer": "Testcontainers runs the actual production database engine in Docker, providing identical behavior for SQL dialect, constraints, indexes, locking, and database-specific features. In-memory databases (H2, SQLite) have subtle differences that cause tests to pass locally but fail in production: different NULL handling, missing support for JSONB operators, different transaction isolation behavior, and incompatible SQL syntax for advanced queries. The startup cost (5-10 seconds per container) is acceptable for integration test suites that run in CI. Testcontainers also supports reusable containers that persist across test runs during local development, eliminating the startup penalty for rapid iteration."
         },
         {
-          "type": "paragraph",
-          "text": "A: Testcontainers runs the actual production database engine in Docker, providing identical behavior for SQL dialect, constraints, indexes, locking, and database-specific features. In-memory databases (H2, SQLite) have subtle differences that cause tests to pass locally but fail in production: different NULL handling, missing support for JSONB operators, different transaction isolation behavior, and incompatible SQL syntax for advanced queries. The startup cost (5-10 seconds per container) is acceptable for integration test suites that run in CI. Testcontainers also supports reusable containers that persist across test runs during local development, eliminating the startup penalty for rapid iteration."
+          "type": "interview",
+          "question": "Explain the transaction rollback pattern for test isolation. What are its limitations?",
+          "answer": "The transaction rollback pattern wraps each test in a database transaction (BEGIN before test, ROLLBACK after). Since the transaction never commits, test data never persists, providing perfect isolation without cleanup overhead. It's fast (no truncate/re-seed between tests) and simple. Limitations: (1) Tests cannot verify commit behavior or trigger post-commit hooks. (2) Tests that themselves use transactions (testing transaction boundaries) conflict with the outer test transaction. (3) Tests that spawn threads or async operations may use different connections outside the test transaction. (4) Some databases don't support nested transactions (savepoints work as a workaround). For tests that need to verify commit behavior, use truncate-and-reseed or unique data prefixes instead."
         },
         {
-          "type": "paragraph",
-          "text": "Q: Explain the transaction rollback pattern for test isolation. What are its limitations?"
+          "type": "interview",
+          "question": "How would you test database migrations safely before deploying to production?",
+          "answer": "Multi-layer approach: (1) Run migrations against an empty database in CI to verify they apply cleanly. (2) Run migrations against a database seeded with representative production-like data to catch data transformation issues. (3) Test rollback (down migration) to ensure you can revert if deployment fails. (4) For large tables, test migration duration — a migration that locks a 100M-row table for 30 minutes is unacceptable. Use pg_stat_activity monitoring in tests to detect long locks. (5) Test that the application works correctly with both the old and new schema during the migration window (backward compatibility). (6) In staging, run migrations against a recent production snapshot to catch edge cases in real data that synthetic test data misses."
         },
         {
-          "type": "paragraph",
-          "text": "A: The transaction rollback pattern wraps each test in a database transaction (BEGIN before test, ROLLBACK after). Since the transaction never commits, test data never persists, providing perfect isolation without cleanup overhead. It's fast (no truncate/re-seed between tests) and simple. Limitations: (1) Tests cannot verify commit behavior or trigger post-commit hooks. (2) Tests that themselves use transactions (testing transaction boundaries) conflict with the outer test transaction. (3) Tests that spawn threads or async operations may use different connections outside the test transaction. (4) Some databases don't support nested transactions (savepoints work as a workaround). For tests that need to verify commit behavior, use truncate-and-reseed or unique data prefixes instead."
+          "type": "interview",
+          "question": "What strategies exist for managing test data in large integration test suites?",
+          "answer": "Four main strategies with different trade-offs. (1) Transaction rollback: fastest, zero cleanup, but limited to single-connection tests. (2) Truncate and re-seed: clean slate per test, slower but supports multi-connection scenarios. Optimize with TRUNCATE CASCADE (faster than DELETE). (3) Unique prefixes: each test creates data with a UUID prefix, no cleanup needed, supports parallel execution. Downside: assertions must filter by prefix. (4) Fixture snapshots: restore a database snapshot (pg_restore) before each suite, providing consistent starting state. Best for read-heavy test suites. Combine strategies: use transaction rollback for most tests, truncate for tests that verify transaction behavior, and fixtures for complex scenarios requiring extensive pre-existing data."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you test database migrations safely before deploying to production?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Multi-layer approach: (1) Run migrations against an empty database in CI to verify they apply cleanly. (2) Run migrations against a database seeded with representative production-like data to catch data transformation issues. (3) Test rollback (down migration) to ensure you can revert if deployment fails. (4) For large tables, test migration duration — a migration that locks a 100M-row table for 30 minutes is unacceptable. Use pg_stat_activity monitoring in tests to detect long locks. (5) Test that the application works correctly with both the old and new schema during the migration window (backward compatibility). (6) In staging, run migrations against a recent production snapshot to catch edge cases in real data that synthetic test data misses."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What strategies exist for managing test data in large integration test suites?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Four main strategies with different trade-offs. (1) Transaction rollback: fastest, zero cleanup, but limited to single-connection tests. (2) Truncate and re-seed: clean slate per test, slower but supports multi-connection scenarios. Optimize with TRUNCATE CASCADE (faster than DELETE). (3) Unique prefixes: each test creates data with a UUID prefix, no cleanup needed, supports parallel execution. Downside: assertions must filter by prefix. (4) Fixture snapshots: restore a database snapshot (pg_restore) before each suite, providing consistent starting state. Best for read-heavy test suites. Combine strategies: use transaction rollback for most tests, truncate for tests that verify transaction behavior, and fixtures for complex scenarios requiring extensive pre-existing data."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How do you test for N+1 query problems in ORM-based applications?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: Instrument the database connection to count queries executed during a test. Assert that loading a list of N entities with relationships executes a bounded number of queries (typically 2-3 for eager loading, not N+1). In Spring/Hibernate, use DataSourceProxy or Hibernate statistics. In TypeORM/Prisma, use query logging middleware. Write tests like: \"loading 100 orders with their items should execute at most 3 queries.\" These tests catch regressions when someone adds a new relationship or changes a fetch strategy. Combine with slow query log analysis — if a test takes longer than expected, check the query count. Some teams add query count assertions to critical path tests as performance regression guards."
+          "type": "interview",
+          "question": "How do you test for N+1 query problems in ORM-based applications?",
+          "answer": "Instrument the database connection to count queries executed during a test. Assert that loading a list of N entities with relationships executes a bounded number of queries (typically 2-3 for eager loading, not N+1). In Spring/Hibernate, use DataSourceProxy or Hibernate statistics. In TypeORM/Prisma, use query logging middleware. Write tests like: \"loading 100 orders with their items should execute at most 3 queries.\" These tests catch regressions when someone adds a new relationship or changes a fetch strategy. Combine with slow query log analysis — if a test takes longer than expected, check the query count. Some teams add query count assertions to critical path tests as performance regression guards."
         }
       ],
-      "wordCount": 597,
+      "wordCount": 587,
       "subsections": []
     },
     {
@@ -335,7 +320,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/testing/integration-testing/database-testing.md",
-    "wordCount": 1812,
+    "wordCount": 1802,
     "sectionCount": 14
   }
 }

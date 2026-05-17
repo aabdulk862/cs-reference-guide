@@ -131,39 +131,27 @@
       "level": 2,
       "content": [
         {
-          "type": "paragraph",
-          "text": "Q: Explain the full DNS resolution process when a browser navigates to a new domain."
+          "type": "interview",
+          "question": "Explain the full DNS resolution process when a browser navigates to a new domain.",
+          "answer": "The browser first checks its internal DNS cache (Chrome: chrome://net-internals/#dns). On miss, it calls the OS stub resolver, which checks the OS cache and hosts file. On miss, the query goes to the configured recursive resolver (ISP or public like 8.8.8.8). The recursive resolver checks its cache, then performs iterative queries: it asks a root nameserver for the TLD, gets a referral to the TLD nameserver (e.g., .com), asks the TLD for the domain's authoritative nameserver, then asks the authoritative server for the actual A/AAAA record. Each response includes a TTL that controls caching duration. The recursive resolver caches the answer and returns it to the client. Total time for a cold resolution: 50-200ms across 4+ round trips."
         },
         {
-          "type": "paragraph",
-          "text": "A: The browser first checks its internal DNS cache (Chrome: chrome://net-internals/#dns). On miss, it calls the OS stub resolver, which checks the OS cache and hosts file. On miss, the query goes to the configured recursive resolver (ISP or public like 8.8.8.8). The recursive resolver checks its cache, then performs iterative queries: it asks a root nameserver for the TLD, gets a referral to the TLD nameserver (e.g., .com), asks the TLD for the domain's authoritative nameserver, then asks the authoritative server for the actual A/AAAA record. Each response includes a TTL that controls caching duration. The recursive resolver caches the answer and returns it to the client. Total time for a cold resolution: 50-200ms across 4+ round trips."
+          "type": "interview",
+          "question": "How would you implement DNS-based blue-green deployment?",
+          "answer": "First, lower the TTL on the production DNS record from its normal value (e.g., 3600s) to a short value (30-60s) and wait at least the original TTL for the change to propagate through all caches. Deploy the new version to the green environment and validate it. When ready to switch, update the DNS record to point to the green environment's IP/load balancer. Monitor for errors during the TTL window while old cached records drain. After confirming stability, optionally raise the TTL back. Keep the blue environment running for quick rollback — just flip DNS back. The key limitation is that DNS-based switching has a minimum transition time equal to the TTL, during which both environments receive traffic."
         },
         {
-          "type": "paragraph",
-          "text": "Q: How would you implement DNS-based blue-green deployment?"
+          "type": "interview",
+          "question": "What is DNS cache poisoning and how does DNSSEC prevent it?",
+          "answer": "DNS cache poisoning injects false records into a recursive resolver's cache by sending forged responses that match the query's transaction ID and source port before the legitimate response arrives. The Kaminsky attack exploited this by flooding resolvers with responses for random subdomains, each containing a poisoned authority section delegating the entire domain to an attacker's nameserver. DNSSEC prevents this by adding cryptographic signatures (RRSIG records) to DNS responses. Each zone signs its records with a private key, and the corresponding public key is published in a DNSKEY record authenticated by the parent zone's DS (Delegation Signer) record. This creates a chain of trust from the root zone down to individual records, allowing resolvers to verify that responses haven't been tampered with."
         },
         {
-          "type": "paragraph",
-          "text": "A: First, lower the TTL on the production DNS record from its normal value (e.g., 3600s) to a short value (30-60s) and wait at least the original TTL for the change to propagate through all caches. Deploy the new version to the green environment and validate it. When ready to switch, update the DNS record to point to the green environment's IP/load balancer. Monitor for errors during the TTL window while old cached records drain. After confirming stability, optionally raise the TTL back. Keep the blue environment running for quick rollback — just flip DNS back. The key limitation is that DNS-based switching has a minimum transition time equal to the TTL, during which both environments receive traffic."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: What is DNS cache poisoning and how does DNSSEC prevent it?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: DNS cache poisoning injects false records into a recursive resolver's cache by sending forged responses that match the query's transaction ID and source port before the legitimate response arrives. The Kaminsky attack exploited this by flooding resolvers with responses for random subdomains, each containing a poisoned authority section delegating the entire domain to an attacker's nameserver. DNSSEC prevents this by adding cryptographic signatures (RRSIG records) to DNS responses. Each zone signs its records with a private key, and the corresponding public key is published in a DNSKEY record authenticated by the parent zone's DS (Delegation Signer) record. This creates a chain of trust from the root zone down to individual records, allowing resolvers to verify that responses haven't been tampered with."
-        },
-        {
-          "type": "paragraph",
-          "text": "Q: How does DNS-based load balancing work, and what are its limitations?"
-        },
-        {
-          "type": "paragraph",
-          "text": "A: DNS-based load balancing returns multiple A records for a domain, and clients typically connect to the first one (or a random one, depending on implementation). Weighted DNS assigns different weights to records, controlling traffic distribution. The limitations are significant: clients cache DNS responses and reuse the same IP for the TTL duration (no per-request balancing), client behavior is unpredictable (some ignore TTL, some always use the first record), you can't route based on request content (URL, headers), and failover speed is limited by TTL propagation. DNS load balancing works best for coarse-grained global distribution across regions, not fine-grained balancing within a cluster."
+          "type": "interview",
+          "question": "How does DNS-based load balancing work, and what are its limitations?",
+          "answer": "DNS-based load balancing returns multiple A records for a domain, and clients typically connect to the first one (or a random one, depending on implementation). Weighted DNS assigns different weights to records, controlling traffic distribution. The limitations are significant: clients cache DNS responses and reuse the same IP for the TTL duration (no per-request balancing), client behavior is unpredictable (some ignore TTL, some always use the first record), you can't route based on request content (URL, headers), and failover speed is limited by TTL propagation. DNS load balancing works best for coarse-grained global distribution across regions, not fine-grained balancing within a cluster."
         }
       ],
-      "wordCount": 509,
+      "wordCount": 501,
       "subsections": []
     },
     {
@@ -227,7 +215,7 @@
   "metadata": {
     "source": "parsed",
     "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/networking/protocols/dns.md",
-    "wordCount": 1745,
+    "wordCount": 1737,
     "sectionCount": 8
   }
 }
