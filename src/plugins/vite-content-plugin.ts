@@ -620,14 +620,22 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
   await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
 
   // Build and write search index from all parsed content (including subtopics)
+  // We prefix each parsed content's id with the category slug so that
+  // search results can navigate to /topic/:categorySlug/:topicSlug
   const allParsedContents: ParsedContent[] = [];
-  for (const contents of categoryMap.values()) {
+  for (const [categoryName, contents] of categoryMap) {
+    const catSlug = slugify(categoryName);
     for (const content of contents) {
-      allParsedContents.push(content);
-      // Include subtopic content in search index for multi-page topics
       const multiPageData = (content as ParsedContent & { _multiPage?: { topicSlug: string; subtopics: ParsedContent[] } })._multiPage;
+      const topicSlug = multiPageData ? multiPageData.topicSlug : content.slug;
+      // Override id to include category prefix for correct URL generation
+      const prefixedContent = { ...content, id: `${catSlug}/${topicSlug}` };
+      allParsedContents.push(prefixedContent);
+      // Include subtopic content in search index for multi-page topics
       if (multiPageData) {
-        allParsedContents.push(...multiPageData.subtopics);
+        for (const subtopic of multiPageData.subtopics) {
+          allParsedContents.push({ ...subtopic, id: `${catSlug}/${topicSlug}` });
+        }
       }
     }
   }
