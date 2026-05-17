@@ -12,11 +12,13 @@ function renderWithRouter(initialRoute = '/') {
 }
 
 describe('BottomNav', () => {
-  it('renders exactly 5 navigation items', () => {
+  it('renders exactly 5 navigation items (4 links + 1 timer button)', () => {
     renderWithRouter();
     const nav = screen.getByRole('navigation', { name: /mobile navigation/i });
     const links = nav.querySelectorAll('a');
-    expect(links.length).toBe(5);
+    const buttons = nav.querySelectorAll('button');
+    expect(links.length).toBe(4);
+    expect(buttons.length).toBe(1);
   });
 
   it('renders all expected labels', () => {
@@ -24,7 +26,7 @@ describe('BottomNav', () => {
     expect(screen.getByText('Home')).toBeTruthy();
     expect(screen.getByText('Topics')).toBeTruthy();
     expect(screen.getByText('Search')).toBeTruthy();
-    expect(screen.getByText('Bookmarks')).toBeTruthy();
+    expect(screen.getByText('Timer')).toBeTruthy();
     expect(screen.getByText('Settings')).toBeTruthy();
   });
 

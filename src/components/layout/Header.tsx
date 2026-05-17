@@ -2,7 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { SearchBar } from '@/components/navigation/SearchBar';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { OfflineIndicator } from '@/components/layout/OfflineIndicator';
-import { useStudySession } from '@/hooks/useStudySession';
+import { NavTimer } from '@/components/layout/NavTimer';
 
 interface HeaderProps {
   onOpenCommandPalette?: () => void;
@@ -19,7 +19,6 @@ interface HeaderProps {
  * Requirements: 5.4, 18.1
  */
 export function Header({ onOpenCommandPalette, onOpenMobileSidebar, hamburgerRef }: HeaderProps) {
-  const { session, formattedTime } = useStudySession();
 
   return (
     <header className="app-header">
@@ -56,13 +55,7 @@ export function Header({ onOpenCommandPalette, onOpenMobileSidebar, hamburgerRef
         </nav>
       </div>
       <div className="header-center">
-        {session.isActive ? (
-          <span className="focus-timer" aria-label="Study session elapsed time" role="timer">
-            {formattedTime}
-          </span>
-        ) : (
-          <span className="timer-placeholder" aria-label="Focus timer area" />
-        )}
+        <NavTimer />
       </div>
       <div className="header-right">
         <OfflineIndicator />

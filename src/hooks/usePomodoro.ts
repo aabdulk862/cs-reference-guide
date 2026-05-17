@@ -8,8 +8,9 @@
  *   any → idle (on stop)
  *
  * Persists configuration (workDuration, breakDuration) to localStorage (csguide:pomodoro).
+ * Persists running timer state to localStorage (csguide:pomodoro-state) for cross-refresh restoration.
  *
- * Requirements: 5.1, 5.2, 5.3, 5.7
+ * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.7, 9.1, 9.2, 9.3
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -17,6 +18,7 @@ import type { PomodoroState } from '../types/study';
 import * as storage from '../utils/storage';
 
 const STORAGE_KEY = 'pomodoro';
+const STATE_STORAGE_KEY = 'pomodoro-state';
 
 /** Default configuration values */
 const DEFAULT_WORK_DURATION = 25; // minutes
@@ -37,6 +39,146 @@ function clamp(value: number, min: number, max: number): number {
 interface PomodoroConfig {
   workDuration: number;
   breakDuration: number;
+}
+
+/** Persisted running timer state for cross-refresh restoration */
+export interface PersistedTimerState {
+  mode: 'work' | 'break';
+  remainingSeconds: number;
+  isRunning: boolean;
+  lastTickAt: number; // milliseconds since epoch
+  completedPomodoros: number;
+  workDuration: number; // minutes
+  breakDuration: number; // minutes
+}
+
+/**
+ * Type guard that validates an unknown value is a valid PersistedTimerState.
+ * Guards against corrupted localStorage data.
+ */
+export function isValidPersistedState(data: unknown): data is PersistedTimerState {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    (obj.mode === 'work' || obj.mode === 'break') &&
+    typeof obj.remainingSeconds === 'number' &&
+    obj.remainingSeconds >= 0 &&
+    typeof obj.isRunning === 'boolean' &&
+    typeof obj.lastTickAt === 'number' &&
+    obj.lastTickAt > 0 &&
+    typeof obj.completedPomodoros === 'number' &&
+    obj.completedPomodoros >= 0 &&
+    typeof obj.workDuration === 'number' &&
+    obj.workDuration >= MIN_WORK && obj.workDuration <= MAX_WORK &&
+    typeof obj.breakDuration === 'number' &&
+    obj.breakDuration >= MIN_BREAK && obj.breakDuration <= MAX_BREAK
+  );
+}
+
+/**
+ * Persist the current timer state to localStorage.
+ * If mode is 'idle', removes the persisted state key.
+ * Otherwise serializes and stores the running state with the current timestamp.
+ */
+export function persistState(state: PomodoroState, now: number): void {
+  if (state.mode === 'idle') {
+    storage.remove(STATE_STORAGE_KEY);
+    return;
+  }
+
+  const persisted: PersistedTimerState = {
+    mode: state.mode,
+    remainingSeconds: state.remainingSeconds,
+    isRunning: state.isRunning,
+    lastTickAt: now,
+    completedPomodoros: state.completedPomodoros,
+    workDuration: state.workDuration,
+    breakDuration: state.breakDuration,
+  };
+
+  storage.set(STATE_STORAGE_KEY, persisted);
+}
+
+/**
+ * Handle the case where the timer expired while the page was closed.
+ * Transitions to the next mode (work→break or break→work).
+ */
+export function handleExpiredRestoration(persisted: PersistedTimerState): PomodoroState {
+  if (persisted.mode === 'work') {
+    // Work ended → transition to break
+    return {
+      mode: 'break',
+      workDuration: persisted.workDuration,
+      breakDuration: persisted.breakDuration,
+      remainingSeconds: persisted.breakDuration * 60,
+      isRunning: true,
+      completedPomodoros: persisted.completedPomodoros + 1,
+    };
+  }
+  // Break ended → transition to work
+  return {
+    mode: 'work',
+    workDuration: persisted.workDuration,
+    breakDuration: persisted.breakDuration,
+    remainingSeconds: persisted.workDuration * 60,
+    isRunning: true,
+    completedPomodoros: persisted.completedPomodoros,
+  };
+}
+
+/**
+ * Restore timer state from localStorage.
+ * Calculates elapsed time since last tick and adjusts remainingSeconds.
+ * Handles clock-skew (lastTickAt in the future) by treating elapsed as 0.
+ * Returns idle state if no valid persisted state exists.
+ */
+export function restoreState(now: number): PomodoroState {
+  const persisted = storage.get<PersistedTimerState | null>(STATE_STORAGE_KEY, null);
+
+  if (!persisted || !isValidPersistedState(persisted)) {
+    const config = loadConfig();
+    return {
+      mode: 'idle',
+      workDuration: config.workDuration,
+      breakDuration: config.breakDuration,
+      remainingSeconds: 0,
+      isRunning: false,
+      completedPomodoros: 0,
+    };
+  }
+
+  if (!persisted.isRunning) {
+    // Paused state — restore as-is, no time deduction
+    return {
+      mode: persisted.mode,
+      workDuration: persisted.workDuration,
+      breakDuration: persisted.breakDuration,
+      remainingSeconds: persisted.remainingSeconds,
+      isRunning: false,
+      completedPomodoros: persisted.completedPomodoros,
+    };
+  }
+
+  // Running state — calculate elapsed time
+  const elapsedMs = now - persisted.lastTickAt;
+
+  // Clock-skew edge case: if lastTickAt is in the future, treat elapsed as 0
+  const elapsedSeconds = elapsedMs < 0 ? 0 : Math.floor(elapsedMs / 1000);
+  const adjustedRemaining = persisted.remainingSeconds - elapsedSeconds;
+
+  if (adjustedRemaining <= 0) {
+    // Timer expired while away — trigger transition
+    return handleExpiredRestoration(persisted);
+  }
+
+  return {
+    mode: persisted.mode,
+    workDuration: persisted.workDuration,
+    breakDuration: persisted.breakDuration,
+    remainingSeconds: adjustedRemaining,
+    isRunning: true,
+    completedPomodoros: persisted.completedPomodoros,
+  };
 }
 
 /** Load persisted config from localStorage */
@@ -71,16 +213,7 @@ export interface UsePomodoroReturn {
 }
 
 export function usePomodoro(): UsePomodoroReturn {
-  const config = loadConfig();
-
-  const [state, setState] = useState<PomodoroState>({
-    mode: 'idle',
-    workDuration: config.workDuration,
-    breakDuration: config.breakDuration,
-    remainingSeconds: 0,
-    isRunning: false,
-    completedPomodoros: 0,
-  });
+  const [state, setState] = useState<PomodoroState>(() => restoreState(Date.now()));
 
   const [notification, setNotification] = useState<PomodoroNotification>(null);
 
@@ -98,19 +231,22 @@ export function usePomodoro(): UsePomodoroReturn {
   /** Start the Pomodoro from idle → work, or resume if paused */
   const start = useCallback(() => {
     setState((prev) => {
+      let newState: PomodoroState;
       if (prev.mode === 'idle') {
-        return {
+        newState = {
           ...prev,
           mode: 'work',
           remainingSeconds: prev.workDuration * 60,
           isRunning: true,
         };
+      } else if (!prev.isRunning) {
+        // If paused (in work or break mode), resume
+        newState = { ...prev, isRunning: true };
+      } else {
+        return prev;
       }
-      // If paused (in work or break mode), resume
-      if (!prev.isRunning) {
-        return { ...prev, isRunning: true };
-      }
-      return prev;
+      persistState(newState, Date.now());
+      return newState;
     });
   }, []);
 
@@ -118,7 +254,9 @@ export function usePomodoro(): UsePomodoroReturn {
   const pause = useCallback(() => {
     setState((prev) => {
       if (prev.isRunning) {
-        return { ...prev, isRunning: false };
+        const newState = { ...prev, isRunning: false };
+        persistState(newState, Date.now());
+        return newState;
       }
       return prev;
     });
@@ -128,6 +266,7 @@ export function usePomodoro(): UsePomodoroReturn {
   const stop = useCallback(() => {
     clearTimer();
     setNotification(null);
+    storage.remove(STATE_STORAGE_KEY);
     setState((prev) => ({
       ...prev,
       mode: 'idle',
@@ -174,12 +313,14 @@ export function usePomodoro(): UsePomodoroReturn {
 
         const newRemaining = prev.remainingSeconds - 1;
 
+        let newState: PomodoroState;
+
         if (newRemaining <= 0) {
           // Transition
           if (prev.mode === 'work') {
             // work → break
             setNotification('work-ended');
-            return {
+            newState = {
               ...prev,
               mode: 'break',
               remainingSeconds: prev.breakDuration * 60,
@@ -188,15 +329,20 @@ export function usePomodoro(): UsePomodoroReturn {
           } else if (prev.mode === 'break') {
             // break → work (new cycle)
             setNotification('break-ended');
-            return {
+            newState = {
               ...prev,
               mode: 'work',
               remainingSeconds: prev.workDuration * 60,
             };
+          } else {
+            newState = { ...prev, remainingSeconds: newRemaining };
           }
+        } else {
+          newState = { ...prev, remainingSeconds: newRemaining };
         }
 
-        return { ...prev, remainingSeconds: newRemaining };
+        persistState(newState, Date.now());
+        return newState;
       });
     }, 1000);
 

@@ -167,13 +167,27 @@ export default function Dashboard() {
 
   return (
     <div className="page-dashboard">
-      <h2>Dashboard</h2>
-      <p className="page-dashboard__subtitle">Track your progress and pick up where you left off.</p>
+      <div className="page-dashboard__header">
+        <h2>Dashboard</h2>
+        <p className="page-dashboard__subtitle">Track your progress and pick up where you left off.</p>
+      </div>
 
       <div className="dashboard-pinned-links">
+        <Link to="/cheat-sheets" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">📋</span>
+          Cheat Sheets
+        </Link>
+        <Link to="/category/data-structures-algorithms" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">🧠</span>
+          DSA Practice
+        </Link>
+        <Link to="/category/system-design" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">🏗️</span>
+          System Design
+        </Link>
         <Link to="/behavioral-guide" className="dashboard-pinned-link">
           <span className="dashboard-pinned-link__icon" aria-hidden="true">🎯</span>
-          Behavioral Interview Guide
+          Behavioral Prep
         </Link>
       </div>
 

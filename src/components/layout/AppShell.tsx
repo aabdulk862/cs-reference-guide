@@ -92,9 +92,8 @@ export function AppShell() {
             type="button"
           >
             <span className="sidebar-collapse-btn__icon" aria-hidden="true">
-              {isSidebarCollapsed ? '»' : '«'}
+              {isSidebarCollapsed ? '›' : '‹'}
             </span>
-            {!isSidebarCollapsed && <span className="sidebar-collapse-btn__text">Collapse</span>}
           </button>
         </div>
         <main className="app-main" id="main-content">
