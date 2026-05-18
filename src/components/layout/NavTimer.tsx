@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { usePomodoro } from '@/hooks/usePomodoro';
+import { usePomodoroContext } from '@/hooks/PomodoroContext';
 
 /**
  * Compact inline Pomodoro timer for the header bar.
@@ -13,7 +13,7 @@ import { usePomodoro } from '@/hooks/usePomodoro';
  * Requirements: 1.1, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 7.1, 7.2, 7.3, 7.4, 8.1, 8.2, 8.3, 8.4
  */
 export function NavTimer() {
-  const { state, notification, start, pause, stop, dismissNotification } = usePomodoro();
+  const { state, notification, start, pause, stop, dismissNotification } = usePomodoroContext();
   const liveRegionRef = useRef<HTMLSpanElement>(null);
 
   // Format remainingSeconds as MM:SS

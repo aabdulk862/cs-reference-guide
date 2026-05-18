@@ -12,6 +12,7 @@ import { BackToTop } from '../navigation/BackToTop';
 import { useCommandPalette } from '../../hooks/useCommandPalette';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useBookmarks } from '../../hooks/useBookmarks';
+import { PomodoroProvider } from '../../hooks/PomodoroContext';
 import { RouteTransition } from './RouteTransition';
 import { get, set } from '../../utils/storage';
 
@@ -75,6 +76,7 @@ export function AppShell() {
   }, [location.pathname]);
 
   return (
+    <PomodoroProvider>
     <div className={`app-shell${isSidebarCollapsed ? ' app-shell--sidebar-collapsed' : ''}`}>
       <Header
         onOpenCommandPalette={commandPalette.open}
@@ -125,5 +127,6 @@ export function AppShell() {
       <BackToTop />
       <SWNotification />
     </div>
+    </PomodoroProvider>
   );
 }

@@ -7,7 +7,7 @@
  * Requirements: 5.1, 5.2, 5.3, 5.7
  */
 
-import { usePomodoro } from '@/hooks/usePomodoro';
+import { usePomodoroContext } from '@/hooks/PomodoroContext';
 
 /** Format seconds into MM:SS display */
 function formatTime(totalSeconds: number): string {
@@ -26,7 +26,7 @@ export function PomodoroTimer() {
     setWorkDuration,
     setBreakDuration,
     dismissNotification,
-  } = usePomodoro();
+  } = usePomodoroContext();
 
   const isIdle = state.mode === 'idle';
 
