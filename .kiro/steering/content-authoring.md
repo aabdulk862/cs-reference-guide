@@ -47,23 +47,30 @@ cs-reference-guide/content/
 │   ├── sorting-and-searching/        (Comparison, Non-comparison, Binary Search, Specialized)
 │   └── dynamic-programming/          (Fundamentals, Knapsack, Grid, Sequence, Advanced)
 ├── system-design/
-│   └── system-design/     (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding, Rate Limiting, API Design, Event-Driven, Interview Problems, Design Patterns, Microservices, Data Pipelines)
+│   ├── fundamentals/       (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding)
+│   └── patterns/           (Rate Limiting, API Design, Event-Driven, Interview Problems, Design Patterns, Microservices, Data Pipelines)
 ├── networking/
-│   └── networking/         (TCP/IP, DNS, HTTP, WebSockets, Load Balancing, TLS/mTLS)
+│   ├── protocols/          (TCP/IP, DNS, HTTP, TLS/mTLS)
+│   └── real-time-and-infrastructure/  (WebSockets, Load Balancing)
 ├── operating-systems/
-│   └── operating-systems/  (Processes, Memory, File Systems, Concurrency, I/O)
+│   ├── processes-and-memory/  (Processes & Threads, Memory Management)
+│   └── systems-and-io/       (File Systems, Concurrency Primitives, I/O & Scheduling)
 ├── security/
-│   └── security/           (Crypto, Auth, Web Security, Network Security, Container Security, Backend Security)
+│   ├── application-security/      (Auth Patterns, Web Security, Backend Security)
+│   └── infrastructure-security/   (Cryptography, Network Security, Container Security)
 ├── testing/
 │   ├── unit-testing/       (Unit Testing, Mocking Strategies)
 │   ├── integration-testing/ (Integration Testing, API/Contract Testing, Database Testing, E2E)
 │   └── test-strategy/      (Test Architecture, Property-Based Testing)
 ├── software-engineering/
-│   └── software-engineering/ (SOLID, Clean Architecture, Refactoring, Code Review, Tech Debt)
+│   ├── design-principles/  (SOLID, Clean Architecture)
+│   └── practices/          (Refactoring, Code Review, Tech Debt)
 ├── interview-prep/
-│   └── interview-prep/     (Coding, System Design, Behavioral, Communication, Negotiation)
+│   ├── technical/          (Coding Interviews, System Design Interviews, Technical Communication)
+│   └── soft-skills/        (Behavioral Questions, Negotiation)
 └── git/
-    └── git/                (What is Git, Commands, Branching, Local/Remote, Merge Conflicts, PRs, .gitignore)
+    ├── basics/             (What is Git, Commands, Branching, .gitignore)
+    └── collaboration/      (Local/Remote, Merge Conflicts, PRs)
 ```
 
 ## Multi-Page Topic Structure

@@ -17,6 +17,7 @@ content/{category}/{topic-dir}/index.md + subtopics.md
     → JSON output (per-topic with subtopics)
     → content-manifest.json
     → search-index.json
+    → sitemap.xml
 ```
 
 ## Key Files
@@ -27,6 +28,10 @@ content/{category}/{topic-dir}/index.md + subtopics.md
 | `src/plugins/markdown-parser.ts` | Converts markdown AST to structured `ParsedContent` |
 | `src/plugins/exclusion-filter.ts` | Determines which files to skip |
 | `src/plugins/image-resolver.ts` | Resolves relative image paths |
+| `src/plugins/plugin-utils.ts` | Shared utilities: `CATEGORY_MAPPINGS`, `resolveCategory()`, `slugify()`, `extractLearningPathOrder()` |
+| `src/plugins/search-indexer.ts` | Builds FlexSearch documents from parsed content |
+| `src/plugins/content-validator.ts` | Validates content structure and quality |
+| `src/plugins/sitemap-generator.ts` | Generates sitemap.xml from manifest data |
 
 ## Content Directory
 
@@ -48,7 +53,7 @@ There are NO single-page (flat `.md` file) topics. Every topic is a directory wi
 
 ## CATEGORY_MAPPINGS
 
-Maps directory patterns to sidebar categories:
+Defined in `src/plugins/plugin-utils.ts`. Maps directory patterns to sidebar categories:
 
 ```typescript
 const CATEGORY_MAPPINGS: CategoryMapping[] = [
@@ -70,9 +75,9 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
 
 When adding a new category:
 1. Create the directory under `content/`
-2. Add a mapping entry to `CATEGORY_MAPPINGS`
+2. Add a mapping entry to `CATEGORY_MAPPINGS` in `src/plugins/plugin-utils.ts`
 3. Create at least one topic subdirectory with `index.md`
-4. Add the category ID to the appropriate group in `CATEGORY_GROUPS` (Sidebar.tsx)
+4. Add the category ID to the appropriate group in `CATEGORY_GROUPS` (`src/components/navigation/Sidebar.tsx`)
 5. The pipeline auto-discovers all multi-page topics in mapped directories
 
 ## Sidebar Organization
@@ -81,12 +86,13 @@ Categories are grouped in the sidebar via `CATEGORY_GROUPS` in `src/components/n
 
 ```typescript
 const CATEGORY_GROUPS = [
-  { label: 'Core CS', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
-  { label: 'Server', icon: '⚙️', categoryIds: ['backend', 'databases', 'system-design'] },
-  { label: 'Client', icon: '🎨', categoryIds: ['frontend'] },
-  { label: 'DevOps', icon: '🚀', categoryIds: ['infrastructure'] },
-  { label: 'Quality', icon: '✅', categoryIds: ['testing', 'security', 'software-engineering'] },
-  { label: 'Career', icon: '📚', categoryIds: ['interview-prep', 'git'] },
+  { label: 'Fundamentals', icon: '🧠', categoryIds: ['data-structures-algorithms', 'operating-systems', 'networking'] },
+  { label: 'Server-Side', icon: '⚙️', categoryIds: ['backend', 'databases'] },
+  { label: 'Client-Side', icon: '🎨', categoryIds: ['frontend'] },
+  { label: 'Architecture', icon: '🏗️', categoryIds: ['system-design', 'software-engineering', 'security'] },
+  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure', 'git'] },
+  { label: 'Quality', icon: '✅', categoryIds: ['testing'] },
+  { label: 'Interview', icon: '🎯', categoryIds: ['interview-prep'] },
 ];
 ```
 
@@ -104,7 +110,7 @@ The `detectMultiPageTopics()` function:
 
 ## Subtopic Ordering
 
-The `extractLearningPathOrder()` function parses the `index.md` for a numbered list under `## Learning Path` and extracts filenames from markdown links. Subtopics are displayed in this order in the sidebar.
+The `extractLearningPathOrder()` function (in `plugin-utils.ts`) parses the `index.md` for a numbered list under `## Learning Path` and extracts filenames from markdown links. Subtopics are displayed in this order in the sidebar.
 
 ## Exclusion Rules
 
@@ -152,6 +158,7 @@ Topic IDs incorporate parent directory context to avoid collisions:
 Generated files in `public/content/`:
 - `content-manifest.json` — category/topic index with metadata (includes subtopics array)
 - `search-index.json` — FlexSearch serialized index
+- `sitemap.xml` — SEO sitemap
 - `{category}/{topic}.json` — per-topic structured content with subtopic data
 
 ## Manifest Schema
@@ -176,7 +183,7 @@ Generated files in `public/content/`:
       ]
     }]
   }],
-  "totalTopics": 39,
+  "totalTopics": 46,
   "totalSections": 2508,
   "buildTimestamp": "2025-05-16T10:00:00Z"
 }
