@@ -19,6 +19,14 @@ export type {
   Category,
 } from './content';
 
+// Manifest types (content-manifest.json schema)
+export type {
+  ManifestSubtopic,
+  ManifestTopic,
+  ManifestCategory,
+  ContentManifest,
+} from './manifest';
+
 // Navigation types
 export type {
   NavigationState,

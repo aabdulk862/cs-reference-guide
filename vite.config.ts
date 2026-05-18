@@ -77,6 +77,21 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Isolate heavy rendering libraries into their own chunks
+          // so they only load when content actually uses them
+          'vendor-mermaid': ['mermaid'],
+          'vendor-katex': ['katex'],
+          'vendor-recharts': ['recharts'],
+          'vendor-sql': ['sql.js'],
+          'vendor-cytoscape': ['cytoscape'],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

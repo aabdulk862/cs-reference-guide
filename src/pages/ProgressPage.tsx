@@ -6,31 +6,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { get } from '@/utils/storage';
-
-interface ManifestSubtopic {
-  id: string;
-  slug: string;
-  title: string;
-  wordCount: number;
-}
-
-interface ManifestTopic {
-  id: string;
-  slug: string;
-  title: string;
-  subtopics?: ManifestSubtopic[];
-}
-
-interface ManifestCategory {
-  id: string;
-  name: string;
-  topics: ManifestTopic[];
-}
-
-interface ContentManifest {
-  categories: ManifestCategory[];
-  totalTopics: number;
-}
+import type { ContentManifest } from '@/types/manifest';
 
 interface CategoryProgress {
   id: string;

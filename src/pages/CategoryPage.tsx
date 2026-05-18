@@ -16,30 +16,7 @@ import { useParams, Link } from 'react-router-dom';
 import { get } from '../utils/storage';
 import { Breadcrumbs } from '../components/navigation/Breadcrumbs';
 import NotFound from './NotFound';
-
-/** Manifest types matching the content-manifest.json structure */
-interface ManifestTopic {
-  id: string;
-  slug: string;
-  title: string;
-  source: 'parsed' | 'authored';
-  sectionCount: number;
-  wordCount: number;
-  contentPath: string;
-}
-
-interface ManifestCategory {
-  id: string;
-  name: string;
-  topics: ManifestTopic[];
-}
-
-interface ContentManifest {
-  categories: ManifestCategory[];
-  totalTopics: number;
-  totalSections: number;
-  buildTimestamp: string;
-}
+import type { ContentManifest } from '../types/manifest';
 
 /** Progress data shape from localStorage */
 interface ProgressData {

@@ -17,18 +17,7 @@ import { PomodoroTimer } from '@/components/study/PomodoroTimer';
 import { ResumePrompt } from '@/components/study/ResumePrompt';
 import * as storage from '@/utils/storage';
 import type { Bookmark } from '@/types/study';
-
-/** Manifest types for progress calculation */
-interface ManifestCategory {
-  id: string;
-  name: string;
-  topics: { id: string; title: string; slug: string; subtopics?: { id: string; slug: string; title: string }[] }[];
-}
-
-interface ContentManifest {
-  categories: ManifestCategory[];
-  totalTopics: number;
-}
+import type { ManifestCategory, ContentManifest } from '@/types/manifest';
 
 /** Recently studied topic entry stored in localStorage */
 interface RecentTopic {
