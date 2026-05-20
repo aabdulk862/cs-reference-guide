@@ -1,6 +1,7 @@
 import { useState, lazy, Suspense } from 'react';
 import type { ContentSection, ContentNode } from '@/types/content';
 import { shouldCollapse, getVisibleContent } from '@/utils/collapse';
+import { highlightComplexity } from '@/utils/complexity-highlighter';
 import { InteractiveErrorBoundary } from '@/components/interactive/InteractiveErrorBoundary';
 import { TaskList } from '@/components/content/TaskList';
 import { FootnoteRef } from '@/components/content/FootnoteRef';
@@ -33,7 +34,7 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
     case 'paragraph':
       return (
         <p key={index} className="content-card__paragraph">
-          {node.text}
+          {highlightComplexity(node.text)}
         </p>
       );
 
@@ -87,7 +88,7 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
         <ListTag key={index} className="content-card__list">
           {node.items.map((item, i) => (
             <li key={i} className="content-card__list-item">
-              {item}
+              {highlightComplexity(item)}
             </li>
           ))}
         </ListTag>
@@ -113,7 +114,7 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
               {node.rows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
                   {row.map((cell, cellIdx) => (
-                    <td key={cellIdx}>{cell}</td>
+                    <td key={cellIdx}>{highlightComplexity(cell)}</td>
                   ))}
                 </tr>
               ))}
@@ -126,7 +127,7 @@ function renderContentNode(node: ContentNode, index: number): React.ReactNode {
     case 'blockquote':
       return (
         <blockquote key={index} className="content-card__blockquote">
-          {node.text}
+          {highlightComplexity(node.text)}
         </blockquote>
       );
 

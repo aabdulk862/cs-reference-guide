@@ -59,6 +59,99 @@ export function slugify(text: string): string {
 }
 
 /**
+ * Custom topic ordering within categories.
+ * Maps category directory patterns to an ordered array of topic directory names.
+ * Topics listed here appear in this order; any unlisted topics sort alphabetically after.
+ */
+export const TOPIC_ORDER: Record<string, string[]> = {
+  'data-structures-and-algorithms': [
+    'fundamental-data-structures',
+    'arrays-and-strings',
+    'sorting-and-searching',
+    'trees-and-graphs',
+    'dynamic-programming',
+  ],
+  'backend': [
+    'java',
+    'spring-framework',
+    'api-design',
+    'messaging',
+    'build-tools',
+  ],
+  'databases': [
+    'sql-foundations',
+    'postgresql',
+    'oracle',
+    'mongodb',
+    'redis',
+  ],
+  'frontend': [
+    'html-css',
+    'javascript',
+    'typescript',
+    'react',
+    'angular',
+    'nextjs',
+    'state-management',
+    'web-performance',
+  ],
+  'git': [
+    'basics',
+    'collaboration',
+  ],
+  'infrastructure': [
+    'linux',
+    'docker',
+    'kubernetes',
+    'aws',
+    'ci-cd',
+    'observability',
+  ],
+  'interview-prep': [
+    'technical',
+    'soft-skills',
+  ],
+  'networking': [
+    'protocols',
+    'real-time-and-infrastructure',
+  ],
+  'operating-systems': [
+    'processes-and-memory',
+    'systems-and-io',
+  ],
+  'security': [
+    'application-security',
+    'infrastructure-security',
+  ],
+  'software-engineering': [
+    'design-principles',
+    'practices',
+  ],
+  'system-design': [
+    'fundamentals',
+    'patterns',
+  ],
+  'testing': [
+    'unit-testing',
+    'integration-testing',
+    'test-strategy',
+  ],
+};
+
+/**
+ * Returns a comparator for sorting topics within a category.
+ * If the category has a custom TOPIC_ORDER, topics are sorted by that order.
+ * Topics not in the custom order are placed after ordered topics, sorted alphabetically.
+ * If no custom order exists, falls back to alphabetical by title.
+ */
+export function getTopicSortIndex(categoryPattern: string, topicSlug: string): number {
+  const order = TOPIC_ORDER[categoryPattern];
+  if (!order) return -1;
+  const idx = order.indexOf(topicSlug);
+  return idx === -1 ? Infinity : idx;
+}
+
+/**
  * Extracts the learning path order from an index.md file's content.
  * Parses markdown links in ordered lists to determine subtopic display order.
  * Returns an array of slugs derived from the linked filenames.

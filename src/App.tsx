@@ -11,6 +11,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const CategoryPage = lazy(() => import('./pages/CategoryPage'));
 const CheatSheets = lazy(() => import('./pages/CheatSheets'));
 const BehavioralGuidePage = lazy(() => import('./pages/BehavioralGuidePage'));
+const CodingGuidePage = lazy(() => import('./pages/CodingGuidePage'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
           <Route path="/category/:categorySlug" element={<CategoryPage />} />
           <Route path="/cheat-sheets" element={<CheatSheets />} />
           <Route path="/behavioral-guide" element={<BehavioralGuidePage />} />
+          <Route path="/coding-guide" element={<CodingGuidePage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

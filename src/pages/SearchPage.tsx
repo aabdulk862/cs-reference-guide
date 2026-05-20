@@ -34,12 +34,39 @@ interface ContentManifest {
 }
 
 export default function SearchPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') || '';
 
   const { search, isLoading, isReady } = useSearch();
   const [categories, setCategories] = useState<ManifestCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState(query);
+
+  // Keep input in sync when URL changes externally
+  useEffect(() => {
+    setInputValue(query);
+  }, [query]);
+
+  // Handle search form submission
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = inputValue.trim();
+    if (trimmed) {
+      setSearchParams({ q: trimmed });
+    }
+  };
+
+  // Handle input change with live search
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    // Update URL params for live search
+    if (value.trim()) {
+      setSearchParams({ q: value.trim() });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   // Fetch categories from the content manifest
   useEffect(() => {
@@ -77,11 +104,19 @@ export default function SearchPage() {
     return (
       <div className="page-search">
         <h2>Search</h2>
+        <form className="search-page-input-form" onSubmit={handleSearchSubmit} role="search">
+          <input
+            type="text"
+            className="search-page-input"
+            placeholder={isLoading ? 'Loading search…' : 'Search topics, sections, code…'}
+            value={inputValue}
+            onChange={handleInputChange}
+            autoFocus
+            aria-label="Search topics"
+          />
+        </form>
         <div className="search-page-prompt">
           <p>Enter a search term to find topics, sections, and code examples.</p>
-          <p className="search-page-prompt__hint">
-            Use the search bar above or navigate to <code>/search?q=your+query</code>
-          </p>
         </div>
       </div>
     );
@@ -90,6 +125,18 @@ export default function SearchPage() {
   return (
     <div className="page-search">
       <h2>Search Results</h2>
+
+      {/* Inline search input (always visible, especially useful on mobile) */}
+      <form className="search-page-input-form" onSubmit={handleSearchSubmit} role="search">
+        <input
+          type="text"
+          className="search-page-input"
+          placeholder={isLoading ? 'Loading search…' : 'Search topics, sections, code…'}
+          value={inputValue}
+          onChange={handleInputChange}
+          aria-label="Search topics"
+        />
+      </form>
 
       {/* Category filter controls */}
       <div className="search-page-filters" role="group" aria-label="Category filters">

@@ -22,6 +22,7 @@ import {
   resolveCategory,
   slugify,
   extractLearningPathOrder,
+  TOPIC_ORDER,
   type CategoryMapping,
 } from './plugin-utils';
 // Re-export utilities for backward compatibility with existing test imports
@@ -528,8 +529,25 @@ export async function processContent(contentRoot: string, outputDir: string): Pr
       }
     }
 
-    // Sort topics alphabetically by title
-    topics.sort((a, b) => a.title.localeCompare(b.title));
+    // Sort topics: use custom TOPIC_ORDER if defined for this category, otherwise alphabetical
+    const categoryPattern = CATEGORY_MAPPINGS.find(m => m.category === categoryName)?.pattern;
+    const customOrder = categoryPattern ? TOPIC_ORDER[categoryPattern] : undefined;
+
+    if (customOrder) {
+      topics.sort((a, b) => {
+        // Extract the topic directory name from the slug (format: "category/topic-dir")
+        const slugA = a.slug.includes('/') ? a.slug.split('/')[1] : a.slug;
+        const slugB = b.slug.includes('/') ? b.slug.split('/')[1] : b.slug;
+        const idxA = customOrder.indexOf(slugA);
+        const idxB = customOrder.indexOf(slugB);
+        const posA = idxA === -1 ? Infinity : idxA;
+        const posB = idxB === -1 ? Infinity : idxB;
+        if (posA === posB) return a.title.localeCompare(b.title);
+        return posA - posB;
+      });
+    } else {
+      topics.sort((a, b) => a.title.localeCompare(b.title));
+    }
 
     manifestCategories.push({
       id: categorySlug,

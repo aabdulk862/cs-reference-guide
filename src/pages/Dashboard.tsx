@@ -162,21 +162,21 @@ export default function Dashboard() {
       </div>
 
       <div className="dashboard-pinned-links">
-        <Link to="/cheat-sheets" className="dashboard-pinned-link">
-          <span className="dashboard-pinned-link__icon" aria-hidden="true">📋</span>
-          Cheat Sheets
-        </Link>
-        <Link to="/category/data-structures-algorithms" className="dashboard-pinned-link">
-          <span className="dashboard-pinned-link__icon" aria-hidden="true">🧠</span>
-          DSA Practice
-        </Link>
-        <Link to="/category/system-design" className="dashboard-pinned-link">
-          <span className="dashboard-pinned-link__icon" aria-hidden="true">🏗️</span>
-          System Design
-        </Link>
         <Link to="/behavioral-guide" className="dashboard-pinned-link">
           <span className="dashboard-pinned-link__icon" aria-hidden="true">🎯</span>
           Behavioral Prep
+        </Link>
+        <Link to="/coding-guide" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">💻</span>
+          Coding Prep
+        </Link>
+           <Link to="/category/system-design" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">🏗️</span>
+          System Design
+        </Link>
+            <Link to="/cheat-sheets" className="dashboard-pinned-link">
+          <span className="dashboard-pinned-link__icon" aria-hidden="true">📋</span>
+          Cheat Sheets
         </Link>
       </div>
 
