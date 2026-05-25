@@ -188,6 +188,13 @@ FOR EACH ROW
 EXECUTE FUNCTION audit_employee_changes();
 ```
 
+### Try It Yourself
+
+Practice SQL queries against a live SQLite database with sample employee and department data:
+
+```sql-playground
+```
+
 ## Common Pitfalls
 
 **Using SELECT * in production queries.** Beyond pulling unnecessary data across the network, `SELECT *` prevents covering index usage, breaks applications when columns are added or reordered, and makes query plans unstable. Always enumerate the columns you need. In high-throughput systems, the difference between selecting 3 columns versus 30 can be a 10x reduction in I/O and network transfer.

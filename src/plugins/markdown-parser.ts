@@ -26,6 +26,18 @@ import type {
 import type { Root, Content, PhrasingContent } from 'mdast';
 
 /**
+ * Interactive component types — fenced code blocks with these languages
+ * are emitted as interactive content nodes instead of code blocks.
+ */
+const INTERACTIVE_LANGUAGES = new Set([
+  'sql-playground',
+  'quiz',
+  'playground',
+  'visualization',
+  'bigo-chart',
+]);
+
+/**
  * Runnable languages — code blocks with these languages are marked as runnable.
  */
 const RUNNABLE_LANGUAGES = new Set(['javascript', 'js']);
@@ -442,6 +454,25 @@ function astNodeToContentNode(
       // Detect chart fenced code blocks and emit as chart nodes
       if (language.toLowerCase() === 'chart') {
         return parseChartBlock(node.value);
+      }
+
+      // Detect interactive component blocks and emit as interactive nodes
+      if (INTERACTIVE_LANGUAGES.has(language.toLowerCase())) {
+        let config: unknown = {};
+        const trimmed = node.value.trim();
+        if (trimmed.length > 0) {
+          try {
+            config = JSON.parse(trimmed);
+          } catch {
+            // Non-JSON content — pass as raw string config
+            config = { raw: trimmed };
+          }
+        }
+        return {
+          type: 'interactive',
+          interactiveType: language.toLowerCase() as import('../types/content').InteractiveType,
+          config,
+        };
       }
 
       const runnable = RUNNABLE_LANGUAGES.has(language.toLowerCase());
