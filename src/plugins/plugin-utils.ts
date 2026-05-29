@@ -24,7 +24,6 @@ export const CATEGORY_MAPPINGS: CategoryMapping[] = [
   { pattern: 'networking', category: 'Networking' },
   { pattern: 'operating-systems', category: 'Operating Systems' },
   { pattern: 'interview-prep', category: 'Interview Prep' },
-  { pattern: 'git', category: 'Git' },
   { pattern: 'security', category: 'Security' },
   { pattern: 'testing', category: 'Testing' },
   { pattern: 'software-engineering', category: 'Software Engineering' },
@@ -94,10 +93,6 @@ export const TOPIC_ORDER: Record<string, string[]> = {
     'nextjs',
     'state-management',
     'web-performance',
-  ],
-  'git': [
-    'basics',
-    'collaboration',
   ],
   'infrastructure': [
     'linux',

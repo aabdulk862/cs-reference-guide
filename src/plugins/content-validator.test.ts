@@ -128,51 +128,54 @@ describe('validateWordCount', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Intro', 50)],
     });
-    const warnings = validateWordCount(parsed, config);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('stub-content');
-    expect(warnings[0].details?.wordCount).toBe(50);
+    const messages = validateWordCount(parsed, config);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('stub-content');
+    expect(messages[0].severity).toBe('warning');
+    expect(messages[0].details?.wordCount).toBe(50);
   });
 
   it('emits low-word-count warning when between stub and minimum', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Intro', 500)],
     });
-    const warnings = validateWordCount(parsed, config);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('low-word-count');
-    expect(warnings[0].details?.wordCount).toBe(500);
+    const messages = validateWordCount(parsed, config);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('low-word-count');
+    expect(messages[0].severity).toBe('warning');
+    expect(messages[0].details?.wordCount).toBe(500);
   });
 
   it('emits no warning when at or above minimum', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Intro', 1500)],
     });
-    const warnings = validateWordCount(parsed, config);
-    expect(warnings).toHaveLength(0);
+    const messages = validateWordCount(parsed, config);
+    expect(messages).toHaveLength(0);
   });
 });
 
 describe('validateRequiredSections', () => {
   const config = DEFAULT_VALIDATION_CONFIG;
 
-  it('emits missing-section warning when required sections are absent', () => {
+  it('emits missing-section info message when required sections are absent', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Introduction', 200)],
     });
-    const warnings = validateRequiredSections(parsed, config);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('missing-section');
-    expect(warnings[0].details?.missingSections).toEqual(config.requiredSections);
+    const messages = validateRequiredSections(parsed, config);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('missing-section');
+    expect(messages[0].severity).toBe('info');
+    expect(messages[0].details?.missingSections).toEqual(config.requiredSections);
   });
 
-  it('emits no warning when all required sections are present', () => {
+  it('emits no message when all required sections are present', () => {
     const sections = config.requiredSections.map((name) =>
       createSectionWithWords(name, 150)
     );
     const parsed = createParsedContent({ sections });
-    const warnings = validateRequiredSections(parsed, config);
-    expect(warnings).toHaveLength(0);
+    const messages = validateRequiredSections(parsed, config);
+    expect(messages).toHaveLength(0);
   });
 
   it('matches section headings case-insensitively', () => {
@@ -180,8 +183,8 @@ describe('validateRequiredSections', () => {
       createSectionWithWords(name.toUpperCase(), 150)
     );
     const parsed = createParsedContent({ sections });
-    const warnings = validateRequiredSections(parsed, config);
-    expect(warnings).toHaveLength(0);
+    const messages = validateRequiredSections(parsed, config);
+    expect(messages).toHaveLength(0);
   });
 });
 
@@ -192,10 +195,11 @@ describe('validateSectionWordCounts', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Short Section', 50)],
     });
-    const warnings = validateSectionWordCounts(parsed, config);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('section-too-short');
-    expect(warnings[0].details?.section).toBe('Short Section');
+    const messages = validateSectionWordCounts(parsed, config);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('section-too-short');
+    expect(messages[0].severity).toBe('warning');
+    expect(messages[0].details?.section).toBe('Short Section');
   });
 
   it('does not warn for sections that are pure code/diagram', () => {
@@ -210,16 +214,16 @@ describe('validateSectionWordCounts', () => {
       subsections: [],
     };
     const parsed = createParsedContent({ sections: [section] });
-    const warnings = validateSectionWordCounts(parsed, config);
-    expect(warnings).toHaveLength(0);
+    const messages = validateSectionWordCounts(parsed, config);
+    expect(messages).toHaveLength(0);
   });
 
   it('does not warn for sections at or above minimum', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Good Section', 150)],
     });
-    const warnings = validateSectionWordCounts(parsed, config);
-    expect(warnings).toHaveLength(0);
+    const messages = validateSectionWordCounts(parsed, config);
+    expect(messages).toHaveLength(0);
   });
 });
 
@@ -247,9 +251,10 @@ describe('validateImageReferences', () => {
       subsections: [],
     };
     const parsed = createParsedContent({ sections: [section] });
-    const warnings = validateImageReferences(parsed, '/content');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('external-image');
+    const messages = validateImageReferences(parsed, '/content');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('external-image');
+    expect(messages[0].severity).toBe('warning');
   });
 
   it('emits external-image warning for https:// URLs', () => {
@@ -264,9 +269,10 @@ describe('validateImageReferences', () => {
       subsections: [],
     };
     const parsed = createParsedContent({ sections: [section] });
-    const warnings = validateImageReferences(parsed, '/content');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('external-image');
+    const messages = validateImageReferences(parsed, '/content');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('external-image');
+    expect(messages[0].severity).toBe('warning');
   });
 
   it('emits broken-image warning when local file does not exist', () => {
@@ -290,9 +296,10 @@ describe('validateImageReferences', () => {
         sectionCount: 1,
       },
     });
-    const warnings = validateImageReferences(parsed, '/content');
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('broken-image');
+    const messages = validateImageReferences(parsed, '/content');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe('broken-image');
+    expect(messages[0].severity).toBe('warning');
   });
 
   it('emits no warning when local file exists', () => {
@@ -316,8 +323,8 @@ describe('validateImageReferences', () => {
         sectionCount: 1,
       },
     });
-    const warnings = validateImageReferences(parsed, '/content');
-    expect(warnings).toHaveLength(0);
+    const messages = validateImageReferences(parsed, '/content');
+    expect(messages).toHaveLength(0);
   });
 });
 
@@ -348,9 +355,10 @@ describe('detectOrphanedImages', () => {
       sections: [],
     });
 
-    const warnings = detectOrphanedImages('/content', [parsed]);
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0].type).toBe('orphaned-image');
+    const messages = detectOrphanedImages('/content', [parsed]);
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].type).toBe('orphaned-image');
+    expect(messages[0].severity).toBe('warning');
   });
 
   it('does not flag referenced images as orphaned', () => {
@@ -379,8 +387,8 @@ describe('detectOrphanedImages', () => {
       },
     });
 
-    const warnings = detectOrphanedImages('/content', [parsed]);
-    expect(warnings).toHaveLength(0);
+    const messages = detectOrphanedImages('/content', [parsed]);
+    expect(messages).toHaveLength(0);
   });
 });
 
@@ -397,19 +405,19 @@ describe('validateContent (integration)', () => {
     existsSyncSpy.mockRestore();
   });
 
-  it('returns all warnings for a file with multiple issues', () => {
+  it('returns all messages for a file with multiple issues', () => {
     const parsed = createParsedContent({
       sections: [createSectionWithWords('Introduction', 50)],
     });
     const result = validateContent(parsed, '/content');
-    // Should have stub-content + missing-section + section-too-short warnings
-    expect(result.warnings.length).toBeGreaterThanOrEqual(2);
-    const types = result.warnings.map((w) => w.type);
+    // Should have stub-content (warning) + missing-section (info) + section-too-short (warning)
+    expect(result.messages.length).toBeGreaterThanOrEqual(2);
+    const types = result.messages.map((m) => m.type);
     expect(types).toContain('stub-content');
     expect(types).toContain('missing-section');
   });
 
-  it('returns no warnings for a well-formed file', () => {
+  it('returns no messages for a well-formed file', () => {
     const requiredSections = DEFAULT_VALIDATION_CONFIG.requiredSections.map((name) =>
       createSectionWithWords(name, 300)
     );
@@ -417,6 +425,19 @@ describe('validateContent (integration)', () => {
       sections: requiredSections,
     });
     const result = validateContent(parsed, '/content');
-    expect(result.warnings).toHaveLength(0);
+    expect(result.messages).toHaveLength(0);
+  });
+
+  it('assigns correct severity levels to different message types', () => {
+    const parsed = createParsedContent({
+      sections: [createSectionWithWords('Introduction', 50)],
+    });
+    const result = validateContent(parsed, '/content');
+    
+    const missingSectionMsg = result.messages.find((m) => m.type === 'missing-section');
+    const stubContentMsg = result.messages.find((m) => m.type === 'stub-content');
+    
+    expect(missingSectionMsg?.severity).toBe('info');
+    expect(stubContentMsg?.severity).toBe('warning');
   });
 });

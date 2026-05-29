@@ -1,0 +1,262 @@
+{
+  "id": "fundamentals-saga-pattern",
+  "slug": "saga-pattern",
+  "title": "Saga Pattern",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A saga is a sequence of local transactions where each step has a corresponding compensating transaction that undoes its effect if a subsequent step fails — providing eventual consistency across services without distributed locks",
+            "Two coordination approaches: Choreography (services react to events, no central controller) and Orchestration (a central coordinator directs the saga steps)",
+            "Sagas provide ACD guarantees (Atomicity via compensation, Consistency via eventual convergence, Durability via local commits) but NOT Isolation — intermediate states are visible to other transactions",
+            "Compensating transactions must be idempotent and commutative — they may be retried multiple times and may execute in different orders during failure recovery",
+            "The saga pattern replaces two-phase commit (2PC) in microservice architectures because 2PC requires all participants to be available simultaneously and holds locks across services",
+            "Saga failures are categorized as: recoverable (retry the failed step), pivot (the point of no return — after this, only forward recovery), and non-recoverable (must compensate all prior steps)",
+            "Semantic locks, commutative updates, and pessimistic views are countermeasures for the lack of isolation in sagas"
+          ]
+        }
+      ],
+      "wordCount": 172,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "The saga pattern applies when you have a business transaction that spans multiple services or bounded contexts, each with its own database, and you need to maintain data consistency without distributed transactions. Common scenarios include: e-commerce order fulfillment (reserve inventory → charge payment → ship order), travel booking (book flight → book hotel → book car), financial transfers between accounts in different services, user registration workflows that span identity, billing, and notification services, and any multi-step process where each step is owned by a different team or service. You should NOT use sagas for operations that require strict isolation (use a single database transaction instead) or when the compensating logic is too complex or impossible to implement (e.g., sending a physical letter cannot be \"compensated\")."
+        }
+      ],
+      "wordCount": 125,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "orchestration-based-saga-order-fulfillment",
+          "heading": "Orchestration-Based Saga (Order Fulfillment)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\nimport java.util.concurrent.CompletableFuture;\n\n/**\n * Saga orchestrator for order fulfillment.\n * Coordinates: Inventory → Payment → Shipping\n * Each step has a corresponding compensation action.\n */\npublic class OrderSagaOrchestrator {\n    private final InventoryService inventoryService;\n    private final PaymentService paymentService;\n    private final ShippingService shippingService;\n    private final SagaLog sagaLog;\n\n    public OrderSagaOrchestrator(InventoryService inventoryService,\n                                  PaymentService paymentService,\n                                  ShippingService shippingService,\n                                  SagaLog sagaLog) {\n        this.inventoryService = inventoryService;\n        this.paymentService = paymentService;\n        this.shippingService = shippingService;\n        this.sagaLog = sagaLog;\n    }\n\n    /**\n     * Execute the order saga. Each step is a local transaction.\n     * If any step fails, compensate all previously completed steps in reverse order.\n     */\n    public SagaResult executeOrderSaga(Order order) {\n        String sagaId = UUID.randomUUID().toString();\n        sagaLog.start(sagaId, \"order-fulfillment\", order.getOrderId());\n\n        List<CompensationAction> completedSteps = new ArrayList<>();\n\n        try {\n            // Step 1: Reserve inventory\n            sagaLog.stepStarted(sagaId, \"reserve-inventory\");\n            ReservationResult reservation = inventoryService.reserveItems(\n                order.getOrderId(), order.getItems()\n            );\n            sagaLog.stepCompleted(sagaId, \"reserve-inventory\", reservation.getReservationId());\n            completedSteps.add(() -> inventoryService.releaseReservation(reservation.getReservationId()));\n\n            // Step 2: Process payment (PIVOT POINT — after this, prefer forward recovery)\n            sagaLog.stepStarted(sagaId, \"process-payment\");\n            PaymentResult payment = paymentService.charge(\n                order.getOrderId(), order.getCustomerId(), order.getTotalAmount()\n            );\n            sagaLog.stepCompleted(sagaId, \"process-payment\", payment.getTransactionId());\n            completedSteps.add(() -> paymentService.refund(payment.getTransactionId()));\n\n            // Step 3: Create shipment\n            sagaLog.stepStarted(sagaId, \"create-shipment\");\n            ShipmentResult shipment = shippingService.createShipment(\n                order.getOrderId(), order.getShippingAddress(), reservation.getWarehouseId()\n            );\n            sagaLog.stepCompleted(sagaId, \"create-shipment\", shipment.getShipmentId());\n            // No compensation needed for shipment if saga completes successfully\n\n            // All steps succeeded\n            sagaLog.completed(sagaId);\n            return SagaResult.success(sagaId, shipment.getTrackingNumber());\n\n        } catch (RetryableException e) {\n            // Recoverable failure: retry the failed step (with backoff)\n            sagaLog.stepFailed(sagaId, e.getStepName(), e.getMessage(), true);\n            return retryFailedStep(sagaId, order, e, completedSteps);\n\n        } catch (SagaStepException e) {\n            // Non-recoverable failure: compensate all completed steps\n            sagaLog.stepFailed(sagaId, e.getStepName(), e.getMessage(), false);\n            compensate(sagaId, completedSteps);\n            return SagaResult.failed(sagaId, e.getMessage());\n        }\n    }\n\n    /**\n     * Execute compensating transactions in reverse order.\n     * Each compensation is idempotent and retried on failure.\n     */\n    private void compensate(String sagaId, List<CompensationAction> completedSteps) {\n        sagaLog.compensationStarted(sagaId);\n\n        // Compensate in reverse order\n        Collections.reverse(completedSteps);\n        for (int i = 0; i < completedSteps.size(); i++) {\n            CompensationAction action = completedSteps.get(i);\n            int maxRetries = 3;\n            for (int attempt = 1; attempt <= maxRetries; attempt++) {\n                try {\n                    action.execute();\n                    sagaLog.compensationStepCompleted(sagaId, i);\n                    break;\n                } catch (Exception e) {\n                    if (attempt == maxRetries) {\n                        // Compensation failed after retries — alert for manual intervention\n                        sagaLog.compensationStepFailed(sagaId, i, e.getMessage());\n                        alertOperations(sagaId, i, e);\n                    } else {\n                        sleep(exponentialBackoff(attempt));\n                    }\n                }\n            }\n        }\n\n        sagaLog.compensationCompleted(sagaId);\n    }\n\n    private SagaResult retryFailedStep(String sagaId, Order order,\n                                        RetryableException e,\n                                        List<CompensationAction> completedSteps) {\n        // Retry logic with exponential backoff (simplified)\n        for (int attempt = 1; attempt <= 3; attempt++) {\n            try {\n                sleep(exponentialBackoff(attempt));\n                // Re-execute from the failed step (implementation depends on step)\n                return executeOrderSaga(order);  // Simplified: restart entire saga\n            } catch (Exception retryEx) {\n                if (attempt == 3) {\n                    compensate(sagaId, completedSteps);\n                    return SagaResult.failed(sagaId, \"Exhausted retries: \" + e.getMessage());\n                }\n            }\n        }\n        return SagaResult.failed(sagaId, \"Retry exhausted\");\n    }\n\n    private long exponentialBackoff(int attempt) {\n        return (long) Math.pow(2, attempt) * 1000;  // 2s, 4s, 8s\n    }\n\n    private void sleep(long ms) {\n        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}\n    }\n\n    private void alertOperations(String sagaId, int stepIndex, Exception e) {\n        // Send alert to operations team for manual resolution\n    }\n}\n\n@FunctionalInterface\ninterface CompensationAction {\n    void execute() throws Exception;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "choreography-based-saga-with-event-driven-communication",
+          "heading": "Choreography-Based Saga with Event-Driven Communication",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { EventEmitter } from 'events';\n\n// Domain events that drive the choreography\ninterface OrderCreatedEvent {\n  type: 'OrderCreated';\n  orderId: string;\n  customerId: string;\n  items: Array<{ productId: string; quantity: number; price: number }>;\n  totalAmount: number;\n}\n\ninterface InventoryReservedEvent {\n  type: 'InventoryReserved';\n  orderId: string;\n  reservationId: string;\n  warehouseId: string;\n}\n\ninterface InventoryReservationFailedEvent {\n  type: 'InventoryReservationFailed';\n  orderId: string;\n  reason: string;\n}\n\ninterface PaymentProcessedEvent {\n  type: 'PaymentProcessed';\n  orderId: string;\n  transactionId: string;\n}\n\ninterface PaymentFailedEvent {\n  type: 'PaymentFailed';\n  orderId: string;\n  reason: string;\n}\n\ntype SagaEvent =\n  | OrderCreatedEvent\n  | InventoryReservedEvent\n  | InventoryReservationFailedEvent\n  | PaymentProcessedEvent\n  | PaymentFailedEvent;\n\n/**\n * Inventory service participating in a choreography-based saga.\n * Reacts to OrderCreated events and emits reservation results.\n * Listens for PaymentFailed to trigger compensation.\n */\nclass InventoryServiceHandler {\n  constructor(\n    private eventBus: EventEmitter,\n    private inventoryRepo: InventoryRepository\n  ) {\n    // React to order creation\n    this.eventBus.on('OrderCreated', this.handleOrderCreated.bind(this));\n    // React to payment failure — compensate by releasing reservation\n    this.eventBus.on('PaymentFailed', this.handlePaymentFailed.bind(this));\n  }\n\n  private async handleOrderCreated(event: OrderCreatedEvent): Promise<void> {\n    try {\n      const reservation = await this.inventoryRepo.reserve(\n        event.orderId,\n        event.items\n      );\n\n      this.eventBus.emit('InventoryReserved', {\n        type: 'InventoryReserved',\n        orderId: event.orderId,\n        reservationId: reservation.id,\n        warehouseId: reservation.warehouseId,\n      } as InventoryReservedEvent);\n    } catch (error) {\n      this.eventBus.emit('InventoryReservationFailed', {\n        type: 'InventoryReservationFailed',\n        orderId: event.orderId,\n        reason: (error as Error).message,\n      } as InventoryReservationFailedEvent);\n    }\n  }\n\n  /**\n   * Compensating action: release inventory when payment fails.\n   * Must be idempotent — may be called multiple times for the same order.\n   */\n  private async handlePaymentFailed(event: PaymentFailedEvent): Promise<void> {\n    await this.inventoryRepo.releaseByOrderId(event.orderId);\n    // Idempotent: if already released, this is a no-op\n  }\n}\n\n/**\n * Payment service participating in the choreography.\n * Reacts to InventoryReserved events.\n */\nclass PaymentServiceHandler {\n  constructor(\n    private eventBus: EventEmitter,\n    private paymentGateway: PaymentGateway\n  ) {\n    this.eventBus.on('InventoryReserved', this.handleInventoryReserved.bind(this));\n  }\n\n  private async handleInventoryReserved(event: InventoryReservedEvent): Promise<void> {\n    try {\n      const result = await this.paymentGateway.charge(event.orderId);\n\n      this.eventBus.emit('PaymentProcessed', {\n        type: 'PaymentProcessed',\n        orderId: event.orderId,\n        transactionId: result.transactionId,\n      } as PaymentProcessedEvent);\n    } catch (error) {\n      this.eventBus.emit('PaymentFailed', {\n        type: 'PaymentFailed',\n        orderId: event.orderId,\n        reason: (error as Error).message,\n      } as PaymentFailedEvent);\n    }\n  }\n}\n\n/**\n * Saga state tracker for monitoring and debugging choreography-based sagas.\n * Listens to all events and maintains a view of each saga's progress.\n */\nclass SagaStateTracker {\n  private sagaStates: Map<string, SagaState> = new Map();\n\n  constructor(private eventBus: EventEmitter) {\n    const events = [\n      'OrderCreated', 'InventoryReserved', 'InventoryReservationFailed',\n      'PaymentProcessed', 'PaymentFailed'\n    ];\n    events.forEach(event => {\n      this.eventBus.on(event, (e: SagaEvent) => this.trackEvent(e));\n    });\n  }\n\n  private trackEvent(event: SagaEvent): void {\n    const orderId = event.orderId;\n    const state = this.sagaStates.get(orderId) || { steps: [], status: 'in-progress' };\n    state.steps.push({ event: event.type, timestamp: Date.now() });\n\n    if (event.type === 'PaymentProcessed') state.status = 'completed';\n    if (event.type === 'InventoryReservationFailed') state.status = 'failed';\n    if (event.type === 'PaymentFailed') state.status = 'compensating';\n\n    this.sagaStates.set(orderId, state);\n  }\n\n  getState(orderId: string): SagaState | undefined {\n    return this.sagaStates.get(orderId);\n  }\n}\n\ninterface SagaState {\n  steps: Array<{ event: string; timestamp: number }>;\n  status: 'in-progress' | 'completed' | 'failed' | 'compensating';\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "orchestration-vs-choreography-comparison",
+          "heading": "Orchestration vs Choreography Comparison",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Orchestration (Central Coordinator)\"\n        O[Saga Orchestrator]\n        O -->|\"1. Reserve\"| IS[Inventory Service]\n        IS -->|\"ACK\"| O\n        O -->|\"2. Charge\"| PS[Payment Service]\n        PS -->|\"ACK\"| O\n        O -->|\"3. Ship\"| SS[Shipping Service]\n        SS -->|\"ACK\"| O\n        O -->|\"On failure: compensate\"| IS\n        O -->|\"On failure: refund\"| PS\n    end\n\n    subgraph \"Choreography (Event-Driven)\"\n        OC[Order Created Event] -->|\"triggers\"| IS2[Inventory Service]\n        IS2 -->|\"InventoryReserved\"| PS2[Payment Service]\n        PS2 -->|\"PaymentProcessed\"| SS2[Shipping Service]\n        PS2 -->|\"PaymentFailed\"| IS2\n        IS2 -->|\"releases reservation\"| IS2\n    end"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "saga-execution-with-compensation-flow",
+          "heading": "Saga Execution with Compensation Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant Client\n    participant Orch as Orchestrator\n    participant Inv as Inventory\n    participant Pay as Payment\n    participant Ship as Shipping\n\n    Client->>Orch: Place Order\n    \n    Orch->>Inv: Reserve Items\n    Inv-->>Orch: Reserved ✓ (reservationId=R1)\n    \n    Orch->>Pay: Charge $100\n    Pay-->>Orch: Charged ✓ (txnId=T1)\n    \n    Orch->>Ship: Create Shipment\n    Ship-->>Orch: ✗ FAILED (no carrier available)\n    \n    Note over Orch: Step 3 failed — begin compensation\n    \n    rect rgb(255, 230, 230)\n        Note over Orch,Pay: Compensating transactions (reverse order)\n        Orch->>Pay: Refund(txnId=T1)\n        Pay-->>Orch: Refunded ✓\n        Orch->>Inv: Release(reservationId=R1)\n        Inv-->>Orch: Released ✓\n    end\n    \n    Orch-->>Client: Order Failed (refund issued)"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "saga-state-machine",
+          "heading": "Saga State Machine",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "stateDiagram-v2\n    [*] --> Started: Order received\n    Started --> InventoryReserved: Reserve success\n    Started --> Failed: Reserve failed\n    \n    InventoryReserved --> PaymentProcessed: Payment success\n    InventoryReserved --> Compensating: Payment failed\n    \n    PaymentProcessed --> ShipmentCreated: Shipment success\n    PaymentProcessed --> Compensating: Shipment failed\n    \n    ShipmentCreated --> Completed: All steps done\n    \n    Compensating --> CompensationComplete: All compensations done\n    Compensating --> ManualIntervention: Compensation failed\n    \n    CompensationComplete --> Failed: Report failure\n    \n    Completed --> [*]\n    Failed --> [*]\n    ManualIntervention --> [*]"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Not making compensating transactions idempotent — Compensations may be retried due to network failures or coordinator crashes. If a refund compensation is not idempotent, a customer could receive multiple refunds. Always use idempotency keys and check-before-act patterns in compensating transactions.",
+            "Ignoring the lack of isolation — Sagas do not provide the \"I\" in ACID. Other transactions can see intermediate states (e.g., inventory reserved but payment not yet processed). This can lead to dirty reads and anomalies. Countermeasures include semantic locks (marking records as \"pending\"), commutative updates (operations that produce the same result regardless of order), and pessimistic views (reading the \"worst case\" state).",
+            "Designing compensations that are impossible to implement — Some actions cannot be undone: emails sent, physical goods shipped, notifications pushed. Design your saga so that irreversible steps come last (after the pivot point). If an irreversible step must come early, use a \"pending\" state that is only finalized after all subsequent steps succeed.",
+            "Not persisting saga state — If the orchestrator crashes mid-saga, it must be able to resume from where it left off. Without a durable saga log, in-flight sagas are lost, leaving the system in an inconsistent state. Use an event store or saga log table that records each step's completion and compensation status.",
+            "Choreography sagas becoming unmanageable at scale — With 5+ services in a choreography, the event flow becomes difficult to reason about, debug, and monitor. There is no single place to see the saga's current state. Consider switching to orchestration when the number of steps exceeds 4-5, or use a saga state tracker that aggregates events into a coherent view.",
+            "Not handling the \"pivot transaction\" correctly — The pivot transaction is the point of no return: before it, you can compensate backward; after it, you must complete forward. If the pivot step fails, you compensate. If a step after the pivot fails, you must retry forward (not compensate). Misidentifying the pivot leads to incorrect compensation or stuck sagas."
+          ]
+        }
+      ],
+      "wordCount": 326,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Uber Trip Lifecycle: Uber uses sagas to coordinate trip-related operations across multiple services: rider matching, driver assignment, payment authorization, trip tracking, and fare calculation. If payment authorization fails after a driver is assigned, the compensation releases the driver back to the available pool. Uber's orchestration platform (Cadence, now Temporal) manages saga state durability and retry logic."
+        },
+        {
+          "type": "paragraph",
+          "text": "Netflix Content Licensing: When Netflix licenses content for a new region, the workflow spans multiple services: rights management, encoding pipeline, CDN distribution, and catalog update. Each step is a saga participant. If encoding fails, the rights reservation is released. Netflix uses their Conductor orchestration engine to manage these multi-step workflows with compensation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Stripe Payment Processing: Stripe's internal payment flow is a saga across authorization, capture, settlement, and payout services. If settlement fails after capture, the compensation reverses the capture (void or refund). Stripe's idempotency key system ensures that retried compensations do not create duplicate refunds."
+        },
+        {
+          "type": "paragraph",
+          "text": "Booking.com Reservation System: A hotel booking saga coordinates: room availability check → price lock → payment → confirmation email. If payment fails, the price lock is released and the room is made available again. The confirmation email (irreversible) is the last step, only sent after all other steps succeed."
+        }
+      ],
+      "wordCount": 200,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "What are the trade-offs between choreography and orchestration for sagas?",
+          "answer": "Choreography (event-driven): Pros — loose coupling between services, no single point of failure, each service is autonomous. Cons — difficult to understand the overall flow, hard to debug (no central view), cyclic dependencies can emerge, adding a new step requires modifying existing services' event handlers. Orchestration (central coordinator): Pros — clear flow visibility, easier to add/modify steps, centralized error handling and compensation logic, better for complex sagas. Cons — the orchestrator is a single point of failure (must be highly available), introduces coupling to the orchestrator, can become a bottleneck. Rule of thumb: use choreography for simple sagas (2-3 steps) and orchestration for complex ones (4+ steps or complex compensation logic)."
+        },
+        {
+          "type": "interview",
+          "question": "How do you handle the lack of isolation in sagas? What anomalies can occur?",
+          "answer": "Without isolation, other transactions can observe intermediate saga states, leading to: (1) Dirty reads — reading data that a saga will later compensate (e.g., seeing a reserved inventory count that will be released). (2) Lost updates — two sagas modifying the same data concurrently without coordination. (3) Non-repeatable reads — reading different values at different saga steps. Countermeasures: Semantic locks — add a \"status\" field (PENDING, CONFIRMED, CANCELLED) so readers know the data is in-flight. Commutative updates — design operations so order doesn't matter (e.g., increment/decrement counters instead of set absolute values). Pessimistic views — read the \"worst case\" (e.g., treat PENDING reservations as confirmed when checking availability). Reread values — re-validate assumptions before the pivot transaction."
+        },
+        {
+          "type": "interview",
+          "question": "What happens if a compensating transaction fails? How do you handle it?",
+          "answer": "Compensating transactions must be designed to eventually succeed through retries (they should be idempotent and retryable). If a compensation fails after exhausting retries: (1) Log the failure in the saga log for audit. (2) Alert the operations team for manual intervention. (3) The saga enters a \"compensation-failed\" terminal state. (4) A dead letter queue or manual resolution process handles the inconsistency. To minimize this risk: design compensations to be simple (release a lock, issue a refund), make them idempotent (safe to retry), and test compensation paths as thoroughly as the happy path. Some systems use a \"compensation retry daemon\" that periodically retries failed compensations with exponential backoff."
+        },
+        {
+          "type": "interview",
+          "question": "When would you choose a saga over a two-phase commit (2PC)?",
+          "answer": "Choose sagas over 2PC when: (1) Services are independently deployed and owned by different teams — 2PC requires all participants to be available simultaneously and hold locks. (2) Long-running transactions — 2PC locks resources for the entire transaction duration, which is unacceptable for operations taking seconds or minutes. (3) High availability is required — 2PC blocks if the coordinator or any participant is unavailable. (4) Services use different databases — 2PC requires XA-compatible transaction managers, which many modern databases don't support. Choose 2PC when: (1) All participants are within the same trust boundary and deployment. (2) Transactions are short-lived (milliseconds). (3) Strong isolation is required and the complexity of saga countermeasures is not justified."
+        }
+      ],
+      "wordCount": 496,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement a saga log with at-least-once delivery guarantees. The saga log (or event store) is the source of truth for saga state. Use a durable store (PostgreSQL, Kafka) and ensure that saga step completions are recorded atomically with the local transaction (outbox pattern). On orchestrator restart, replay the log to determine which sagas need resumption or compensation.",
+            "Set timeouts on every saga step and define escalation policies. A saga step that hangs indefinitely blocks the entire saga. Define per-step timeouts (e.g., payment: 30s, shipping: 60s) and escalation behavior: first retry, then compensate, then alert. Use a workflow engine (Temporal, AWS Step Functions) that provides built-in timeout and retry semantics rather than implementing them from scratch.",
+            "Test compensation paths with the same rigor as happy paths. In production, compensations execute during failures — exactly when things are already going wrong. Chaos test your sagas by injecting failures at each step and verifying that compensation restores the system to a consistent state. Track compensation success rate as a key metric — it should be 99.9%+."
+          ]
+        }
+      ],
+      "wordCount": 173,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Event Sourcing and CQRS — Event sourcing provides a natural saga log and enables rebuilding saga state from events",
+            "Distributed Systems — Sagas are a fundamental pattern for maintaining consistency in distributed architectures",
+            "Consistency Models — Sagas provide eventual consistency, which is a specific consistency model with defined guarantees",
+            "Leader Election — Saga orchestrators often use leader election to ensure exactly one coordinator is active"
+          ]
+        }
+      ],
+      "wordCount": 65,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.*;\nimport java.util.concurrent.CompletableFuture;\n\n/**\n * Saga orchestrator for order fulfillment.\n * Coordinates: Inventory → Payment → Shipping\n * Each step has a corresponding compensation action.\n */\npublic class OrderSagaOrchestrator {\n    private final InventoryService inventoryService;\n    private final PaymentService paymentService;\n    private final ShippingService shippingService;\n    private final SagaLog sagaLog;\n\n    public OrderSagaOrchestrator(InventoryService inventoryService,\n                                  PaymentService paymentService,\n                                  ShippingService shippingService,\n                                  SagaLog sagaLog) {\n        this.inventoryService = inventoryService;\n        this.paymentService = paymentService;\n        this.shippingService = shippingService;\n        this.sagaLog = sagaLog;\n    }\n\n    /**\n     * Execute the order saga. Each step is a local transaction.\n     * If any step fails, compensate all previously completed steps in reverse order.\n     */\n    public SagaResult executeOrderSaga(Order order) {\n        String sagaId = UUID.randomUUID().toString();\n        sagaLog.start(sagaId, \"order-fulfillment\", order.getOrderId());\n\n        List<CompensationAction> completedSteps = new ArrayList<>();\n\n        try {\n            // Step 1: Reserve inventory\n            sagaLog.stepStarted(sagaId, \"reserve-inventory\");\n            ReservationResult reservation = inventoryService.reserveItems(\n                order.getOrderId(), order.getItems()\n            );\n            sagaLog.stepCompleted(sagaId, \"reserve-inventory\", reservation.getReservationId());\n            completedSteps.add(() -> inventoryService.releaseReservation(reservation.getReservationId()));\n\n            // Step 2: Process payment (PIVOT POINT — after this, prefer forward recovery)\n            sagaLog.stepStarted(sagaId, \"process-payment\");\n            PaymentResult payment = paymentService.charge(\n                order.getOrderId(), order.getCustomerId(), order.getTotalAmount()\n            );\n            sagaLog.stepCompleted(sagaId, \"process-payment\", payment.getTransactionId());\n            completedSteps.add(() -> paymentService.refund(payment.getTransactionId()));\n\n            // Step 3: Create shipment\n            sagaLog.stepStarted(sagaId, \"create-shipment\");\n            ShipmentResult shipment = shippingService.createShipment(\n                order.getOrderId(), order.getShippingAddress(), reservation.getWarehouseId()\n            );\n            sagaLog.stepCompleted(sagaId, \"create-shipment\", shipment.getShipmentId());\n            // No compensation needed for shipment if saga completes successfully\n\n            // All steps succeeded\n            sagaLog.completed(sagaId);\n            return SagaResult.success(sagaId, shipment.getTrackingNumber());\n\n        } catch (RetryableException e) {\n            // Recoverable failure: retry the failed step (with backoff)\n            sagaLog.stepFailed(sagaId, e.getStepName(), e.getMessage(), true);\n            return retryFailedStep(sagaId, order, e, completedSteps);\n\n        } catch (SagaStepException e) {\n            // Non-recoverable failure: compensate all completed steps\n            sagaLog.stepFailed(sagaId, e.getStepName(), e.getMessage(), false);\n            compensate(sagaId, completedSteps);\n            return SagaResult.failed(sagaId, e.getMessage());\n        }\n    }\n\n    /**\n     * Execute compensating transactions in reverse order.\n     * Each compensation is idempotent and retried on failure.\n     */\n    private void compensate(String sagaId, List<CompensationAction> completedSteps) {\n        sagaLog.compensationStarted(sagaId);\n\n        // Compensate in reverse order\n        Collections.reverse(completedSteps);\n        for (int i = 0; i < completedSteps.size(); i++) {\n            CompensationAction action = completedSteps.get(i);\n            int maxRetries = 3;\n            for (int attempt = 1; attempt <= maxRetries; attempt++) {\n                try {\n                    action.execute();\n                    sagaLog.compensationStepCompleted(sagaId, i);\n                    break;\n                } catch (Exception e) {\n                    if (attempt == maxRetries) {\n                        // Compensation failed after retries — alert for manual intervention\n                        sagaLog.compensationStepFailed(sagaId, i, e.getMessage());\n                        alertOperations(sagaId, i, e);\n                    } else {\n                        sleep(exponentialBackoff(attempt));\n                    }\n                }\n            }\n        }\n\n        sagaLog.compensationCompleted(sagaId);\n    }\n\n    private SagaResult retryFailedStep(String sagaId, Order order,\n                                        RetryableException e,\n                                        List<CompensationAction> completedSteps) {\n        // Retry logic with exponential backoff (simplified)\n        for (int attempt = 1; attempt <= 3; attempt++) {\n            try {\n                sleep(exponentialBackoff(attempt));\n                // Re-execute from the failed step (implementation depends on step)\n                return executeOrderSaga(order);  // Simplified: restart entire saga\n            } catch (Exception retryEx) {\n                if (attempt == 3) {\n                    compensate(sagaId, completedSteps);\n                    return SagaResult.failed(sagaId, \"Exhausted retries: \" + e.getMessage());\n                }\n            }\n        }\n        return SagaResult.failed(sagaId, \"Retry exhausted\");\n    }\n\n    private long exponentialBackoff(int attempt) {\n        return (long) Math.pow(2, attempt) * 1000;  // 2s, 4s, 8s\n    }\n\n    private void sleep(long ms) {\n        try { Thread.sleep(ms); } catch (InterruptedException ignored) {}\n    }\n\n    private void alertOperations(String sagaId, int stepIndex, Exception e) {\n        // Send alert to operations team for manual resolution\n    }\n}\n\n@FunctionalInterface\ninterface CompensationAction {\n    void execute() throws Exception;\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { EventEmitter } from 'events';\n\n// Domain events that drive the choreography\ninterface OrderCreatedEvent {\n  type: 'OrderCreated';\n  orderId: string;\n  customerId: string;\n  items: Array<{ productId: string; quantity: number; price: number }>;\n  totalAmount: number;\n}\n\ninterface InventoryReservedEvent {\n  type: 'InventoryReserved';\n  orderId: string;\n  reservationId: string;\n  warehouseId: string;\n}\n\ninterface InventoryReservationFailedEvent {\n  type: 'InventoryReservationFailed';\n  orderId: string;\n  reason: string;\n}\n\ninterface PaymentProcessedEvent {\n  type: 'PaymentProcessed';\n  orderId: string;\n  transactionId: string;\n}\n\ninterface PaymentFailedEvent {\n  type: 'PaymentFailed';\n  orderId: string;\n  reason: string;\n}\n\ntype SagaEvent =\n  | OrderCreatedEvent\n  | InventoryReservedEvent\n  | InventoryReservationFailedEvent\n  | PaymentProcessedEvent\n  | PaymentFailedEvent;\n\n/**\n * Inventory service participating in a choreography-based saga.\n * Reacts to OrderCreated events and emits reservation results.\n * Listens for PaymentFailed to trigger compensation.\n */\nclass InventoryServiceHandler {\n  constructor(\n    private eventBus: EventEmitter,\n    private inventoryRepo: InventoryRepository\n  ) {\n    // React to order creation\n    this.eventBus.on('OrderCreated', this.handleOrderCreated.bind(this));\n    // React to payment failure — compensate by releasing reservation\n    this.eventBus.on('PaymentFailed', this.handlePaymentFailed.bind(this));\n  }\n\n  private async handleOrderCreated(event: OrderCreatedEvent): Promise<void> {\n    try {\n      const reservation = await this.inventoryRepo.reserve(\n        event.orderId,\n        event.items\n      );\n\n      this.eventBus.emit('InventoryReserved', {\n        type: 'InventoryReserved',\n        orderId: event.orderId,\n        reservationId: reservation.id,\n        warehouseId: reservation.warehouseId,\n      } as InventoryReservedEvent);\n    } catch (error) {\n      this.eventBus.emit('InventoryReservationFailed', {\n        type: 'InventoryReservationFailed',\n        orderId: event.orderId,\n        reason: (error as Error).message,\n      } as InventoryReservationFailedEvent);\n    }\n  }\n\n  /**\n   * Compensating action: release inventory when payment fails.\n   * Must be idempotent — may be called multiple times for the same order.\n   */\n  private async handlePaymentFailed(event: PaymentFailedEvent): Promise<void> {\n    await this.inventoryRepo.releaseByOrderId(event.orderId);\n    // Idempotent: if already released, this is a no-op\n  }\n}\n\n/**\n * Payment service participating in the choreography.\n * Reacts to InventoryReserved events.\n */\nclass PaymentServiceHandler {\n  constructor(\n    private eventBus: EventEmitter,\n    private paymentGateway: PaymentGateway\n  ) {\n    this.eventBus.on('InventoryReserved', this.handleInventoryReserved.bind(this));\n  }\n\n  private async handleInventoryReserved(event: InventoryReservedEvent): Promise<void> {\n    try {\n      const result = await this.paymentGateway.charge(event.orderId);\n\n      this.eventBus.emit('PaymentProcessed', {\n        type: 'PaymentProcessed',\n        orderId: event.orderId,\n        transactionId: result.transactionId,\n      } as PaymentProcessedEvent);\n    } catch (error) {\n      this.eventBus.emit('PaymentFailed', {\n        type: 'PaymentFailed',\n        orderId: event.orderId,\n        reason: (error as Error).message,\n      } as PaymentFailedEvent);\n    }\n  }\n}\n\n/**\n * Saga state tracker for monitoring and debugging choreography-based sagas.\n * Listens to all events and maintains a view of each saga's progress.\n */\nclass SagaStateTracker {\n  private sagaStates: Map<string, SagaState> = new Map();\n\n  constructor(private eventBus: EventEmitter) {\n    const events = [\n      'OrderCreated', 'InventoryReserved', 'InventoryReservationFailed',\n      'PaymentProcessed', 'PaymentFailed'\n    ];\n    events.forEach(event => {\n      this.eventBus.on(event, (e: SagaEvent) => this.trackEvent(e));\n    });\n  }\n\n  private trackEvent(event: SagaEvent): void {\n    const orderId = event.orderId;\n    const state = this.sagaStates.get(orderId) || { steps: [], status: 'in-progress' };\n    state.steps.push({ event: event.type, timestamp: Date.now() });\n\n    if (event.type === 'PaymentProcessed') state.status = 'completed';\n    if (event.type === 'InventoryReservationFailed') state.status = 'failed';\n    if (event.type === 'PaymentFailed') state.status = 'compensating';\n\n    this.sagaStates.set(orderId, state);\n  }\n\n  getState(orderId: string): SagaState | undefined {\n    return this.sagaStates.get(orderId);\n  }\n}\n\ninterface SagaState {\n  steps: Array<{ event: string; timestamp: number }>;\n  status: 'in-progress' | 'completed' | 'failed' | 'compensating';\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/saga-pattern.md",
+    "wordCount": 1557,
+    "sectionCount": 14
+  }
+}

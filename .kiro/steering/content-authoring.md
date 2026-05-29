@@ -16,7 +16,7 @@ cs-reference-guide/content/
 │   ├── api-design/         (REST, GraphQL, gRPC)
 │   ├── build-tools/        (Maven, Gradle)
 │   ├── java/               (Core Language, Collections, Concurrency, Streams, JVM, Java 8+)
-│   ├── messaging/          (Kafka, RabbitMQ, Patterns)
+│   ├── messaging/          (Kafka, Partition Strategies, Consumer Rebalancing, Exactly-Once Semantics, ISR Mechanics, Dead Letter Queues, RabbitMQ, Patterns)
 │   └── spring-framework/   (Core, Boot, MVC, REST, Data, Security, Batch, Microservices)
 ├── frontend/
 │   ├── javascript/         (Core, Closures, Async, Prototypes, Modules)
@@ -47,7 +47,7 @@ cs-reference-guide/content/
 │   ├── sorting-and-searching/        (Comparison, Non-comparison, Binary Search, Specialized)
 │   └── dynamic-programming/          (Fundamentals, Knapsack, Grid, Sequence, Advanced)
 ├── system-design/
-│   ├── fundamentals/       (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding)
+│   ├── fundamentals/       (Distributed Systems, Consistency, Scalability, Load Balancing, Caching, Sharding, CAP Theorem Depth, Consistent Hashing, Quorum Systems, Saga Pattern, Event Sourcing/CQRS, Vector Clocks, Leader Election)
 │   └── patterns/           (Rate Limiting, API Design, Event-Driven, Interview Problems, Design Patterns, Microservices, Data Pipelines)
 ├── networking/
 │   ├── protocols/          (TCP/IP, DNS, HTTP, TLS/mTLS)
@@ -68,9 +68,6 @@ cs-reference-guide/content/
 ├── interview-prep/
 │   ├── technical/          (Coding Interviews, System Design Interviews, Technical Communication)
 │   └── soft-skills/        (Behavioral Questions, Negotiation)
-└── git/
-    ├── basics/             (What is Git, Commands, Branching, .gitignore)
-    └── collaboration/      (Local/Remote, Merge Conflicts, PRs)
 ```
 
 ## Multi-Page Topic Structure

@@ -1,7 +1,7 @@
 /**
- * Unit tests for the localStorage persistence utility.
+ * Unit tests for the persistence utility.
  * Tests cover: typed get/set/remove, namespace prefixing, try/catch error handling,
- * schema version checking, migration support, and in-memory fallback.
+ * schema version checking, migration support, in-memory fallback, and backend detection.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
@@ -14,6 +14,7 @@ import {
   getCurrentSchemaVersion,
   initStorage,
   isUsingFallback,
+  getActiveBackend,
   setFallbackWarningHandler,
   _resetForTesting,
 } from './storage';
@@ -87,8 +88,8 @@ describe('storage utility', () => {
       expect(getSchemaVersion()).toBe(0);
     });
 
-    it('should set version on initStorage first run', () => {
-      initStorage();
+    it('should set version on initStorage first run', async () => {
+      await initStorage();
       expect(getSchemaVersion()).toBe(getCurrentSchemaVersion());
     });
 
@@ -149,7 +150,7 @@ describe('storage utility', () => {
       expect(isUsingFallback()).toBe(false);
     });
 
-    it('should fall back to memory when localStorage is unavailable', () => {
+    it('should fall back to memory when localStorage is unavailable', async () => {
       // Mock localStorage to throw on all operations
       vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new DOMException('Storage disabled', 'SecurityError');
@@ -163,7 +164,7 @@ describe('storage utility', () => {
 
       // Reset to trigger fallback detection
       _resetForTesting();
-      initStorage();
+      await initStorage();
       
       expect(isUsingFallback()).toBe(true);
       
@@ -211,6 +212,53 @@ describe('storage utility', () => {
       expect(handler).toHaveBeenCalledTimes(1);
 
       vi.restoreAllMocks();
+    });
+  });
+
+  describe('backend detection', () => {
+    it('should report localStorage as active backend by default', () => {
+      expect(getActiveBackend()).toBe('localStorage');
+    });
+
+    it('should report memory backend after localStorage failure', async () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('Storage disabled', 'SecurityError');
+      });
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('Storage disabled', 'SecurityError');
+      });
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new DOMException('Storage disabled', 'SecurityError');
+      });
+
+      _resetForTesting();
+      await initStorage();
+
+      expect(getActiveBackend()).toBe('memory');
+      expect(isUsingFallback()).toBe(true);
+
+      vi.restoreAllMocks();
+    });
+
+    it('should use localStorage when available', async () => {
+      await initStorage();
+      expect(getActiveBackend()).toBe('localStorage');
+      expect(isUsingFallback()).toBe(false);
+    });
+  });
+
+  describe('never throws to caller', () => {
+    it('get should never throw', () => {
+      // Even with completely broken state, get should return default
+      expect(() => get('any-key', 'safe')).not.toThrow();
+    });
+
+    it('set should never throw', () => {
+      expect(() => set('any-key', 'value')).not.toThrow();
+    });
+
+    it('remove should never throw', () => {
+      expect(() => remove('any-key')).not.toThrow();
     });
   });
 });

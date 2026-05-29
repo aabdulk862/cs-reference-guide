@@ -1,15 +1,18 @@
 /**
- * localStorage persistence utility for the CS Reference Guide.
- * 
+ * Persistence utility for the CS Reference Guide.
+ *
  * Features:
  * - Namespaced keys (csguide:*) to avoid collisions
  * - Typed get/set/remove with JSON serialization
- * - try/catch wrapping for all localStorage operations
+ * - try/catch wrapping for all operations — never throws to caller
  * - Schema version checking and migration support
- * - Graceful fallback to in-memory Map when localStorage is unavailable or full
- * 
- * Requirements: 5.8, 6.5, 6.6, 9.6
+ * - Three-tier fallback: localStorage → IndexedDB → in-memory Map
+ * - Sync-first approach: reads from memory cache, async writes to IndexedDB
+ *
+ * Requirements: 9.1, 9.2, 9.5, 9.6
  */
+
+import { indexedDBAdapter } from './indexeddb-adapter';
 
 const NAMESPACE = 'csguide:';
 const VERSION_KEY = `${NAMESPACE}version`;
@@ -23,11 +26,14 @@ export type MigrationFn = (fromVersion: number) => void;
 /** Registry of migration functions keyed by target version */
 const migrations: Map<number, MigrationFn> = new Map();
 
-/** In-memory fallback store used when localStorage is unavailable or full */
+/** In-memory store used as read cache (for IndexedDB backend) or final fallback */
 const memoryStore: Map<string, string> = new Map();
 
-/** Whether we're using the in-memory fallback */
-let usingFallback = false;
+/** The active storage backend */
+export type StorageBackend = 'localStorage' | 'indexeddb' | 'memory';
+
+/** Which backend is currently active */
+let activeBackend: StorageBackend = 'localStorage';
 
 /** Warning callback for when fallback is activated */
 let onFallbackActivated: (() => void) | null = null;
@@ -47,14 +53,13 @@ function isLocalStorageAvailable(): boolean {
 }
 
 /**
- * Activate the in-memory fallback and notify listeners.
+ * Activate a fallback backend and notify listeners.
  */
-function activateFallback(): void {
-  if (!usingFallback) {
-    usingFallback = true;
-    if (onFallbackActivated) {
-      onFallbackActivated();
-    }
+function activateFallback(backend: StorageBackend): void {
+  const wasPrimary = activeBackend === 'localStorage';
+  activeBackend = backend;
+  if (wasPrimary && onFallbackActivated) {
+    onFallbackActivated();
   }
 }
 
@@ -66,33 +71,55 @@ function namespacedKey(key: string): string {
 }
 
 /**
- * Read a raw string value from storage (localStorage or fallback).
+ * Read a raw string value from storage.
+ * - localStorage: reads directly
+ * - indexeddb: reads from hydrated memory cache (sync)
+ * - memory: reads from memory store
  */
 function rawGet(fullKey: string): string | null {
-  if (usingFallback) {
+  if (activeBackend === 'memory' || activeBackend === 'indexeddb') {
     return memoryStore.get(fullKey) ?? null;
   }
+  // localStorage backend
   try {
     return localStorage.getItem(fullKey);
   } catch {
-    activateFallback();
+    // localStorage failed at runtime — degrade
+    activateFallback('memory');
     return memoryStore.get(fullKey) ?? null;
   }
 }
 
 /**
- * Write a raw string value to storage (localStorage or fallback).
+ * Write a raw string value to storage.
+ * - localStorage: writes directly
+ * - indexeddb: writes to memory cache + async fire-and-forget to IndexedDB
+ * - memory: writes to memory store only
  */
 function rawSet(fullKey: string, value: string): void {
-  if (usingFallback) {
+  if (activeBackend === 'memory') {
     memoryStore.set(fullKey, value);
     return;
   }
+
+  if (activeBackend === 'indexeddb') {
+    memoryStore.set(fullKey, value);
+    // Fire-and-forget async write to IndexedDB
+    try {
+      indexedDBAdapter.set(fullKey, value).catch(() => {
+        // Silent failure — memory cache is authoritative
+      });
+    } catch {
+      // If even calling .set() throws synchronously, ignore
+    }
+    return;
+  }
+
+  // localStorage backend
   try {
     localStorage.setItem(fullKey, value);
   } catch (e) {
     // QuotaExceededError or other localStorage failure
-    activateFallback();
     // Copy existing localStorage data to memory store for continuity
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -105,6 +132,7 @@ function rawSet(fullKey: string, value: string): void {
       // If we can't even read, just proceed with what we have
     }
     memoryStore.set(fullKey, value);
+    activateFallback('memory');
     // Re-throw context for debugging but don't crash
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       // Storage full — fallback activated silently
@@ -113,17 +141,35 @@ function rawSet(fullKey: string, value: string): void {
 }
 
 /**
- * Remove a raw key from storage (localStorage or fallback).
+ * Remove a raw key from storage.
+ * - localStorage: removes directly
+ * - indexeddb: removes from memory cache + async fire-and-forget to IndexedDB
+ * - memory: removes from memory store
  */
 function rawRemove(fullKey: string): void {
-  if (usingFallback) {
+  if (activeBackend === 'memory') {
     memoryStore.delete(fullKey);
     return;
   }
+
+  if (activeBackend === 'indexeddb') {
+    memoryStore.delete(fullKey);
+    // Fire-and-forget async remove from IndexedDB
+    try {
+      indexedDBAdapter.remove(fullKey).catch(() => {
+        // Silent failure — memory cache is authoritative
+      });
+    } catch {
+      // If even calling .remove() throws synchronously, ignore
+    }
+    return;
+  }
+
+  // localStorage backend
   try {
     localStorage.removeItem(fullKey);
   } catch {
-    activateFallback();
+    activateFallback('memory');
     memoryStore.delete(fullKey);
   }
 }
@@ -133,18 +179,22 @@ function rawRemove(fullKey: string): void {
  * or if JSON parsing fails (resets corrupted key to default).
  */
 export function get<T>(key: string, defaultValue: T): T {
-  const fullKey = namespacedKey(key);
-  const raw = rawGet(fullKey);
-
-  if (raw === null) {
-    return defaultValue;
-  }
-
   try {
-    return JSON.parse(raw) as T;
+    const fullKey = namespacedKey(key);
+    const raw = rawGet(fullKey);
+
+    if (raw === null) {
+      return defaultValue;
+    }
+
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      // Corrupted data — reset to default
+      rawSet(fullKey, JSON.stringify(defaultValue));
+      return defaultValue;
+    }
   } catch {
-    // Corrupted data — reset to default
-    rawSet(fullKey, JSON.stringify(defaultValue));
     return defaultValue;
   }
 }
@@ -153,23 +203,31 @@ export function get<T>(key: string, defaultValue: T): T {
  * Set a typed value in storage. Serializes to JSON.
  */
 export function set<T>(key: string, value: T): void {
-  const fullKey = namespacedKey(key);
-  const serialized = JSON.stringify(value);
-  rawSet(fullKey, serialized);
+  try {
+    const fullKey = namespacedKey(key);
+    const serialized = JSON.stringify(value);
+    rawSet(fullKey, serialized);
+  } catch {
+    // Never throw to caller
+  }
 }
 
 /**
  * Remove a key from storage.
  */
 export function remove(key: string): void {
-  const fullKey = namespacedKey(key);
-  rawRemove(fullKey);
+  try {
+    const fullKey = namespacedKey(key);
+    rawRemove(fullKey);
+  } catch {
+    // Never throw to caller
+  }
 }
 
 /**
  * Register a migration function for a specific target version.
  * Migrations run sequentially from the stored version to CURRENT_SCHEMA_VERSION.
- * 
+ *
  * Example:
  *   registerMigration(2, (fromVersion) => {
  *     // Transform data from version 1 to version 2
@@ -185,7 +243,7 @@ export function registerMigration(targetVersion: number, fn: MigrationFn): void 
 /**
  * Check the stored schema version and run any pending migrations.
  * Should be called once on app initialization.
- * 
+ *
  * Returns true if migrations were run, false if already up to date.
  */
 export function runMigrations(): boolean {
@@ -237,7 +295,7 @@ function setSchemaVersion(version: number): void {
 }
 
 /**
- * Set a callback to be invoked when the in-memory fallback is activated.
+ * Set a callback to be invoked when a fallback backend is activated.
  * Useful for displaying a warning to the user.
  */
 export function setFallbackWarningHandler(handler: () => void): void {
@@ -245,10 +303,18 @@ export function setFallbackWarningHandler(handler: () => void): void {
 }
 
 /**
- * Check whether the storage is currently using the in-memory fallback.
+ * Check whether the storage is currently using a fallback backend
+ * (i.e., not localStorage).
  */
 export function isUsingFallback(): boolean {
-  return usingFallback;
+  return activeBackend !== 'localStorage';
+}
+
+/**
+ * Get the currently active storage backend.
+ */
+export function getActiveBackend(): StorageBackend {
+  return activeBackend;
 }
 
 /**
@@ -260,17 +326,55 @@ export function getCurrentSchemaVersion(): number {
 
 /**
  * Initialize the storage system. Should be called once on app startup.
- * - Checks localStorage availability
- * - Runs pending migrations
- * - Sets schema version if first run
+ * Probes backends in order: localStorage → IndexedDB → memory.
+ *
+ * When IndexedDB is the active backend, hydrates the in-memory cache
+ * from all stored entries so that subsequent get() calls are synchronous.
  */
-export function initStorage(): void {
-  if (!isLocalStorageAvailable()) {
-    activateFallback();
+export async function initStorage(): Promise<void> {
+  try {
+    if (isLocalStorageAvailable()) {
+      activeBackend = 'localStorage';
+    } else {
+      // Try IndexedDB
+      let indexedDBAvailable = false;
+      try {
+        indexedDBAvailable = await indexedDBAdapter.isAvailable();
+      } catch {
+        indexedDBAvailable = false;
+      }
+
+      if (indexedDBAvailable) {
+        activeBackend = 'indexeddb';
+        // Open the database connection
+        try {
+          await indexedDBAdapter.open();
+          // Hydrate memory cache from IndexedDB
+          const allEntries = await indexedDBAdapter.getAll();
+          for (const { key, value } of allEntries) {
+            memoryStore.set(key, value);
+          }
+        } catch {
+          // IndexedDB open/read failed — fall back to memory
+          activeBackend = 'memory';
+        }
+      } else {
+        activeBackend = 'memory';
+      }
+    }
+  } catch {
+    // Any unexpected error — fall back to memory
+    activeBackend = 'memory';
   }
 
+  // Notify if using fallback
+  if (activeBackend !== 'localStorage' && onFallbackActivated) {
+    onFallbackActivated();
+  }
+
+  // Run migrations
   const storedVersion = getSchemaVersion();
-  if (storedVersion === 0 && !usingFallback) {
+  if (storedVersion === 0) {
     // First run — set initial version
     setSchemaVersion(CURRENT_SCHEMA_VERSION);
   } else {
@@ -282,7 +386,7 @@ export function initStorage(): void {
  * Reset the storage module state. Primarily for testing purposes.
  */
 export function _resetForTesting(): void {
-  usingFallback = false;
+  activeBackend = 'localStorage';
   onFallbackActivated = null;
   memoryStore.clear();
   migrations.clear();

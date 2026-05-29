@@ -30,7 +30,7 @@ content/{category}/{topic-dir}/index.md + subtopics.md
 | `src/plugins/image-resolver.ts` | Resolves relative image paths |
 | `src/plugins/plugin-utils.ts` | Shared utilities: `CATEGORY_MAPPINGS`, `resolveCategory()`, `slugify()`, `extractLearningPathOrder()` |
 | `src/plugins/search-indexer.ts` | Builds FlexSearch documents from parsed content |
-| `src/plugins/content-validator.ts` | Validates content structure and quality |
+| `src/plugins/content-validator.ts` | Validates content structure and quality (severity-based: warnings + info) |
 | `src/plugins/sitemap-generator.ts` | Generates sitemap.xml from manifest data |
 
 ## Content Directory
@@ -66,7 +66,6 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
   { pattern: 'networking', category: 'Networking' },
   { pattern: 'operating-systems', category: 'Operating Systems' },
   { pattern: 'interview-prep', category: 'Interview Prep' },
-  { pattern: 'git', category: 'Git' },
   { pattern: 'security', category: 'Security' },
   { pattern: 'testing', category: 'Testing' },
   { pattern: 'software-engineering', category: 'Software Engineering' },
@@ -90,7 +89,7 @@ const CATEGORY_GROUPS = [
   { label: 'Server-Side', icon: '⚙️', categoryIds: ['backend', 'databases'] },
   { label: 'Client-Side', icon: '🎨', categoryIds: ['frontend'] },
   { label: 'Architecture', icon: '🏗️', categoryIds: ['system-design', 'software-engineering', 'security'] },
-  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure', 'git'] },
+  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure'] },
   { label: 'Quality', icon: '✅', categoryIds: ['testing'] },
   { label: 'Interview', icon: '🎯', categoryIds: ['interview-prep'] },
 ];
@@ -183,9 +182,9 @@ Generated files in `public/content/`:
       ]
     }]
   }],
-  "totalTopics": 46,
-  "totalSections": 2508,
-  "buildTimestamp": "2025-05-16T10:00:00Z"
+  "totalTopics": 44,
+  "totalSections": 2522,
+  "buildTimestamp": "2026-05-29T10:00:00Z"
 }
 ```
 
@@ -196,3 +195,24 @@ Generated files in `public/content/`:
 3. Create subtopic `.md` files following the content-authoring steering file
 4. Run `npm run build` to verify it appears in the manifest
 5. Check the build log for any warnings about missing sections or low word count
+6. Update `docs/content-audit.md` if the content is AI-generated
+
+## Content Validation
+
+The content validator (`src/plugins/content-validator.ts`) uses severity-based messaging:
+
+- **`severity: 'warning'`** — Issues that should be addressed: low word count, stub content, section too short, broken/external/orphaned images
+- **`severity: 'info'`** — Informational: missing recommended sections (not mandatory)
+
+Missing sections (Quick Reference, When to Use, etc.) are treated as recommendations, not requirements. Word count and section depth validation remain as warnings.
+
+## Pre-rendering (SEO)
+
+The `scripts/prerender.ts` post-build script generates static HTML for all content routes:
+- Reads `dist/content-manifest.json` after Vite build
+- Generates `dist/topic/{category}/{topic}/index.html` for each topic
+- Generates `dist/topic/{category}/{topic}/{subtopic}/index.html` for each subtopic
+- Generates `dist/category/{category}/index.html` for each category
+- Each page includes `<title>`, `<meta name="description">`, Open Graph tags, and canonical URL
+- The SPA scripts/styles are included so the app hydrates for interactive users
+- Run via `"postbuild": "node --import tsx scripts/prerender.ts"` in package.json

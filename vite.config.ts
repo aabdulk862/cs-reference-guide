@@ -19,11 +19,12 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB to accommodate large search index
         globPatterns: [
-          '**/*.{js,css,html}',
+          '**/*.{js,css,html,wasm}',
           'content-manifest.json',
           'search-index.json',
           'content/**/*.json',
         ],
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             // Cache-first for content JSON files
@@ -70,6 +71,18 @@ export default defineConfig({
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+              },
+            },
+          },
+          {
+            // WASM binaries: StaleWhileRevalidate ensures updates propagate
+            urlPattern: /\.wasm$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'wasm-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
               },
             },
           },

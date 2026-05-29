@@ -13,7 +13,7 @@ const CATEGORY_GROUPS: { label: string; icon: string; categoryIds: string[] }[] 
   { label: 'Server-Side', icon: '⚙️', categoryIds: ['backend', 'databases'] },
   { label: 'Client-Side', icon: '🎨', categoryIds: ['frontend'] },
   { label: 'Architecture', icon: '🏗️', categoryIds: ['system-design', 'software-engineering', 'security'] },
-  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure', 'git'] },
+  { label: 'Infrastructure', icon: '🚀', categoryIds: ['infrastructure'] },
   { label: 'Quality', icon: '✅', categoryIds: ['testing'] },
   { label: 'Interview', icon: '🎯', categoryIds: ['interview-prep'] },
 ];

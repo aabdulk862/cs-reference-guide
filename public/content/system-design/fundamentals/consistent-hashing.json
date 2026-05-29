@@ -1,0 +1,261 @@
+{
+  "id": "fundamentals-consistent-hashing",
+  "slug": "consistent-hashing",
+  "title": "Consistent Hashing",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Consistent hashing maps both keys and nodes onto a circular hash space (ring), assigning each key to the first node encountered clockwise from the key's position on the ring",
+            "When a node joins or leaves, only K/N keys need to be remapped (where K is total keys and N is total nodes), compared to traditional hash-mod-N which remaps nearly all keys",
+            "Virtual nodes (vnodes) solve the load imbalance problem by assigning multiple positions on the ring to each physical node — typically 100-256 vnodes per physical node",
+            "Bounded-load consistent hashing (Google, 2017) caps the maximum load on any node to (1 + ε) × average load, preventing hot spots while maintaining minimal remapping",
+            "Used in production by DynamoDB, Cassandra, Riak, Memcached (ketama), Nginx upstream hashing, and most CDN edge routing systems",
+            "The hash function must be deterministic and uniformly distributed — commonly MurmurHash3, xxHash, or MD5 (for distribution quality, not security)",
+            "Consistent hashing is a prerequisite for understanding how distributed databases partition data and how adding/removing nodes triggers rebalancing"
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Consistent hashing applies whenever you need to distribute data or load across a dynamic set of nodes where nodes can be added or removed without massive redistribution. Common scenarios include: distributed caches (Memcached, Redis Cluster) where you want cache hits to survive node additions, distributed databases (Cassandra, DynamoDB) for partition assignment, load balancers that need session affinity with graceful failover, CDN edge selection for content routing, and distributed task schedulers that assign work to workers. You should also understand consistent hashing for system design interviews involving any horizontally scaled stateful service, as it is the foundational mechanism for data placement in nearly all modern distributed storage systems."
+        }
+      ],
+      "wordCount": 107,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "consistent-hash-ring-with-virtual-nodes",
+          "heading": "Consistent Hash Ring with Virtual Nodes",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\nimport java.security.MessageDigest;\nimport java.security.NoSuchAlgorithmException;\nimport java.nio.charset.StandardCharsets;\n\n/**\n * Production-grade consistent hash ring with virtual nodes.\n * Each physical node gets multiple positions on the ring for better distribution.\n */\npublic class ConsistentHashRing<T> {\n    private final TreeMap<Long, T> ring = new TreeMap<>();\n    private final Map<T, Integer> nodeVnodeCount = new HashMap<>();\n    private final int defaultVnodes;\n    private final MessageDigest md5;\n\n    public ConsistentHashRing(int defaultVnodes) {\n        this.defaultVnodes = defaultVnodes;\n        try {\n            this.md5 = MessageDigest.getInstance(\"MD5\");\n        } catch (NoSuchAlgorithmException e) {\n            throw new RuntimeException(\"MD5 not available\", e);\n        }\n    }\n\n    /**\n     * Add a node with the default number of virtual nodes.\n     * Each vnode gets a position on the ring based on hash(\"node#i\").\n     */\n    public void addNode(T node) {\n        addNode(node, defaultVnodes);\n    }\n\n    /**\n     * Add a node with a custom vnode count.\n     * Higher vnode count = better distribution but more memory.\n     * Weighted nodes can use proportional vnode counts.\n     */\n    public void addNode(T node, int vnodeCount) {\n        for (int i = 0; i < vnodeCount; i++) {\n            long hash = hash(node.toString() + \"#\" + i);\n            ring.put(hash, node);\n        }\n        nodeVnodeCount.put(node, vnodeCount);\n    }\n\n    /**\n     * Remove a node and all its virtual nodes from the ring.\n     * Keys previously assigned to this node will be reassigned to the\n     * next clockwise node — only those keys are affected.\n     */\n    public void removeNode(T node) {\n        Integer vnodeCount = nodeVnodeCount.remove(node);\n        if (vnodeCount == null) return;\n        for (int i = 0; i < vnodeCount; i++) {\n            long hash = hash(node.toString() + \"#\" + i);\n            ring.remove(hash);\n        }\n    }\n\n    /**\n     * Find the node responsible for a given key.\n     * Walks clockwise from the key's hash position to find the first node.\n     */\n    public T getNode(String key) {\n        if (ring.isEmpty()) {\n            throw new IllegalStateException(\"Hash ring is empty\");\n        }\n        long hash = hash(key);\n        // Find the first entry at or after this hash (clockwise)\n        Map.Entry<Long, T> entry = ring.ceilingEntry(hash);\n        if (entry == null) {\n            // Wrap around to the first entry (ring is circular)\n            entry = ring.firstEntry();\n        }\n        return entry.getValue();\n    }\n\n    /**\n     * Get N distinct nodes for replication (preference list).\n     * Walks clockwise, skipping vnodes belonging to already-selected physical nodes.\n     */\n    public List<T> getNodes(String key, int count) {\n        if (ring.isEmpty()) {\n            throw new IllegalStateException(\"Hash ring is empty\");\n        }\n        int distinctNodes = nodeVnodeCount.size();\n        int resultCount = Math.min(count, distinctNodes);\n\n        List<T> result = new ArrayList<>(resultCount);\n        Set<T> seen = new HashSet<>();\n        long hash = hash(key);\n\n        // Walk clockwise from key position\n        SortedMap<Long, T> tailMap = ring.tailMap(hash);\n        for (T node : tailMap.values()) {\n            if (seen.add(node)) {\n                result.add(node);\n                if (result.size() == resultCount) return result;\n            }\n        }\n        // Wrap around\n        for (T node : ring.values()) {\n            if (seen.add(node)) {\n                result.add(node);\n                if (result.size() == resultCount) return result;\n            }\n        }\n        return result;\n    }\n\n    private long hash(String key) {\n        md5.reset();\n        byte[] digest = md5.digest(key.getBytes(StandardCharsets.UTF_8));\n        // Use first 8 bytes as a long for ring position\n        return ((long) (digest[0] & 0xFF) << 56)\n             | ((long) (digest[1] & 0xFF) << 48)\n             | ((long) (digest[2] & 0xFF) << 40)\n             | ((long) (digest[3] & 0xFF) << 32)\n             | ((long) (digest[4] & 0xFF) << 24)\n             | ((long) (digest[5] & 0xFF) << 16)\n             | ((long) (digest[6] & 0xFF) << 8)\n             | ((long) (digest[7] & 0xFF));\n    }\n\n    public int size() {\n        return nodeVnodeCount.size();\n    }\n\n    public int ringSize() {\n        return ring.size();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "bounded-load-consistent-hashing",
+          "heading": "Bounded-Load Consistent Hashing",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { createHash } from 'crypto';\n\ninterface BoundedLoadConfig {\n  epsilon: number;       // Load factor tolerance (e.g., 0.25 means max 125% of average)\n  vnodeCount: number;    // Virtual nodes per physical node\n}\n\ninterface NodeLoad {\n  nodeId: string;\n  currentLoad: number;\n  capacity: number;      // Computed as (1 + epsilon) * averageLoad\n}\n\n/**\n * Bounded-load consistent hashing (Mirrokni et al., 2017).\n * Guarantees no node receives more than (1 + ε) × average load.\n * When the primary node is overloaded, the key is assigned to the\n * next node on the ring that has capacity.\n */\nclass BoundedLoadHashRing {\n  private ring: Map<bigint, string> = new Map();\n  private sortedPositions: bigint[] = [];\n  private nodeLoads: Map<string, number> = new Map();\n  private config: BoundedLoadConfig;\n  private totalKeys: number = 0;\n\n  constructor(config: BoundedLoadConfig) {\n    this.config = config;\n  }\n\n  addNode(nodeId: string): void {\n    for (let i = 0; i < this.config.vnodeCount; i++) {\n      const position = this.hash(`${nodeId}#${i}`);\n      this.ring.set(position, nodeId);\n    }\n    this.nodeLoads.set(nodeId, 0);\n    this.rebuildSortedPositions();\n  }\n\n  removeNode(nodeId: string): void {\n    for (let i = 0; i < this.config.vnodeCount; i++) {\n      const position = this.hash(`${nodeId}#${i}`);\n      this.ring.delete(position);\n    }\n    this.nodeLoads.delete(nodeId);\n    this.rebuildSortedPositions();\n  }\n\n  /**\n   * Assign a key to a node, respecting the bounded load constraint.\n   * If the primary node (clockwise successor) is at capacity,\n   * walk further clockwise until a node with capacity is found.\n   */\n  assignKey(key: string): string {\n    const keyHash = this.hash(key);\n    const nodeCount = this.nodeLoads.size;\n    if (nodeCount === 0) throw new Error('No nodes in ring');\n\n    const averageLoad = (this.totalKeys + 1) / nodeCount;\n    const maxLoad = Math.ceil((1 + this.config.epsilon) * averageLoad);\n\n    // Find starting position on ring\n    let idx = this.findCeilingIndex(keyHash);\n\n    // Walk clockwise until we find a node with capacity\n    const visited = new Set<string>();\n    for (let attempts = 0; attempts < this.sortedPositions.length; attempts++) {\n      const position = this.sortedPositions[idx % this.sortedPositions.length];\n      const nodeId = this.ring.get(position)!;\n\n      if (!visited.has(nodeId)) {\n        visited.add(nodeId);\n        const currentLoad = this.nodeLoads.get(nodeId) || 0;\n        if (currentLoad < maxLoad) {\n          this.nodeLoads.set(nodeId, currentLoad + 1);\n          this.totalKeys++;\n          return nodeId;\n        }\n      }\n      idx++;\n    }\n\n    // Fallback: all nodes at capacity (shouldn't happen with correct epsilon)\n    throw new Error('All nodes at capacity — increase epsilon or add nodes');\n  }\n\n  releaseKey(key: string, nodeId: string): void {\n    const currentLoad = this.nodeLoads.get(nodeId) || 0;\n    if (currentLoad > 0) {\n      this.nodeLoads.set(nodeId, currentLoad - 1);\n      this.totalKeys--;\n    }\n  }\n\n  getLoadDistribution(): NodeLoad[] {\n    const nodeCount = this.nodeLoads.size;\n    const averageLoad = nodeCount > 0 ? this.totalKeys / nodeCount : 0;\n    const capacity = Math.ceil((1 + this.config.epsilon) * averageLoad);\n\n    return Array.from(this.nodeLoads.entries()).map(([nodeId, load]) => ({\n      nodeId,\n      currentLoad: load,\n      capacity,\n    }));\n  }\n\n  private hash(input: string): bigint {\n    const hex = createHash('md5').update(input).digest('hex');\n    return BigInt('0x' + hex.substring(0, 16));\n  }\n\n  private rebuildSortedPositions(): void {\n    this.sortedPositions = Array.from(this.ring.keys()).sort((a, b) =>\n      a < b ? -1 : a > b ? 1 : 0\n    );\n  }\n\n  private findCeilingIndex(hash: bigint): number {\n    let lo = 0, hi = this.sortedPositions.length - 1;\n    while (lo <= hi) {\n      const mid = (lo + hi) >>> 1;\n      if (this.sortedPositions[mid] < hash) lo = mid + 1;\n      else hi = mid - 1;\n    }\n    return lo % this.sortedPositions.length;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "consistent-hash-ring-with-virtual-nodes",
+          "heading": "Consistent Hash Ring with Virtual Nodes",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Hash Ring (0 to 2^64)\"\n        direction LR\n        P1[\"Position 0x1A...<br/>Node A (vnode 1)\"]\n        P2[\"Position 0x2F...<br/>Node B (vnode 1)\"]\n        P3[\"Position 0x45...<br/>Node A (vnode 2)\"]\n        P4[\"Position 0x6C...<br/>Node C (vnode 1)\"]\n        P5[\"Position 0x89...<br/>Node B (vnode 2)\"]\n        P6[\"Position 0xA3...<br/>Node C (vnode 2)\"]\n        P7[\"Position 0xBB...<br/>Node A (vnode 3)\"]\n        P8[\"Position 0xD1...<br/>Node B (vnode 3)\"]\n    end\n\n    K1[\"Key 'user:123'<br/>hash=0x33...\"] -->|\"Clockwise →\"| P3\n    K2[\"Key 'order:456'<br/>hash=0x70...\"] -->|\"Clockwise →\"| P5\n    K3[\"Key 'session:789'<br/>hash=0xC0...\"] -->|\"Clockwise →\"| P8"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "node-addition-and-key-redistribution",
+          "heading": "Node Addition and Key Redistribution",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant Coord as Coordinator\n    participant Ring as Hash Ring\n    participant OldNode as Node B (existing)\n    participant NewNode as Node D (joining)\n\n    Note over Coord,NewNode: Node D joins the cluster\n    \n    Coord->>Ring: addNode(\"D\", vnodes=128)\n    Ring->>Ring: Compute 128 positions for Node D\n    Ring-->>Coord: Positions inserted\n    \n    Coord->>Ring: Identify keys that now map to Node D\n    Ring-->>Coord: Keys between D's predecessor and D's position\n    \n    Note over OldNode,NewNode: Only ~K/N keys need to move\n    \n    Coord->>OldNode: Stream keys [k1, k2, ... kM] to Node D\n    OldNode->>NewNode: Transfer data for reassigned keys\n    NewNode-->>Coord: Transfer complete\n    \n    Coord->>OldNode: Delete transferred keys\n    Coord->>Ring: Node D now serving traffic\n    \n    Note over Coord,NewNode: Other nodes unaffected — their keys stay in place"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "rebalancing-strategy-comparison",
+          "heading": "Rebalancing Strategy Comparison",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph LR\n    subgraph \"Hash-Mod-N (Traditional)\"\n        HM1[Add 1 node to 4-node cluster]\n        HM2[~80% of keys remapped]\n        HM3[Massive data movement]\n        HM1 --> HM2 --> HM3\n    end\n    \n    subgraph \"Consistent Hashing (No Vnodes)\"\n        CH1[Add 1 node to 4-node cluster]\n        CH2[~25% of keys remapped]\n        CH3[Uneven distribution possible]\n        CH1 --> CH2 --> CH3\n    end\n    \n    subgraph \"Consistent Hashing (With Vnodes)\"\n        CV1[Add 1 node to 4-node cluster]\n        CV2[~25% of keys remapped]\n        CV3[Even distribution guaranteed]\n        CV1 --> CV2 --> CV3\n    end"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Using too few virtual nodes — With only 1 vnode per physical node, the load distribution can be extremely uneven (some nodes get 3-4x the average load). Production systems typically use 100-256 vnodes per node. Cassandra defaults to 256 vnodes (configurable via num_tokens).",
+            "Not accounting for heterogeneous hardware — If nodes have different capacities (CPU, memory, disk), they should have proportionally different vnode counts. A node with 2x the capacity should get 2x the vnodes. Failing to do this results in smaller nodes becoming bottlenecks.",
+            "Ignoring rebalancing costs during node addition — While consistent hashing minimizes the number of keys that move, the actual data transfer can still be significant. A 10TB cluster adding a 5th node needs to transfer ~2TB. Plan for rebalancing bandwidth, throttle transfers to avoid impacting live traffic, and consider incremental rebalancing.",
+            "Hash function collisions in the ring — If two vnodes hash to the same position, one overwrites the other in the TreeMap. Use a hash function with good distribution (MurmurHash3, xxHash) and include a unique suffix (node ID + vnode index) to minimize collision probability.",
+            "Not implementing a preference list for replication — Simply hashing to one node provides no fault tolerance. Production systems walk clockwise past the primary node to find N-1 additional distinct physical nodes for replication. Skipping vnodes of the same physical node is critical — otherwise replicas might land on the same machine."
+          ]
+        }
+      ],
+      "wordCount": 233,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Amazon DynamoDB: DynamoDB uses consistent hashing to partition data across storage nodes. Each partition key is hashed to determine its placement. When the system detects a hot partition, it can split the hash range and redistribute data. DynamoDB's adaptive capacity feature automatically redistributes throughput from underutilized partitions to hot ones, building on the consistent hashing foundation."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apache Cassandra: Cassandra assigns each node a set of tokens (vnodes) on the hash ring. The partitioner (default: Murmur3Partitioner) hashes partition keys to determine which node owns the data. When a node joins, it takes ownership of token ranges from existing nodes, triggering streaming of the relevant data. The nodetool status command shows each node's token ownership percentage."
+        },
+        {
+          "type": "paragraph",
+          "text": "Akamai CDN: Akamai uses consistent hashing to route content requests to edge servers. When a user requests a URL, the URL is hashed to determine which edge server should cache that content. If an edge server fails, only its content needs to be re-fetched from origin — other edge servers' caches remain valid. This minimizes origin load during edge failures."
+        },
+        {
+          "type": "paragraph",
+          "text": "Discord: Discord uses consistent hashing to assign guilds (servers) to backend processes. When a process crashes or a new one is added, only the guilds assigned to the affected hash range need to be reassigned. This enables Discord to scale their real-time messaging infrastructure to millions of concurrent guilds with minimal disruption during scaling events."
+        }
+      ],
+      "wordCount": 229,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "Why do we need virtual nodes in consistent hashing? What problem do they solve?",
+          "answer": "Without virtual nodes, each physical node occupies a single point on the hash ring. With N nodes, the expected arc length per node is 1/N of the ring, but the actual distribution has high variance — some nodes may own 2-3x their fair share. Virtual nodes solve this by giving each physical node many positions (typically 100-256) on the ring. By the law of large numbers, the total arc length owned by each physical node converges to its fair share. Additionally, when a node leaves, its load is distributed across many other nodes (one per vnode) rather than dumping everything onto a single successor."
+        },
+        {
+          "type": "interview",
+          "question": "How does consistent hashing handle rebalancing when a node is added to a cluster?",
+          "answer": "When a new node joins, it is assigned positions on the ring (its vnodes). For each vnode position, the keys between that position and the previous position on the ring that were previously owned by the clockwise successor now belong to the new node. Only those keys need to be transferred — approximately K/N keys total (where K is total keys, N is new node count). The coordinator identifies affected key ranges, streams data from existing owners to the new node, and once transfer completes, updates routing to direct new requests to the new node. Other nodes' data remains untouched."
+        },
+        {
+          "type": "interview",
+          "question": "Explain bounded-load consistent hashing and when you would use it over standard consistent hashing.",
+          "answer": "Standard consistent hashing can still produce hot spots when certain keys receive disproportionate traffic (e.g., a viral post). Bounded-load consistent hashing (Mirrokni et al., 2017) adds a constraint: no node can exceed (1 + ε) × average load. When a key hashes to an overloaded node, the algorithm walks clockwise to find the next node with available capacity. This provides a worst-case load guarantee while maintaining the minimal-remapping property. You would use it in load balancers (like Google's Maglev) where traffic patterns are skewed, or in caches where certain keys are much hotter than others. The trade-off is slightly more complex routing logic and the need to track per-node load."
+        },
+        {
+          "type": "interview",
+          "question": "How does consistent hashing interact with replication in systems like DynamoDB or Cassandra?",
+          "answer": "After determining the primary node for a key via consistent hashing, the system walks clockwise on the ring to find N-1 additional distinct physical nodes to hold replicas (the \"preference list\"). The key distinction is skipping virtual nodes that belong to the same physical node — you want replicas on different machines for fault tolerance. In DynamoDB, the first N healthy nodes in the preference list store the data. If a node is temporarily unavailable, a \"sloppy quorum\" allows a downstream node to temporarily accept writes (hinted handoff), maintaining availability while the primary recovers."
+        }
+      ],
+      "wordCount": 463,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor per-node load variance as a key operational metric. Even with virtual nodes, load imbalance can develop over time as data grows unevenly. Track the ratio of max-loaded node to average-loaded node. If this exceeds 1.3x, consider increasing vnode count, rebalancing token assignments, or implementing bounded-load hashing. Cassandra's nodetool ring and nodetool status show ownership percentages.",
+            "Throttle rebalancing to protect live traffic. When nodes join or leave, data streaming competes with production reads and writes for network bandwidth and disk I/O. Configure streaming throughput limits (Cassandra: stream_throughput_outbound_megabits_per_sec) and schedule node additions during low-traffic periods. Monitor p99 latency during rebalancing — if it spikes, reduce streaming rate.",
+            "Use consistent hashing at the load balancer layer for session affinity. Nginx's hash directive with consistent parameter routes requests to the same upstream based on a key (e.g., client IP or session ID). When an upstream is removed, only that server's sessions are redistributed. This is far superior to round-robin for stateful backends and avoids the thundering herd problem of rehashing all sessions."
+          ]
+        }
+      ],
+      "wordCount": 169,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Database Sharding — Consistent hashing is one of several partitioning strategies for distributing data across shards",
+            "Load Balancing — Consistent hashing is used in load balancers for session-affine routing with graceful failover",
+            "CAP Theorem In Depth — Understanding how data placement via consistent hashing interacts with consistency and availability guarantees",
+            "Quorum Systems — How replicas placed via consistent hashing coordinate reads and writes through quorum protocols"
+          ]
+        }
+      ],
+      "wordCount": 66,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.*;\nimport java.security.MessageDigest;\nimport java.security.NoSuchAlgorithmException;\nimport java.nio.charset.StandardCharsets;\n\n/**\n * Production-grade consistent hash ring with virtual nodes.\n * Each physical node gets multiple positions on the ring for better distribution.\n */\npublic class ConsistentHashRing<T> {\n    private final TreeMap<Long, T> ring = new TreeMap<>();\n    private final Map<T, Integer> nodeVnodeCount = new HashMap<>();\n    private final int defaultVnodes;\n    private final MessageDigest md5;\n\n    public ConsistentHashRing(int defaultVnodes) {\n        this.defaultVnodes = defaultVnodes;\n        try {\n            this.md5 = MessageDigest.getInstance(\"MD5\");\n        } catch (NoSuchAlgorithmException e) {\n            throw new RuntimeException(\"MD5 not available\", e);\n        }\n    }\n\n    /**\n     * Add a node with the default number of virtual nodes.\n     * Each vnode gets a position on the ring based on hash(\"node#i\").\n     */\n    public void addNode(T node) {\n        addNode(node, defaultVnodes);\n    }\n\n    /**\n     * Add a node with a custom vnode count.\n     * Higher vnode count = better distribution but more memory.\n     * Weighted nodes can use proportional vnode counts.\n     */\n    public void addNode(T node, int vnodeCount) {\n        for (int i = 0; i < vnodeCount; i++) {\n            long hash = hash(node.toString() + \"#\" + i);\n            ring.put(hash, node);\n        }\n        nodeVnodeCount.put(node, vnodeCount);\n    }\n\n    /**\n     * Remove a node and all its virtual nodes from the ring.\n     * Keys previously assigned to this node will be reassigned to the\n     * next clockwise node — only those keys are affected.\n     */\n    public void removeNode(T node) {\n        Integer vnodeCount = nodeVnodeCount.remove(node);\n        if (vnodeCount == null) return;\n        for (int i = 0; i < vnodeCount; i++) {\n            long hash = hash(node.toString() + \"#\" + i);\n            ring.remove(hash);\n        }\n    }\n\n    /**\n     * Find the node responsible for a given key.\n     * Walks clockwise from the key's hash position to find the first node.\n     */\n    public T getNode(String key) {\n        if (ring.isEmpty()) {\n            throw new IllegalStateException(\"Hash ring is empty\");\n        }\n        long hash = hash(key);\n        // Find the first entry at or after this hash (clockwise)\n        Map.Entry<Long, T> entry = ring.ceilingEntry(hash);\n        if (entry == null) {\n            // Wrap around to the first entry (ring is circular)\n            entry = ring.firstEntry();\n        }\n        return entry.getValue();\n    }\n\n    /**\n     * Get N distinct nodes for replication (preference list).\n     * Walks clockwise, skipping vnodes belonging to already-selected physical nodes.\n     */\n    public List<T> getNodes(String key, int count) {\n        if (ring.isEmpty()) {\n            throw new IllegalStateException(\"Hash ring is empty\");\n        }\n        int distinctNodes = nodeVnodeCount.size();\n        int resultCount = Math.min(count, distinctNodes);\n\n        List<T> result = new ArrayList<>(resultCount);\n        Set<T> seen = new HashSet<>();\n        long hash = hash(key);\n\n        // Walk clockwise from key position\n        SortedMap<Long, T> tailMap = ring.tailMap(hash);\n        for (T node : tailMap.values()) {\n            if (seen.add(node)) {\n                result.add(node);\n                if (result.size() == resultCount) return result;\n            }\n        }\n        // Wrap around\n        for (T node : ring.values()) {\n            if (seen.add(node)) {\n                result.add(node);\n                if (result.size() == resultCount) return result;\n            }\n        }\n        return result;\n    }\n\n    private long hash(String key) {\n        md5.reset();\n        byte[] digest = md5.digest(key.getBytes(StandardCharsets.UTF_8));\n        // Use first 8 bytes as a long for ring position\n        return ((long) (digest[0] & 0xFF) << 56)\n             | ((long) (digest[1] & 0xFF) << 48)\n             | ((long) (digest[2] & 0xFF) << 40)\n             | ((long) (digest[3] & 0xFF) << 32)\n             | ((long) (digest[4] & 0xFF) << 24)\n             | ((long) (digest[5] & 0xFF) << 16)\n             | ((long) (digest[6] & 0xFF) << 8)\n             | ((long) (digest[7] & 0xFF));\n    }\n\n    public int size() {\n        return nodeVnodeCount.size();\n    }\n\n    public int ringSize() {\n        return ring.size();\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { createHash } from 'crypto';\n\ninterface BoundedLoadConfig {\n  epsilon: number;       // Load factor tolerance (e.g., 0.25 means max 125% of average)\n  vnodeCount: number;    // Virtual nodes per physical node\n}\n\ninterface NodeLoad {\n  nodeId: string;\n  currentLoad: number;\n  capacity: number;      // Computed as (1 + epsilon) * averageLoad\n}\n\n/**\n * Bounded-load consistent hashing (Mirrokni et al., 2017).\n * Guarantees no node receives more than (1 + ε) × average load.\n * When the primary node is overloaded, the key is assigned to the\n * next node on the ring that has capacity.\n */\nclass BoundedLoadHashRing {\n  private ring: Map<bigint, string> = new Map();\n  private sortedPositions: bigint[] = [];\n  private nodeLoads: Map<string, number> = new Map();\n  private config: BoundedLoadConfig;\n  private totalKeys: number = 0;\n\n  constructor(config: BoundedLoadConfig) {\n    this.config = config;\n  }\n\n  addNode(nodeId: string): void {\n    for (let i = 0; i < this.config.vnodeCount; i++) {\n      const position = this.hash(`${nodeId}#${i}`);\n      this.ring.set(position, nodeId);\n    }\n    this.nodeLoads.set(nodeId, 0);\n    this.rebuildSortedPositions();\n  }\n\n  removeNode(nodeId: string): void {\n    for (let i = 0; i < this.config.vnodeCount; i++) {\n      const position = this.hash(`${nodeId}#${i}`);\n      this.ring.delete(position);\n    }\n    this.nodeLoads.delete(nodeId);\n    this.rebuildSortedPositions();\n  }\n\n  /**\n   * Assign a key to a node, respecting the bounded load constraint.\n   * If the primary node (clockwise successor) is at capacity,\n   * walk further clockwise until a node with capacity is found.\n   */\n  assignKey(key: string): string {\n    const keyHash = this.hash(key);\n    const nodeCount = this.nodeLoads.size;\n    if (nodeCount === 0) throw new Error('No nodes in ring');\n\n    const averageLoad = (this.totalKeys + 1) / nodeCount;\n    const maxLoad = Math.ceil((1 + this.config.epsilon) * averageLoad);\n\n    // Find starting position on ring\n    let idx = this.findCeilingIndex(keyHash);\n\n    // Walk clockwise until we find a node with capacity\n    const visited = new Set<string>();\n    for (let attempts = 0; attempts < this.sortedPositions.length; attempts++) {\n      const position = this.sortedPositions[idx % this.sortedPositions.length];\n      const nodeId = this.ring.get(position)!;\n\n      if (!visited.has(nodeId)) {\n        visited.add(nodeId);\n        const currentLoad = this.nodeLoads.get(nodeId) || 0;\n        if (currentLoad < maxLoad) {\n          this.nodeLoads.set(nodeId, currentLoad + 1);\n          this.totalKeys++;\n          return nodeId;\n        }\n      }\n      idx++;\n    }\n\n    // Fallback: all nodes at capacity (shouldn't happen with correct epsilon)\n    throw new Error('All nodes at capacity — increase epsilon or add nodes');\n  }\n\n  releaseKey(key: string, nodeId: string): void {\n    const currentLoad = this.nodeLoads.get(nodeId) || 0;\n    if (currentLoad > 0) {\n      this.nodeLoads.set(nodeId, currentLoad - 1);\n      this.totalKeys--;\n    }\n  }\n\n  getLoadDistribution(): NodeLoad[] {\n    const nodeCount = this.nodeLoads.size;\n    const averageLoad = nodeCount > 0 ? this.totalKeys / nodeCount : 0;\n    const capacity = Math.ceil((1 + this.config.epsilon) * averageLoad);\n\n    return Array.from(this.nodeLoads.entries()).map(([nodeId, load]) => ({\n      nodeId,\n      currentLoad: load,\n      capacity,\n    }));\n  }\n\n  private hash(input: string): bigint {\n    const hex = createHash('md5').update(input).digest('hex');\n    return BigInt('0x' + hex.substring(0, 16));\n  }\n\n  private rebuildSortedPositions(): void {\n    this.sortedPositions = Array.from(this.ring.keys()).sort((a, b) =>\n      a < b ? -1 : a > b ? 1 : 0\n    );\n  }\n\n  private findCeilingIndex(hash: bigint): number {\n    let lo = 0, hi = this.sortedPositions.length - 1;\n    while (lo <= hi) {\n      const mid = (lo + hi) >>> 1;\n      if (this.sortedPositions[mid] < hash) lo = mid + 1;\n      else hi = mid - 1;\n    }\n    return lo % this.sortedPositions.length;\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/consistent-hashing.md",
+    "wordCount": 1436,
+    "sectionCount": 14
+  }
+}

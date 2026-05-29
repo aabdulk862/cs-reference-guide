@@ -281,12 +281,12 @@ describe('Preservation Property Tests', () => {
       );
     });
 
-    it('resolves git/* paths to "Git"', () => {
+    it('returns null for git/* paths (removed category)', () => {
       fc.assert(
         fc.property(filenameArb, subdirArb, (filename, subdir) => {
           const path = `git/${subdir}${filename}`;
           const result = resolveCategory(path);
-          expect(result).toBe('Git');
+          expect(result).toBeNull();
         }),
         { numRuns: 30 }
       );

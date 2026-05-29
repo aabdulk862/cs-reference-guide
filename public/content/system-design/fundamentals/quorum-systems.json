@@ -1,0 +1,261 @@
+{
+  "id": "fundamentals-quorum-systems",
+  "slug": "quorum-systems",
+  "title": "Quorum Systems",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A quorum is the minimum number of nodes that must participate in a distributed operation for it to be considered successful — typically a majority (⌊N/2⌋ + 1) of N replicas",
+            "The fundamental quorum constraint for strong consistency: R + W > N (read quorum + write quorum > total replicas), ensuring every read overlaps with at least one node that has the latest write",
+            "Sloppy quorums relax the strict quorum requirement by allowing any W nodes (not necessarily the designated replicas) to acknowledge a write, improving availability at the cost of consistency guarantees",
+            "Hinted handoff is the mechanism that enables sloppy quorums: when a designated replica is unreachable, a neighboring node temporarily stores the write and forwards it when the target recovers",
+            "Read repair detects and fixes inconsistencies during read operations by comparing responses from multiple replicas and updating stale ones with the latest value",
+            "Common quorum configurations: N=3/R=2/W=2 (balanced), N=3/R=1/W=3 (fast reads), N=3/R=3/W=1 (fast writes), N=5/R=3/W=3 (higher fault tolerance)",
+            "Anti-entropy mechanisms (Merkle trees, active repair) complement quorums by fixing inconsistencies that read repair cannot catch (unread data)"
+          ]
+        }
+      ],
+      "wordCount": 179,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Quorum systems apply whenever you are building or operating a replicated data store that needs to balance consistency, availability, and latency. You need quorum knowledge when configuring Cassandra, DynamoDB, Riak, or CockroachDB consistency levels, when designing replication protocols for custom distributed systems, when reasoning about failure tolerance (how many nodes can fail before the system becomes unavailable or inconsistent), when optimizing read/write latency by tuning quorum sizes, and when preparing for system design interviews that involve distributed databases or consensus. Understanding sloppy quorums and hinted handoff is essential for explaining how systems like DynamoDB maintain availability during partial failures while eventually converging to consistency."
+        }
+      ],
+      "wordCount": 104,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "quorum-based-readwrite-coordinator",
+          "heading": "Quorum-Based Read/Write Coordinator",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\nimport java.util.concurrent.*;\nimport java.util.stream.Collectors;\n\n/**\n * Coordinator that implements quorum reads and writes with configurable\n * consistency levels. Handles timeouts, read repair, and response merging.\n */\npublic class QuorumCoordinator {\n    private final List<ReplicaNode> replicas;\n    private final int readQuorum;   // R\n    private final int writeQuorum;  // W\n    private final int replicaCount; // N\n    private final ExecutorService executor;\n    private final long timeoutMs;\n\n    public QuorumCoordinator(List<ReplicaNode> replicas, int readQuorum,\n                             int writeQuorum, long timeoutMs) {\n        this.replicas = replicas;\n        this.replicaCount = replicas.size();\n        this.readQuorum = readQuorum;\n        this.writeQuorum = writeQuorum;\n        this.timeoutMs = timeoutMs;\n        this.executor = Executors.newFixedThreadPool(replicas.size());\n\n        // Validate quorum overlap for strong consistency\n        if (readQuorum + writeQuorum <= replicaCount) {\n            System.err.println(\"WARNING: R + W <= N — strong consistency NOT guaranteed\");\n        }\n    }\n\n    /**\n     * Quorum write: send write to all replicas, wait for W acknowledgments.\n     * Returns success if at least W replicas confirm the write.\n     */\n    public WriteResult write(String key, byte[] value, long timestamp) {\n        List<Future<WriteAck>> futures = new ArrayList<>();\n\n        // Send write to ALL replicas (not just W)\n        for (ReplicaNode replica : replicas) {\n            futures.add(executor.submit(() -> replica.write(key, value, timestamp)));\n        }\n\n        // Wait for W acknowledgments within timeout\n        int acks = 0;\n        List<String> failedNodes = new ArrayList<>();\n\n        for (int i = 0; i < futures.size(); i++) {\n            try {\n                WriteAck ack = futures.get(i).get(timeoutMs, TimeUnit.MILLISECONDS);\n                if (ack.isSuccess()) {\n                    acks++;\n                } else {\n                    failedNodes.add(replicas.get(i).getNodeId());\n                }\n            } catch (TimeoutException | InterruptedException | ExecutionException e) {\n                failedNodes.add(replicas.get(i).getNodeId());\n            }\n        }\n\n        if (acks >= writeQuorum) {\n            return new WriteResult(true, acks, failedNodes);\n        } else {\n            return new WriteResult(false, acks, failedNodes);\n        }\n    }\n\n    /**\n     * Quorum read with read repair: query all replicas, wait for R responses,\n     * return the value with the highest timestamp, and repair stale replicas.\n     */\n    public ReadResult read(String key) {\n        List<Future<ReadResponse>> futures = new ArrayList<>();\n\n        // Query ALL replicas\n        for (ReplicaNode replica : replicas) {\n            futures.add(executor.submit(() -> replica.read(key)));\n        }\n\n        // Collect R responses\n        List<ReadResponse> responses = new ArrayList<>();\n        for (int i = 0; i < futures.size(); i++) {\n            try {\n                ReadResponse response = futures.get(i).get(timeoutMs, TimeUnit.MILLISECONDS);\n                responses.add(response);\n            } catch (TimeoutException | InterruptedException | ExecutionException e) {\n                // Node didn't respond in time — skip\n            }\n\n            // Once we have R responses, we can return (but continue collecting for repair)\n            if (responses.size() == readQuorum) {\n                break;\n            }\n        }\n\n        if (responses.size() < readQuorum) {\n            return new ReadResult(null, false, \"Insufficient replicas responded\");\n        }\n\n        // Find the most recent value (highest timestamp wins)\n        ReadResponse latest = responses.stream()\n            .filter(r -> r.getValue() != null)\n            .max(Comparator.comparingLong(ReadResponse::getTimestamp))\n            .orElse(responses.get(0));\n\n        // Trigger async read repair for stale replicas\n        triggerReadRepair(key, latest, responses);\n\n        return new ReadResult(latest.getValue(), true, null);\n    }\n\n    /**\n     * Read repair: asynchronously update replicas that returned stale data.\n     * This is a background operation — it does not block the read response.\n     */\n    private void triggerReadRepair(String key, ReadResponse latest,\n                                   List<ReadResponse> responses) {\n        executor.submit(() -> {\n            for (ReadResponse response : responses) {\n                if (response.getTimestamp() < latest.getTimestamp()) {\n                    try {\n                        response.getSourceNode().write(\n                            key, latest.getValue(), latest.getTimestamp()\n                        );\n                    } catch (Exception e) {\n                        // Read repair is best-effort; log and continue\n                        System.err.println(\"Read repair failed for node \"\n                            + response.getSourceNode().getNodeId() + \": \" + e.getMessage());\n                    }\n                }\n            }\n        });\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "sloppy-quorum-with-hinted-handoff",
+          "heading": "Sloppy Quorum with Hinted Handoff",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "interface HintedWrite {\n  key: string;\n  value: Buffer;\n  timestamp: number;\n  targetNodeId: string;  // The node this write is intended for\n  createdAt: number;     // When the hint was created\n  ttlMs: number;         // How long to keep the hint before discarding\n}\n\n/**\n * Implements sloppy quorum with hinted handoff.\n * When a designated replica is unreachable, a \"next-in-line\" node\n * accepts the write and stores a hint for later delivery.\n */\nclass SloppyQuorumCoordinator {\n  private preferenceList: Map<string, string[]>;  // key range → ordered node list\n  private hintedStore: Map<string, HintedWrite[]> = new Map();  // nodeId → pending hints\n  private readonly N: number;  // Replication factor\n  private readonly W: number;  // Write quorum\n  private readonly hintTtlMs: number = 3 * 60 * 60 * 1000;  // 3 hours default\n\n  constructor(\n    private nodes: Map<string, ReplicaNode>,\n    private ring: ConsistentHashRing,\n    config: { N: number; W: number }\n  ) {\n    this.N = config.N;\n    this.W = config.W;\n    this.preferenceList = new Map();\n  }\n\n  /**\n   * Write with sloppy quorum: if designated replicas are down,\n   * accept writes on any reachable node (with hints for delivery later).\n   */\n  async write(key: string, value: Buffer, timestamp: number): Promise<WriteResult> {\n    const designatedNodes = this.ring.getNodes(key, this.N);\n    let acks = 0;\n    const hints: HintedWrite[] = [];\n\n    for (const nodeId of designatedNodes) {\n      const node = this.nodes.get(nodeId);\n      if (node && node.isReachable()) {\n        try {\n          await node.write(key, value, timestamp);\n          acks++;\n        } catch (err) {\n          // Node became unreachable during write — try handoff\n          const handoffNode = this.findHandoffNode(designatedNodes);\n          if (handoffNode) {\n            await this.writeWithHint(handoffNode, key, value, timestamp, nodeId);\n            acks++;\n          }\n        }\n      } else {\n        // Node unreachable — use hinted handoff\n        const handoffNode = this.findHandoffNode(designatedNodes);\n        if (handoffNode) {\n          await this.writeWithHint(handoffNode, key, value, timestamp, nodeId);\n          acks++;  // Sloppy quorum counts handoff nodes\n        }\n      }\n\n      if (acks >= this.W) break;\n    }\n\n    return { success: acks >= this.W, acks, hints: hints.length };\n  }\n\n  /**\n   * Write data to a handoff node with a hint indicating the intended target.\n   * The handoff node stores the data and periodically attempts delivery.\n   */\n  private async writeWithHint(\n    handoffNode: ReplicaNode,\n    key: string,\n    value: Buffer,\n    timestamp: number,\n    targetNodeId: string\n  ): Promise<void> {\n    // Store the actual data on the handoff node\n    await handoffNode.write(key, value, timestamp);\n\n    // Store the hint for later delivery\n    const hint: HintedWrite = {\n      key,\n      value,\n      timestamp,\n      targetNodeId,\n      createdAt: Date.now(),\n      ttlMs: this.hintTtlMs,\n    };\n\n    const nodeHints = this.hintedStore.get(handoffNode.nodeId) || [];\n    nodeHints.push(hint);\n    this.hintedStore.set(handoffNode.nodeId, nodeHints);\n  }\n\n  /**\n   * Periodically called to deliver hints to recovered nodes.\n   * Once delivered, the hint and temporary data are deleted from the handoff node.\n   */\n  async deliverHints(handoffNodeId: string): Promise<number> {\n    const hints = this.hintedStore.get(handoffNodeId) || [];\n    let delivered = 0;\n\n    const remaining: HintedWrite[] = [];\n    for (const hint of hints) {\n      // Check if hint has expired\n      if (Date.now() - hint.createdAt > hint.ttlMs) {\n        continue;  // Discard expired hints\n      }\n\n      const targetNode = this.nodes.get(hint.targetNodeId);\n      if (targetNode && targetNode.isReachable()) {\n        try {\n          await targetNode.write(hint.key, hint.value, hint.timestamp);\n          delivered++;\n          // Delete temporary data from handoff node\n          const handoffNode = this.nodes.get(handoffNodeId);\n          if (handoffNode) await handoffNode.deleteHintedData(hint.key, hint.timestamp);\n        } catch {\n          remaining.push(hint);  // Retry later\n        }\n      } else {\n        remaining.push(hint);  // Target still down\n      }\n    }\n\n    this.hintedStore.set(handoffNodeId, remaining);\n    return delivered;\n  }\n\n  private findHandoffNode(excludeNodes: string[]): ReplicaNode | null {\n    const excludeSet = new Set(excludeNodes);\n    for (const [nodeId, node] of this.nodes) {\n      if (!excludeSet.has(nodeId) && node.isReachable()) {\n        return node;\n      }\n    }\n    return null;\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "quorum-readwrite-overlap",
+          "heading": "Quorum Read/Write Overlap",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"N=3, R=2, W=2 (Strong Consistency: R+W=4 > N=3)\"\n        W1[Write to Node A ✓]\n        W2[Write to Node B ✓]\n        W3[Write to Node C ✗ timeout]\n        \n        R1[Read from Node A ✓ latest]\n        R2[Read from Node B ✓ latest]\n        R3[Read from Node C - not needed]\n    end\n    \n    subgraph \"Overlap Guarantee\"\n        OV[At least 1 node has latest write<br/>in every read quorum]\n    end\n    \n    W1 --> OV\n    W2 --> OV\n    R1 --> OV\n    R2 --> OV"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "sloppy-quorum-with-hinted-handoff-flow",
+          "heading": "Sloppy Quorum with Hinted Handoff Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant Client\n    participant Coord as Coordinator\n    participant A as Node A (primary)\n    participant B as Node B (replica)\n    participant C as Node C (replica - DOWN)\n    participant D as Node D (handoff)\n\n    Note over C: Node C is unreachable\n    \n    Client->>Coord: Write(key, value)\n    Coord->>A: Write request\n    A-->>Coord: ACK ✓\n    Coord->>B: Write request\n    B-->>Coord: ACK ✓\n    Coord->>C: Write request\n    Note over Coord,C: Timeout — Node C unreachable\n    \n    Coord->>D: Write with hint (target=C)\n    D-->>Coord: ACK ✓ (hint stored)\n    Coord-->>Client: Write successful (W=2 achieved via sloppy quorum)\n    \n    Note over C: Node C recovers\n    \n    D->>C: Deliver hinted write\n    C-->>D: ACK ✓\n    D->>D: Delete hint + temp data\n    \n    Note over A,C: All 3 designated replicas now consistent"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "read-repair-process",
+          "heading": "Read Repair Process",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant Client\n    participant Coord as Coordinator\n    participant A as Node A (v3 - latest)\n    participant B as Node B (v2 - stale)\n    participant C as Node C (v3 - latest)\n\n    Client->>Coord: Read(key)\n    \n    par Parallel reads\n        Coord->>A: Read request\n        Coord->>B: Read request\n        Coord->>C: Read request\n    end\n    \n    A-->>Coord: value=X, timestamp=300\n    B-->>Coord: value=Y, timestamp=200 (STALE)\n    C-->>Coord: value=X, timestamp=300\n    \n    Note over Coord: R=2 achieved. Latest value: X (ts=300)\n    Coord-->>Client: Return value=X\n    \n    Note over Coord,B: Async read repair\n    Coord->>B: Write(key, value=X, timestamp=300)\n    B-->>Coord: Repaired ✓\n    \n    Note over A,C: All replicas now consistent at v3"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Assuming sloppy quorums provide strong consistency — A sloppy quorum of W=2 might be satisfied by two non-designated nodes (via hinted handoff). A subsequent strict quorum read of R=2 from the designated replicas might miss the write entirely because the data is on handoff nodes. Sloppy quorums trade consistency for availability — they guarantee durability, not immediate visibility.",
+            "Not accounting for clock skew in timestamp-based conflict resolution — When using last-writer-wins (LWW) with quorum reads, clock skew between nodes can cause a \"later\" write (by wall clock) to be overwritten by an \"earlier\" write with a higher timestamp from a skewed clock. Use logical clocks (Lamport timestamps, vector clocks) or hybrid logical clocks (HLC) for correct ordering.",
+            "Ignoring the \"tail latency\" problem with quorum reads — A quorum read with R=2 out of N=3 must wait for the 2nd-fastest response. If one node is slow (GC pause, disk I/O), latency is determined by the 2nd-slowest node. Speculative execution (sending reads to all N nodes and taking the first R responses) helps but increases load.",
+            "Forgetting that read repair only fixes data that is actually read — Read repair is triggered by read operations. Data that is written but never read will remain inconsistent across replicas until an active anti-entropy process (Merkle tree comparison, full repair) detects and fixes the divergence. Schedule regular anti-entropy repairs for data that is infrequently accessed.",
+            "Misconfiguring quorum sizes for multi-datacenter deployments — Using QUORUM (global majority) in a multi-DC setup means writes must cross datacenter boundaries, adding 50-200ms latency. Use LOCAL_QUORUM for writes that only need local DC consistency, and EACH_QUORUM when you need acknowledgment from every DC."
+          ]
+        }
+      ],
+      "wordCount": 273,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Amazon DynamoDB: DynamoDB uses sloppy quorums as its default write behavior. When a designated replica is unreachable, a downstream node in the preference list accepts the write with a hinted handoff. This is why DynamoDB can offer 99.99% write availability — writes almost never fail due to individual node outages. The trade-off is that strongly consistent reads must go to the leader node, while eventually consistent reads (the default) can be served by any replica."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apache Cassandra: Cassandra exposes quorum configuration directly to the application via per-query consistency levels. A common production pattern is LOCAL_QUORUM for both reads and writes in multi-DC deployments, providing strong consistency within a datacenter while allowing async replication across DCs. Cassandra's read repair runs probabilistically (configurable via read_repair_chance) and its nodetool repair command performs full anti-entropy repair using Merkle trees."
+        },
+        {
+          "type": "paragraph",
+          "text": "CockroachDB: CockroachDB uses Raft consensus (which is a strict quorum protocol) for every write. Each range (partition) has a Raft group with a leader that replicates writes to a majority before acknowledging. This provides linearizable consistency but means writes are unavailable if a majority of replicas for a range are down. CockroachDB's \"leaseholder\" optimization allows reads to be served by a single node that holds the lease, avoiding quorum reads for most read operations."
+        },
+        {
+          "type": "paragraph",
+          "text": "Riak: Riak pioneered the sloppy quorum + hinted handoff approach in its Dynamo-inspired architecture. It exposes N/R/W parameters per bucket, allowing different data types to have different consistency guarantees. Riak's active anti-entropy (AAE) system continuously compares Merkle trees between replicas to detect and repair inconsistencies that read repair misses."
+        }
+      ],
+      "wordCount": 258,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "Explain the relationship between R, W, and N in quorum systems. When is strong consistency guaranteed?",
+          "answer": "N is the replication factor (total copies of data), W is the write quorum (nodes that must acknowledge a write), and R is the read quorum (nodes that must respond to a read). Strong consistency (linearizability) is guaranteed when R + W > N, because every read quorum must overlap with every write quorum by at least one node — that node has the latest write. Common configurations: N=3/R=2/W=2 (balanced, tolerates 1 failure for both reads and writes), N=3/R=1/W=3 (fast reads, writes need all nodes), N=3/R=3/W=1 (fast writes, reads need all nodes). The trade-off is always between latency (smaller quorums are faster) and consistency/fault tolerance."
+        },
+        {
+          "type": "interview",
+          "question": "What is the difference between a strict quorum and a sloppy quorum? When would you choose each?",
+          "answer": "A strict quorum requires that the W nodes acknowledging a write are among the N designated replicas for that key. A sloppy quorum allows any W reachable nodes to acknowledge, even if they are not designated replicas (using hinted handoff to eventually deliver to the correct nodes). Strict quorums guarantee that a subsequent quorum read will see the write (R + W > N holds). Sloppy quorums do not — the data might be on handoff nodes that a reader does not query. Choose strict quorums when you need strong consistency (banking, inventory). Choose sloppy quorums when availability is paramount and you can tolerate brief inconsistency windows (shopping carts, social media feeds)."
+        },
+        {
+          "type": "interview",
+          "question": "How does read repair work, and what are its limitations?",
+          "answer": "During a quorum read, the coordinator sends read requests to multiple replicas. When responses arrive, it compares timestamps (or version vectors) and identifies the latest value. If any responding replica has a stale value, the coordinator asynchronously sends the latest value to that replica — this is read repair. Limitations: (1) It only repairs data that is actually read — unread stale data remains inconsistent. (2) It is asynchronous — a subsequent read might still hit the stale replica before repair completes. (3) It adds write load to the cluster proportional to read traffic on inconsistent data. (4) It cannot detect all types of inconsistency (e.g., a replica that has extra data that should have been deleted). Active anti-entropy (Merkle tree comparison) is needed to complement read repair."
+        },
+        {
+          "type": "interview",
+          "question": "How do quorum systems handle network partitions differently from consensus protocols like Raft?",
+          "answer": "In a quorum system (like Dynamo-style databases), both sides of a partition can potentially accept writes if they can each form a quorum independently — this is the sloppy quorum approach that prioritizes availability. Conflicts are resolved after the partition heals (using vector clocks, LWW, or application-level merge). In a consensus protocol like Raft, only the side with a majority (strict quorum) can elect a leader and accept writes. The minority side becomes read-only or unavailable. This guarantees no conflicting writes but sacrifices availability on the minority side. The choice depends on whether your system prioritizes availability (quorum/Dynamo) or consistency (consensus/Raft)."
+        }
+      ],
+      "wordCount": 502,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Set up anti-entropy repair on a schedule, not just relying on read repair. In Cassandra, run nodetool repair at least once within your gc_grace_seconds window (default 10 days) to prevent zombie data resurrection from tombstone expiration. For large clusters, use incremental repair (-inc) or subrange repair to limit the blast radius and resource consumption of each repair operation.",
+            "Monitor hinted handoff queue depth as an early warning signal. A growing hint queue means nodes are staying down longer than expected or recovering slowly. Set alerts when hint queue size exceeds a threshold (e.g., 10,000 hints per node). If hints expire before delivery (default TTL is typically 1-3 hours), data loss occurs for the affected writes. Consider increasing hint TTL for critical data or implementing a separate reconciliation mechanism.",
+            "Use speculative retry to reduce tail latency on quorum reads. If the first R-1 responses arrive quickly but the Rth is slow, send a speculative read to an additional replica. Return whichever R responses arrive first. Cassandra supports this via speculative_retry (e.g., 99percentile sends a speculative request if the primary hasn't responded within the p99 latency). This significantly reduces p99 read latency at the cost of slightly increased read load."
+          ]
+        }
+      ],
+      "wordCount": 198,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CAP Theorem In Depth — Quorum configurations directly implement the consistency vs. availability trade-off described by CAP",
+            "Consistent Hashing — Determines which nodes form the preference list for a given key's quorum",
+            "Vector Clocks — Used alongside quorum reads to detect and resolve conflicts when replicas diverge",
+            "Leader Election — Consensus-based leader election uses strict quorums (majority agreement) to guarantee a single leader"
+          ]
+        }
+      ],
+      "wordCount": 63,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.*;\nimport java.util.concurrent.*;\nimport java.util.stream.Collectors;\n\n/**\n * Coordinator that implements quorum reads and writes with configurable\n * consistency levels. Handles timeouts, read repair, and response merging.\n */\npublic class QuorumCoordinator {\n    private final List<ReplicaNode> replicas;\n    private final int readQuorum;   // R\n    private final int writeQuorum;  // W\n    private final int replicaCount; // N\n    private final ExecutorService executor;\n    private final long timeoutMs;\n\n    public QuorumCoordinator(List<ReplicaNode> replicas, int readQuorum,\n                             int writeQuorum, long timeoutMs) {\n        this.replicas = replicas;\n        this.replicaCount = replicas.size();\n        this.readQuorum = readQuorum;\n        this.writeQuorum = writeQuorum;\n        this.timeoutMs = timeoutMs;\n        this.executor = Executors.newFixedThreadPool(replicas.size());\n\n        // Validate quorum overlap for strong consistency\n        if (readQuorum + writeQuorum <= replicaCount) {\n            System.err.println(\"WARNING: R + W <= N — strong consistency NOT guaranteed\");\n        }\n    }\n\n    /**\n     * Quorum write: send write to all replicas, wait for W acknowledgments.\n     * Returns success if at least W replicas confirm the write.\n     */\n    public WriteResult write(String key, byte[] value, long timestamp) {\n        List<Future<WriteAck>> futures = new ArrayList<>();\n\n        // Send write to ALL replicas (not just W)\n        for (ReplicaNode replica : replicas) {\n            futures.add(executor.submit(() -> replica.write(key, value, timestamp)));\n        }\n\n        // Wait for W acknowledgments within timeout\n        int acks = 0;\n        List<String> failedNodes = new ArrayList<>();\n\n        for (int i = 0; i < futures.size(); i++) {\n            try {\n                WriteAck ack = futures.get(i).get(timeoutMs, TimeUnit.MILLISECONDS);\n                if (ack.isSuccess()) {\n                    acks++;\n                } else {\n                    failedNodes.add(replicas.get(i).getNodeId());\n                }\n            } catch (TimeoutException | InterruptedException | ExecutionException e) {\n                failedNodes.add(replicas.get(i).getNodeId());\n            }\n        }\n\n        if (acks >= writeQuorum) {\n            return new WriteResult(true, acks, failedNodes);\n        } else {\n            return new WriteResult(false, acks, failedNodes);\n        }\n    }\n\n    /**\n     * Quorum read with read repair: query all replicas, wait for R responses,\n     * return the value with the highest timestamp, and repair stale replicas.\n     */\n    public ReadResult read(String key) {\n        List<Future<ReadResponse>> futures = new ArrayList<>();\n\n        // Query ALL replicas\n        for (ReplicaNode replica : replicas) {\n            futures.add(executor.submit(() -> replica.read(key)));\n        }\n\n        // Collect R responses\n        List<ReadResponse> responses = new ArrayList<>();\n        for (int i = 0; i < futures.size(); i++) {\n            try {\n                ReadResponse response = futures.get(i).get(timeoutMs, TimeUnit.MILLISECONDS);\n                responses.add(response);\n            } catch (TimeoutException | InterruptedException | ExecutionException e) {\n                // Node didn't respond in time — skip\n            }\n\n            // Once we have R responses, we can return (but continue collecting for repair)\n            if (responses.size() == readQuorum) {\n                break;\n            }\n        }\n\n        if (responses.size() < readQuorum) {\n            return new ReadResult(null, false, \"Insufficient replicas responded\");\n        }\n\n        // Find the most recent value (highest timestamp wins)\n        ReadResponse latest = responses.stream()\n            .filter(r -> r.getValue() != null)\n            .max(Comparator.comparingLong(ReadResponse::getTimestamp))\n            .orElse(responses.get(0));\n\n        // Trigger async read repair for stale replicas\n        triggerReadRepair(key, latest, responses);\n\n        return new ReadResult(latest.getValue(), true, null);\n    }\n\n    /**\n     * Read repair: asynchronously update replicas that returned stale data.\n     * This is a background operation — it does not block the read response.\n     */\n    private void triggerReadRepair(String key, ReadResponse latest,\n                                   List<ReadResponse> responses) {\n        executor.submit(() -> {\n            for (ReadResponse response : responses) {\n                if (response.getTimestamp() < latest.getTimestamp()) {\n                    try {\n                        response.getSourceNode().write(\n                            key, latest.getValue(), latest.getTimestamp()\n                        );\n                    } catch (Exception e) {\n                        // Read repair is best-effort; log and continue\n                        System.err.println(\"Read repair failed for node \"\n                            + response.getSourceNode().getNodeId() + \": \" + e.getMessage());\n                    }\n                }\n            }\n        });\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "interface HintedWrite {\n  key: string;\n  value: Buffer;\n  timestamp: number;\n  targetNodeId: string;  // The node this write is intended for\n  createdAt: number;     // When the hint was created\n  ttlMs: number;         // How long to keep the hint before discarding\n}\n\n/**\n * Implements sloppy quorum with hinted handoff.\n * When a designated replica is unreachable, a \"next-in-line\" node\n * accepts the write and stores a hint for later delivery.\n */\nclass SloppyQuorumCoordinator {\n  private preferenceList: Map<string, string[]>;  // key range → ordered node list\n  private hintedStore: Map<string, HintedWrite[]> = new Map();  // nodeId → pending hints\n  private readonly N: number;  // Replication factor\n  private readonly W: number;  // Write quorum\n  private readonly hintTtlMs: number = 3 * 60 * 60 * 1000;  // 3 hours default\n\n  constructor(\n    private nodes: Map<string, ReplicaNode>,\n    private ring: ConsistentHashRing,\n    config: { N: number; W: number }\n  ) {\n    this.N = config.N;\n    this.W = config.W;\n    this.preferenceList = new Map();\n  }\n\n  /**\n   * Write with sloppy quorum: if designated replicas are down,\n   * accept writes on any reachable node (with hints for delivery later).\n   */\n  async write(key: string, value: Buffer, timestamp: number): Promise<WriteResult> {\n    const designatedNodes = this.ring.getNodes(key, this.N);\n    let acks = 0;\n    const hints: HintedWrite[] = [];\n\n    for (const nodeId of designatedNodes) {\n      const node = this.nodes.get(nodeId);\n      if (node && node.isReachable()) {\n        try {\n          await node.write(key, value, timestamp);\n          acks++;\n        } catch (err) {\n          // Node became unreachable during write — try handoff\n          const handoffNode = this.findHandoffNode(designatedNodes);\n          if (handoffNode) {\n            await this.writeWithHint(handoffNode, key, value, timestamp, nodeId);\n            acks++;\n          }\n        }\n      } else {\n        // Node unreachable — use hinted handoff\n        const handoffNode = this.findHandoffNode(designatedNodes);\n        if (handoffNode) {\n          await this.writeWithHint(handoffNode, key, value, timestamp, nodeId);\n          acks++;  // Sloppy quorum counts handoff nodes\n        }\n      }\n\n      if (acks >= this.W) break;\n    }\n\n    return { success: acks >= this.W, acks, hints: hints.length };\n  }\n\n  /**\n   * Write data to a handoff node with a hint indicating the intended target.\n   * The handoff node stores the data and periodically attempts delivery.\n   */\n  private async writeWithHint(\n    handoffNode: ReplicaNode,\n    key: string,\n    value: Buffer,\n    timestamp: number,\n    targetNodeId: string\n  ): Promise<void> {\n    // Store the actual data on the handoff node\n    await handoffNode.write(key, value, timestamp);\n\n    // Store the hint for later delivery\n    const hint: HintedWrite = {\n      key,\n      value,\n      timestamp,\n      targetNodeId,\n      createdAt: Date.now(),\n      ttlMs: this.hintTtlMs,\n    };\n\n    const nodeHints = this.hintedStore.get(handoffNode.nodeId) || [];\n    nodeHints.push(hint);\n    this.hintedStore.set(handoffNode.nodeId, nodeHints);\n  }\n\n  /**\n   * Periodically called to deliver hints to recovered nodes.\n   * Once delivered, the hint and temporary data are deleted from the handoff node.\n   */\n  async deliverHints(handoffNodeId: string): Promise<number> {\n    const hints = this.hintedStore.get(handoffNodeId) || [];\n    let delivered = 0;\n\n    const remaining: HintedWrite[] = [];\n    for (const hint of hints) {\n      // Check if hint has expired\n      if (Date.now() - hint.createdAt > hint.ttlMs) {\n        continue;  // Discard expired hints\n      }\n\n      const targetNode = this.nodes.get(hint.targetNodeId);\n      if (targetNode && targetNode.isReachable()) {\n        try {\n          await targetNode.write(hint.key, hint.value, hint.timestamp);\n          delivered++;\n          // Delete temporary data from handoff node\n          const handoffNode = this.nodes.get(handoffNodeId);\n          if (handoffNode) await handoffNode.deleteHintedData(hint.key, hint.timestamp);\n        } catch {\n          remaining.push(hint);  // Retry later\n        }\n      } else {\n        remaining.push(hint);  // Target still down\n      }\n    }\n\n    this.hintedStore.set(handoffNodeId, remaining);\n    return delivered;\n  }\n\n  private findHandoffNode(excludeNodes: string[]): ReplicaNode | null {\n    const excludeSet = new Set(excludeNodes);\n    for (const [nodeId, node] of this.nodes) {\n      if (!excludeSet.has(nodeId) && node.isReachable()) {\n        return node;\n      }\n    }\n    return null;\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/quorum-systems.md",
+    "wordCount": 1577,
+    "sectionCount": 14
+  }
+}

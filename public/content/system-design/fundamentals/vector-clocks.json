@@ -1,0 +1,261 @@
+{
+  "id": "fundamentals-vector-clocks",
+  "slug": "vector-clocks",
+  "title": "Vector Clocks",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "A vector clock is a logical clock that tracks causality in distributed systems — each process maintains a vector of counters (one per process), incremented on local events and merged on message receipt",
+            "Vector clocks establish a partial order on events: if V(a) < V(b) (all components of a are ≤ b, with at least one strictly less), then event a happened before event b",
+            "When two vector clocks are concurrent (neither dominates the other), the events are causally independent — a conflict exists that requires resolution",
+            "Version vectors are the data-structure application of vector clocks to detect conflicts in replicated data stores — each replica maintains a version vector for each data item",
+            "Last-Writer-Wins (LWW) resolves conflicts by picking the write with the highest timestamp — simple but can silently discard valid concurrent updates",
+            "Merge functions (CRDTs, application-specific logic) resolve conflicts by combining concurrent updates rather than discarding one — preserves all information but requires domain-specific design",
+            "Lamport timestamps provide a total order but cannot detect concurrency — vector clocks are strictly more powerful because they can distinguish \"happened-before\" from \"concurrent\""
+          ]
+        }
+      ],
+      "wordCount": 182,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Vector clocks and version vectors apply when you need to detect conflicting concurrent updates in a distributed system without a single coordinator. You need them when building multi-master replication systems (like DynamoDB, Riak, or CouchDB) where multiple nodes can accept writes for the same key simultaneously, when implementing optimistic concurrency control in distributed databases, when designing conflict resolution strategies for offline-first applications (mobile apps that sync), when building collaborative editing systems that need to detect and merge concurrent edits, and when reasoning about causality in distributed event processing (ensuring events are processed in causal order). Understanding vector clocks is essential for system design interviews involving eventually consistent systems, as they are the mechanism that enables AP systems to detect and resolve divergent state after network partitions heal."
+        }
+      ],
+      "wordCount": 127,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "vector-clock-implementation-with-conflict-detection",
+          "heading": "Vector Clock Implementation with Conflict Detection",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\nimport java.util.stream.Collectors;\n\n/**\n * Vector clock implementation for tracking causality in a distributed system.\n * Each node maintains its own vector clock and updates it on local events\n * and message exchanges.\n */\npublic class VectorClock {\n    private final Map<String, Long> clock;  // nodeId → counter\n\n    public VectorClock() {\n        this.clock = new HashMap<>();\n    }\n\n    public VectorClock(Map<String, Long> clock) {\n        this.clock = new HashMap<>(clock);\n    }\n\n    /**\n     * Increment this node's counter (called on local write/event).\n     */\n    public VectorClock increment(String nodeId) {\n        Map<String, Long> newClock = new HashMap<>(this.clock);\n        newClock.merge(nodeId, 1L, Long::sum);\n        return new VectorClock(newClock);\n    }\n\n    /**\n     * Merge with another vector clock (called on receiving a message/update).\n     * Takes the component-wise maximum of both clocks, then increments own counter.\n     */\n    public VectorClock merge(VectorClock other, String localNodeId) {\n        Map<String, Long> merged = new HashMap<>(this.clock);\n        for (Map.Entry<String, Long> entry : other.clock.entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        // Increment local counter after merge\n        merged.merge(localNodeId, 1L, Long::sum);\n        return new VectorClock(merged);\n    }\n\n    /**\n     * Compare two vector clocks to determine causal relationship.\n     * Returns: BEFORE, AFTER, CONCURRENT, or EQUAL\n     */\n    public CausalRelation compareTo(VectorClock other) {\n        boolean thisLessOrEqual = true;\n        boolean otherLessOrEqual = true;\n\n        Set<String> allNodes = new HashSet<>();\n        allNodes.addAll(this.clock.keySet());\n        allNodes.addAll(other.clock.keySet());\n\n        for (String node : allNodes) {\n            long thisValue = this.clock.getOrDefault(node, 0L);\n            long otherValue = other.clock.getOrDefault(node, 0L);\n\n            if (thisValue > otherValue) otherLessOrEqual = false;\n            if (otherValue > thisValue) thisLessOrEqual = false;\n        }\n\n        if (thisLessOrEqual && otherLessOrEqual) return CausalRelation.EQUAL;\n        if (thisLessOrEqual) return CausalRelation.BEFORE;  // this happened before other\n        if (otherLessOrEqual) return CausalRelation.AFTER;   // this happened after other\n        return CausalRelation.CONCURRENT;  // Conflict!\n    }\n\n    /**\n     * Check if this clock dominates (is strictly after) another.\n     */\n    public boolean dominates(VectorClock other) {\n        return compareTo(other) == CausalRelation.AFTER;\n    }\n\n    /**\n     * Check if two clocks are concurrent (conflict exists).\n     */\n    public boolean isConcurrentWith(VectorClock other) {\n        return compareTo(other) == CausalRelation.CONCURRENT;\n    }\n\n    public Map<String, Long> toMap() {\n        return Collections.unmodifiableMap(clock);\n    }\n\n    @Override\n    public String toString() {\n        return clock.entrySet().stream()\n            .sorted(Map.Entry.comparingByKey())\n            .map(e -> e.getKey() + \":\" + e.getValue())\n            .collect(Collectors.joining(\", \", \"[\", \"]\"));\n    }\n}\n\npublic enum CausalRelation {\n    BEFORE,      // This happened before the other\n    AFTER,       // This happened after the other\n    CONCURRENT,  // Neither happened before the other (conflict)\n    EQUAL        // Same logical time\n}\n\n/**\n * Versioned value store using vector clocks for conflict detection.\n * Maintains multiple concurrent versions (siblings) until resolved.\n */\npublic class VersionedStore<T> {\n    private final Map<String, List<VersionedValue<T>>> store = new HashMap<>();\n\n    /**\n     * Write a value with a context vector clock.\n     * The context is the vector clock of the value being updated (read-before-write).\n     */\n    public VectorClock put(String key, T value, VectorClock context, String nodeId) {\n        VectorClock newClock = context.increment(nodeId);\n        VersionedValue<T> newVersion = new VersionedValue<>(value, newClock);\n\n        List<VersionedValue<T>> existing = store.getOrDefault(key, new ArrayList<>());\n        List<VersionedValue<T>> surviving = new ArrayList<>();\n\n        for (VersionedValue<T> v : existing) {\n            CausalRelation relation = newClock.compareTo(v.getClock());\n            if (relation == CausalRelation.BEFORE || relation == CausalRelation.EQUAL) {\n                // New write is outdated or same — keep existing, discard new\n                surviving.add(v);\n            } else if (relation == CausalRelation.CONCURRENT) {\n                // Conflict — keep both as siblings\n                surviving.add(v);\n            }\n            // If AFTER — new write supersedes existing, don't keep existing\n        }\n\n        surviving.add(newVersion);\n        store.put(key, surviving);\n        return newClock;\n    }\n\n    /**\n     * Read a value. Returns all concurrent versions (siblings) if conflicts exist.\n     * The client must resolve conflicts and write back a merged value.\n     */\n    public ReadResult<T> get(String key) {\n        List<VersionedValue<T>> versions = store.getOrDefault(key, Collections.emptyList());\n        if (versions.isEmpty()) {\n            return new ReadResult<>(Collections.emptyList(), new VectorClock(), false);\n        }\n        if (versions.size() == 1) {\n            return new ReadResult<>(\n                List.of(versions.get(0).getValue()),\n                versions.get(0).getClock(),\n                false\n            );\n        }\n        // Multiple siblings — conflict exists\n        // Return merged context clock for the client to use in resolution write\n        VectorClock mergedContext = versions.stream()\n            .map(VersionedValue::getClock)\n            .reduce(new VectorClock(), (a, b) -> componentWiseMax(a, b));\n\n        List<T> values = versions.stream()\n            .map(VersionedValue::getValue)\n            .collect(Collectors.toList());\n\n        return new ReadResult<>(values, mergedContext, true);\n    }\n\n    private VectorClock componentWiseMax(VectorClock a, VectorClock b) {\n        Map<String, Long> merged = new HashMap<>(a.toMap());\n        for (Map.Entry<String, Long> entry : b.toMap().entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        return new VectorClock(merged);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "conflict-resolution-strategies",
+          "heading": "Conflict Resolution Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "/**\n * Demonstrates different conflict resolution strategies for concurrent updates\n * detected via vector clocks.\n */\n\ninterface VersionedValue<T> {\n  value: T;\n  clock: Record<string, number>;  // Vector clock as nodeId → counter\n  timestamp: number;               // Wall clock (for LWW fallback)\n  nodeId: string;                  // Which node wrote this version\n}\n\ninterface ConflictSet<T> {\n  key: string;\n  siblings: VersionedValue<T>[];   // All concurrent versions\n}\n\n// --- Strategy 1: Last-Writer-Wins (LWW) ---\n\n/**\n * LWW: Pick the value with the highest wall-clock timestamp.\n * Simple but can silently discard valid updates.\n * Used by: Cassandra, DynamoDB (default behavior).\n */\nfunction resolveWithLWW<T>(conflict: ConflictSet<T>): T {\n  const winner = conflict.siblings.reduce((latest, current) =>\n    current.timestamp > latest.timestamp ? current : latest\n  );\n  return winner.value;\n}\n\n// --- Strategy 2: Application-Specific Merge ---\n\ninterface ShoppingCart {\n  items: Map<string, number>;  // productId → quantity\n}\n\n/**\n * Merge shopping carts by taking the union of items with max quantities.\n * This is a CRDT-like merge that preserves all additions.\n * Used by: Amazon (original Dynamo paper shopping cart example).\n */\nfunction mergeShoppingCarts(conflict: ConflictSet<ShoppingCart>): ShoppingCart {\n  const merged: Map<string, number> = new Map();\n\n  for (const sibling of conflict.siblings) {\n    for (const [productId, quantity] of sibling.value.items) {\n      const current = merged.get(productId) || 0;\n      merged.set(productId, Math.max(current, quantity));\n    }\n  }\n\n  return { items: merged };\n}\n\n// --- Strategy 3: Multi-Value Register (Return All to Client) ---\n\n/**\n * Don't resolve automatically — return all siblings to the client.\n * The client displays options or applies domain-specific logic.\n * Used by: Riak (returns siblings to application).\n */\nfunction returnSiblings<T>(conflict: ConflictSet<T>): {\n  values: T[];\n  requiresResolution: true;\n  mergedContext: Record<string, number>;\n} {\n  // Compute merged context for the resolution write\n  const mergedContext: Record<string, number> = {};\n  for (const sibling of conflict.siblings) {\n    for (const [nodeId, counter] of Object.entries(sibling.clock)) {\n      mergedContext[nodeId] = Math.max(mergedContext[nodeId] || 0, counter);\n    }\n  }\n\n  return {\n    values: conflict.siblings.map(s => s.value),\n    requiresResolution: true,\n    mergedContext,\n  };\n}\n\n// --- Strategy 4: Dotted Version Vectors (Accurate Sibling Detection) ---\n\ninterface DottedVersionVector {\n  versionVector: Record<string, number>;  // Base version vector\n  dot: { nodeId: string; counter: number };  // The specific event that created this version\n}\n\n/**\n * Dotted version vectors improve on plain vector clocks by precisely\n * tracking which node created each sibling, preventing false conflicts\n * (sibling explosion) that occur with plain vector clocks during\n * concurrent reads and writes.\n */\nclass DottedVersionVectorStore<T> {\n  private data: Map<string, Array<{ value: T; dvv: DottedVersionVector }>> = new Map();\n\n  put(key: string, value: T, context: DottedVersionVector, nodeId: string): void {\n    const newCounter = (context.versionVector[nodeId] || 0) + 1;\n    const newDvv: DottedVersionVector = {\n      versionVector: { ...context.versionVector, [nodeId]: newCounter },\n      dot: { nodeId, counter: newCounter },\n    };\n\n    const existing = this.data.get(key) || [];\n    // Remove versions that are dominated by the new version vector\n    const surviving = existing.filter(entry => {\n      const dominated = Object.entries(entry.dvv.versionVector).every(\n        ([nid, cnt]) => (newDvv.versionVector[nid] || 0) >= cnt\n      );\n      return !dominated;\n    });\n\n    surviving.push({ value, dvv: newDvv });\n    this.data.set(key, surviving);\n  }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "vector-clock-progression-example",
+          "heading": "Vector Clock Progression Example",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant A as Node A\n    participant B as Node B\n    participant C as Node C\n\n    Note over A: VC_A = [A:0, B:0, C:0]\n    Note over B: VC_B = [A:0, B:0, C:0]\n    Note over C: VC_C = [A:0, B:0, C:0]\n\n    A->>A: Local write (x=1)\n    Note over A: VC_A = [A:1, B:0, C:0]\n\n    A->>B: Send update (x=1, VC=[A:1,B:0,C:0])\n    Note over B: Merge: max([A:0,B:0,C:0], [A:1,B:0,C:0]) + B++\n    Note over B: VC_B = [A:1, B:1, C:0]\n\n    C->>C: Local write (x=2)\n    Note over C: VC_C = [A:0, B:0, C:1]\n\n    Note over A,C: A's write [A:1,B:0,C:0] vs C's write [A:0,B:0,C:1]\n    Note over A,C: CONCURRENT! Neither dominates → CONFLICT\n\n    B->>C: Send update (VC=[A:1,B:1,C:0])\n    Note over C: Merge: max([A:0,B:0,C:1], [A:1,B:1,C:0]) + C++\n    Note over C: VC_C = [A:1, B:1, C:2]\n    Note over C: C now knows about A's write → can resolve conflict"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "conflict-detection-and-resolution-flow",
+          "heading": "Conflict Detection and Resolution Flow",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    W1[Write from Node A<br/>VC=[A:3, B:2, C:1]] \n    W2[Write from Node C<br/>VC=[A:2, B:2, C:2]]\n    \n    W1 --> Compare{Compare Vector Clocks}\n    W2 --> Compare\n    \n    Compare -->|\"A:3>A:2 but C:1<C:2\"| Concurrent[CONCURRENT<br/>Neither dominates]\n    \n    Concurrent --> Strategy{Resolution Strategy}\n    \n    Strategy -->|LWW| LWW[Pick highest timestamp<br/>Simple, lossy]\n    Strategy -->|Merge| Merge[Application merge<br/>Preserves both]\n    Strategy -->|Siblings| Siblings[Return both to client<br/>Client decides]\n    \n    LWW --> Result1[Single value stored<br/>One update lost]\n    Merge --> Result2[Merged value stored<br/>Both preserved]\n    Siblings --> Result3[Client resolves<br/>Writes back with merged VC]"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "version-vector-in-multi-master-replication",
+          "heading": "Version Vector in Multi-Master Replication",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Replica A (US-East)\"\n        A_Store[\"key: user:42<br/>value: {name: 'Alice'}<br/>VV: [A:1, B:0, C:0]\"]\n    end\n    \n    subgraph \"Replica B (EU-West)\"\n        B_Store[\"key: user:42<br/>value: {name: 'Alicia'}<br/>VV: [A:0, B:1, C:0]\"]\n    end\n    \n    subgraph \"Replica C (AP-Southeast)\"\n        C_Store[\"key: user:42<br/>value: {name: 'Alice W.'}<br/>VV: [A:0, B:0, C:1]\"]\n    end\n    \n    A_Store -->|\"Sync\"| Detect[Conflict Detection]\n    B_Store -->|\"Sync\"| Detect\n    C_Store -->|\"Sync\"| Detect\n    \n    Detect --> ThreeWay[\"3-way conflict detected<br/>All VVs are concurrent\"]\n    ThreeWay --> Resolve[\"Resolution: merge or LWW<br/>Result VV: [A:1, B:1, C:1]\"]"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Vector clock size growing unboundedly — In systems with many nodes (or where nodes join and leave frequently), vector clocks grow with one entry per node ever seen. Solutions: prune entries for nodes that have been decommissioned, use bounded vector clocks with timestamp-based eviction (Dynamo's approach), or use dotted version vectors which are more space-efficient.",
+            "Confusing Lamport timestamps with vector clocks — Lamport timestamps provide a total order (if L(a) < L(b), then a might have happened before b or they might be concurrent). Vector clocks provide a partial order that can definitively identify concurrent events. If your system needs to detect conflicts, Lamport timestamps are insufficient — you need vector clocks.",
+            "Using wall-clock timestamps for LWW without understanding the risks — Clock skew between nodes means LWW can discard the \"actually later\" write in favor of an \"actually earlier\" write from a node with a fast clock. NTP synchronization helps but cannot eliminate this risk entirely. For critical data, prefer vector clocks with explicit conflict resolution over LWW.",
+            "Sibling explosion in Riak-style systems — If clients read a value with siblings but write back without including the full context (merged vector clock), new siblings accumulate without resolving old ones. Eventually, a key can have hundreds of siblings, degrading performance. Always read-before-write with the full context, and implement sibling resolution in your application.",
+            "Not handling the \"new node\" case — When a new node joins the system, it has no entry in existing vector clocks. Writes from the new node create entries that appear concurrent with all existing versions. Ensure your conflict resolution handles this gracefully (e.g., by treating the new node's first write as concurrent and merging appropriately)."
+          ]
+        }
+      ],
+      "wordCount": 279,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Amazon DynamoDB (Original Dynamo Paper): The original Dynamo system used vector clocks to track causality for each key. When concurrent writes occurred during network partitions, Dynamo stored all conflicting versions as siblings and returned them to the client on read. The client (e.g., the shopping cart service) would merge siblings and write back the resolved value. Modern DynamoDB has moved to LWW for simplicity, but the original design demonstrated vector clocks at massive scale."
+        },
+        {
+          "type": "paragraph",
+          "text": "Riak KV: Riak uses dotted version vectors (an improvement over plain vector clocks) to detect concurrent writes. When siblings are detected, Riak can either resolve them automatically (using CRDTs for supported data types) or return all siblings to the application for custom resolution. Riak's allow_mult=true setting enables sibling tracking, which is essential for applications that cannot tolerate silent data loss from LWW."
+        },
+        {
+          "type": "paragraph",
+          "text": "CouchDB / PouchDB: CouchDB uses a revision tree (conceptually similar to vector clocks) to track document versions across replicas. When the same document is modified on different replicas, CouchDB detects the conflict and stores both revisions. Applications can query conflicting revisions and implement custom merge logic. PouchDB (the client-side equivalent) uses the same mechanism for offline-first mobile applications that sync when connectivity returns."
+        },
+        {
+          "type": "paragraph",
+          "text": "Git Version Control: Git's merge mechanism is conceptually similar to vector clocks. Each commit has parent pointers that establish causality. When two branches modify the same file (concurrent changes with no causal relationship), Git detects a merge conflict and requires manual resolution. The commit graph is essentially a DAG that encodes the partial order of changes, analogous to vector clock comparisons."
+        }
+      ],
+      "wordCount": 260,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "What is the difference between a Lamport timestamp and a vector clock? When would you use each?",
+          "answer": "A Lamport timestamp is a single integer counter that provides a total order: if event a happened before event b, then L(a) < L(b). However, the converse is not true — L(a) < L(b) does NOT mean a happened before b (they could be concurrent). A vector clock is a vector of counters (one per node) that provides a partial order with the ability to detect concurrency: if VC(a) < VC(b), then a definitely happened before b; if neither dominates, the events are concurrent. Use Lamport timestamps when you need a total ordering for tie-breaking (e.g., log ordering) but don't need to detect conflicts. Use vector clocks when you need to detect concurrent updates and resolve conflicts (e.g., multi-master replication, optimistic concurrency control)."
+        },
+        {
+          "type": "interview",
+          "question": "How does Last-Writer-Wins (LWW) compare to vector clock-based conflict resolution? What are the trade-offs?",
+          "answer": "LWW uses wall-clock timestamps to pick a \"winner\" among concurrent writes — the write with the highest timestamp survives, others are silently discarded. Pros: simple to implement, no siblings to manage, deterministic resolution. Cons: data loss (valid concurrent updates are discarded), clock skew can cause \"wrong\" winner selection, no way for the application to merge concurrent updates. Vector clock-based resolution detects conflicts and either returns siblings to the application or applies a merge function. Pros: no silent data loss, application can implement domain-specific merge logic (e.g., union of shopping cart items). Cons: more complex, requires application-level conflict handling, siblings can accumulate if not resolved. Choose LWW for data where \"last update wins\" is semantically correct (e.g., user profile updates). Choose vector clocks for data where concurrent updates carry independent information that should be preserved (e.g., collaborative editing, shopping carts)."
+        },
+        {
+          "type": "interview",
+          "question": "Explain the \"sibling explosion\" problem and how to prevent it.",
+          "answer": "Sibling explosion occurs when concurrent versions (siblings) accumulate faster than they are resolved. This happens when: (1) Clients read a value with siblings but write back without the full context vector clock — the new write appears concurrent with existing siblings rather than superseding them. (2) High write concurrency on a single key without reads to trigger resolution. (3) Network partitions cause many concurrent writes that are never merged. Prevention: (1) Always perform read-before-write and include the full context (merged vector clock of all siblings) in the write. (2) Set a maximum sibling count (Riak's max_siblings setting) — when exceeded, force LWW resolution. (3) Use CRDTs for data types that support automatic merge (counters, sets, registers). (4) Implement background sibling resolution that periodically reads keys with many siblings and writes back merged values."
+        },
+        {
+          "type": "interview",
+          "question": "How do dotted version vectors improve upon plain vector clocks?",
+          "answer": "Plain vector clocks in Dynamo-style systems have a problem: when a coordinator handles a write, it increments its own entry in the vector clock. If the same coordinator handles writes from different clients, the vector clock conflates the coordinator's identity with the client's intent, leading to false concurrency detection and unnecessary siblings. Dotted version vectors solve this by separating the \"base\" version vector (what the node has seen) from the \"dot\" (the specific event that created this version). This allows precise identification of which write created which sibling, enabling accurate pruning of dominated versions. The result is fewer false siblings and more efficient storage. Riak switched from plain vector clocks to dotted version vectors to solve the sibling explosion problem in high-throughput scenarios."
+        }
+      ],
+      "wordCount": 569,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement vector clock pruning with a size limit and timestamp-based eviction. In systems with many nodes, vector clocks can grow large. Set a maximum size (e.g., 10 entries) and when exceeded, evict the entry with the oldest timestamp. This introduces a small risk of false concurrency detection (treating a causally ordered pair as concurrent) but bounds memory usage. DynamoDB's original implementation used this approach with a threshold of 10 entries.",
+            "Monitor sibling count per key as a health metric. In systems that use vector clocks with sibling tracking (Riak, custom implementations), a growing average sibling count indicates that conflict resolution is not keeping up with concurrent writes. Alert when any key exceeds a sibling threshold (e.g., 5 siblings). Investigate whether clients are correctly performing read-modify-write with full context, and whether your merge logic is functioning correctly.",
+            "Use hybrid logical clocks (HLC) when you need both causality tracking and bounded clock size. HLCs combine a physical timestamp with a logical counter, providing the causality guarantees of Lamport timestamps with the bounded size of a single value (no per-node vector). They cannot detect concurrency as precisely as full vector clocks, but they are sufficient for many use cases (CockroachDB uses HLCs) and avoid the unbounded growth problem."
+          ]
+        }
+      ],
+      "wordCount": 205,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CAP Theorem In Depth — Vector clocks are the mechanism AP systems use to detect and resolve conflicts that arise from choosing availability over consistency",
+            "Quorum Systems — Quorum reads surface conflicting versions that vector clocks help identify and resolve",
+            "Consistency Models — Vector clocks enable causal consistency by tracking the causal relationships between events",
+            "Event Sourcing and CQRS — Event ordering in distributed event stores uses logical clocks to maintain causal consistency"
+          ]
+        }
+      ],
+      "wordCount": 73,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.*;\nimport java.util.stream.Collectors;\n\n/**\n * Vector clock implementation for tracking causality in a distributed system.\n * Each node maintains its own vector clock and updates it on local events\n * and message exchanges.\n */\npublic class VectorClock {\n    private final Map<String, Long> clock;  // nodeId → counter\n\n    public VectorClock() {\n        this.clock = new HashMap<>();\n    }\n\n    public VectorClock(Map<String, Long> clock) {\n        this.clock = new HashMap<>(clock);\n    }\n\n    /**\n     * Increment this node's counter (called on local write/event).\n     */\n    public VectorClock increment(String nodeId) {\n        Map<String, Long> newClock = new HashMap<>(this.clock);\n        newClock.merge(nodeId, 1L, Long::sum);\n        return new VectorClock(newClock);\n    }\n\n    /**\n     * Merge with another vector clock (called on receiving a message/update).\n     * Takes the component-wise maximum of both clocks, then increments own counter.\n     */\n    public VectorClock merge(VectorClock other, String localNodeId) {\n        Map<String, Long> merged = new HashMap<>(this.clock);\n        for (Map.Entry<String, Long> entry : other.clock.entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        // Increment local counter after merge\n        merged.merge(localNodeId, 1L, Long::sum);\n        return new VectorClock(merged);\n    }\n\n    /**\n     * Compare two vector clocks to determine causal relationship.\n     * Returns: BEFORE, AFTER, CONCURRENT, or EQUAL\n     */\n    public CausalRelation compareTo(VectorClock other) {\n        boolean thisLessOrEqual = true;\n        boolean otherLessOrEqual = true;\n\n        Set<String> allNodes = new HashSet<>();\n        allNodes.addAll(this.clock.keySet());\n        allNodes.addAll(other.clock.keySet());\n\n        for (String node : allNodes) {\n            long thisValue = this.clock.getOrDefault(node, 0L);\n            long otherValue = other.clock.getOrDefault(node, 0L);\n\n            if (thisValue > otherValue) otherLessOrEqual = false;\n            if (otherValue > thisValue) thisLessOrEqual = false;\n        }\n\n        if (thisLessOrEqual && otherLessOrEqual) return CausalRelation.EQUAL;\n        if (thisLessOrEqual) return CausalRelation.BEFORE;  // this happened before other\n        if (otherLessOrEqual) return CausalRelation.AFTER;   // this happened after other\n        return CausalRelation.CONCURRENT;  // Conflict!\n    }\n\n    /**\n     * Check if this clock dominates (is strictly after) another.\n     */\n    public boolean dominates(VectorClock other) {\n        return compareTo(other) == CausalRelation.AFTER;\n    }\n\n    /**\n     * Check if two clocks are concurrent (conflict exists).\n     */\n    public boolean isConcurrentWith(VectorClock other) {\n        return compareTo(other) == CausalRelation.CONCURRENT;\n    }\n\n    public Map<String, Long> toMap() {\n        return Collections.unmodifiableMap(clock);\n    }\n\n    @Override\n    public String toString() {\n        return clock.entrySet().stream()\n            .sorted(Map.Entry.comparingByKey())\n            .map(e -> e.getKey() + \":\" + e.getValue())\n            .collect(Collectors.joining(\", \", \"[\", \"]\"));\n    }\n}\n\npublic enum CausalRelation {\n    BEFORE,      // This happened before the other\n    AFTER,       // This happened after the other\n    CONCURRENT,  // Neither happened before the other (conflict)\n    EQUAL        // Same logical time\n}\n\n/**\n * Versioned value store using vector clocks for conflict detection.\n * Maintains multiple concurrent versions (siblings) until resolved.\n */\npublic class VersionedStore<T> {\n    private final Map<String, List<VersionedValue<T>>> store = new HashMap<>();\n\n    /**\n     * Write a value with a context vector clock.\n     * The context is the vector clock of the value being updated (read-before-write).\n     */\n    public VectorClock put(String key, T value, VectorClock context, String nodeId) {\n        VectorClock newClock = context.increment(nodeId);\n        VersionedValue<T> newVersion = new VersionedValue<>(value, newClock);\n\n        List<VersionedValue<T>> existing = store.getOrDefault(key, new ArrayList<>());\n        List<VersionedValue<T>> surviving = new ArrayList<>();\n\n        for (VersionedValue<T> v : existing) {\n            CausalRelation relation = newClock.compareTo(v.getClock());\n            if (relation == CausalRelation.BEFORE || relation == CausalRelation.EQUAL) {\n                // New write is outdated or same — keep existing, discard new\n                surviving.add(v);\n            } else if (relation == CausalRelation.CONCURRENT) {\n                // Conflict — keep both as siblings\n                surviving.add(v);\n            }\n            // If AFTER — new write supersedes existing, don't keep existing\n        }\n\n        surviving.add(newVersion);\n        store.put(key, surviving);\n        return newClock;\n    }\n\n    /**\n     * Read a value. Returns all concurrent versions (siblings) if conflicts exist.\n     * The client must resolve conflicts and write back a merged value.\n     */\n    public ReadResult<T> get(String key) {\n        List<VersionedValue<T>> versions = store.getOrDefault(key, Collections.emptyList());\n        if (versions.isEmpty()) {\n            return new ReadResult<>(Collections.emptyList(), new VectorClock(), false);\n        }\n        if (versions.size() == 1) {\n            return new ReadResult<>(\n                List.of(versions.get(0).getValue()),\n                versions.get(0).getClock(),\n                false\n            );\n        }\n        // Multiple siblings — conflict exists\n        // Return merged context clock for the client to use in resolution write\n        VectorClock mergedContext = versions.stream()\n            .map(VersionedValue::getClock)\n            .reduce(new VectorClock(), (a, b) -> componentWiseMax(a, b));\n\n        List<T> values = versions.stream()\n            .map(VersionedValue::getValue)\n            .collect(Collectors.toList());\n\n        return new ReadResult<>(values, mergedContext, true);\n    }\n\n    private VectorClock componentWiseMax(VectorClock a, VectorClock b) {\n        Map<String, Long> merged = new HashMap<>(a.toMap());\n        for (Map.Entry<String, Long> entry : b.toMap().entrySet()) {\n            merged.merge(entry.getKey(), entry.getValue(), Math::max);\n        }\n        return new VectorClock(merged);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "/**\n * Demonstrates different conflict resolution strategies for concurrent updates\n * detected via vector clocks.\n */\n\ninterface VersionedValue<T> {\n  value: T;\n  clock: Record<string, number>;  // Vector clock as nodeId → counter\n  timestamp: number;               // Wall clock (for LWW fallback)\n  nodeId: string;                  // Which node wrote this version\n}\n\ninterface ConflictSet<T> {\n  key: string;\n  siblings: VersionedValue<T>[];   // All concurrent versions\n}\n\n// --- Strategy 1: Last-Writer-Wins (LWW) ---\n\n/**\n * LWW: Pick the value with the highest wall-clock timestamp.\n * Simple but can silently discard valid updates.\n * Used by: Cassandra, DynamoDB (default behavior).\n */\nfunction resolveWithLWW<T>(conflict: ConflictSet<T>): T {\n  const winner = conflict.siblings.reduce((latest, current) =>\n    current.timestamp > latest.timestamp ? current : latest\n  );\n  return winner.value;\n}\n\n// --- Strategy 2: Application-Specific Merge ---\n\ninterface ShoppingCart {\n  items: Map<string, number>;  // productId → quantity\n}\n\n/**\n * Merge shopping carts by taking the union of items with max quantities.\n * This is a CRDT-like merge that preserves all additions.\n * Used by: Amazon (original Dynamo paper shopping cart example).\n */\nfunction mergeShoppingCarts(conflict: ConflictSet<ShoppingCart>): ShoppingCart {\n  const merged: Map<string, number> = new Map();\n\n  for (const sibling of conflict.siblings) {\n    for (const [productId, quantity] of sibling.value.items) {\n      const current = merged.get(productId) || 0;\n      merged.set(productId, Math.max(current, quantity));\n    }\n  }\n\n  return { items: merged };\n}\n\n// --- Strategy 3: Multi-Value Register (Return All to Client) ---\n\n/**\n * Don't resolve automatically — return all siblings to the client.\n * The client displays options or applies domain-specific logic.\n * Used by: Riak (returns siblings to application).\n */\nfunction returnSiblings<T>(conflict: ConflictSet<T>): {\n  values: T[];\n  requiresResolution: true;\n  mergedContext: Record<string, number>;\n} {\n  // Compute merged context for the resolution write\n  const mergedContext: Record<string, number> = {};\n  for (const sibling of conflict.siblings) {\n    for (const [nodeId, counter] of Object.entries(sibling.clock)) {\n      mergedContext[nodeId] = Math.max(mergedContext[nodeId] || 0, counter);\n    }\n  }\n\n  return {\n    values: conflict.siblings.map(s => s.value),\n    requiresResolution: true,\n    mergedContext,\n  };\n}\n\n// --- Strategy 4: Dotted Version Vectors (Accurate Sibling Detection) ---\n\ninterface DottedVersionVector {\n  versionVector: Record<string, number>;  // Base version vector\n  dot: { nodeId: string; counter: number };  // The specific event that created this version\n}\n\n/**\n * Dotted version vectors improve on plain vector clocks by precisely\n * tracking which node created each sibling, preventing false conflicts\n * (sibling explosion) that occur with plain vector clocks during\n * concurrent reads and writes.\n */\nclass DottedVersionVectorStore<T> {\n  private data: Map<string, Array<{ value: T; dvv: DottedVersionVector }>> = new Map();\n\n  put(key: string, value: T, context: DottedVersionVector, nodeId: string): void {\n    const newCounter = (context.versionVector[nodeId] || 0) + 1;\n    const newDvv: DottedVersionVector = {\n      versionVector: { ...context.versionVector, [nodeId]: newCounter },\n      dot: { nodeId, counter: newCounter },\n    };\n\n    const existing = this.data.get(key) || [];\n    // Remove versions that are dominated by the new version vector\n    const surviving = existing.filter(entry => {\n      const dominated = Object.entries(entry.dvv.versionVector).every(\n        ([nid, cnt]) => (newDvv.versionVector[nid] || 0) >= cnt\n      );\n      return !dominated;\n    });\n\n    surviving.push({ value, dvv: newDvv });\n    this.data.set(key, surviving);\n  }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/vector-clocks.md",
+    "wordCount": 1695,
+    "sectionCount": 14
+  }
+}

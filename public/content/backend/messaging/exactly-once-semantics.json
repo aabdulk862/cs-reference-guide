@@ -1,0 +1,265 @@
+{
+  "id": "messaging-exactly-once-semantics",
+  "slug": "exactly-once-semantics",
+  "title": "Exactly-Once Semantics",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Exactly-once semantics (EOS) guarantees that each message is processed and its effects applied exactly once, even in the presence of producer retries, consumer failures, and broker crashes",
+            "Idempotent producer (enable.idempotence=true): Eliminates duplicates within a single partition by assigning a producer ID (PID) and sequence number to each message; brokers detect and discard duplicates",
+            "Transactional API: Enables atomic writes across multiple partitions and topics; either all messages in a transaction are committed or none are visible to consumers",
+            "read_committed isolation: Consumers with isolation.level=read_committed only see messages from committed transactions; uncommitted or aborted transaction messages are filtered out",
+            "EOS requires: acks=all, enable.idempotence=true, transactional.id (for transactions), and max.in.flight.requests.per.connection <= 5",
+            "Transaction coordinator (broker) manages transaction state via the __transaction_state internal topic",
+            "Performance overhead: ~3-5% throughput reduction for idempotent producers, ~10-20% for full transactions due to two-phase commit protocol",
+            "Kafka Streams provides EOS out-of-the-box with processing.guarantee=exactly_once_v2 (Kafka 3.0+)"
+          ]
+        }
+      ],
+      "wordCount": 144,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use idempotent producers as a baseline for all production deployments. The overhead is minimal (~3% throughput reduction) and it eliminates the most common source of duplicates: producer retries after network timeouts where the broker actually received and persisted the message. There is no reason to disable idempotence in modern Kafka deployments."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use the transactional API when you need atomic writes across multiple topics or partitions, or when you need to atomically commit consumer offsets alongside produced messages (the consume-transform-produce pattern). Common scenarios include: event enrichment pipelines that read from one topic and write to multiple output topics, saga orchestrators that must atomically publish events to multiple aggregate topics, and exactly-once stream processing where consumer offset commits must be atomic with output writes."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use read_committed isolation on consumers that must never see partial transaction results. This is essential for consumers downstream of transactional producers — without it, they would see uncommitted messages that may later be aborted. Note that read_committed consumers experience slightly higher end-to-end latency because they cannot read past the last stable offset (LSO), which lags behind the high watermark during open transactions."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Kafka Streams EOS (exactly_once_v2) when building stream processing applications that need end-to-end exactly-once guarantees without manually managing transactions. This is the simplest path to EOS for consume-transform-produce workloads."
+        },
+        {
+          "type": "paragraph",
+          "text": "Do NOT use transactions for simple produce-only workloads where idempotent producers suffice. The transactional overhead (coordinator round-trips, two-phase commit) is unnecessary when you only need per-partition deduplication."
+        }
+      ],
+      "wordCount": 240,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "idempotent-producer-configuration",
+          "heading": "Idempotent Producer Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Idempotent producer: eliminates duplicates from retries within a partition\nProperties props = new Properties();\nprops.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nprops.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\n\n// Idempotence configuration\nprops.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);  // Required for EOS\nprops.put(ProducerConfig.ACKS_CONFIG, \"all\");                // Required: all ISR must acknowledge\nprops.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE); // Retry indefinitely\nprops.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5); // Max 5 with idempotence\n\n// Performance tuning (compatible with idempotence)\nprops.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536);          // 64KB batches\nprops.put(ProducerConfig.LINGER_MS_CONFIG, 10);              // 10ms linger for batching\nprops.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, \"lz4\");    // Batch compression\n\nKafkaProducer<String, OrderEvent> producer = new KafkaProducer<>(props);\n\n// Under the hood:\n// 1. Producer gets a unique PID (Producer ID) from the broker on first send\n// 2. Each message gets a monotonically increasing sequence number per partition\n// 3. Broker tracks (PID, partition, sequence) and rejects duplicates\n// 4. If a retry arrives with a sequence number already seen, broker returns success\n//    without writing the duplicate to the log\n\n// Usage is identical to non-idempotent producer — transparency is the key benefit\nFuture<RecordMetadata> future = producer.send(\n    new ProducerRecord<>(\"orders\", order.getId(), orderEvent),\n    (metadata, exception) -> {\n        if (exception != null) {\n            // Even with retries, this callback fires only once per logical send\n            handleSendFailure(order, exception);\n        }\n    }\n);",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "transactional-produce-with-consumer-offset-commit",
+          "heading": "Transactional Produce with Consumer Offset Commit",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Transactional producer: atomic writes across topics + offset commits\nProperties producerProps = new Properties();\nproducerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nproducerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nproducerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\nproducerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);\n\n// Transactional ID: must be unique per producer instance and stable across restarts\n// Used for fencing zombie producers (old instances with same transactional.id)\nproducerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, \"order-enrichment-\" + instanceId);\n\nKafkaProducer<String, Object> producer = new KafkaProducer<>(producerProps);\n\n// Initialize transactions (registers with transaction coordinator, fences zombies)\nproducer.initTransactions();\n\n// Consumer configured for read_committed\nProperties consumerProps = new Properties();\nconsumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nconsumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-enrichment-group\");\nconsumerProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, \"read_committed\");\nconsumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit via transaction\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(consumerProps);\nconsumer.subscribe(List.of(\"raw-orders\"));\n\nwhile (running.get()) {\n    ConsumerRecords<String, OrderEvent> records = consumer.poll(Duration.ofMillis(100));\n    if (records.isEmpty()) continue;\n\n    try {\n        producer.beginTransaction();\n\n        for (ConsumerRecord<String, OrderEvent> record : records) {\n            // Transform: enrich order with customer data\n            EnrichedOrder enriched = enrichOrder(record.value());\n\n            // Produce to multiple output topics atomically\n            producer.send(new ProducerRecord<>(\"enriched-orders\", record.key(), enriched));\n            producer.send(new ProducerRecord<>(\"order-audit\", record.key(),\n                new AuditEvent(\"enriched\", record.key(), Instant.now())));\n\n            // If order value > threshold, also produce to high-value topic\n            if (enriched.getTotalValue() > HIGH_VALUE_THRESHOLD) {\n                producer.send(new ProducerRecord<>(\"high-value-orders\", record.key(), enriched));\n            }\n        }\n\n        // Atomically commit consumer offsets as part of the transaction\n        // This ensures exactly-once: offsets and output messages commit together\n        Map<TopicPartition, OffsetAndMetadata> offsets = computeOffsets(records);\n        producer.sendOffsetsToTransaction(offsets, consumer.groupMetadata());\n\n        // Commit transaction: all messages + offsets become visible atomically\n        producer.commitTransaction();\n\n    } catch (ProducerFencedException | InvalidProducerEpochException e) {\n        // Another producer with same transactional.id has been initialized (zombie fencing)\n        log.error(\"Producer fenced — shutting down\", e);\n        producer.close();\n        throw e;\n    } catch (KafkaException e) {\n        // Abort transaction: all messages in this transaction are discarded\n        producer.abortTransaction();\n        log.warn(\"Transaction aborted, will retry on next poll\", e);\n        // Consumer will re-read the same records on next poll (offsets not committed)\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "kafka-streams-exactly-once-configuration",
+          "heading": "Kafka Streams Exactly-Once Configuration",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Kafka Streams with exactly-once processing guarantee\nProperties streamsProps = new Properties();\nstreamsProps.put(StreamsConfig.APPLICATION_ID_CONFIG, \"order-analytics\");\nstreamsProps.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\n\n// Exactly-once v2 (Kafka 3.0+): uses a single transaction per task\n// More efficient than v1 which used a transaction per partition\nstreamsProps.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);\n\n// EOS-compatible settings (automatically configured by Streams, shown for clarity)\nstreamsProps.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 100); // Frequent commits for low latency\nstreamsProps.put(StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG), \"all\");\nstreamsProps.put(StreamsConfig.producerPrefix(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG), true);\n\nStreamsBuilder builder = new StreamsBuilder();\n\n// Consume-transform-produce with exactly-once guarantee\nKStream<String, OrderEvent> orders = builder.stream(\"raw-orders\");\n\n// Stateful aggregation: revenue per customer (state store backed by changelog topic)\nKTable<String, CustomerRevenue> customerRevenue = orders\n    .groupBy((key, order) -> order.getCustomerId())\n    .aggregate(\n        CustomerRevenue::new,\n        (customerId, order, revenue) -> revenue.addOrder(order),\n        Materialized.<String, CustomerRevenue, KeyValueStore<Bytes, byte[]>>as(\"customer-revenue\")\n            .withKeySerde(Serdes.String())\n            .withValueSerde(customerRevenueSerde)\n    );\n\n// Output enriched stream\ncustomerRevenue.toStream()\n    .filter((customerId, revenue) -> revenue.getTotalOrders() > 10)\n    .to(\"vip-customers\", Produced.with(Serdes.String(), customerRevenueSerde));\n\n// With exactly_once_v2:\n// - Input offset commit, state store update, and output writes are atomic\n// - If a task fails mid-processing, the transaction is aborted\n// - On recovery, the task resumes from the last committed offset\n// - State store is restored from changelog (also transactional)\n// - No duplicates in output topics, no double-counting in aggregations\n\nKafkaStreams streams = new KafkaStreams(builder.build(), streamsProps);\nstreams.start();",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant P as Producer (PID=42)\n    participant B as Broker (Partition Leader)\n\n    Note over P,B: Idempotent Producer - Duplicate Detection\n\n    P->>B: Send(key=A, seq=0)\n    B->>B: Store: PID=42, seq=0 ✓\n    B->>P: ACK (offset=100)\n\n    P->>B: Send(key=B, seq=1)\n    B->>B: Store: PID=42, seq=1 ✓\n    B->>P: ACK (offset=101)\n\n    Note over P,B: Network timeout — producer retries\n\n    P->>B: Send(key=B, seq=1) [RETRY]\n    B->>B: Check: PID=42, seq=1 already seen\n    B->>P: ACK (offset=101) [no duplicate written]\n\n    Note over P,B: Out-of-order detection\n\n    P->>B: Send(key=D, seq=5) [skipped seq 2,3,4]\n    B->>P: OutOfOrderSequenceException\n    Note over P: Producer must reset and re-send"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant P as Transactional Producer\n    participant TC as Transaction Coordinator\n    participant B1 as Broker (Partition 0)\n    participant B2 as Broker (Partition 1)\n    participant OC as Offset Coordinator\n\n    P->>TC: InitTransactions(txn.id=\"order-proc-1\")\n    TC->>TC: Fence old producer with same txn.id<br/>Assign new epoch\n\n    P->>TC: BeginTransaction\n    TC->>TC: Record: txn ONGOING\n\n    P->>B1: Send(topic=orders, partition=0, msg=A)\n    P->>TC: AddPartitionsToTxn(orders-0)\n    TC->>TC: Record: orders-0 in txn\n\n    P->>B2: Send(topic=audit, partition=1, msg=B)\n    P->>TC: AddPartitionsToTxn(audit-1)\n    TC->>TC: Record: audit-1 in txn\n\n    P->>TC: SendOffsetsToTransaction(input-offsets)\n    TC->>OC: Write offset commit marker\n\n    P->>TC: CommitTransaction\n    TC->>TC: Record: txn PREPARE_COMMIT\n    TC->>B1: WriteTxnMarker(COMMIT) to orders-0\n    TC->>B2: WriteTxnMarker(COMMIT) to audit-1\n    TC->>TC: Record: txn COMPLETE_COMMIT\n\n    Note over B1,B2: Messages now visible to read_committed consumers"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Consumer Isolation Levels\"\n        direction TB\n\n        subgraph \"Partition Log\"\n            M1[\"Msg 1 (committed)\"]\n            M2[\"Msg 2 (txn A - committed)\"]\n            M3[\"Msg 3 (txn B - open)\"]\n            M4[\"Msg 4 (committed)\"]\n            M5[\"Msg 5 (txn B - open)\"]\n            HW[\"High Watermark ↑\"]\n            LSO[\"Last Stable Offset ↑\"]\n        end\n\n        RC[\"read_committed consumer<br/>Sees: Msg 1, 2<br/>Blocked at LSO (before Msg 3)\"]\n        RU[\"read_uncommitted consumer<br/>Sees: Msg 1, 2, 3, 4, 5<br/>Reads up to HW\"]\n    end\n\n    LSO -.->|\"Cannot read past\"| RC\n    HW -.->|\"Reads up to\"| RU"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Transactional ID reuse across unrelated producers: Each transactional producer must have a unique, stable transactional.id. If two active producers share the same ID, one will be fenced with ProducerFencedException. The ID should encode the application instance identity (e.g., \"order-enrichment-\" + partitionId). For Kafka Streams, the framework manages transactional IDs automatically based on task assignment.",
+            "Forgetting read_committed on downstream consumers: Transactional producers guarantee atomic writes, but consumers with the default read_uncommitted isolation will see uncommitted messages from in-progress or aborted transactions. Every consumer downstream of a transactional producer must set isolation.level=read_committed to maintain the exactly-once guarantee end-to-end.",
+            "Transaction timeout causing aborts: The default transaction.timeout.ms is 60 seconds. If your consume-transform-produce loop takes longer than this (large batches, slow external calls), the transaction coordinator aborts the transaction. Either reduce batch sizes, increase the timeout (max is broker's transaction.max.timeout.ms, default 15 minutes), or process records in smaller sub-batches within the transaction.",
+            "LSO lag with long-running transactions: Open transactions block read_committed consumers at the Last Stable Offset (LSO). A single long-running or stuck transaction can cause all read_committed consumers on that partition to fall behind, even for messages from other committed transactions. Monitor records-lag for read_committed consumers and set aggressive transaction timeouts to prevent stuck transactions from blocking consumption.",
+            "Zombie producer fencing gaps: When a producer crashes and restarts with the same transactional.id, the new instance fences the old one. However, there is a brief window where the old producer's in-flight requests may still be processed by brokers before the fence takes effect. The broker's epoch-based fencing ensures these late-arriving writes are rejected, but applications should handle ProducerFencedException gracefully by shutting down the fenced instance immediately.",
+            "EOS performance impact underestimated: Full transactional EOS adds latency from: (1) InitTransactions call on startup (one-time), (2) AddPartitionsToTxn RPC for each new partition in the transaction, (3) two-phase commit protocol on commitTransaction(), (4) transaction markers written to each partition. For high-throughput workloads, batch multiple records into a single transaction to amortize the per-transaction overhead."
+          ]
+        }
+      ],
+      "wordCount": 326,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Financial transaction processing: A payment platform uses transactional producers to atomically write payment events to both the payments topic and the ledger-entries topic. If either write fails, the entire transaction is aborted, preventing inconsistencies between the payment record and the accounting ledger. Downstream reconciliation consumers use read_committed isolation to ensure they never process partial payment records that were later aborted.",
+            "Event sourcing with projections: An e-commerce platform uses Kafka transactions to atomically write domain events and update materialized view topics. When an order is placed, the transaction atomically writes OrderCreated to the event store topic and updates the order-summary compacted topic. Projection consumers reading from order-summary with read_committed isolation always see a consistent view of order state, never partial updates from aborted transactions.",
+            "Exactly-once stream processing pipeline: A real-time fraud detection system uses Kafka Streams with exactly_once_v2 to process transaction events, maintain windowed aggregation state (spending patterns per card), and produce alerts to a downstream topic. The EOS guarantee ensures that each transaction is counted exactly once in the aggregation, preventing both missed fraud alerts (under-counting) and false positives (double-counting from duplicates).",
+            "CDC pipeline with guaranteed delivery: A change data capture pipeline reads database changes via Debezium, processes them through a Kafka Streams application that applies schema transformations, and writes to multiple downstream topics (search index updates, cache invalidation events, analytics events). Transactional EOS ensures that each database change is reflected exactly once in all downstream systems, even when the Streams application crashes and recovers."
+          ]
+        }
+      ],
+      "wordCount": 245,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "Explain the difference between idempotent producers and transactional producers. When do you need each?",
+          "answer": "Idempotent producers eliminate duplicates within a single partition by tracking (PID, sequence number) pairs. The broker detects retried messages with already-seen sequence numbers and discards them. This handles the most common duplicate scenario (network timeout on ACK, producer retries) with minimal overhead (~3%). Transactional producers extend this to provide atomicity across multiple partitions and topics — either all messages in a transaction are committed or none are visible. You need transactions when: (1) writing to multiple topics/partitions atomically, (2) committing consumer offsets atomically with produced messages (consume-transform-produce), or (3) ensuring downstream consumers never see partial results. Use idempotent-only for simple produce workloads; use transactions for consume-transform-produce patterns and multi-topic atomic writes."
+        },
+        {
+          "type": "interview",
+          "question": "How does Kafka's transaction protocol handle zombie producers?",
+          "answer": "When a producer calls initTransactions() with a transactional.id, the transaction coordinator assigns it an epoch number (monotonically increasing). If a previous producer instance with the same transactional.id exists (zombie from a crash), the coordinator increments the epoch and fences the old producer. Any subsequent requests from the old producer (with the lower epoch) are rejected with ProducerFencedException. This prevents split-brain scenarios where two producers with the same transactional identity could both commit transactions. The fencing is epoch-based: brokers check the epoch on every write request and reject writes from stale epochs. The zombie's in-flight transaction is aborted, and its uncommitted messages are marked as aborted in the log."
+        },
+        {
+          "type": "interview",
+          "question": "What is the Last Stable Offset (LSO) and how does it affect read_committed consumers?",
+          "answer": "The LSO is the offset of the first message that belongs to an open (uncommitted) transaction. read_committed consumers cannot read past the LSO — they are blocked until the transaction is either committed or aborted. This means a single long-running transaction can block all read_committed consumers on that partition, even for messages from other already-committed transactions that have higher offsets. The LSO advances when the oldest open transaction completes. This is why transaction timeouts are critical: a stuck transaction with a low LSO creates a consumption bottleneck. Monitor the gap between the high watermark and LSO (records-lag metric for read_committed consumers) to detect this issue."
+        },
+        {
+          "type": "interview",
+          "question": "What are the performance implications of exactly-once semantics, and how do you minimize the overhead?",
+          "answer": "EOS overhead comes from: (1) Idempotence: ~3% throughput reduction from sequence number tracking and broker-side dedup checks — negligible. (2) Transactions: 10-20% throughput reduction from coordinator RPCs (AddPartitionsToTxn, EndTxn), two-phase commit protocol, and transaction markers written to each partition. Minimize overhead by: batching many records into a single transaction (amortize per-transaction cost), using exactly_once_v2 in Kafka Streams (one transaction per commit interval across all tasks, vs. v1's one transaction per task per commit), keeping transactions short to avoid LSO lag, and tuning commit.interval.ms in Streams to balance latency vs. transaction frequency. For produce-only workloads, idempotent producers without transactions provide most of the benefit with minimal cost."
+        }
+      ],
+      "wordCount": 481,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Transaction timeout monitoring: Set up alerts on the transaction-coordinator metrics: txn-abort-rate (high abort rate indicates timeout or application issues), active-txn-count (growing count indicates stuck transactions), and consumer-side records-lag for read_committed consumers (growing lag indicates LSO blocked by open transactions). A healthy system should have near-zero active transactions at any point in time.",
+            "Transactional ID naming strategy: Use a deterministic naming scheme that encodes the application, instance, and optionally the input partition: \"{app}-{instance}-{partition}\". For Kafka Streams, the framework handles this automatically. For custom consume-transform-produce loops, tie the transactional ID to the input partition assignment so that when partitions move during rebalance, the new consumer fences the old one's transactions for those specific partitions.",
+            "Benchmarking EOS overhead: Before enabling transactions in production, benchmark with and without EOS on representative workloads. Measure: end-to-end latency (p99), throughput (messages/sec), and broker CPU/disk utilization. If the overhead is unacceptable, consider whether idempotent producers + application-level deduplication (using a dedup store keyed by message ID) can achieve \"effectively once\" semantics at lower cost."
+          ]
+        }
+      ],
+      "wordCount": 166,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Apache Kafka — Comprehensive Kafka overview including producer and consumer fundamentals",
+            "ISR Mechanics — How acks=all and ISR interact with exactly-once durability guarantees",
+            "Dead Letter Queues — Handling messages that fail processing in exactly-once pipelines"
+          ]
+        }
+      ],
+      "wordCount": 35,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Idempotent producer: eliminates duplicates from retries within a partition\nProperties props = new Properties();\nprops.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nprops.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\n\n// Idempotence configuration\nprops.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);  // Required for EOS\nprops.put(ProducerConfig.ACKS_CONFIG, \"all\");                // Required: all ISR must acknowledge\nprops.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE); // Retry indefinitely\nprops.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5); // Max 5 with idempotence\n\n// Performance tuning (compatible with idempotence)\nprops.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536);          // 64KB batches\nprops.put(ProducerConfig.LINGER_MS_CONFIG, 10);              // 10ms linger for batching\nprops.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, \"lz4\");    // Batch compression\n\nKafkaProducer<String, OrderEvent> producer = new KafkaProducer<>(props);\n\n// Under the hood:\n// 1. Producer gets a unique PID (Producer ID) from the broker on first send\n// 2. Each message gets a monotonically increasing sequence number per partition\n// 3. Broker tracks (PID, partition, sequence) and rejects duplicates\n// 4. If a retry arrives with a sequence number already seen, broker returns success\n//    without writing the duplicate to the log\n\n// Usage is identical to non-idempotent producer — transparency is the key benefit\nFuture<RecordMetadata> future = producer.send(\n    new ProducerRecord<>(\"orders\", order.getId(), orderEvent),\n    (metadata, exception) -> {\n        if (exception != null) {\n            // Even with retries, this callback fires only once per logical send\n            handleSendFailure(order, exception);\n        }\n    }\n);",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Transactional producer: atomic writes across topics + offset commits\nProperties producerProps = new Properties();\nproducerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nproducerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());\nproducerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class.getName());\nproducerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);\n\n// Transactional ID: must be unique per producer instance and stable across restarts\n// Used for fencing zombie producers (old instances with same transactional.id)\nproducerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, \"order-enrichment-\" + instanceId);\n\nKafkaProducer<String, Object> producer = new KafkaProducer<>(producerProps);\n\n// Initialize transactions (registers with transaction coordinator, fences zombies)\nproducer.initTransactions();\n\n// Consumer configured for read_committed\nProperties consumerProps = new Properties();\nconsumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nconsumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-enrichment-group\");\nconsumerProps.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, \"read_committed\");\nconsumerProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // Manual commit via transaction\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(consumerProps);\nconsumer.subscribe(List.of(\"raw-orders\"));\n\nwhile (running.get()) {\n    ConsumerRecords<String, OrderEvent> records = consumer.poll(Duration.ofMillis(100));\n    if (records.isEmpty()) continue;\n\n    try {\n        producer.beginTransaction();\n\n        for (ConsumerRecord<String, OrderEvent> record : records) {\n            // Transform: enrich order with customer data\n            EnrichedOrder enriched = enrichOrder(record.value());\n\n            // Produce to multiple output topics atomically\n            producer.send(new ProducerRecord<>(\"enriched-orders\", record.key(), enriched));\n            producer.send(new ProducerRecord<>(\"order-audit\", record.key(),\n                new AuditEvent(\"enriched\", record.key(), Instant.now())));\n\n            // If order value > threshold, also produce to high-value topic\n            if (enriched.getTotalValue() > HIGH_VALUE_THRESHOLD) {\n                producer.send(new ProducerRecord<>(\"high-value-orders\", record.key(), enriched));\n            }\n        }\n\n        // Atomically commit consumer offsets as part of the transaction\n        // This ensures exactly-once: offsets and output messages commit together\n        Map<TopicPartition, OffsetAndMetadata> offsets = computeOffsets(records);\n        producer.sendOffsetsToTransaction(offsets, consumer.groupMetadata());\n\n        // Commit transaction: all messages + offsets become visible atomically\n        producer.commitTransaction();\n\n    } catch (ProducerFencedException | InvalidProducerEpochException e) {\n        // Another producer with same transactional.id has been initialized (zombie fencing)\n        log.error(\"Producer fenced — shutting down\", e);\n        producer.close();\n        throw e;\n    } catch (KafkaException e) {\n        // Abort transaction: all messages in this transaction are discarded\n        producer.abortTransaction();\n        log.warn(\"Transaction aborted, will retry on next poll\", e);\n        // Consumer will re-read the same records on next poll (offsets not committed)\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Kafka Streams with exactly-once processing guarantee\nProperties streamsProps = new Properties();\nstreamsProps.put(StreamsConfig.APPLICATION_ID_CONFIG, \"order-analytics\");\nstreamsProps.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\n\n// Exactly-once v2 (Kafka 3.0+): uses a single transaction per task\n// More efficient than v1 which used a transaction per partition\nstreamsProps.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);\n\n// EOS-compatible settings (automatically configured by Streams, shown for clarity)\nstreamsProps.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 100); // Frequent commits for low latency\nstreamsProps.put(StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG), \"all\");\nstreamsProps.put(StreamsConfig.producerPrefix(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG), true);\n\nStreamsBuilder builder = new StreamsBuilder();\n\n// Consume-transform-produce with exactly-once guarantee\nKStream<String, OrderEvent> orders = builder.stream(\"raw-orders\");\n\n// Stateful aggregation: revenue per customer (state store backed by changelog topic)\nKTable<String, CustomerRevenue> customerRevenue = orders\n    .groupBy((key, order) -> order.getCustomerId())\n    .aggregate(\n        CustomerRevenue::new,\n        (customerId, order, revenue) -> revenue.addOrder(order),\n        Materialized.<String, CustomerRevenue, KeyValueStore<Bytes, byte[]>>as(\"customer-revenue\")\n            .withKeySerde(Serdes.String())\n            .withValueSerde(customerRevenueSerde)\n    );\n\n// Output enriched stream\ncustomerRevenue.toStream()\n    .filter((customerId, revenue) -> revenue.getTotalOrders() > 10)\n    .to(\"vip-customers\", Produced.with(Serdes.String(), customerRevenueSerde));\n\n// With exactly_once_v2:\n// - Input offset commit, state store update, and output writes are atomic\n// - If a task fails mid-processing, the transaction is aborted\n// - On recovery, the task resumes from the last committed offset\n// - State store is restored from changelog (also transactional)\n// - No duplicates in output topics, no double-counting in aggregations\n\nKafkaStreams streams = new KafkaStreams(builder.build(), streamsProps);\nstreams.start();",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/messaging/exactly-once-semantics.md",
+    "wordCount": 1637,
+    "sectionCount": 12
+  }
+}

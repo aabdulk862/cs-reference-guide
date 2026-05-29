@@ -7,5 +7,10 @@ This multi-page guide covers the major messaging platforms and patterns used in 
 ## Learning Path
 
 1. [Apache Kafka](./apache-kafka.md) — Distributed event streaming platform for high-throughput, fault-tolerant messaging with log-based persistence
-2. [RabbitMQ](./rabbitmq.md) — Traditional message broker with sophisticated routing, delivery guarantees, and multiple messaging patterns
-3. [Messaging Patterns and Architecture](./messaging-patterns.md) — Event-driven architecture, CQRS, event sourcing, and choosing between messaging platforms
+2. [Partition Assignment Strategies](./partition-strategies.md) — Range, round-robin, sticky, and cooperative sticky assignors for consumer group partition distribution
+3. [Consumer Group Rebalancing](./consumer-rebalancing.md) — Eager vs incremental cooperative rebalancing, triggers, static membership, and rebalance optimization
+4. [Exactly-Once Semantics](./exactly-once-semantics.md) — Idempotent producers, transactional API, read-committed isolation, and end-to-end EOS guarantees
+5. [ISR Mechanics](./isr-mechanics.md) — Replica lag detection, ISR shrink/expand, unclean leader election, and durability configuration
+6. [Dead Letter Queues](./dead-letter-queues.md) — Poison pill handling, retry topic patterns, DLQ monitoring, and message reprocessing strategies
+7. [RabbitMQ](./rabbitmq.md) — Traditional message broker with sophisticated routing, delivery guarantees, and multiple messaging patterns
+8. [Messaging Patterns and Architecture](./messaging-patterns.md) — Event-driven architecture, CQRS, event sourcing, and choosing between messaging platforms

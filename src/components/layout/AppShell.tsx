@@ -93,9 +93,22 @@ export function AppShell() {
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             type="button"
           >
-            <span className="sidebar-collapse-btn__icon" aria-hidden="true">
-              {isSidebarCollapsed ? '›' : '‹'}
-            </span>
+            <svg
+              className="sidebar-collapse-btn__chevron"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d={isSidebarCollapsed ? 'M6 3l5 5-5 5' : 'M10 3l-5 5 5 5'}
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
         <main className="app-main" id="main-content">

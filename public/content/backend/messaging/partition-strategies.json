@@ -1,0 +1,263 @@
+{
+  "id": "messaging-partition-assignment-strategies",
+  "slug": "partition-strategies",
+  "title": "Partition Assignment Strategies",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Range Assignor (default before 3.0): Assigns contiguous partition ranges per topic to consumers alphabetically; causes uneven distribution with many topics and few consumers",
+            "Round-Robin Assignor: Distributes partitions across consumers in circular fashion across all subscribed topics; achieves better balance but breaks co-partitioning guarantees",
+            "Sticky Assignor: Maximizes partition stickiness during rebalances — retains as many existing assignments as possible while achieving balance; reduces state rebuilding cost",
+            "Cooperative Sticky Assignor (recommended for Kafka 3.0+): Combines sticky assignment with incremental cooperative rebalancing protocol; avoids stop-the-world pauses during rebalances",
+            "Partition assignment is triggered during consumer group rebalances and executed by the group leader (first consumer to join)",
+            "Custom assignors can be implemented via ConsumerPartitionAssignor interface for domain-specific routing (e.g., rack-aware, zone-aware)",
+            "The partition.assignment.strategy consumer config accepts a comma-separated list of assignor classes; the group leader selects the first strategy supported by all members"
+          ]
+        }
+      ],
+      "wordCount": 139,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Use Range Assignor when you need co-partitioned joins between topics (e.g., Kafka Streams applications joining two topics by key where partition N of topic A must be consumed by the same consumer as partition N of topic B). Range assignment preserves this co-location property but at the cost of potential imbalance when the number of partitions is not evenly divisible by the number of consumers."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Round-Robin Assignor when all consumers subscribe to the same set of topics and you want maximum balance without co-partitioning requirements. This works well for stateless consumers processing independent events where any consumer can handle any partition without needing correlated data from other topics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Sticky Assignor when consumers maintain local state (caches, in-memory aggregations, local RocksDB stores) that is expensive to rebuild. The sticky property minimizes partition movement during rebalances, reducing the cold-start penalty. This is particularly valuable for Kafka Streams applications with large state stores that take minutes to restore from changelog topics."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use Cooperative Sticky Assignor in production environments where you cannot tolerate the stop-the-world pause of eager rebalancing. This is the recommended default for Kafka 3.0+ deployments. It enables incremental rebalancing where only the partitions that need to move are revoked, while all other partitions continue processing uninterrupted."
+        },
+        {
+          "type": "paragraph",
+          "text": "Implement a Custom Assignor when you need rack-aware assignment (keep partitions on consumers in the same availability zone as the partition leader), weighted assignment (assign more partitions to consumers with more resources), or topic-priority assignment (ensure high-priority topics are assigned to dedicated consumers first)."
+        }
+      ],
+      "wordCount": 251,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "configuring-assignment-strategies",
+          "heading": "Configuring Assignment Strategies",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Consumer configuration with cooperative sticky assignor (recommended)\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\n\n// Use cooperative sticky assignor for incremental rebalancing\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\n// Important: with cooperative protocol, partitions are revoked incrementally\n// The consumer will receive onPartitionsRevoked() only for partitions being moved\n// Other partitions continue processing during the rebalance\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(props);\n\n// Rebalance listener adapted for cooperative protocol\nconsumer.subscribe(List.of(\"order-events\", \"payment-events\"), new ConsumerRebalanceListener() {\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        // With cooperative: only called for partitions being moved away\n        // Commit offsets for revoked partitions only\n        Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();\n        for (TopicPartition tp : partitions) {\n            offsets.put(tp, new OffsetAndMetadata(currentOffsets.get(tp)));\n        }\n        consumer.commitSync(offsets);\n        log.info(\"Revoked {} partitions: {}\", partitions.size(), partitions);\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        // Initialize state for newly assigned partitions\n        for (TopicPartition tp : partitions) {\n            initializePartitionState(tp);\n        }\n        log.info(\"Assigned {} partitions: {}\", partitions.size(), partitions);\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        // Called when partitions are lost without a clean revocation\n        // (e.g., consumer exceeded session timeout)\n        // State for these partitions may be stale — clean up without committing\n        for (TopicPartition tp : partitions) {\n            cleanupPartitionState(tp);\n        }\n        log.warn(\"Lost {} partitions unexpectedly: {}\", partitions.size(), partitions);\n    }\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "implementing-a-custom-rack-aware-assignor",
+          "heading": "Implementing a Custom Rack-Aware Assignor",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "public class RackAwareAssignor extends AbstractPartitionAssignor {\n\n    @Override\n    public String name() {\n        return \"rack-aware\";\n    }\n\n    @Override\n    public Map<String, List<TopicPartition>> assign(\n            Map<String, Integer> partitionsPerTopic,\n            Map<String, Subscription> subscriptions) {\n\n        // Build consumer-to-rack mapping from subscription user data\n        Map<String, String> consumerRacks = new HashMap<>();\n        for (Map.Entry<String, Subscription> entry : subscriptions.entrySet()) {\n            String consumerId = entry.getKey();\n            String rack = extractRack(entry.getValue().userData());\n            consumerRacks.put(consumerId, rack);\n        }\n\n        // Build partition-to-rack mapping (leader broker rack)\n        Map<TopicPartition, String> partitionRacks = getPartitionLeaderRacks();\n\n        // Assign partitions preferring same-rack consumers\n        Map<String, List<TopicPartition>> assignment = new HashMap<>();\n        subscriptions.keySet().forEach(c -> assignment.put(c, new ArrayList<>()));\n\n        for (Map.Entry<String, Integer> topicEntry : partitionsPerTopic.entrySet()) {\n            String topic = topicEntry.getKey();\n            int numPartitions = topicEntry.getValue();\n\n            for (int partition = 0; partition < numPartitions; partition++) {\n                TopicPartition tp = new TopicPartition(topic, partition);\n                String partitionRack = partitionRacks.getOrDefault(tp, \"unknown\");\n\n                // Find consumers in the same rack\n                List<String> sameRackConsumers = subscriptions.keySet().stream()\n                    .filter(c -> subscriptions.get(c).topics().contains(topic))\n                    .filter(c -> partitionRack.equals(consumerRacks.get(c)))\n                    .collect(Collectors.toList());\n\n                // Assign to least-loaded same-rack consumer, or least-loaded overall\n                String target;\n                if (!sameRackConsumers.isEmpty()) {\n                    target = sameRackConsumers.stream()\n                        .min(Comparator.comparingInt(c -> assignment.get(c).size()))\n                        .orElseThrow();\n                } else {\n                    target = subscriptions.keySet().stream()\n                        .filter(c -> subscriptions.get(c).topics().contains(topic))\n                        .min(Comparator.comparingInt(c -> assignment.get(c).size()))\n                        .orElseThrow();\n                }\n                assignment.get(target).add(tp);\n            }\n        }\n        return assignment;\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "spring-kafka-configuration-with-cooperative-assignor",
+          "heading": "Spring Kafka Configuration with Cooperative Assignor",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "yaml",
+              "code": "# application.yml - Spring Kafka consumer configuration\nspring:\n  kafka:\n    bootstrap-servers: broker1:9092,broker2:9092,broker3:9092\n    consumer:\n      group-id: order-service\n      auto-offset-reset: earliest\n      enable-auto-commit: false\n      properties:\n        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor\n        # Cooperative protocol settings\n        session.timeout.ms: 45000\n        heartbeat.interval.ms: 15000\n        max.poll.interval.ms: 300000\n    listener:\n      ack-mode: manual_immediate\n      concurrency: 3  # Number of consumer threads (max = partition count)",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "graph TB\n    subgraph \"Range Assignor (3 consumers, 6 partitions, 2 topics)\"\n        direction LR\n        RA_C0[\"Consumer 0<br/>T1-P0, T1-P1<br/>T2-P0, T2-P1\"]\n        RA_C1[\"Consumer 1<br/>T1-P2, T1-P3<br/>T2-P2, T2-P3\"]\n        RA_C2[\"Consumer 2<br/>T1-P4, T1-P5<br/>T2-P4, T2-P5\"]\n    end\n\n    subgraph \"Round-Robin Assignor (same setup)\"\n        direction LR\n        RR_C0[\"Consumer 0<br/>T1-P0, T1-P3<br/>T2-P0, T2-P3\"]\n        RR_C1[\"Consumer 1<br/>T1-P1, T1-P4<br/>T2-P1, T2-P4\"]\n        RR_C2[\"Consumer 2<br/>T1-P2, T1-P5<br/>T2-P2, T2-P5\"]\n    end"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant GL as Group Leader\n    participant GC as Group Coordinator\n    participant C1 as Consumer 1\n    participant C2 as Consumer 2\n\n    Note over GL,C2: Cooperative Sticky Rebalance (new consumer joins)\n\n    C2->>GC: JoinGroup request\n    GC->>GL: Trigger rebalance (JoinGroup response with member list)\n    GL->>GL: Compute new assignment<br/>(minimize partition movement)\n    GL->>GC: SyncGroup (new assignment)\n    GC->>C1: SyncGroup response<br/>(revoke P3, P4 only)\n    GC->>C2: SyncGroup response<br/>(assign P3, P4)\n\n    Note over C1: Continues processing P0, P1, P2<br/>Only pauses P3, P4\n    C1->>GC: Acknowledge revocation of P3, P4\n    C2->>C2: Initialize state for P3, P4\n    C2->>GC: Begin consuming P3, P4\n\n    Note over GL,C2: Total pause: only 2 partitions, not all 5"
+        },
+        {
+          "type": "mermaid",
+          "source": "graph LR\n    subgraph \"Sticky Assignor - Before Rebalance\"\n        B_C0[\"Consumer 0: P0, P1, P2\"]\n        B_C1[\"Consumer 1: P3, P4, P5\"]\n    end\n\n    subgraph \"Sticky Assignor - After C2 Joins\"\n        A_C0[\"Consumer 0: P0, P1\"]\n        A_C1[\"Consumer 1: P3, P4\"]\n        A_C2[\"Consumer 2: P2, P5\"]\n    end\n\n    B_C0 -->|\"keeps P0, P1\"| A_C0\n    B_C1 -->|\"keeps P3, P4\"| A_C1\n    B_C0 -->|\"moves P2\"| A_C2\n    B_C1 -->|\"moves P5\"| A_C2"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Mixing eager and cooperative assignors in the same group: If even one consumer in the group uses an eager assignor (Range, RoundRobin, or non-cooperative Sticky), the entire group falls back to the eager protocol. All consumers in a group must use the cooperative protocol for incremental rebalancing to work. During migration, use the two-phase rolling upgrade: first deploy with both old and new assignors in the strategy list, then remove the old one.",
+            "Co-partitioning broken by round-robin: When using Kafka Streams or manual stream-table joins that require partition N of topic A to be processed by the same consumer as partition N of topic B, round-robin assignment breaks this guarantee. Use Range or Sticky assignor for co-partitioned workloads, or ensure topics have identical partition counts and key schemas.",
+            "Uneven distribution with Range assignor and many topics: With Range assignor, if you have 10 topics each with 7 partitions and 3 consumers, consumer 0 gets partitions 0-2 from each topic (30 partitions) while consumer 2 gets partitions 5-6 from each topic (20 partitions). The imbalance compounds with more topics. Switch to Sticky or Round-Robin for better balance when co-partitioning is not required.",
+            "Ignoring onPartitionsLost with cooperative protocol: The cooperative protocol introduces onPartitionsLost() which is called when partitions are taken away without a clean revocation (consumer exceeded session timeout). Unlike onPartitionsRevoked(), you should NOT commit offsets in onPartitionsLost() because another consumer may already be processing those partitions. Failing to handle this correctly leads to offset conflicts and duplicate processing.",
+            "Static membership misconfiguration: Setting group.instance.id enables static membership (avoids rebalance on transient disconnects) but requires that each consumer instance has a globally unique, stable instance ID. If two consumers share the same instance ID, one will be fenced. If instance IDs change across restarts (e.g., using pod IP), you lose the static membership benefit entirely."
+          ]
+        }
+      ],
+      "wordCount": 302,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Multi-tenant event processing: A SaaS platform uses a custom partition assignor that routes tenant-specific partitions to consumers in the same region as the tenant's data residency requirement. High-value tenants get dedicated consumer instances while smaller tenants share consumers, all managed through custom assignment logic that reads tenant metadata from the subscription's user data field.",
+            "Kafka Streams state store optimization: A real-time analytics service uses the Sticky assignor to minimize state store restoration during deployments. Each Kafka Streams instance maintains a 50GB RocksDB state store backed by a changelog topic. Without sticky assignment, a rolling restart would trigger full state restoration (15+ minutes per instance). With sticky assignment, partitions stay on the same instance across rebalances, requiring only a brief catch-up from the changelog rather than a full rebuild.",
+            "Zero-downtime deployments with cooperative rebalancing: An e-commerce platform processes 500K orders/minute through Kafka consumers. Before cooperative rebalancing, each deployment caused a 30-second processing pause across all partitions during the eager rebalance. After migrating to CooperativeStickyAssignor, deployments cause only 2-3 second pauses on the specific partitions being moved, with 95% of partitions continuing uninterrupted throughout the rolling restart.",
+            "Rack-aware assignment for latency reduction: A financial trading platform implements a custom rack-aware assignor that preferentially assigns partitions to consumers in the same availability zone as the partition leader broker. This reduces cross-AZ network latency from 2-5ms to sub-millisecond for read-heavy workloads, critical for their sub-10ms processing SLA."
+          ]
+        }
+      ],
+      "wordCount": 233,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "What is the difference between Range and Round-Robin partition assignment, and when would you choose each?",
+          "answer": "Range assignor divides partitions of each topic into contiguous ranges and assigns them to consumers in alphabetical order. For topic T with 7 partitions and 3 consumers: C0 gets P0-P2, C1 gets P3-P4, C2 gets P5-P6. This preserves co-partitioning (same consumer gets partition N across topics) but creates imbalance when partition count is not divisible by consumer count. Round-Robin distributes partitions one-by-one across consumers in circular order across all topics, achieving better balance but breaking co-partitioning. Choose Range for Kafka Streams joins or any workload requiring correlated partition processing. Choose Round-Robin for stateless consumers where balance matters more than partition affinity."
+        },
+        {
+          "type": "interview",
+          "question": "Explain how the Cooperative Sticky Assignor differs from the eager Sticky Assignor and why it matters in production.",
+          "answer": "The eager Sticky Assignor revokes ALL partitions from ALL consumers at the start of a rebalance, then reassigns them (trying to maintain stickiness). During revocation, no consumer processes any messages — a stop-the-world pause. The Cooperative Sticky Assignor uses a two-phase protocol: first, it computes the new assignment and only revokes partitions that need to move. Consumers continue processing their retained partitions throughout the rebalance. In production with 100+ partitions, this reduces rebalance impact from a full processing halt (seconds to minutes) to a targeted pause affecting only the 2-3 partitions being relocated. This is critical for latency-sensitive workloads where even brief processing gaps violate SLAs."
+        },
+        {
+          "type": "interview",
+          "question": "How would you implement a custom partition assignor, and what are the key considerations?",
+          "answer": "Implement ConsumerPartitionAssignor interface with the assign() method that receives partition metadata and consumer subscriptions, returning a mapping of consumer IDs to partition lists. Key considerations: (1) Balance — ensure roughly equal partition counts per consumer to avoid hotspots. (2) Stickiness — track previous assignments and minimize movement to reduce state rebuilding. (3) Subscription heterogeneity — handle consumers subscribing to different topic subsets. (4) User data — leverage the subscription's userData field to pass consumer metadata (rack, capacity, priority) to the assignor. (5) Determinism — the assignment must be deterministic given the same inputs, as the group coordinator validates the leader's assignment. Common use cases include rack-aware assignment, weighted assignment based on consumer capacity, and priority-based assignment for multi-tier processing."
+        },
+        {
+          "type": "interview",
+          "question": "What happens during a partition reassignment when a consumer maintains local state?",
+          "answer": "When a partition is revoked from a consumer with local state (e.g., Kafka Streams RocksDB store), the consumer must: (1) flush any pending writes to the state store, (2) commit the current offset for that partition, (3) close the state store for that partition. When the new consumer receives the partition, it must: (1) create a new state store instance, (2) restore state from the changelog topic (replay all records from the beginning or from the last checkpoint), (3) begin processing from the committed offset. This restoration can take minutes for large state stores. The Sticky assignor minimizes this by keeping partitions on the same consumer across rebalances. Standby replicas (num.standby.replicas) can pre-warm state on other consumers to reduce failover time."
+        }
+      ],
+      "wordCount": 507,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Migrating to cooperative protocol: Perform a two-phase rolling upgrade. Phase 1: configure all consumers with both assignors (RangeAssignor,CooperativeStickyAssignor). Deploy to all instances. Phase 2: remove the old assignor, leaving only CooperativeStickyAssignor. Deploy again. This ensures the group never has a mix of cooperative-only and eager-only consumers, which would cause assignment failures.",
+            "Monitoring assignment balance: Track the partition-assigned metric per consumer instance and alert when the standard deviation exceeds 20% of the mean. Unbalanced assignment indicates either a misconfigured assignor or heterogeneous subscriptions. Use kafka-consumer-groups.sh --describe to inspect current assignment and identify imbalances before they cause consumer lag on overloaded instances.",
+            "Tuning for large consumer groups: Groups with 50+ consumers experience longer rebalance times due to the JoinGroup/SyncGroup protocol overhead. Increase session.timeout.ms to 45-60 seconds to prevent false timeouts during rebalances. Set group.initial.rebalance.delay.ms on the broker (default 3 seconds) to batch multiple consumer joins into a single rebalance rather than triggering cascading rebalances as consumers start sequentially."
+          ]
+        }
+      ],
+      "wordCount": 156,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Consumer Rebalancing — Deep dive into the rebalancing protocol that triggers partition reassignment",
+            "Apache Kafka — Comprehensive Kafka overview covering producers, consumers, and streaming",
+            "Messaging Patterns and Architecture — Higher-level patterns for event-driven systems built on Kafka"
+          ]
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Consumer configuration with cooperative sticky assignor (recommended)\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"order-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\n\n// Use cooperative sticky assignor for incremental rebalancing\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\n// Important: with cooperative protocol, partitions are revoked incrementally\n// The consumer will receive onPartitionsRevoked() only for partitions being moved\n// Other partitions continue processing during the rebalance\n\nKafkaConsumer<String, OrderEvent> consumer = new KafkaConsumer<>(props);\n\n// Rebalance listener adapted for cooperative protocol\nconsumer.subscribe(List.of(\"order-events\", \"payment-events\"), new ConsumerRebalanceListener() {\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        // With cooperative: only called for partitions being moved away\n        // Commit offsets for revoked partitions only\n        Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();\n        for (TopicPartition tp : partitions) {\n            offsets.put(tp, new OffsetAndMetadata(currentOffsets.get(tp)));\n        }\n        consumer.commitSync(offsets);\n        log.info(\"Revoked {} partitions: {}\", partitions.size(), partitions);\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        // Initialize state for newly assigned partitions\n        for (TopicPartition tp : partitions) {\n            initializePartitionState(tp);\n        }\n        log.info(\"Assigned {} partitions: {}\", partitions.size(), partitions);\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        // Called when partitions are lost without a clean revocation\n        // (e.g., consumer exceeded session timeout)\n        // State for these partitions may be stale — clean up without committing\n        for (TopicPartition tp : partitions) {\n            cleanupPartitionState(tp);\n        }\n        log.warn(\"Lost {} partitions unexpectedly: {}\", partitions.size(), partitions);\n    }\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "public class RackAwareAssignor extends AbstractPartitionAssignor {\n\n    @Override\n    public String name() {\n        return \"rack-aware\";\n    }\n\n    @Override\n    public Map<String, List<TopicPartition>> assign(\n            Map<String, Integer> partitionsPerTopic,\n            Map<String, Subscription> subscriptions) {\n\n        // Build consumer-to-rack mapping from subscription user data\n        Map<String, String> consumerRacks = new HashMap<>();\n        for (Map.Entry<String, Subscription> entry : subscriptions.entrySet()) {\n            String consumerId = entry.getKey();\n            String rack = extractRack(entry.getValue().userData());\n            consumerRacks.put(consumerId, rack);\n        }\n\n        // Build partition-to-rack mapping (leader broker rack)\n        Map<TopicPartition, String> partitionRacks = getPartitionLeaderRacks();\n\n        // Assign partitions preferring same-rack consumers\n        Map<String, List<TopicPartition>> assignment = new HashMap<>();\n        subscriptions.keySet().forEach(c -> assignment.put(c, new ArrayList<>()));\n\n        for (Map.Entry<String, Integer> topicEntry : partitionsPerTopic.entrySet()) {\n            String topic = topicEntry.getKey();\n            int numPartitions = topicEntry.getValue();\n\n            for (int partition = 0; partition < numPartitions; partition++) {\n                TopicPartition tp = new TopicPartition(topic, partition);\n                String partitionRack = partitionRacks.getOrDefault(tp, \"unknown\");\n\n                // Find consumers in the same rack\n                List<String> sameRackConsumers = subscriptions.keySet().stream()\n                    .filter(c -> subscriptions.get(c).topics().contains(topic))\n                    .filter(c -> partitionRack.equals(consumerRacks.get(c)))\n                    .collect(Collectors.toList());\n\n                // Assign to least-loaded same-rack consumer, or least-loaded overall\n                String target;\n                if (!sameRackConsumers.isEmpty()) {\n                    target = sameRackConsumers.stream()\n                        .min(Comparator.comparingInt(c -> assignment.get(c).size()))\n                        .orElseThrow();\n                } else {\n                    target = subscriptions.keySet().stream()\n                        .filter(c -> subscriptions.get(c).topics().contains(topic))\n                        .min(Comparator.comparingInt(c -> assignment.get(c).size()))\n                        .orElseThrow();\n                }\n                assignment.get(target).add(tp);\n            }\n        }\n        return assignment;\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "yaml",
+      "code": "# application.yml - Spring Kafka consumer configuration\nspring:\n  kafka:\n    bootstrap-servers: broker1:9092,broker2:9092,broker3:9092\n    consumer:\n      group-id: order-service\n      auto-offset-reset: earliest\n      enable-auto-commit: false\n      properties:\n        partition.assignment.strategy: org.apache.kafka.clients.consumer.CooperativeStickyAssignor\n        # Cooperative protocol settings\n        session.timeout.ms: 45000\n        heartbeat.interval.ms: 15000\n        max.poll.interval.ms: 300000\n    listener:\n      ack-mode: manual_immediate\n      concurrency: 3  # Number of consumer threads (max = partition count)",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/messaging/partition-strategies.md",
+    "wordCount": 1625,
+    "sectionCount": 12
+  }
+}

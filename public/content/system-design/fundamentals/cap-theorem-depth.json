@@ -1,0 +1,262 @@
+{
+  "id": "fundamentals-cap-theorem-in-depth",
+  "slug": "cap-theorem-depth",
+  "title": "CAP Theorem In Depth",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "CAP theorem (Brewer's theorem): In the presence of a network partition, a distributed system must choose between consistency (C) and availability (A) — you cannot guarantee both simultaneously",
+            "The formal proof by Gilbert and Lynch (2002) models a distributed system as asynchronous processes communicating via unreliable channels, showing that no algorithm can simultaneously satisfy atomic consistency, availability, and partition tolerance",
+            "PACELC extends CAP: if there is a Partition, choose between Availability and Consistency; Else (normal operation), choose between Latency and Consistency",
+            "Real systems are not binary CP or AP — they exist on a spectrum and often make different trade-offs for different operations or data types within the same system",
+            "Partition tolerance is not optional in production distributed systems; the real choice is between CP (sacrifice availability during partitions) and AP (sacrifice consistency during partitions)",
+            "CAP consistency refers specifically to linearizability (atomic consistency), not the \"C\" in ACID which refers to application-level invariants",
+            "Network partitions in production are more nuanced than total disconnection — asymmetric partitions, partial partitions, and gray failures are common"
+          ]
+        }
+      ],
+      "wordCount": 173,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "CAP theorem analysis applies when you are designing any system that stores data across multiple nodes connected by a network. You need deep CAP understanding when choosing between database technologies (e.g., DynamoDB vs. CockroachDB), when designing replication strategies for stateful services, when configuring consistency levels in systems like Cassandra or Cosmos DB, when reasoning about failure modes during system design interviews, and when making architectural decisions about how your system behaves during network issues. PACELC is particularly relevant when you need to reason about latency trade-offs during normal (non-partitioned) operation — which is the majority of the time in well-run production systems."
+        }
+      ],
+      "wordCount": 102,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "configuring-consistency-levels-in-cassandra-demonstrating-cap-trade-offs",
+          "heading": "Configuring Consistency Levels in Cassandra (Demonstrating CAP Trade-offs)",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import com.datastax.oss.driver.api.core.CqlSession;\nimport com.datastax.oss.driver.api.core.ConsistencyLevel;\nimport com.datastax.oss.driver.api.core.cql.SimpleStatement;\nimport com.datastax.oss.driver.api.core.cql.ResultSet;\n\npublic class CassandraConsistencyDemo {\n\n    private final CqlSession session;\n\n    public CassandraConsistencyDemo(CqlSession session) {\n        this.session = session;\n    }\n\n    /**\n     * Strong consistency (CP behavior): QUORUM read + QUORUM write\n     * guarantees linearizable reads when RF=3.\n     * Trade-off: Higher latency, reduced availability during partitions.\n     */\n    public ResultSet readStrongConsistency(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.QUORUM)  // Majority must respond\n            .build();\n        return session.execute(stmt);\n    }\n\n    /**\n     * Eventual consistency (AP behavior): ONE read + ONE write\n     * maximizes availability and minimizes latency.\n     * Trade-off: May read stale data; relies on anti-entropy repair.\n     */\n    public ResultSet readEventualConsistency(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.ONE)  // Any single replica\n            .build();\n        return session.execute(stmt);\n    }\n\n    /**\n     * Write with LOCAL_QUORUM for multi-datacenter deployments.\n     * Provides strong consistency within a datacenter while allowing\n     * async replication across datacenters (PA/EL in PACELC terms).\n     */\n    public void writeLocalStrong(String userId, String name, String email) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"INSERT INTO users (user_id, name, email, updated_at) VALUES (?, ?, ?, toTimestamp(now()))\")\n            .addPositionalValues(userId, name, email)\n            .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)\n            .build();\n        session.execute(stmt);\n    }\n\n    /**\n     * Demonstrates the CAP trade-off: if we require ALL replicas,\n     * a single node failure makes the operation unavailable (extreme CP).\n     */\n    public ResultSet readAllReplicas(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.ALL)  // Every replica must respond\n            .build();\n        return session.execute(stmt);\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "implementing-a-simple-partition-detector-and-mode-switcher",
+          "heading": "Implementing a Simple Partition Detector and Mode Switcher",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { EventEmitter } from 'events';\n\ninterface PartitionDetectorConfig {\n  heartbeatIntervalMs: number;\n  heartbeatTimeoutMs: number;\n  minReachableNodes: number;  // Minimum nodes to consider \"not partitioned\"\n  totalNodes: number;\n}\n\ntype SystemMode = 'consistent' | 'available';\n\n/**\n * Detects network partitions by monitoring heartbeats from peer nodes.\n * When a partition is detected, the system switches from CP mode to AP mode\n * (or vice versa) based on configuration.\n */\nclass PartitionAwareService extends EventEmitter {\n  private reachableNodes: Set<string> = new Set();\n  private currentMode: SystemMode = 'consistent';\n  private config: PartitionDetectorConfig;\n  private lastHeartbeat: Map<string, number> = new Map();\n\n  constructor(config: PartitionDetectorConfig) {\n    super();\n    this.config = config;\n  }\n\n  /**\n   * Called when a heartbeat is received from a peer node.\n   */\n  onHeartbeatReceived(nodeId: string): void {\n    this.lastHeartbeat.set(nodeId, Date.now());\n    this.reachableNodes.add(nodeId);\n    this.evaluatePartitionState();\n  }\n\n  /**\n   * Periodic check: mark nodes as unreachable if heartbeat timed out.\n   */\n  checkHeartbeats(): void {\n    const now = Date.now();\n    for (const [nodeId, lastSeen] of this.lastHeartbeat.entries()) {\n      if (now - lastSeen > this.config.heartbeatTimeoutMs) {\n        this.reachableNodes.delete(nodeId);\n      }\n    }\n    this.evaluatePartitionState();\n  }\n\n  /**\n   * Evaluate whether we are in a partition and switch modes accordingly.\n   * This implements the \"P\" decision in CAP/PACELC.\n   */\n  private evaluatePartitionState(): void {\n    const reachableCount = this.reachableNodes.size;\n    const previousMode = this.currentMode;\n\n    if (reachableCount < this.config.minReachableNodes) {\n      // Partition detected: not enough nodes reachable for quorum\n      // Switch to AP mode: accept writes locally, reconcile later\n      this.currentMode = 'available';\n    } else {\n      // Sufficient nodes reachable: operate in CP mode with quorum\n      this.currentMode = 'consistent';\n    }\n\n    if (previousMode !== this.currentMode) {\n      this.emit('modeChange', {\n        from: previousMode,\n        to: this.currentMode,\n        reachableNodes: reachableCount,\n        totalNodes: this.config.totalNodes,\n      });\n    }\n  }\n\n  getMode(): SystemMode {\n    return this.currentMode;\n  }\n\n  /**\n   * Application-level decision: how to handle a write based on current mode.\n   */\n  async handleWrite(key: string, value: unknown): Promise<WriteResult> {\n    if (this.currentMode === 'consistent') {\n      // CP mode: require quorum acknowledgment before confirming write\n      return this.writeWithQuorum(key, value);\n    } else {\n      // AP mode: accept write locally, queue for reconciliation\n      return this.writeLocalWithReconciliation(key, value);\n    }\n  }\n\n  private async writeWithQuorum(key: string, value: unknown): Promise<WriteResult> {\n    // Implementation: replicate to majority before ACK\n    return { status: 'committed', mode: 'consistent', replicas: this.config.minReachableNodes };\n  }\n\n  private async writeLocalWithReconciliation(key: string, value: unknown): Promise<WriteResult> {\n    // Implementation: write locally, add to reconciliation queue\n    return { status: 'accepted', mode: 'available', pendingReconciliation: true };\n  }\n}\n\ninterface WriteResult {\n  status: 'committed' | 'accepted';\n  mode: SystemMode;\n  replicas?: number;\n  pendingReconciliation?: boolean;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "cap-theorem-decision-space",
+          "heading": "CAP Theorem Decision Space",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    A[Network Partition Occurs] --> B{Choose Trade-off}\n    B -->|Sacrifice Availability| C[CP: Consistent + Partition Tolerant]\n    B -->|Sacrifice Consistency| D[AP: Available + Partition Tolerant]\n    \n    C --> C1[Reject writes on minority side]\n    C --> C2[Return errors until quorum restored]\n    C --> C3[Examples: ZooKeeper, HBase, Spanner]\n    \n    D --> D1[Accept writes on all sides]\n    D --> D2[Reconcile conflicts after partition heals]\n    D --> D3[Examples: Cassandra, DynamoDB, CouchDB]\n    \n    E[No Partition - Normal Operation] --> F{PACELC: Else Choose}\n    F -->|Low Latency| G[EL: Sacrifice Consistency for Speed]\n    F -->|Strong Consistency| H[EC: Sacrifice Latency for Correctness]\n    \n    G --> G1[Async replication, read-local]\n    H --> H1[Sync replication, read-quorum]"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "pacelc-classification-of-real-systems",
+          "heading": "PACELC Classification of Real Systems",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph LR\n    subgraph \"PA/EL Systems\"\n        DynamoDB[DynamoDB]\n        Cassandra[Cassandra]\n        CouchDB[CouchDB]\n        Riak[Riak]\n    end\n    \n    subgraph \"PC/EC Systems\"\n        Spanner[Google Spanner]\n        ZooKeeper[ZooKeeper]\n        HBase[HBase]\n        VoltDB[VoltDB]\n    end\n    \n    subgraph \"PA/EC Systems\"\n        MongoDB[MongoDB]\n        PNUTS[Yahoo PNUTS]\n    end\n    \n    subgraph \"PC/EL Systems\"\n        CosmosDB[Cosmos DB*]\n    end\n    \n    note1[PA/EL = Available during partition + Low latency normally]\n    note2[PC/EC = Consistent during partition + Consistent normally]\n    note3[*Cosmos DB is configurable per-operation]"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "partition-scenarios-in-a-5-node-cluster",
+          "heading": "Partition Scenarios in a 5-Node Cluster",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant C as Client\n    participant N1 as Node 1 (Leader)\n    participant N2 as Node 2\n    participant N3 as Node 3\n    participant N4 as Node 4\n    participant N5 as Node 5\n    \n    Note over N1,N5: Normal Operation: All nodes reachable\n    C->>N1: Write(x=1)\n    N1->>N2: Replicate\n    N1->>N3: Replicate\n    N1-->>C: ACK (quorum=3 achieved)\n    \n    Note over N3,N5: ⚡ Network Partition: {N1,N2,N3} | {N4,N5}\n    \n    rect rgb(255, 230, 230)\n        Note over N4,N5: Minority partition (2 nodes)\n        C->>N4: Write(x=2)\n        Note over N4: CP: Reject (no quorum)<br/>AP: Accept locally\n    end\n    \n    rect rgb(230, 255, 230)\n        Note over N1,N3: Majority partition (3 nodes)\n        C->>N1: Write(x=3)\n        N1->>N2: Replicate\n        N1->>N3: Replicate\n        N1-->>C: ACK (quorum maintained)\n    end\n    \n    Note over N1,N5: Partition Heals\n    N1->>N4: Sync missed writes\n    N1->>N5: Sync missed writes"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Treating CAP as a permanent, system-wide binary choice — In practice, you can make different consistency/availability trade-offs per operation, per table, or per request. Cassandra's per-query consistency levels and Cosmos DB's configurable consistency are examples of this flexibility.",
+            "Confusing CAP consistency with ACID consistency — CAP's \"C\" means linearizability (every read returns the most recent write). ACID's \"C\" means application invariants are maintained. A system can be AP in CAP terms while still providing ACID transactions within a single partition.",
+            "Ignoring the \"Else\" in PACELC — Most systems spend the vast majority of their time not partitioned. The latency vs. consistency trade-off during normal operation (the EL/EC choice) often matters more for user experience than the PA/PC choice that only activates during rare partition events.",
+            "Assuming partitions are total and symmetric — Real network partitions are often partial (some nodes can reach some but not all peers), asymmetric (A can reach B but B cannot reach A), or transient (lasting milliseconds to seconds). Systems must handle these gray failures gracefully.",
+            "Believing \"CA\" systems exist in distributed deployments — A single-node PostgreSQL is effectively CA because there is no network partition possible. The moment you add replication across a network, partition tolerance becomes mandatory and you must choose between C and A during partitions.",
+            "Not considering the client's perspective — A system might be internally consistent, but if the client's connection to the system is partitioned, the client experiences unavailability regardless of the system's internal state. End-to-end reasoning is essential."
+          ]
+        }
+      ],
+      "wordCount": 249,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Amazon DynamoDB (PA/EL): DynamoDB defaults to eventually consistent reads for low latency and high availability. During partitions, it continues accepting writes on all reachable nodes and uses vector clocks (now last-writer-wins timestamps) for conflict resolution. For operations requiring strong consistency, clients can opt into strongly consistent reads at the cost of higher latency and reduced availability."
+        },
+        {
+          "type": "paragraph",
+          "text": "Google Spanner (PC/EC): Spanner uses TrueTime (GPS + atomic clocks) to implement externally consistent transactions across globally distributed data. It sacrifices availability during partitions (operations block until quorum is restored) and accepts higher latency during normal operation to maintain strong consistency. This makes it suitable for financial systems where correctness is paramount."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apache Cassandra (PA/EL, configurable): Cassandra allows per-query consistency level selection. A social media feed might use ONE consistency for reads (fast, eventually consistent) while a payment ledger uses QUORUM (slower, strongly consistent). During partitions, nodes in the minority partition continue serving reads and accepting writes at lower consistency levels."
+        },
+        {
+          "type": "paragraph",
+          "text": "MongoDB (PA/EC): MongoDB's replica sets elect a primary for writes (CP during partitions — minority partitions cannot write). However, secondary reads can be eventually consistent. In normal operation, reads from the primary are strongly consistent (EC), while reads from secondaries trade consistency for lower latency."
+        }
+      ],
+      "wordCount": 202,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "Can you have a \"CA\" distributed system? Why or why not?",
+          "answer": "No, not in a system distributed across a network. Partition tolerance is not a choice — network partitions will occur in any real distributed deployment. The CAP theorem proves that during a partition, you must sacrifice either consistency or availability. A single-node database is technically CA because no partition is possible, but the moment you replicate data across a network, you must handle the partition case. The practical choice is always between CP and AP behavior during partitions."
+        },
+        {
+          "type": "interview",
+          "question": "How does PACELC improve upon the original CAP theorem for system design decisions?",
+          "answer": "PACELC adds the crucial \"Else\" clause: when there is no partition (the common case), what trade-off does the system make between latency and consistency? This matters because systems spend 99.9%+ of their time not partitioned. A system like DynamoDB is PA/EL — it chooses availability during partitions AND low latency during normal operation (both at the cost of consistency). Spanner is PC/EC — it chooses consistency in both cases, accepting higher latency. PACELC helps you reason about the day-to-day performance characteristics, not just rare failure scenarios."
+        },
+        {
+          "type": "interview",
+          "question": "Explain how Cassandra allows you to tune the CAP trade-off per query.",
+          "answer": "Cassandra separates the consistency decision from the system architecture. With a replication factor of 3, you can write with QUORUM (2 of 3 must acknowledge) and read with QUORUM (2 of 3 must respond) to get strong consistency (R + W > N). Alternatively, write with ONE and read with ONE for maximum availability and minimum latency at the cost of potentially stale reads. You can even mix: write QUORUM for critical data and read ONE for non-critical queries. This per-query flexibility means the same cluster can serve both CP and AP workloads."
+        },
+        {
+          "type": "interview",
+          "question": "What is the practical difference between linearizability and sequential consistency in the context of CAP?",
+          "answer": "Linearizability (CAP's \"C\") requires that once a write completes, all subsequent reads from any client return that write's value — operations appear to take effect at a single instant between their invocation and response. Sequential consistency is weaker: it requires that all operations appear in some sequential order consistent with each process's program order, but this order need not respect real-time. A sequentially consistent system might let Client B read a stale value even after Client A's write completed, as long as Client B's reads are internally ordered. CAP's impossibility result specifically applies to linearizability; weaker consistency models can sometimes provide both availability and a useful form of consistency during partitions."
+        }
+      ],
+      "wordCount": 419,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Monitor replication lag as your primary consistency health metric. In AP systems, replication lag directly indicates how stale reads might be. Set alerts at thresholds meaningful to your business (e.g., 100ms for user-facing data, 5s for analytics). In Cassandra, monitor ReadRepairMetrics and HintedHandoffMetrics to understand how quickly inconsistencies are being resolved.",
+            "Design your system to be \"consistency-agnostic\" at the application layer. Build your services so they can operate correctly under eventual consistency (using idempotency, CRDTs, or application-level conflict resolution) but can be configured for strong consistency when needed. This gives you operational flexibility to tune the CAP trade-off without code changes.",
+            "Test partition behavior explicitly in pre-production. Use tools like Toxiproxy, tc (traffic control), or Chaos Monkey to simulate network partitions between nodes. Verify that your system behaves as expected: CP systems should reject operations on the minority side, AP systems should accept operations and reconcile correctly when the partition heals. Document the expected behavior for your operations team."
+          ]
+        }
+      ],
+      "wordCount": 159,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Consistency Models — Detailed exploration of linearizability, sequential consistency, causal consistency, and eventual consistency",
+            "Quorum Systems — How quorum reads and writes implement the consistency guarantees discussed in CAP",
+            "Vector Clocks — Conflict detection mechanisms used by AP systems to reconcile divergent state after partitions",
+            "Consistent Hashing — Data distribution strategy that determines which nodes own which data, directly affecting partition behavior"
+          ]
+        }
+      ],
+      "wordCount": 62,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import com.datastax.oss.driver.api.core.CqlSession;\nimport com.datastax.oss.driver.api.core.ConsistencyLevel;\nimport com.datastax.oss.driver.api.core.cql.SimpleStatement;\nimport com.datastax.oss.driver.api.core.cql.ResultSet;\n\npublic class CassandraConsistencyDemo {\n\n    private final CqlSession session;\n\n    public CassandraConsistencyDemo(CqlSession session) {\n        this.session = session;\n    }\n\n    /**\n     * Strong consistency (CP behavior): QUORUM read + QUORUM write\n     * guarantees linearizable reads when RF=3.\n     * Trade-off: Higher latency, reduced availability during partitions.\n     */\n    public ResultSet readStrongConsistency(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.QUORUM)  // Majority must respond\n            .build();\n        return session.execute(stmt);\n    }\n\n    /**\n     * Eventual consistency (AP behavior): ONE read + ONE write\n     * maximizes availability and minimizes latency.\n     * Trade-off: May read stale data; relies on anti-entropy repair.\n     */\n    public ResultSet readEventualConsistency(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.ONE)  // Any single replica\n            .build();\n        return session.execute(stmt);\n    }\n\n    /**\n     * Write with LOCAL_QUORUM for multi-datacenter deployments.\n     * Provides strong consistency within a datacenter while allowing\n     * async replication across datacenters (PA/EL in PACELC terms).\n     */\n    public void writeLocalStrong(String userId, String name, String email) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"INSERT INTO users (user_id, name, email, updated_at) VALUES (?, ?, ?, toTimestamp(now()))\")\n            .addPositionalValues(userId, name, email)\n            .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)\n            .build();\n        session.execute(stmt);\n    }\n\n    /**\n     * Demonstrates the CAP trade-off: if we require ALL replicas,\n     * a single node failure makes the operation unavailable (extreme CP).\n     */\n    public ResultSet readAllReplicas(String userId) {\n        SimpleStatement stmt = SimpleStatement.builder(\n                \"SELECT * FROM users WHERE user_id = ?\")\n            .addPositionalValue(userId)\n            .setConsistencyLevel(ConsistencyLevel.ALL)  // Every replica must respond\n            .build();\n        return session.execute(stmt);\n    }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { EventEmitter } from 'events';\n\ninterface PartitionDetectorConfig {\n  heartbeatIntervalMs: number;\n  heartbeatTimeoutMs: number;\n  minReachableNodes: number;  // Minimum nodes to consider \"not partitioned\"\n  totalNodes: number;\n}\n\ntype SystemMode = 'consistent' | 'available';\n\n/**\n * Detects network partitions by monitoring heartbeats from peer nodes.\n * When a partition is detected, the system switches from CP mode to AP mode\n * (or vice versa) based on configuration.\n */\nclass PartitionAwareService extends EventEmitter {\n  private reachableNodes: Set<string> = new Set();\n  private currentMode: SystemMode = 'consistent';\n  private config: PartitionDetectorConfig;\n  private lastHeartbeat: Map<string, number> = new Map();\n\n  constructor(config: PartitionDetectorConfig) {\n    super();\n    this.config = config;\n  }\n\n  /**\n   * Called when a heartbeat is received from a peer node.\n   */\n  onHeartbeatReceived(nodeId: string): void {\n    this.lastHeartbeat.set(nodeId, Date.now());\n    this.reachableNodes.add(nodeId);\n    this.evaluatePartitionState();\n  }\n\n  /**\n   * Periodic check: mark nodes as unreachable if heartbeat timed out.\n   */\n  checkHeartbeats(): void {\n    const now = Date.now();\n    for (const [nodeId, lastSeen] of this.lastHeartbeat.entries()) {\n      if (now - lastSeen > this.config.heartbeatTimeoutMs) {\n        this.reachableNodes.delete(nodeId);\n      }\n    }\n    this.evaluatePartitionState();\n  }\n\n  /**\n   * Evaluate whether we are in a partition and switch modes accordingly.\n   * This implements the \"P\" decision in CAP/PACELC.\n   */\n  private evaluatePartitionState(): void {\n    const reachableCount = this.reachableNodes.size;\n    const previousMode = this.currentMode;\n\n    if (reachableCount < this.config.minReachableNodes) {\n      // Partition detected: not enough nodes reachable for quorum\n      // Switch to AP mode: accept writes locally, reconcile later\n      this.currentMode = 'available';\n    } else {\n      // Sufficient nodes reachable: operate in CP mode with quorum\n      this.currentMode = 'consistent';\n    }\n\n    if (previousMode !== this.currentMode) {\n      this.emit('modeChange', {\n        from: previousMode,\n        to: this.currentMode,\n        reachableNodes: reachableCount,\n        totalNodes: this.config.totalNodes,\n      });\n    }\n  }\n\n  getMode(): SystemMode {\n    return this.currentMode;\n  }\n\n  /**\n   * Application-level decision: how to handle a write based on current mode.\n   */\n  async handleWrite(key: string, value: unknown): Promise<WriteResult> {\n    if (this.currentMode === 'consistent') {\n      // CP mode: require quorum acknowledgment before confirming write\n      return this.writeWithQuorum(key, value);\n    } else {\n      // AP mode: accept write locally, queue for reconciliation\n      return this.writeLocalWithReconciliation(key, value);\n    }\n  }\n\n  private async writeWithQuorum(key: string, value: unknown): Promise<WriteResult> {\n    // Implementation: replicate to majority before ACK\n    return { status: 'committed', mode: 'consistent', replicas: this.config.minReachableNodes };\n  }\n\n  private async writeLocalWithReconciliation(key: string, value: unknown): Promise<WriteResult> {\n    // Implementation: write locally, add to reconciliation queue\n    return { status: 'accepted', mode: 'available', pendingReconciliation: true };\n  }\n}\n\ninterface WriteResult {\n  status: 'committed' | 'accepted';\n  mode: SystemMode;\n  replicas?: number;\n  pendingReconciliation?: boolean;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/cap-theorem-depth.md",
+    "wordCount": 1366,
+    "sectionCount": 14
+  }
+}

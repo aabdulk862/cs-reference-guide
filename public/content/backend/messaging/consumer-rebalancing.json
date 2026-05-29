@@ -1,0 +1,265 @@
+{
+  "id": "messaging-consumer-group-rebalancing",
+  "slug": "consumer-rebalancing",
+  "title": "Consumer Group Rebalancing",
+  "category": "Backend",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Rebalancing is the process of redistributing topic partitions among consumers in a consumer group when membership changes",
+            "Eager rebalancing (legacy): All consumers revoke all partitions simultaneously, then receive new assignments — causes a stop-the-world processing pause",
+            "Incremental cooperative rebalancing (Kafka 2.4+): Only partitions that need to move are revoked; other partitions continue processing uninterrupted",
+            "Rebalance triggers: consumer joins/leaves group, consumer crashes (session timeout), subscription change, topic partition count change",
+            "Static group membership (group.instance.id): Prevents rebalance on transient disconnects; consumer retains its assignment across restarts within session.timeout.ms",
+            "Group Coordinator (broker) manages group membership; Group Leader (first consumer) computes partition assignment",
+            "Key timeouts: session.timeout.ms (heartbeat-based liveness), max.poll.interval.ms (processing liveness), heartbeat.interval.ms (heartbeat frequency)",
+            "group.initial.rebalance.delay.ms (broker config): Delays first rebalance to batch multiple consumer joins during deployment"
+          ]
+        }
+      ],
+      "wordCount": 123,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Understanding rebalancing mechanics is critical when you operate consumer groups in production and need to minimize processing disruptions during deployments, scaling events, and failure recovery."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use incremental cooperative rebalancing (the default in Kafka 3.0+) for any production workload where processing continuity matters. This is especially important for latency-sensitive applications like payment processing, real-time fraud detection, or user-facing event streams where even brief pauses are unacceptable."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use static group membership when your consumers run in environments with transient network issues (Kubernetes pods with rolling restarts, cloud instances with brief connectivity blips) and you want to avoid unnecessary rebalances that would otherwise be triggered by momentary heartbeat failures. Static membership is particularly valuable for Kafka Streams applications where state store restoration after a rebalance is expensive."
+        },
+        {
+          "type": "paragraph",
+          "text": "Use eager rebalancing only in legacy environments running Kafka versions before 2.4, or in testing scenarios where you want deterministic, atomic reassignment behavior. There is no production advantage to eager rebalancing in modern Kafka deployments."
+        },
+        {
+          "type": "paragraph",
+          "text": "Tune rebalance parameters when you observe frequent unnecessary rebalances (rebalance storms), excessive processing pauses during deployments, or consumer lag spikes correlated with group membership changes."
+        }
+      ],
+      "wordCount": 184,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "cooperative-rebalancing-with-state-management",
+          "heading": "Cooperative Rebalancing with State Management",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Consumer configured for cooperative incremental rebalancing\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"payment-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\n\n// Cooperative rebalancing configuration\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\n// Timeout tuning for production stability\nprops.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);      // 45s session timeout\nprops.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);   // 15s heartbeat (session/3)\nprops.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);   // 10min max processing time\n\n// Static membership for Kubernetes deployments\nprops.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG,\n    \"payment-consumer-\" + System.getenv(\"HOSTNAME\")); // Stable across pod restarts\n\nKafkaConsumer<String, PaymentEvent> consumer = new KafkaConsumer<>(props);\n\n// Rebalance listener with cooperative-aware state management\nconsumer.subscribe(List.of(\"payment-events\"), new ConsumerRebalanceListener() {\n\n    // In-memory state per partition (e.g., batch accumulators, dedup caches)\n    private final Map<TopicPartition, PartitionState> partitionStates = new ConcurrentHashMap<>();\n\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        // Cooperative: only called for partitions being moved away\n        // Flush pending work and commit offsets for revoked partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = partitionStates.remove(tp);\n            if (state != null) {\n                state.flushPendingBatch();  // Complete in-flight work\n                commitOffset(tp, state.getLastProcessedOffset());\n            }\n        }\n        log.info(\"Revoked partitions (cooperative): {}\", partitions);\n        metrics.recordRebalanceRevocation(partitions.size());\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        // Initialize state for newly assigned partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = new PartitionState(tp);\n            state.initialize();  // Load dedup cache, initialize batch accumulator\n            partitionStates.put(tp, state);\n        }\n        log.info(\"Assigned partitions: {}\", partitions);\n        metrics.recordRebalanceAssignment(partitions.size());\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        // Partitions lost without clean revocation (session timeout exceeded)\n        // Do NOT commit offsets — another consumer may already own these partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = partitionStates.remove(tp);\n            if (state != null) {\n                state.discardPendingBatch();  // Discard uncommitted work\n            }\n        }\n        log.warn(\"Partitions lost (unclean): {}\", partitions);\n        metrics.recordPartitionsLost(partitions.size());\n    }\n});",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "static-membership-with-kubernetes",
+          "heading": "Static Membership with Kubernetes",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Static membership configuration for Kubernetes StatefulSet\n// Each pod gets a stable hostname (e.g., payment-consumer-0, payment-consumer-1)\n// This prevents rebalances during rolling restarts\n\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"payment-processing\");\n\n// Static membership: use stable pod identity\nString podName = System.getenv(\"POD_NAME\"); // From Kubernetes downward API\nprops.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG, \"payment-\" + podName);\n\n// With static membership, session timeout controls how long the group\n// waits before reassigning partitions from a disconnected static member\n// Set higher than your rolling restart time\nprops.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 300000); // 5 minutes\n\n// Heartbeat still needed for liveness detection\nprops.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000);\n\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\nKafkaConsumer<String, Event> consumer = new KafkaConsumer<>(props);\nconsumer.subscribe(List.of(\"events\"));\n\n// During rolling restart:\n// 1. Pod is terminated (consumer stops heartbeating)\n// 2. Group coordinator waits session.timeout.ms (5 min) before triggering rebalance\n// 3. New pod starts with same group.instance.id\n// 4. Coordinator recognizes returning static member — no rebalance triggered\n// 5. Consumer resumes from last committed offset on same partitions",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "monitoring-rebalance-events",
+          "heading": "Monitoring Rebalance Events",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "// Custom metrics for rebalance monitoring\npublic class RebalanceMetricsListener implements ConsumerRebalanceListener {\n\n    private final MeterRegistry meterRegistry;\n    private final Timer rebalanceTimer;\n    private final Counter rebalanceCounter;\n    private final AtomicLong rebalanceStartTime = new AtomicLong(0);\n\n    public RebalanceMetricsListener(MeterRegistry meterRegistry, String groupId) {\n        this.meterRegistry = meterRegistry;\n        this.rebalanceCounter = Counter.builder(\"kafka.consumer.rebalance.total\")\n            .tag(\"group\", groupId)\n            .register(meterRegistry);\n        this.rebalanceTimer = Timer.builder(\"kafka.consumer.rebalance.duration\")\n            .tag(\"group\", groupId)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        rebalanceStartTime.set(System.nanoTime());\n        rebalanceCounter.increment();\n\n        Gauge.builder(\"kafka.consumer.rebalance.partitions.revoked\",\n                partitions, Collection::size)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        long startTime = rebalanceStartTime.get();\n        if (startTime > 0) {\n            long duration = System.nanoTime() - startTime;\n            rebalanceTimer.record(duration, TimeUnit.NANOSECONDS);\n        }\n\n        Gauge.builder(\"kafka.consumer.rebalance.partitions.assigned\",\n                partitions, Collection::size)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        Counter.builder(\"kafka.consumer.partitions.lost\")\n            .tag(\"count\", String.valueOf(partitions.size()))\n            .register(meterRegistry)\n            .increment();\n    }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant C1 as Consumer 1\n    participant C2 as Consumer 2\n    participant GC as Group Coordinator (Broker)\n    participant C3 as Consumer 3 (new)\n\n    Note over C1,C3: Eager Rebalance Protocol (stop-the-world)\n\n    C3->>GC: JoinGroup request\n    GC->>C1: JoinGroup response (trigger rebalance)\n    GC->>C2: JoinGroup response (trigger rebalance)\n\n    Note over C1,C2: ALL consumers stop processing ALL partitions\n\n    C1->>GC: JoinGroup (revokes P0,P1,P2)\n    C2->>GC: JoinGroup (revokes P3,P4,P5)\n    C3->>GC: JoinGroup (new member)\n\n    GC->>C1: SyncGroup → assign P0,P1\n    GC->>C2: SyncGroup → assign P2,P3\n    GC->>C3: SyncGroup → assign P4,P5\n\n    Note over C1,C3: Processing resumes on ALL consumers"
+        },
+        {
+          "type": "mermaid",
+          "source": "sequenceDiagram\n    participant C1 as Consumer 1\n    participant C2 as Consumer 2\n    participant GC as Group Coordinator\n    participant C3 as Consumer 3 (new)\n\n    Note over C1,C3: Cooperative Incremental Rebalance\n\n    C3->>GC: JoinGroup request\n    GC->>C1: Rebalance needed\n    GC->>C2: Rebalance needed\n\n    Note over C1,C2: Phase 1: Compute new assignment\n\n    C1->>GC: JoinGroup (keeps P0,P1,P2)\n    C2->>GC: JoinGroup (keeps P3,P4,P5)\n    C3->>GC: JoinGroup (new member)\n\n    GC->>C1: SyncGroup → revoke P2 only\n    GC->>C2: SyncGroup → revoke P5 only\n    GC->>C3: SyncGroup → wait\n\n    Note over C1: Continues processing P0,P1\n    Note over C2: Continues processing P3,P4\n\n    Note over C1,C3: Phase 2: Reassign revoked partitions\n\n    C1->>GC: Acknowledge P2 revoked\n    C2->>GC: Acknowledge P5 revoked\n    GC->>C3: Assign P2, P5\n\n    Note over C1,C3: Minimal disruption — only P2,P5 paused briefly"
+        },
+        {
+          "type": "mermaid",
+          "source": "stateDiagram-v2\n    [*] --> Stable: Group formed\n    Stable --> PreparingRebalance: Trigger event\n    PreparingRebalance --> CompletingRebalance: All members joined\n    CompletingRebalance --> Stable: Assignment distributed\n    Stable --> Dead: All members leave\n    PreparingRebalance --> Empty: All members leave during rebalance\n    Empty --> PreparingRebalance: New member joins\n    Dead --> [*]\n\n    note right of PreparingRebalance\n        Triggers:\n        - Member joins/leaves\n        - Session timeout\n        - Subscription change\n        - Topic metadata change\n    end note"
+        }
+      ],
+      "wordCount": 0,
+      "subsections": []
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Rebalance storms from slow consumers: If max.poll.interval.ms is too low relative to processing time, consumers get kicked from the group, triggering a rebalance. The rebalance assigns those partitions to other consumers, which now have more work, potentially exceeding their own poll interval — cascading into repeated rebalances. Set max.poll.interval.ms to at least 2x your worst-case batch processing time and reduce max.poll.records if needed.",
+            "Heartbeat thread blocked by processing: In older Kafka clients (pre-0.10.1), heartbeats were sent on the poll thread. Long-running poll() processing would block heartbeats, causing session timeouts. Modern clients use a background heartbeat thread, but you must still ensure max.poll.interval.ms is not exceeded. If your processing involves external calls (database writes, HTTP requests), implement timeouts on those calls.",
+            "Deploying all consumers simultaneously: Rolling out all consumer instances at once triggers a massive rebalance as all members leave and rejoin. Use rolling deployments with group.initial.rebalance.delay.ms set to your deployment window (e.g., 60 seconds) so the coordinator batches all the join/leave events into a single rebalance rather than triggering one per instance.",
+            "Static membership with wrong session timeout: Setting session.timeout.ms too low with static membership defeats its purpose — the coordinator reassigns partitions before the restarting consumer can rejoin. Set it higher than your maximum restart time (including container scheduling, image pull, and initialization). For Kubernetes, 5-10 minutes is typical. Setting it too high means genuinely failed consumers take longer to be detected.",
+            "Not handling onPartitionsLost separately from onPartitionsRevoked: With cooperative rebalancing, onPartitionsLost() is called when partitions are taken away without a clean revocation (e.g., consumer exceeded session timeout). Committing offsets in onPartitionsLost() is dangerous because another consumer may already be processing those partitions. Always discard uncommitted work in onPartitionsLost() and only commit in onPartitionsRevoked().",
+            "Ignoring rebalance metrics: Without monitoring rebalance frequency and duration, you cannot distinguish between healthy scaling events and pathological rebalance storms. Track rebalance-total, rebalance-rate-per-hour, last-rebalance-seconds-ago, and rebalance-latency-avg. Alert when rebalance frequency exceeds 2-3 per hour outside of deployment windows."
+          ]
+        }
+      ],
+      "wordCount": 323,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Zero-downtime Kubernetes deployments: A payment processing service runs 12 consumer instances in a Kubernetes StatefulSet. Using static group membership with group.instance.id derived from the pod's stable hostname, rolling restarts complete without triggering any rebalances. Each pod restarts within the 5-minute session timeout window, rejoins with its original instance ID, and resumes processing its previously assigned partitions from the last committed offset. Total processing gap per partition: 30-60 seconds (pod restart time) instead of 2-3 minutes (full rebalance + state restoration).",
+            "Auto-scaling consumer groups: An e-commerce platform auto-scales its order processing consumers based on consumer lag metrics. When lag exceeds threshold, new consumer instances are added. With cooperative sticky rebalancing, the new consumers receive a subset of partitions from existing consumers with minimal disruption. The platform uses group.initial.rebalance.delay.ms=30000 to batch multiple scaling events into a single rebalance when the autoscaler adds 3-4 instances simultaneously.",
+            "Cross-datacenter consumer failover: A financial services company runs active-passive consumer groups across two datacenters. The passive group uses static membership with a very high session timeout (30 minutes). During datacenter failover, the passive group's consumers are activated and begin processing. The high session timeout ensures the passive consumers maintain their group membership without actually consuming, ready for instant activation during failover without waiting for a rebalance.",
+            "Kafka Streams state store optimization: A real-time recommendation engine uses Kafka Streams with 200GB of state across 48 partitions. Cooperative rebalancing combined with standby replicas (num.standby.replicas=1) ensures that when a partition moves, the receiving consumer already has a warm copy of the state store. Rebalance recovery time dropped from 15 minutes (full changelog replay) to 30 seconds (catch-up from standby)."
+          ]
+        }
+      ],
+      "wordCount": 269,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "What triggers a consumer group rebalance, and how can you minimize unnecessary rebalances?",
+          "answer": "Rebalances are triggered by: (1) consumer joining the group, (2) consumer leaving gracefully (consumer.close()), (3) consumer crashing (session timeout expires without heartbeat), (4) consumer exceeding max.poll.interval.ms (considered stuck), (5) topic partition count changing, (6) consumer subscription pattern matching new topics. Minimize unnecessary rebalances by: using static group membership to tolerate transient disconnects, tuning session.timeout.ms higher than your worst-case GC pause or network blip, setting max.poll.interval.ms based on actual processing time, using group.initial.rebalance.delay.ms to batch joins during deployments, and implementing graceful shutdown (consumer.close()) to trigger a clean leave rather than waiting for session timeout."
+        },
+        {
+          "type": "interview",
+          "question": "Explain the difference between eager and cooperative rebalancing protocols. What is the migration path?",
+          "answer": "Eager protocol: all consumers revoke all partitions at rebalance start, creating a stop-the-world pause where no messages are processed. After the leader computes the new assignment, all partitions are reassigned. Cooperative protocol: uses a two-phase approach where only partitions that need to move are revoked. Consumers continue processing retained partitions throughout the rebalance. Migration path: Phase 1 — configure all consumers with both assignors (e.g., RangeAssignor,CooperativeStickyAssignor) and perform a rolling restart. Phase 2 — remove the eager assignor, leaving only CooperativeStickyAssignor, and perform another rolling restart. This two-phase approach ensures the group never has a mix of cooperative-only and eager-only members."
+        },
+        {
+          "type": "interview",
+          "question": "How does static group membership work, and what are its trade-offs?",
+          "answer": "Static membership assigns a persistent group.instance.id to each consumer. When a static member disconnects, the coordinator does NOT immediately trigger a rebalance — it waits for session.timeout.ms to expire. If the consumer reconnects with the same instance ID before timeout, it silently rejoins with its previous partition assignment. Trade-offs: (1) Benefit — eliminates rebalances during transient failures and rolling restarts, reducing processing gaps. (2) Cost — genuinely failed consumers take longer to be detected (up to session timeout). (3) Requirement — instance IDs must be stable across restarts (use Kubernetes StatefulSet hostnames, not random pod IDs). (4) Risk — if two consumers share an instance ID, one gets fenced with a FencedInstanceIdException."
+        },
+        {
+          "type": "interview",
+          "question": "What is a rebalance storm and how do you diagnose and fix it?",
+          "answer": "A rebalance storm is a cascading cycle where rebalances trigger more rebalances. Common cause: consumer A exceeds max.poll.interval.ms and gets kicked, its partitions move to consumer B, which now has more partitions and also exceeds the poll interval, triggering another rebalance. Diagnosis: monitor rebalance-rate-per-hour metric — more than 5-10 rebalances per hour outside deployments indicates a storm. Check consumer lag growth pattern and last-poll-seconds-ago metric. Fix: increase max.poll.interval.ms to accommodate worst-case processing, reduce max.poll.records to limit per-poll work, optimize processing logic (add timeouts to external calls), add more consumers to reduce per-consumer partition count, or implement backpressure by pausing partitions when processing falls behind."
+        }
+      ],
+      "wordCount": 461,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Rebalance timeout tuning formula: Set session.timeout.ms = max(GC pause, network blip duration, container restart time) × 2. Set heartbeat.interval.ms = session.timeout.ms / 3. Set max.poll.interval.ms = max(batch processing time) × 3. For Kubernetes: session.timeout.ms should exceed your pod termination grace period + scheduling time for static membership to be effective.",
+            "Graceful shutdown implementation: Always call consumer.close() in a shutdown hook to trigger a clean LeaveGroup request. This causes an immediate rebalance (partitions reassigned in seconds) rather than waiting for session timeout (minutes). In Kubernetes, handle SIGTERM in your application and call consumer.wakeup() to break out of the poll loop, then consumer.close() with a timeout shorter than the pod's terminationGracePeriodSeconds.",
+            "Monitoring rebalance health: Track these metrics per consumer group: rebalance-total (cumulative count), rebalance-latency-avg (time spent in rebalance), last-rebalance-seconds-ago (time since last rebalance), assigned-partitions (current assignment size). Alert on: rebalance frequency > 3/hour outside deployments, rebalance latency > 60 seconds, or assigned-partitions dropping to 0 (consumer lost all partitions)."
+          ]
+        }
+      ],
+      "wordCount": 157,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Partition Assignment Strategies — The assignment algorithms that determine which consumer gets which partitions during rebalancing",
+            "Apache Kafka — Comprehensive Kafka overview including consumer group fundamentals",
+            "ISR Mechanics — How replica synchronization interacts with consumer availability guarantees"
+          ]
+        }
+      ],
+      "wordCount": 37,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "// Consumer configured for cooperative incremental rebalancing\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, \"broker1:9092,broker2:9092,broker3:9092\");\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"payment-processing-group\");\nprops.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());\nprops.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class.getName());\n\n// Cooperative rebalancing configuration\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\n// Timeout tuning for production stability\nprops.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);      // 45s session timeout\nprops.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);   // 15s heartbeat (session/3)\nprops.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 600000);   // 10min max processing time\n\n// Static membership for Kubernetes deployments\nprops.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG,\n    \"payment-consumer-\" + System.getenv(\"HOSTNAME\")); // Stable across pod restarts\n\nKafkaConsumer<String, PaymentEvent> consumer = new KafkaConsumer<>(props);\n\n// Rebalance listener with cooperative-aware state management\nconsumer.subscribe(List.of(\"payment-events\"), new ConsumerRebalanceListener() {\n\n    // In-memory state per partition (e.g., batch accumulators, dedup caches)\n    private final Map<TopicPartition, PartitionState> partitionStates = new ConcurrentHashMap<>();\n\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        // Cooperative: only called for partitions being moved away\n        // Flush pending work and commit offsets for revoked partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = partitionStates.remove(tp);\n            if (state != null) {\n                state.flushPendingBatch();  // Complete in-flight work\n                commitOffset(tp, state.getLastProcessedOffset());\n            }\n        }\n        log.info(\"Revoked partitions (cooperative): {}\", partitions);\n        metrics.recordRebalanceRevocation(partitions.size());\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        // Initialize state for newly assigned partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = new PartitionState(tp);\n            state.initialize();  // Load dedup cache, initialize batch accumulator\n            partitionStates.put(tp, state);\n        }\n        log.info(\"Assigned partitions: {}\", partitions);\n        metrics.recordRebalanceAssignment(partitions.size());\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        // Partitions lost without clean revocation (session timeout exceeded)\n        // Do NOT commit offsets — another consumer may already own these partitions\n        for (TopicPartition tp : partitions) {\n            PartitionState state = partitionStates.remove(tp);\n            if (state != null) {\n                state.discardPendingBatch();  // Discard uncommitted work\n            }\n        }\n        log.warn(\"Partitions lost (unclean): {}\", partitions);\n        metrics.recordPartitionsLost(partitions.size());\n    }\n});",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Static membership configuration for Kubernetes StatefulSet\n// Each pod gets a stable hostname (e.g., payment-consumer-0, payment-consumer-1)\n// This prevents rebalances during rolling restarts\n\nProperties props = new Properties();\nprops.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);\nprops.put(ConsumerConfig.GROUP_ID_CONFIG, \"payment-processing\");\n\n// Static membership: use stable pod identity\nString podName = System.getenv(\"POD_NAME\"); // From Kubernetes downward API\nprops.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG, \"payment-\" + podName);\n\n// With static membership, session timeout controls how long the group\n// waits before reassigning partitions from a disconnected static member\n// Set higher than your rolling restart time\nprops.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 300000); // 5 minutes\n\n// Heartbeat still needed for liveness detection\nprops.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000);\n\nprops.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,\n    CooperativeStickyAssignor.class.getName());\n\nKafkaConsumer<String, Event> consumer = new KafkaConsumer<>(props);\nconsumer.subscribe(List.of(\"events\"));\n\n// During rolling restart:\n// 1. Pod is terminated (consumer stops heartbeating)\n// 2. Group coordinator waits session.timeout.ms (5 min) before triggering rebalance\n// 3. New pod starts with same group.instance.id\n// 4. Coordinator recognizes returning static member — no rebalance triggered\n// 5. Consumer resumes from last committed offset on same partitions",
+      "runnable": false
+    },
+    {
+      "language": "java",
+      "code": "// Custom metrics for rebalance monitoring\npublic class RebalanceMetricsListener implements ConsumerRebalanceListener {\n\n    private final MeterRegistry meterRegistry;\n    private final Timer rebalanceTimer;\n    private final Counter rebalanceCounter;\n    private final AtomicLong rebalanceStartTime = new AtomicLong(0);\n\n    public RebalanceMetricsListener(MeterRegistry meterRegistry, String groupId) {\n        this.meterRegistry = meterRegistry;\n        this.rebalanceCounter = Counter.builder(\"kafka.consumer.rebalance.total\")\n            .tag(\"group\", groupId)\n            .register(meterRegistry);\n        this.rebalanceTimer = Timer.builder(\"kafka.consumer.rebalance.duration\")\n            .tag(\"group\", groupId)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsRevoked(Collection<TopicPartition> partitions) {\n        rebalanceStartTime.set(System.nanoTime());\n        rebalanceCounter.increment();\n\n        Gauge.builder(\"kafka.consumer.rebalance.partitions.revoked\",\n                partitions, Collection::size)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsAssigned(Collection<TopicPartition> partitions) {\n        long startTime = rebalanceStartTime.get();\n        if (startTime > 0) {\n            long duration = System.nanoTime() - startTime;\n            rebalanceTimer.record(duration, TimeUnit.NANOSECONDS);\n        }\n\n        Gauge.builder(\"kafka.consumer.rebalance.partitions.assigned\",\n                partitions, Collection::size)\n            .register(meterRegistry);\n    }\n\n    @Override\n    public void onPartitionsLost(Collection<TopicPartition> partitions) {\n        Counter.builder(\"kafka.consumer.partitions.lost\")\n            .tag(\"count\", String.valueOf(partitions.size()))\n            .register(meterRegistry)\n            .increment();\n    }\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/backend/messaging/consumer-rebalancing.md",
+    "wordCount": 1554,
+    "sectionCount": 12
+  }
+}

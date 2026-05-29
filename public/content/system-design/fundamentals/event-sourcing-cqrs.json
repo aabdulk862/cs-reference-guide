@@ -1,0 +1,262 @@
+{
+  "id": "fundamentals-event-sourcing-and-cqrs",
+  "slug": "event-sourcing-cqrs",
+  "title": "Event Sourcing and CQRS",
+  "category": "System Design",
+  "sections": [
+    {
+      "id": "quick-reference",
+      "heading": "Quick Reference",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Event Sourcing stores state as an append-only sequence of immutable domain events rather than mutable current state — the current state is derived by replaying events from the beginning",
+            "CQRS (Command Query Responsibility Segregation) separates the write model (commands that produce events) from the read model (projections optimized for queries)",
+            "The event store is the system of record — an append-only log where each event has a stream ID, sequence number, event type, payload, and metadata (timestamp, causation ID, correlation ID)",
+            "Projections (read models) are derived views built by processing events — they can be rebuilt from scratch at any time by replaying the event stream, enabling schema evolution without data migration",
+            "Event sourcing provides a complete audit trail, enables temporal queries (\"what was the state at time T?\"), and supports multiple read models optimized for different query patterns",
+            "Eventual consistency between the write model and read models is inherent — projections are updated asynchronously after events are committed, introducing a propagation delay",
+            "Snapshotting periodically captures the current state to avoid replaying the entire event history on every load — typically snapshot every N events (e.g., every 100 or 1000)"
+          ]
+        }
+      ],
+      "wordCount": 190,
+      "subsections": []
+    },
+    {
+      "id": "when-to-use",
+      "heading": "When to Use",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Event sourcing and CQRS apply when you need a complete audit trail of all state changes (financial systems, healthcare, compliance), when you need to support multiple read models with different shapes from the same data (dashboards, search indexes, reports), when you need temporal queries or the ability to reconstruct past states, when your read and write workloads have vastly different scaling requirements, or when domain complexity benefits from explicit modeling of state transitions as events. Common domains include: banking and payments (transaction history is the source of truth), e-commerce (order lifecycle events), IoT (sensor event streams), and collaborative editing (operation logs). Avoid event sourcing for simple CRUD applications where the overhead of event modeling, projection management, and eventual consistency is not justified by the benefits."
+        }
+      ],
+      "wordCount": 125,
+      "subsections": []
+    },
+    {
+      "id": "code-examples",
+      "heading": "Code Examples",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "event-store-implementation-with-optimistic-concurrency",
+          "heading": "Event Store Implementation with Optimistic Concurrency",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "java",
+              "code": "import java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.locks.ReadWriteLock;\nimport java.util.concurrent.locks.ReentrantReadWriteLock;\n\n/**\n * In-memory event store with optimistic concurrency control.\n * Production systems would use EventStoreDB, Kafka, or a database with\n * append-only semantics.\n */\npublic class EventStore {\n    private final Map<String, List<StoredEvent>> streams = new ConcurrentHashMap<>();\n    private final Map<String, ReadWriteLock> streamLocks = new ConcurrentHashMap<>();\n    private final List<EventSubscriber> subscribers = new ArrayList<>();\n\n    /**\n     * Append events to a stream with optimistic concurrency.\n     * @param streamId The aggregate/entity identifier\n     * @param expectedVersion The version the caller expects (for conflict detection)\n     * @param events The new events to append\n     * @throws ConcurrencyException if another writer modified the stream\n     */\n    public void append(String streamId, long expectedVersion, List<DomainEvent> events) {\n        ReadWriteLock lock = streamLocks.computeIfAbsent(streamId,\n            k -> new ReentrantReadWriteLock());\n        lock.writeLock().lock();\n\n        try {\n            List<StoredEvent> stream = streams.computeIfAbsent(streamId, k -> new ArrayList<>());\n            long currentVersion = stream.size();\n\n            // Optimistic concurrency check\n            if (currentVersion != expectedVersion) {\n                throw new ConcurrencyException(\n                    String.format(\"Stream '%s' expected version %d but was %d\",\n                        streamId, expectedVersion, currentVersion)\n                );\n            }\n\n            // Append events with sequential version numbers\n            for (DomainEvent event : events) {\n                long version = currentVersion++;\n                StoredEvent stored = new StoredEvent(\n                    streamId,\n                    version,\n                    event.getClass().getSimpleName(),\n                    event,\n                    System.currentTimeMillis(),\n                    UUID.randomUUID().toString()  // Event ID\n                );\n                stream.add(stored);\n            }\n\n            // Notify subscribers (projections, process managers)\n            for (StoredEvent stored : stream.subList((int) expectedVersion, stream.size())) {\n                for (EventSubscriber subscriber : subscribers) {\n                    subscriber.onEvent(stored);\n                }\n            }\n        } finally {\n            lock.writeLock().unlock();\n        }\n    }\n\n    /**\n     * Read all events for a stream (for aggregate rehydration).\n     */\n    public List<StoredEvent> readStream(String streamId) {\n        return streams.getOrDefault(streamId, Collections.emptyList());\n    }\n\n    /**\n     * Read events from a specific version (for partial replay after snapshot).\n     */\n    public List<StoredEvent> readStreamFrom(String streamId, long fromVersion) {\n        List<StoredEvent> stream = streams.getOrDefault(streamId, Collections.emptyList());\n        if (fromVersion >= stream.size()) return Collections.emptyList();\n        return stream.subList((int) fromVersion, stream.size());\n    }\n\n    public void subscribe(EventSubscriber subscriber) {\n        subscribers.add(subscriber);\n    }\n}\n\n/**\n * Example aggregate: BankAccount rebuilt from events.\n */\npublic class BankAccount {\n    private String accountId;\n    private long balance;  // in cents\n    private long version;\n    private boolean closed;\n    private final List<DomainEvent> uncommittedEvents = new ArrayList<>();\n\n    // Private constructor — use static factory methods\n    private BankAccount() {}\n\n    /**\n     * Rehydrate aggregate from event history.\n     */\n    public static BankAccount fromHistory(List<StoredEvent> history) {\n        BankAccount account = new BankAccount();\n        for (StoredEvent stored : history) {\n            account.apply(stored.getEvent());\n            account.version = stored.getVersion() + 1;\n        }\n        return account;\n    }\n\n    /**\n     * Command: deposit money. Validates business rules, then emits event.\n     */\n    public void deposit(long amount, String transactionId) {\n        if (closed) throw new IllegalStateException(\"Account is closed\");\n        if (amount <= 0) throw new IllegalArgumentException(\"Amount must be positive\");\n\n        emit(new MoneyDeposited(accountId, amount, transactionId, System.currentTimeMillis()));\n    }\n\n    /**\n     * Command: withdraw money. Validates business rules, then emits event.\n     */\n    public void withdraw(long amount, String transactionId) {\n        if (closed) throw new IllegalStateException(\"Account is closed\");\n        if (amount <= 0) throw new IllegalArgumentException(\"Amount must be positive\");\n        if (balance < amount) throw new InsufficientFundsException(accountId, balance, amount);\n\n        emit(new MoneyWithdrawn(accountId, amount, transactionId, System.currentTimeMillis()));\n    }\n\n    // Apply event to update internal state (no side effects, no validation)\n    private void apply(DomainEvent event) {\n        if (event instanceof AccountOpened e) {\n            this.accountId = e.getAccountId();\n            this.balance = e.getInitialDeposit();\n        } else if (event instanceof MoneyDeposited e) {\n            this.balance += e.getAmount();\n        } else if (event instanceof MoneyWithdrawn e) {\n            this.balance -= e.getAmount();\n        } else if (event instanceof AccountClosed e) {\n            this.closed = true;\n        }\n    }\n\n    private void emit(DomainEvent event) {\n        apply(event);  // Update local state\n        uncommittedEvents.add(event);  // Track for persistence\n    }\n\n    public List<DomainEvent> getUncommittedEvents() {\n        return Collections.unmodifiableList(uncommittedEvents);\n    }\n\n    public void markCommitted() {\n        uncommittedEvents.clear();\n    }\n\n    public long getVersion() { return version; }\n    public long getBalance() { return balance; }\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "cqrs-projection-with-rebuild-capability",
+          "heading": "CQRS Projection with Rebuild Capability",
+          "level": 3,
+          "content": [
+            {
+              "type": "code",
+              "language": "typescript",
+              "code": "import { EventEmitter } from 'events';\n\n// Domain events\ninterface AccountOpened {\n  type: 'AccountOpened';\n  accountId: string;\n  customerId: string;\n  initialDeposit: number;\n  timestamp: number;\n}\n\ninterface MoneyDeposited {\n  type: 'MoneyDeposited';\n  accountId: string;\n  amount: number;\n  transactionId: string;\n  timestamp: number;\n}\n\ninterface MoneyWithdrawn {\n  type: 'MoneyWithdrawn';\n  accountId: string;\n  amount: number;\n  transactionId: string;\n  timestamp: number;\n}\n\ntype BankEvent = AccountOpened | MoneyDeposited | MoneyWithdrawn;\n\ninterface StoredEvent {\n  streamId: string;\n  version: number;\n  event: BankEvent;\n  timestamp: number;\n  globalPosition: number;  // Position across all streams\n}\n\n/**\n * Read model: Account balance projection.\n * Optimized for fast balance lookups — denormalized from events.\n */\nclass AccountBalanceProjection {\n  private balances: Map<string, number> = new Map();\n  private lastProcessedPosition: number = -1;\n\n  /**\n   * Process a single event to update the projection.\n   * This method must be idempotent — processing the same event twice\n   * should produce the same result.\n   */\n  apply(stored: StoredEvent): void {\n    // Skip already-processed events (idempotency)\n    if (stored.globalPosition <= this.lastProcessedPosition) return;\n\n    const event = stored.event;\n    switch (event.type) {\n      case 'AccountOpened':\n        this.balances.set(event.accountId, event.initialDeposit);\n        break;\n      case 'MoneyDeposited':\n        const currentDeposit = this.balances.get(event.accountId) || 0;\n        this.balances.set(event.accountId, currentDeposit + event.amount);\n        break;\n      case 'MoneyWithdrawn':\n        const currentWithdraw = this.balances.get(event.accountId) || 0;\n        this.balances.set(event.accountId, currentWithdraw - event.amount);\n        break;\n    }\n\n    this.lastProcessedPosition = stored.globalPosition;\n  }\n\n  getBalance(accountId: string): number | undefined {\n    return this.balances.get(accountId);\n  }\n\n  getLastProcessedPosition(): number {\n    return this.lastProcessedPosition;\n  }\n}\n\n/**\n * Read model: Transaction history projection.\n * Optimized for listing recent transactions per account.\n */\nclass TransactionHistoryProjection {\n  private transactions: Map<string, TransactionRecord[]> = new Map();\n  private lastProcessedPosition: number = -1;\n\n  apply(stored: StoredEvent): void {\n    if (stored.globalPosition <= this.lastProcessedPosition) return;\n\n    const event = stored.event;\n    if (event.type === 'MoneyDeposited' || event.type === 'MoneyWithdrawn') {\n      const records = this.transactions.get(event.accountId) || [];\n      records.push({\n        transactionId: event.transactionId,\n        type: event.type === 'MoneyDeposited' ? 'credit' : 'debit',\n        amount: event.amount,\n        timestamp: event.timestamp,\n      });\n      this.transactions.set(event.accountId, records);\n    }\n\n    this.lastProcessedPosition = stored.globalPosition;\n  }\n\n  getHistory(accountId: string, limit: number = 50): TransactionRecord[] {\n    const records = this.transactions.get(accountId) || [];\n    return records.slice(-limit);\n  }\n}\n\ninterface TransactionRecord {\n  transactionId: string;\n  type: 'credit' | 'debit';\n  amount: number;\n  timestamp: number;\n}\n\n/**\n * Projection manager: handles subscription, catch-up, and rebuild.\n */\nclass ProjectionManager {\n  private projections: Map<string, Projection> = new Map();\n\n  constructor(private eventStore: EventStoreReader) {}\n\n  register(name: string, projection: Projection): void {\n    this.projections.set(name, projection);\n  }\n\n  /**\n   * Rebuild a projection from scratch by replaying all events.\n   * Used when: projection logic changes, projection is corrupted,\n   * or a new projection is added.\n   */\n  async rebuild(projectionName: string): Promise<void> {\n    const projection = this.projections.get(projectionName);\n    if (!projection) throw new Error(`Unknown projection: ${projectionName}`);\n\n    // Reset projection state\n    projection.reset();\n\n    // Replay all events from the beginning\n    let position = 0;\n    const batchSize = 1000;\n\n    while (true) {\n      const events = await this.eventStore.readAll(position, batchSize);\n      if (events.length === 0) break;\n\n      for (const event of events) {\n        projection.apply(event);\n      }\n\n      position += events.length;\n      console.log(`Rebuilt ${projectionName}: processed ${position} events`);\n    }\n\n    console.log(`Rebuild complete for ${projectionName}`);\n  }\n\n  /**\n   * Catch up a projection from its last processed position.\n   * Used on startup or after a temporary disconnection.\n   */\n  async catchUp(projectionName: string): Promise<void> {\n    const projection = this.projections.get(projectionName);\n    if (!projection) throw new Error(`Unknown projection: ${projectionName}`);\n\n    const fromPosition = projection.getLastProcessedPosition() + 1;\n    const events = await this.eventStore.readAll(fromPosition, 10000);\n\n    for (const event of events) {\n      projection.apply(event);\n    }\n  }\n}\n\ninterface Projection {\n  apply(event: StoredEvent): void;\n  reset(): void;\n  getLastProcessedPosition(): number;\n}\n\ninterface EventStoreReader {\n  readAll(fromPosition: number, limit: number): Promise<StoredEvent[]>;\n}",
+              "runnable": false
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "architecture-diagrams",
+      "heading": "Architecture / Diagrams",
+      "level": 2,
+      "content": [],
+      "wordCount": 0,
+      "subsections": [
+        {
+          "id": "event-sourcing-cqrs-architecture",
+          "heading": "Event Sourcing + CQRS Architecture",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph TD\n    subgraph \"Write Side (Commands)\"\n        Client[Client] -->|Command| CH[Command Handler]\n        CH -->|Load events| ES[Event Store]\n        CH -->|Rehydrate| Agg[Aggregate]\n        Agg -->|Validate & emit| Events[New Events]\n        Events -->|Append| ES\n    end\n\n    subgraph \"Event Bus\"\n        ES -->|Publish| EB[Event Bus / Subscription]\n    end\n\n    subgraph \"Read Side (Queries)\"\n        EB -->|Project| P1[Balance Projection]\n        EB -->|Project| P2[Transaction History]\n        EB -->|Project| P3[Search Index]\n        EB -->|Project| P4[Analytics View]\n        \n        Q[Query API] -->|Read| P1\n        Q -->|Read| P2\n        Q -->|Read| P3\n    end\n\n    subgraph \"Snapshotting\"\n        ES -->|Every N events| SS[Snapshot Store]\n        SS -->|Fast load| CH\n    end"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "event-stream-and-projection-lifecycle",
+          "heading": "Event Stream and Projection Lifecycle",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "sequenceDiagram\n    participant Cmd as Command Handler\n    participant ES as Event Store\n    participant Bus as Event Bus\n    participant Proj as Projection\n    participant DB as Read DB\n\n    Note over Cmd,DB: Write Path\n    Cmd->>ES: Load events for aggregate \"acc-123\"\n    ES-->>Cmd: [AccountOpened, Deposited, Deposited]\n    Cmd->>Cmd: Rehydrate aggregate (balance=500)\n    Cmd->>Cmd: Execute command: Withdraw(200)\n    Cmd->>Cmd: Validate: 500 >= 200 ✓\n    Cmd->>ES: Append(MoneyWithdrawn, expectedVersion=3)\n    ES-->>Cmd: Stored at version 4\n\n    Note over ES,DB: Async Projection Update\n    ES->>Bus: Publish MoneyWithdrawn\n    Bus->>Proj: Deliver event\n    Proj->>Proj: Apply: balance = 500 - 200 = 300\n    Proj->>DB: UPDATE balances SET amount=300 WHERE id='acc-123'\n\n    Note over Cmd,DB: Read Path (eventually consistent)\n    Note over DB: Client reads balance=300<br/>(after projection catches up)"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        },
+        {
+          "id": "snapshotting-strategy",
+          "heading": "Snapshotting Strategy",
+          "level": 3,
+          "content": [
+            {
+              "type": "mermaid",
+              "source": "graph LR\n    subgraph \"Without Snapshot (Slow)\"\n        E1[Event 1] --> E2[Event 2] --> E3[...] --> E999[Event 999] --> E1000[Event 1000]\n        E1000 --> State1[Current State]\n        Note1[Replay 1000 events on every load]\n    end\n\n    subgraph \"With Snapshot (Fast)\"\n        S[Snapshot at v900<br/>balance=4500] --> E901[Event 901] --> E902[...] --> E1000b[Event 1000]\n        E1000b --> State2[Current State]\n        Note2[Load snapshot + replay 100 events]\n    end"
+            }
+          ],
+          "wordCount": 0,
+          "subsections": []
+        }
+      ]
+    },
+    {
+      "id": "common-pitfalls",
+      "heading": "Common Pitfalls",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Treating events as mutable or deleting them — Events are immutable facts that happened. If you need to \"undo\" something, append a compensating event (e.g., RefundIssued to undo a PaymentProcessed). Deleting or modifying events breaks the audit trail and can corrupt projections that have already processed the original event.",
+            "Making projections the source of truth — Projections are derived, disposable views. They can be rebuilt at any time from the event store. If you find yourself needing to \"fix\" a projection by directly modifying it, you have a design problem. Fix the projection logic and rebuild instead.",
+            "Not handling eventual consistency in the UI — After a command succeeds, the read model may not yet reflect the change. Users might see stale data. Solutions: (1) Return the new state directly from the command handler (bypassing the read model). (2) Use optimistic UI updates. (3) Poll until the projection catches up. (4) Use subscriptions/websockets to push updates.",
+            "Creating too-fine-grained events — Events like FieldUpdated(field=\"name\", value=\"John\") lose domain meaning. Prefer domain-meaningful events: CustomerRenamed(newName=\"John\"). Fine-grained events make projections complex and lose the \"why\" behind state changes.",
+            "Not versioning events — As your domain evolves, event schemas change. Without versioning, old events become unparseable. Use event upcasting (transforming old event formats to new ones during read) or include a schema version in each event. Never break backward compatibility of stored events.",
+            "Unbounded event streams without snapshotting — An aggregate with 100,000 events takes significant time to rehydrate. Implement snapshotting for aggregates that accumulate many events. Snapshot every N events (e.g., 100) and load from the latest snapshot + subsequent events."
+          ]
+        }
+      ],
+      "wordCount": 266,
+      "subsections": []
+    },
+    {
+      "id": "real-world-use-cases",
+      "heading": "Real-World Use Cases",
+      "level": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "text": "Event Store (EventStoreDB): A purpose-built database for event sourcing that stores events in streams with built-in projections, subscriptions, and optimistic concurrency. Used by financial institutions for transaction ledgers where the complete history of every account change must be preserved for regulatory compliance. Supports catch-up subscriptions for building read models and persistent subscriptions for real-time processing."
+        },
+        {
+          "type": "paragraph",
+          "text": "Axon Framework (Java): A CQRS/ES framework used in banking and insurance systems. Provides aggregate lifecycle management, event handling, saga orchestration, and projection management. ING Bank uses Axon for their payment processing platform, where event sourcing provides the audit trail required by financial regulators and CQRS enables separate scaling of transaction processing and reporting."
+        },
+        {
+          "type": "paragraph",
+          "text": "Apache Kafka as Event Store: Many organizations use Kafka's log-compacted topics as an event store. Events are produced to topic partitions (keyed by aggregate ID), and consumers build projections by reading from the beginning. LinkedIn uses this pattern for their activity feed, where user actions (posts, likes, comments) are events that feed multiple read models (news feed, notifications, analytics)."
+        },
+        {
+          "type": "paragraph",
+          "text": "LMAX Exchange: The LMAX foreign exchange trading platform uses event sourcing to achieve deterministic replay of all trading operations. The entire exchange state can be rebuilt by replaying the event journal, enabling disaster recovery and testing of new trading algorithms against historical data. Their Disruptor pattern processes millions of events per second with microsecond latency."
+        }
+      ],
+      "wordCount": 222,
+      "subsections": []
+    },
+    {
+      "id": "interview-questions",
+      "heading": "Interview Questions",
+      "level": 2,
+      "content": [
+        {
+          "type": "interview",
+          "question": "What is the relationship between Event Sourcing and CQRS? Can you use one without the other?",
+          "answer": "Event Sourcing and CQRS are complementary but independent patterns. Event Sourcing stores state as events — you can use it without CQRS by querying the event store directly (though this is often impractical for complex queries). CQRS separates read and write models — you can use it without Event Sourcing by having the write model update both its own store and the read model (e.g., write to PostgreSQL, project to Elasticsearch). They work well together because Event Sourcing naturally produces an event stream that feeds CQRS projections, and CQRS solves the query problem that Event Sourcing creates (you can't easily query \"all accounts with balance > $1000\" from an event store)."
+        },
+        {
+          "type": "interview",
+          "question": "How do you handle schema evolution of events in an event-sourced system?",
+          "answer": "Events are immutable and stored forever, so schema evolution must be backward-compatible. Strategies: (1) Upcasting — transform old event formats to the current format during deserialization (e.g., v1 CustomerCreated{name} → v2 CustomerCreated{firstName, lastName} by splitting the name field). (2) Weak schema — use a flexible format (JSON) and handle missing fields with defaults. (3) Event versioning — store a version number with each event and dispatch to version-specific handlers. (4) Copy-and-transform — for major schema changes, create a new stream by transforming all events (expensive, use rarely). Never modify stored events in place — this breaks the immutability guarantee and can corrupt projections."
+        },
+        {
+          "type": "interview",
+          "question": "What are the trade-offs of eventual consistency between write and read models in CQRS?",
+          "answer": "Trade-offs: (1) Staleness — reads may not reflect the latest write; the delay depends on projection processing speed (typically milliseconds to seconds). (2) UI complexity — after a user action, they might not see their change immediately, requiring optimistic updates or polling. (3) Ordering — events may arrive out of order at projections if using partitioned messaging; projections must handle this. (4) Debugging — when a read model shows unexpected data, you must trace through the event stream to understand why. Benefits: (1) Independent scaling — read and write sides scale independently. (2) Availability — the write side can accept commands even if projections are temporarily down. (3) Performance — projections are pre-computed, making reads extremely fast. (4) Flexibility — add new read models without touching the write side."
+        },
+        {
+          "type": "interview",
+          "question": "When would you NOT use event sourcing?",
+          "answer": "Avoid event sourcing when: (1) Simple CRUD with no audit requirements — the overhead of event modeling, projection management, and eventual consistency is not justified. (2) Highly mutable data with no history value — if you genuinely never need to know past states (e.g., a cache). (3) Complex queries are the primary use case and you don't need separate read models — a traditional database with indexes is simpler. (4) The team lacks experience — event sourcing has a steep learning curve and many subtle pitfalls. (5) GDPR \"right to erasure\" requirements — deleting events is antithetical to event sourcing (though crypto-shredding can work around this). (6) High-frequency updates to the same aggregate — replaying thousands of events per request is expensive without careful snapshotting."
+        }
+      ],
+      "wordCount": 517,
+      "subsections": []
+    },
+    {
+      "id": "production-tips",
+      "heading": "Production Tips",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Implement a dead letter queue for failed projection events. When a projection fails to process an event (bug in projection logic, schema mismatch), the event should be routed to a DLQ rather than blocking all subsequent events. Monitor DLQ depth and alert immediately — a growing DLQ means your read model is falling behind and becoming increasingly stale.",
+            "Use correlation IDs and causation IDs for distributed tracing. Every event should carry a correlationId (the original request that started the chain) and a causationId (the specific event or command that directly caused this event). This enables end-to-end tracing of a user action through multiple aggregates and projections, which is essential for debugging in production.",
+            "Plan for projection rebuilds from day one. Projection rebuilds are not exceptional — they are routine operations (new projection added, bug fixed, schema changed). Design your infrastructure to support rebuilding projections without downtime: run the new projection in parallel, switch traffic once it catches up, then decommission the old one. Track rebuild progress and estimated time to completion."
+          ]
+        }
+      ],
+      "wordCount": 171,
+      "subsections": []
+    },
+    {
+      "id": "related-topics",
+      "heading": "Related Topics",
+      "level": 2,
+      "content": [
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Saga Pattern — Sagas coordinate multi-aggregate transactions in event-sourced systems, using events as the communication mechanism",
+            "Consistency Models — CQRS projections exhibit eventual consistency, which has specific guarantees and limitations",
+            "Distributed Systems — Event sourcing and CQRS are architectural patterns for building scalable distributed systems",
+            "Vector Clocks — Conflict detection in event-sourced systems with multiple writers uses version vectors or similar mechanisms"
+          ]
+        }
+      ],
+      "wordCount": 62,
+      "subsections": []
+    }
+  ],
+  "images": [],
+  "codeBlocks": [
+    {
+      "language": "java",
+      "code": "import java.util.*;\nimport java.util.concurrent.ConcurrentHashMap;\nimport java.util.concurrent.locks.ReadWriteLock;\nimport java.util.concurrent.locks.ReentrantReadWriteLock;\n\n/**\n * In-memory event store with optimistic concurrency control.\n * Production systems would use EventStoreDB, Kafka, or a database with\n * append-only semantics.\n */\npublic class EventStore {\n    private final Map<String, List<StoredEvent>> streams = new ConcurrentHashMap<>();\n    private final Map<String, ReadWriteLock> streamLocks = new ConcurrentHashMap<>();\n    private final List<EventSubscriber> subscribers = new ArrayList<>();\n\n    /**\n     * Append events to a stream with optimistic concurrency.\n     * @param streamId The aggregate/entity identifier\n     * @param expectedVersion The version the caller expects (for conflict detection)\n     * @param events The new events to append\n     * @throws ConcurrencyException if another writer modified the stream\n     */\n    public void append(String streamId, long expectedVersion, List<DomainEvent> events) {\n        ReadWriteLock lock = streamLocks.computeIfAbsent(streamId,\n            k -> new ReentrantReadWriteLock());\n        lock.writeLock().lock();\n\n        try {\n            List<StoredEvent> stream = streams.computeIfAbsent(streamId, k -> new ArrayList<>());\n            long currentVersion = stream.size();\n\n            // Optimistic concurrency check\n            if (currentVersion != expectedVersion) {\n                throw new ConcurrencyException(\n                    String.format(\"Stream '%s' expected version %d but was %d\",\n                        streamId, expectedVersion, currentVersion)\n                );\n            }\n\n            // Append events with sequential version numbers\n            for (DomainEvent event : events) {\n                long version = currentVersion++;\n                StoredEvent stored = new StoredEvent(\n                    streamId,\n                    version,\n                    event.getClass().getSimpleName(),\n                    event,\n                    System.currentTimeMillis(),\n                    UUID.randomUUID().toString()  // Event ID\n                );\n                stream.add(stored);\n            }\n\n            // Notify subscribers (projections, process managers)\n            for (StoredEvent stored : stream.subList((int) expectedVersion, stream.size())) {\n                for (EventSubscriber subscriber : subscribers) {\n                    subscriber.onEvent(stored);\n                }\n            }\n        } finally {\n            lock.writeLock().unlock();\n        }\n    }\n\n    /**\n     * Read all events for a stream (for aggregate rehydration).\n     */\n    public List<StoredEvent> readStream(String streamId) {\n        return streams.getOrDefault(streamId, Collections.emptyList());\n    }\n\n    /**\n     * Read events from a specific version (for partial replay after snapshot).\n     */\n    public List<StoredEvent> readStreamFrom(String streamId, long fromVersion) {\n        List<StoredEvent> stream = streams.getOrDefault(streamId, Collections.emptyList());\n        if (fromVersion >= stream.size()) return Collections.emptyList();\n        return stream.subList((int) fromVersion, stream.size());\n    }\n\n    public void subscribe(EventSubscriber subscriber) {\n        subscribers.add(subscriber);\n    }\n}\n\n/**\n * Example aggregate: BankAccount rebuilt from events.\n */\npublic class BankAccount {\n    private String accountId;\n    private long balance;  // in cents\n    private long version;\n    private boolean closed;\n    private final List<DomainEvent> uncommittedEvents = new ArrayList<>();\n\n    // Private constructor — use static factory methods\n    private BankAccount() {}\n\n    /**\n     * Rehydrate aggregate from event history.\n     */\n    public static BankAccount fromHistory(List<StoredEvent> history) {\n        BankAccount account = new BankAccount();\n        for (StoredEvent stored : history) {\n            account.apply(stored.getEvent());\n            account.version = stored.getVersion() + 1;\n        }\n        return account;\n    }\n\n    /**\n     * Command: deposit money. Validates business rules, then emits event.\n     */\n    public void deposit(long amount, String transactionId) {\n        if (closed) throw new IllegalStateException(\"Account is closed\");\n        if (amount <= 0) throw new IllegalArgumentException(\"Amount must be positive\");\n\n        emit(new MoneyDeposited(accountId, amount, transactionId, System.currentTimeMillis()));\n    }\n\n    /**\n     * Command: withdraw money. Validates business rules, then emits event.\n     */\n    public void withdraw(long amount, String transactionId) {\n        if (closed) throw new IllegalStateException(\"Account is closed\");\n        if (amount <= 0) throw new IllegalArgumentException(\"Amount must be positive\");\n        if (balance < amount) throw new InsufficientFundsException(accountId, balance, amount);\n\n        emit(new MoneyWithdrawn(accountId, amount, transactionId, System.currentTimeMillis()));\n    }\n\n    // Apply event to update internal state (no side effects, no validation)\n    private void apply(DomainEvent event) {\n        if (event instanceof AccountOpened e) {\n            this.accountId = e.getAccountId();\n            this.balance = e.getInitialDeposit();\n        } else if (event instanceof MoneyDeposited e) {\n            this.balance += e.getAmount();\n        } else if (event instanceof MoneyWithdrawn e) {\n            this.balance -= e.getAmount();\n        } else if (event instanceof AccountClosed e) {\n            this.closed = true;\n        }\n    }\n\n    private void emit(DomainEvent event) {\n        apply(event);  // Update local state\n        uncommittedEvents.add(event);  // Track for persistence\n    }\n\n    public List<DomainEvent> getUncommittedEvents() {\n        return Collections.unmodifiableList(uncommittedEvents);\n    }\n\n    public void markCommitted() {\n        uncommittedEvents.clear();\n    }\n\n    public long getVersion() { return version; }\n    public long getBalance() { return balance; }\n}",
+      "runnable": false
+    },
+    {
+      "language": "typescript",
+      "code": "import { EventEmitter } from 'events';\n\n// Domain events\ninterface AccountOpened {\n  type: 'AccountOpened';\n  accountId: string;\n  customerId: string;\n  initialDeposit: number;\n  timestamp: number;\n}\n\ninterface MoneyDeposited {\n  type: 'MoneyDeposited';\n  accountId: string;\n  amount: number;\n  transactionId: string;\n  timestamp: number;\n}\n\ninterface MoneyWithdrawn {\n  type: 'MoneyWithdrawn';\n  accountId: string;\n  amount: number;\n  transactionId: string;\n  timestamp: number;\n}\n\ntype BankEvent = AccountOpened | MoneyDeposited | MoneyWithdrawn;\n\ninterface StoredEvent {\n  streamId: string;\n  version: number;\n  event: BankEvent;\n  timestamp: number;\n  globalPosition: number;  // Position across all streams\n}\n\n/**\n * Read model: Account balance projection.\n * Optimized for fast balance lookups — denormalized from events.\n */\nclass AccountBalanceProjection {\n  private balances: Map<string, number> = new Map();\n  private lastProcessedPosition: number = -1;\n\n  /**\n   * Process a single event to update the projection.\n   * This method must be idempotent — processing the same event twice\n   * should produce the same result.\n   */\n  apply(stored: StoredEvent): void {\n    // Skip already-processed events (idempotency)\n    if (stored.globalPosition <= this.lastProcessedPosition) return;\n\n    const event = stored.event;\n    switch (event.type) {\n      case 'AccountOpened':\n        this.balances.set(event.accountId, event.initialDeposit);\n        break;\n      case 'MoneyDeposited':\n        const currentDeposit = this.balances.get(event.accountId) || 0;\n        this.balances.set(event.accountId, currentDeposit + event.amount);\n        break;\n      case 'MoneyWithdrawn':\n        const currentWithdraw = this.balances.get(event.accountId) || 0;\n        this.balances.set(event.accountId, currentWithdraw - event.amount);\n        break;\n    }\n\n    this.lastProcessedPosition = stored.globalPosition;\n  }\n\n  getBalance(accountId: string): number | undefined {\n    return this.balances.get(accountId);\n  }\n\n  getLastProcessedPosition(): number {\n    return this.lastProcessedPosition;\n  }\n}\n\n/**\n * Read model: Transaction history projection.\n * Optimized for listing recent transactions per account.\n */\nclass TransactionHistoryProjection {\n  private transactions: Map<string, TransactionRecord[]> = new Map();\n  private lastProcessedPosition: number = -1;\n\n  apply(stored: StoredEvent): void {\n    if (stored.globalPosition <= this.lastProcessedPosition) return;\n\n    const event = stored.event;\n    if (event.type === 'MoneyDeposited' || event.type === 'MoneyWithdrawn') {\n      const records = this.transactions.get(event.accountId) || [];\n      records.push({\n        transactionId: event.transactionId,\n        type: event.type === 'MoneyDeposited' ? 'credit' : 'debit',\n        amount: event.amount,\n        timestamp: event.timestamp,\n      });\n      this.transactions.set(event.accountId, records);\n    }\n\n    this.lastProcessedPosition = stored.globalPosition;\n  }\n\n  getHistory(accountId: string, limit: number = 50): TransactionRecord[] {\n    const records = this.transactions.get(accountId) || [];\n    return records.slice(-limit);\n  }\n}\n\ninterface TransactionRecord {\n  transactionId: string;\n  type: 'credit' | 'debit';\n  amount: number;\n  timestamp: number;\n}\n\n/**\n * Projection manager: handles subscription, catch-up, and rebuild.\n */\nclass ProjectionManager {\n  private projections: Map<string, Projection> = new Map();\n\n  constructor(private eventStore: EventStoreReader) {}\n\n  register(name: string, projection: Projection): void {\n    this.projections.set(name, projection);\n  }\n\n  /**\n   * Rebuild a projection from scratch by replaying all events.\n   * Used when: projection logic changes, projection is corrupted,\n   * or a new projection is added.\n   */\n  async rebuild(projectionName: string): Promise<void> {\n    const projection = this.projections.get(projectionName);\n    if (!projection) throw new Error(`Unknown projection: ${projectionName}`);\n\n    // Reset projection state\n    projection.reset();\n\n    // Replay all events from the beginning\n    let position = 0;\n    const batchSize = 1000;\n\n    while (true) {\n      const events = await this.eventStore.readAll(position, batchSize);\n      if (events.length === 0) break;\n\n      for (const event of events) {\n        projection.apply(event);\n      }\n\n      position += events.length;\n      console.log(`Rebuilt ${projectionName}: processed ${position} events`);\n    }\n\n    console.log(`Rebuild complete for ${projectionName}`);\n  }\n\n  /**\n   * Catch up a projection from its last processed position.\n   * Used on startup or after a temporary disconnection.\n   */\n  async catchUp(projectionName: string): Promise<void> {\n    const projection = this.projections.get(projectionName);\n    if (!projection) throw new Error(`Unknown projection: ${projectionName}`);\n\n    const fromPosition = projection.getLastProcessedPosition() + 1;\n    const events = await this.eventStore.readAll(fromPosition, 10000);\n\n    for (const event of events) {\n      projection.apply(event);\n    }\n  }\n}\n\ninterface Projection {\n  apply(event: StoredEvent): void;\n  reset(): void;\n  getLastProcessedPosition(): number;\n}\n\ninterface EventStoreReader {\n  readAll(fromPosition: number, limit: number): Promise<StoredEvent[]>;\n}",
+      "runnable": false
+    }
+  ],
+  "mathExpressions": [],
+  "metadata": {
+    "source": "parsed",
+    "filePath": "/Users/luffy/Desktop/Projects/cs-reference-guide/content/system-design/fundamentals/event-sourcing-cqrs.md",
+    "wordCount": 1553,
+    "sectionCount": 14
+  }
+}

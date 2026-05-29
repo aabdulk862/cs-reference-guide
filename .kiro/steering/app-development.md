@@ -29,6 +29,8 @@ cs-reference-guide/
 ├── .kiro/              # Specs and steering files
 ├── .github/workflows/  # CI pipeline (ci.yml)
 ├── content/            # All markdown content (multi-page topics organized by category)
+├── docs/               # Documentation (content-audit.md)
+├── scripts/            # Build scripts (prerender.ts — post-build static HTML generation)
 ├── src/
 │   ├── components/
 │   │   ├── content/    # ContentCard, CodeBlock, EnhancedCodeBlock, MermaidRenderer, MathRenderer,
@@ -48,13 +50,13 @@ cs-reference-guide/
 │   │                   # useSearch, useCommandPalette, useDocumentMeta, useKeyboardShortcuts,
 │   │                   # useOnlineStatus, useSpacedRepetition, useStudySession, useSWNotifications
 │   ├── pages/          # Dashboard, TopicPage, ProgressPage, SearchPage, SettingsPage,
-│   │                   # CategoryPage, CheatSheets, BehavioralGuidePage, NotFound
+│   │                   # CategoryPage, CheatSheets, BehavioralGuidePage, CodingGuidePage, NotFound
 │   ├── plugins/        # Vite content pipeline (vite-content-plugin, markdown-parser,
 │   │                   # exclusion-filter, image-resolver, plugin-utils, search-indexer,
 │   │                   # content-validator, sitemap-generator)
 │   ├── styles/         # Modular CSS files (40+ files: tokens, layout, sidebar, topic-page, etc.)
 │   ├── types/          # TypeScript interfaces (content, manifest, navigation, search, study, interactive)
-│   ├── utils/          # Utilities (storage, helpers)
+│   ├── utils/          # Utilities (storage, indexeddb-adapter, helpers)
 │   └── workers/        # Web Workers (code-runner)
 ├── public/
 │   └── content/        # Generated JSON (build output from content pipeline)
@@ -93,10 +95,12 @@ Routes follow this pattern:
 - CSS classes follow BEM-like naming: `.component-name__element--modifier`
 
 ### State Management
-- localStorage for persistence (namespaced with `csguide:` prefix)
+- Three-tier persistence: localStorage → IndexedDB → in-memory Map (namespaced with `csguide:` prefix)
+- `initStorage()` (async) probes backends at app startup; API remains synchronous for consumers
+- IndexedDB adapter at `src/utils/indexeddb-adapter.ts` (database: `csguide-storage`, store: `kv`)
 - React context for global state (theme)
 - Local state for component-specific UI state
-- Custom hooks encapsulate all localStorage read/write logic
+- Custom hooks encapsulate all storage read/write logic
 - Manual completion tracking: `csguide:completed-topics` stores array of completed topic/subtopic IDs
 
 ### CSS
@@ -125,7 +129,7 @@ The Vite plugin at `src/plugins/vite-content-plugin.ts`:
 9. Generates `search-index.json`
 10. Generates `sitemap.xml`
 
-### Category Mappings (13 categories)
+### Category Mappings (12 categories)
 
 Defined in `src/plugins/plugin-utils.ts`:
 
@@ -139,7 +143,6 @@ Defined in `src/plugins/plugin-utils.ts`:
 { pattern: 'networking', category: 'Networking' }
 { pattern: 'operating-systems', category: 'Operating Systems' }
 { pattern: 'interview-prep', category: 'Interview Prep' }
-{ pattern: 'git', category: 'Git' }
 { pattern: 'security', category: 'Security' }
 { pattern: 'testing', category: 'Testing' }
 { pattern: 'software-engineering', category: 'Software Engineering' }
@@ -152,13 +155,13 @@ Categories are visually grouped in the sidebar (`src/components/navigation/Sideb
 - ⚙️ Server-Side: Backend, Databases
 - 🎨 Client-Side: Frontend
 - 🏗️ Architecture: System Design, Software Engineering, Security
-- 🚀 Infrastructure: Infrastructure, Git
+- 🚀 Infrastructure: Infrastructure
 - ✅ Quality: Testing
 - 🎯 Interview: Interview Prep
 
 ## Content Stats (as of last build)
 
-- 13 categories, 46 topics, 182+ subtopic files
+- 12 categories, 44 topics, 200+ subtopic files
 - All topics are multi-page (no single-file topics)
 
 ## Key Features
@@ -181,13 +184,15 @@ Categories are visually grouped in the sidebar (`src/components/navigation/Sideb
 ## Deployment
 
 - **Platform**: Netlify
-- **Build command**: `npm run build`
+- **Build command**: `npm run build` (includes postbuild pre-rendering step)
 - **Publish directory**: `dist`
 - **Node version**: 20
+- **Pre-rendering**: `scripts/prerender.ts` generates static HTML for all content routes (SEO)
 - **Caching strategy**:
   - `/assets/*` — immutable, cache forever
   - `/content/*.json` — 1 day cache, stale-while-revalidate 1 week
   - `/content-manifest.json`, `/search-index.json` — 1 hour cache, stale-while-revalidate 1 day
+  - `*.wasm` — StaleWhileRevalidate (wasm-cache, 30-day expiry)
   - `/sw.js` — never cache
 
 ## CI/CD
